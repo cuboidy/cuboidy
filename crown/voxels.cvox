@@ -1,11 +1,13 @@
 palette #FFD700
 
-@crown 3x2x3
+part crown
+size 3 2 3
 pivot 1 0 1
+layer 0
 000
 000
 000
----
+layer 1
 0.0
 ...
 0.0
