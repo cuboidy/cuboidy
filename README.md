@@ -2,7 +2,7 @@
 
 An open text-based file format for voxel character models, rigs, and animations.
 
-**Status: early design, in flux. No spec doc yet — see example models for the current shape.**
+**Status: v0.1 draft. See [SPEC.md](SPEC.md) for the formal specification.**
 
 ## What it is
 
@@ -52,7 +52,7 @@ my-model.cubit        packed package (ZIP of the folder above)
 
 ## Roadmap
 
-- [ ] Spec document (`SPEC.md`)
+- [x] Spec document (`SPEC.md`) — v0.1 draft
 - [ ] JSON Schema for `cubit.json` (`schema/cubit.schema.json`)
 - [ ] Voxel definition linter (`cubit-lint`)
 - [ ] Reference parser (C# / TypeScript)

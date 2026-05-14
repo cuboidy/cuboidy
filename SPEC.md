@@ -1,0 +1,577 @@
+# Cubit Format Specification
+
+**Version:** 0.1 (draft)
+**Status:** Early draft. Subject to change before v1.0.
+
+---
+
+## 1. Overview
+
+Cubit is a text-based open file format for voxel character models with rigged parts, named attachment sockets, and shareable keyframe animations.
+
+Design goals:
+
+- **Human-readable** — diff-friendly, editable in any text editor
+- **AI-authorable** — structure favors generation reliability over byte efficiency
+- **Browser-editable** — no proprietary binary, no native dependencies
+- **Self-contained** — references resolve via filesystem only; no registry, no namespace URIs
+
+Cubit draws on prior art:
+
+- **Minecraft Bedrock** geometry / animation — rigid part hierarchy, per-part pivot
+- **Mixamo** clips — cross-rig animation reuse via part-name binding
+- **MagicaVoxel** — voxel grid + inline palette
+- **VRM** — named attachment points (planned: standardized rig vocabulary)
+- **glTF** — JSON manifest + relative external references
+
+Cubit is **not** a triangle-mesh format. It does not specify skin weights, UV coordinates, materials, or shaders. Voxel parts are rigid; the runtime renders them as flat-shaded cells.
+
+---
+
+## 2. Terminology
+
+| Term | Meaning |
+|---|---|
+| **Cubit format** | The spec defined by this document |
+| **Cubit model** (or **package**) | A single asset, stored as a folder |
+| **Manifest** | `cubit.json` — rig hierarchy and animations |
+| **Voxel definition** | `voxels.cvox` — shape, palette, pivot, sockets |
+| **Packed Cubit** | `<name>.cubit` — ZIP archive of the package (reserved; not specified in v0.1) |
+| **Part** | A rigid voxel sub-object, optionally parented in the hierarchy |
+| **Socket** | A named attachment point on a part |
+| **Keyframe** | A time-indexed pose snapshot for an animated part |
+| **Rest pose** | A part's pose when no animation is active: rotation identity, scale `[1,1,1]`, position = `part.position` |
+
+---
+
+## 3. Folder structure
+
+A Cubit model is stored as a folder. The folder's name is conventional and not authoritative; the manifest's `name` field is.
+
+```
+my-model/
+├── cubit.json           required — manifest
+├── voxels.cvox          required — voxel definition
+└── anims/               optional — shared / external animation files
+    ├── walk.json
+    └── idle.json
+```
+
+Files not referenced from the manifest and not `cubit.json` / `voxels.cvox` are ignored. The `anims/` subfolder is conventional; animation files may live anywhere in the package.
+
+---
+
+## 4. Coordinate system
+
+Cubit uses a **right-handed coordinate system**:
+
+- **+X**: model's right
+- **+Y**: up
+- **−Z**: forward (the direction the model faces)
+
+This matches glTF, USD, Blender, and Three.js. Unity-based consumers negate the Z axis on load.
+
+Rotations are **Euler angles in degrees**, applied in **ZXY intrinsic order** (the convention used by Unity's Inspector).
+
+All coordinates are in **voxel units**. Fractional values are allowed everywhere (positions, pivots, rotations, scale, time). Voxels are not required to align on integer boundaries.
+
+Numbers are interpreted as **IEEE 754 double precision** floating point. Integer literals and decimal literals are interchangeable in any numeric field.
+
+---
+
+## 5. Identifiers
+
+Names for parts, sockets, animations, and the model itself match:
+
+```
+[a-zA-Z_][a-zA-Z0-9_-]*
+```
+
+- Case-sensitive
+- ASCII only (no Unicode)
+- Hyphen `-` allowed (`leg-fl`, `ear-l`)
+- No leading digit or hyphen
+
+Uniqueness scopes:
+
+- Part names: unique within a model
+- Socket names: unique within a part
+- Animation names: unique within a model
+
+---
+
+## 6. `cubit.json` — manifest
+
+The manifest is a standard JSON document (no comments, no trailing commas).
+
+### 6.1 Top-level shape
+
+```json
+{
+  "name": "<identifier>",
+  "version": "0.1",
+  "parts": [ ... ],
+  "animations": { ... }
+}
+```
+
+| Field | Required | Type | Notes |
+|---|---|---|---|
+| `name` | **yes** | string (identifier) | Model identifier |
+| `version` | no | string | Spec version this model targets. Absent → `"0.1"` |
+| `parts` | **yes** | array (non-empty) | At least one part |
+| `animations` | no | object | Map from animation name to definition. Absent → no animations |
+
+### 6.2 Part object
+
+```json
+{
+  "name": "<identifier>",
+  "parent": "<identifier>",
+  "position": [x, y, z]
+}
+```
+
+| Field | Required | Type | Notes |
+|---|---|---|---|
+| `name` | **yes** | string (identifier) | Unique within model |
+| `parent` | no | string (identifier) | Another part's name. Absent → this part is a root |
+| `position` | no | `[number, number, number]` | Where this part's pivot sits in parent space (voxel units). Default `[0, 0, 0]` |
+
+Rules:
+
+- Multiple root parts (parts with no `parent`) are permitted.
+- The `parts` array may be in any order; the parser resolves the hierarchy in a second pass.
+- `parent` must refer to another part in the same model.
+- Cycles in the parent chain are an error.
+
+Per-part shape, pivot, and sockets live in `voxels.cvox`, not here. See §7.
+
+### 6.3 Animation map
+
+```json
+"animations": {
+  "<name>": <animation>,
+  ...
+}
+```
+
+`<animation>` is either:
+
+- An inline **object** (see §6.4)
+- A **string** — relative path to a JSON file containing one animation object (see §8)
+
+### 6.4 Inline animation object
+
+```json
+{
+  "duration": <number>,
+  "loop": <bool>,
+  "parts": {
+    "<part-name>": {
+      "<time-key>": { "rot": [...], "pos": [...], "scale": [...], "visible": ... },
+      ...
+    },
+    ...
+  }
+}
+```
+
+| Field | Required | Type | Notes |
+|---|---|---|---|
+| `duration` | **yes** | number | Animation length in seconds. Must be ≥ the largest time key |
+| `loop` | **yes** | bool | If `true`, animation restarts seamlessly after `duration` |
+| `parts` | **yes** | object | Map from part name to keyframe sequence. May be empty (no part animates) |
+
+### 6.5 Keyframe values
+
+| Field | Type | Interpretation | Default at first keyframe |
+|---|---|---|---|
+| `rot` | `[rx, ry, rz]` Euler degrees | **Relative** to rest pose (identity) | `[0, 0, 0]` |
+| `pos` | `[dx, dy, dz]` voxel units | **Delta** added to `part.position` | `[0, 0, 0]` |
+| `scale` | `[sx, sy, sz]` multipliers | **Multiplier** from rest scale (`[1,1,1]`). Per-axis, non-uniform allowed | `[1, 1, 1]` |
+| `visible` | bool | Visibility toggle | `true` |
+
+#### Carryover
+
+In a part's keyframe sequence, **any field omitted from a keyframe inherits its value from the previous keyframe** for that part. The first keyframe's defaults are listed above.
+
+Example:
+
+```json
+"tail": {
+  "0.0": { "rot": [0,  0, 0] },
+  "0.5": { "rot": [0, 25, 0] },
+  "1.0": { "rot": [0,  0, 0] }
+}
+```
+
+Here `pos`, `scale`, and `visible` are constant across all keyframes (`[0,0,0]`, `[1,1,1]`, `true`) because they are never specified.
+
+### 6.6 Time keys
+
+- Format: JSON string of a decimal number, e.g., `"0.0"`, `"0.5"`, `"1.25"`
+- Unit: seconds (IEEE 754 double precision)
+- Must start at `"0.0"` for every animated part
+- Must be strictly increasing across the sequence for a given part
+- Maximum time key must be ≤ `duration`
+
+### 6.7 Interpolation
+
+Between consecutive keyframes:
+
+- `rot`, `pos`, `scale` are **linearly interpolated**
+- `visible` uses **step** interpolation: the value at the later keyframe takes effect at that keyframe's time
+
+Custom easing curves are reserved for future spec versions.
+
+### 6.8 Missing parts
+
+If an animation's `parts` includes a name that does not exist in this model, the reference is **silently skipped at runtime** (with a warning at lint time).
+
+This rule supports cross-rig sharing: a shared `quadruped_walk.json` that animates `leg-fl, leg-fr, leg-bl, leg-br` works on a 3-legged variant; the missing leg simply does nothing.
+
+### 6.9 Concurrency
+
+A model may have at most **one active animation** at a time. Blending, layering, and per-part overlays are reserved for future spec versions.
+
+---
+
+## 7. `voxels.cvox` — voxel definition
+
+A plain-text file with a line-oriented grammar.
+
+### 7.1 Line classification
+
+Every non-blank line is exactly one of:
+
+| Type | Pattern | Example |
+|---|---|---|
+| **Palette declaration** | `palette <color>+` | `palette #8B4513 #000000` |
+| **Part declaration** | `part <identifier>` | `part head` |
+| **Metadata** | `<keyword> <args...>` | `size 3 3 3`, `pivot 1 0 1` |
+| **Voxel row** | `[.0-9a-zA-Z]+` (no whitespace) | `000`, `0.0`, `101` |
+
+Blank lines are ignored everywhere. They exist solely for human readability.
+
+### 7.2 Grammar
+
+```
+file        := palette-decl part+
+palette-decl := "palette" (SPACE color)+
+color       := "#" (3 | 4 | 6 | 8) hex-digits
+
+part        := part-decl size-decl (pivot-decl)? socket-decl* layer+
+part-decl   := "part" SPACE identifier
+size-decl   := "size" SPACE int SPACE int SPACE int
+pivot-decl  := "pivot" SPACE num SPACE num SPACE num
+socket-decl := "socket" SPACE identifier SPACE num SPACE num SPACE num
+                (SPACE "rot" SPACE num SPACE num SPACE num)?
+
+layer       := layer-header voxel-row+
+layer-header := "layer" SPACE non-negative-integer
+voxel-row   := /[.0-9a-zA-Z]+/
+```
+
+All metadata keywords are **2 characters or longer**. This rule reserves single-character lines for voxel data and prevents palette-index collisions with future keywords.
+
+### 7.3 Reserved keywords (v0.1)
+
+- `palette`
+- `part`
+- `size`
+- `pivot`
+- `socket`
+- `layer`
+
+Unrecognized keywords on a metadata line are an error.
+
+### 7.4 Palette declaration
+
+```
+palette <color>+
+```
+
+- Exactly one palette declaration per file
+- Must appear before the first `part`
+- Each color in hex: `#RGB`, `#RGBA`, `#RRGGBB`, or `#RRGGBBAA`
+- Color space: **sRGB**
+- Maximum **62 colors** (palette indices `0..61`)
+- Voxel data references colors by single character:
+  - `0`–`9` → palette indices 0–9
+  - `a`–`z` → palette indices 10–35
+  - `A`–`Z` → palette indices 36–61
+- The character `.` is reserved for empty space (air) and is **not** part of the palette
+
+Position-based indexing: reordering the palette requires rewriting voxel data. Tooling can automate this.
+
+### 7.5 `part` declaration
+
+```
+part <identifier>
+```
+
+Starts a new part section. The parser detects new parts by this keyword; there is no explicit part-end marker.
+
+A `part` must be followed (in order) by:
+
+1. `size` (required, exactly one)
+2. `pivot` (optional, at most one)
+3. zero or more `socket`
+4. one or more `layer` blocks
+
+### 7.6 `size`
+
+```
+size <W> <H> <D>
+```
+
+- W = X-axis width, H = Y-axis height, D = Z-axis depth
+- All values are non-negative integers
+- Total voxel cells = W × H × D
+
+### 7.7 `pivot`
+
+```
+pivot <x> <y> <z>
+```
+
+- Optional. Default: bottom-center, `[W/2, 0, D/2]`
+- Coordinates in **part-local space**, voxel units
+- May be fractional
+- May lie outside the grid bounds (lint warning, not error)
+
+### 7.8 `socket`
+
+```
+socket <identifier> <x> <y> <z>
+socket <identifier> <x> <y> <z> rot <rx> <ry> <rz>
+```
+
+- Zero or more per part
+- Position in part-local space, voxel units (fractional allowed)
+- Optional rotation: Euler degrees, ZXY order, default `[0, 0, 0]`
+- Socket name unique within a part
+
+### 7.9 `layer`
+
+```
+layer <N>
+```
+
+- Marks the start of voxel data for Y-layer index `N` (0-based)
+- A part must contain exactly H `layer` blocks with indices `0..H-1` in increasing order
+- Each `layer N` is followed by exactly D voxel-row lines
+- The k-th row after `layer N` represents voxel cells at coordinates `(x, N, k)` for `x ∈ 0..W-1`
+
+### 7.10 Voxel row
+
+- Characters drawn from `[.0-9a-zA-Z]`, no whitespace
+- Length exactly equals W
+- Each character is either `.` (air) or a palette index character (must be within the declared palette range)
+
+### 7.11 Example
+
+```
+palette #8B4513 #000000
+
+part head
+size 3 3 3
+pivot 1 0 1
+socket hat 1 3 1
+socket mouth 1 1 3
+layer 0
+000
+000
+000
+layer 1
+000
+000
+101
+layer 2
+000
+000
+000
+```
+
+---
+
+## 8. Reference paths
+
+Used by `animations` string values (and any future reference fields).
+
+Rules:
+
+- Resolved **relative to the file containing the reference** (typically `cubit.json`)
+- Must end in `.json` (explicit extension required)
+- Forward slashes `/` only
+- Absolute paths (leading `/`) are forbidden
+- URLs (`http://`, `https://`, `file://`) are forbidden
+- `namespace:key` URIs are forbidden (the format has no registry)
+
+Examples (assuming reference is from `wolf/cubit.json`):
+
+| Path | Resolves to |
+|---|---|
+| `anims/walk.json` | `wolf/anims/walk.json` |
+| `./anims/walk.json` | `wolf/anims/walk.json` |
+| `../shared/walk.json` | `shared/walk.json` |
+
+Reference cycles (a → b → a) are an error.
+
+---
+
+## 9. Encoding
+
+- **UTF-8 only**
+- **Byte order mark (BOM) is forbidden**
+- Line endings: LF (`\n`) or CRLF (`\r\n`); both accepted on read; LF preferred on write
+
+---
+
+## 10. Defaults summary
+
+| Location | Field | Default |
+|---|---|---|
+| `cubit.json` | part `position` | `[0, 0, 0]` |
+| `cubit.json` | part `parent` | absent → root |
+| `cubit.json` | `animations` | absent → no animations |
+| `cubit.json` | `version` | absent → `"0.1"` |
+| Keyframe (first) | `rot` | `[0, 0, 0]` |
+| Keyframe (first) | `pos` | `[0, 0, 0]` |
+| Keyframe (first) | `scale` | `[1, 1, 1]` |
+| Keyframe (first) | `visible` | `true` |
+| Keyframe (subsequent) | any omitted field | inherits from previous keyframe |
+| `voxels.cvox` | `pivot` | `[W/2, 0, D/2]` (bottom-center) |
+| `voxels.cvox` | socket rotation | `[0, 0, 0]` |
+
+---
+
+## 11. Validation & lint
+
+A Cubit package is **well-formed** if it passes all error-level rules.
+
+### 11.1 Severity levels
+
+| Level | Meaning | Implementation behavior |
+|---|---|---|
+| **Error** (`E`/`C`/`X`) | Spec violation | Refuse to load (or recover only on explicit request) |
+| **Warning** (`W`) | Spec-valid but suspicious | Load with warning emitted |
+| **Hint** (`H`) | Style or convention | Load with hint emitted |
+
+### 11.2 `voxels.cvox` errors
+
+| ID | Rule |
+|---|---|
+| E01 | Missing `palette` declaration |
+| E02 | Invalid palette color format |
+| E03 | Invalid `part` header (e.g., missing identifier) |
+| E04 | Unknown metadata keyword |
+| E05 | Invalid `pivot` arguments (count or value) |
+| E06 | Invalid `socket` arguments |
+| E07 | Voxel row contains a character outside `[.0-9a-zA-Z]` |
+| E08 | Voxel row width does not match declared `W` |
+| E09 | Layer index out of range, duplicated, or out of order |
+| E10 | Wrong number of voxel rows in a layer (must be exactly `D`) |
+| E11 | Voxel character references a palette index outside the declared palette |
+| E12 | Duplicate `part` name within file |
+| E13 | Missing `size` for a part |
+| E14 | Duplicate socket name within a part |
+
+### 11.3 `voxels.cvox` warnings
+
+| ID | Rule |
+|---|---|
+| W01 | Pivot outside voxel grid bounds |
+| W02 | Socket outside voxel grid bounds |
+| W03 | Palette index declared but never used |
+| W04 | Layer entirely empty (all `.`) |
+| W05 | Part has no solid voxels (all `.`) |
+
+### 11.4 `voxels.cvox` hints
+
+| ID | Rule |
+|---|---|
+| H01 | Part name violates `lower_snake_case` or `lower-kebab-case` convention |
+| H02 | Pivot uses fractional value in an otherwise integer-aligned grid |
+
+### 11.5 `cubit.json` errors
+
+| ID | Rule |
+|---|---|
+| C01 | Missing top-level `name` |
+| C02 | `parts` is empty or absent |
+| C03 | Part `parent` references a non-existent part |
+| C04 | Parent chain contains a cycle |
+| C05 | Animation `duration` is less than the largest time key |
+| C06 | An animated part's time keys do not start at `"0.0"` |
+| C07 | Time keys not strictly increasing |
+| C08 | External animation reference path does not end in `.json` |
+| C09 | External animation reference uses absolute path, URL, or namespace URI |
+| C10 | External animation references form a cycle |
+| C11 | Duplicate part name |
+| C12 | Duplicate animation name |
+| C13 | Unknown field encountered (warning by default; can be promoted to error) |
+
+### 11.6 Cross-file rules
+
+| ID | Severity | Rule |
+|---|---|---|
+| X01 | error | `cubit.json` references a part name not defined in `voxels.cvox` |
+| X02 | warning | `voxels.cvox` defines a part not listed in `cubit.json` `parts` |
+| X03 | warning | Animation targets a part not present in `cubit.json` `parts` (cross-rig sharing) |
+| X04 | runtime error | Attempt to attach to a socket name not declared on the host part |
+
+### 11.7 Diagnostic format
+
+Implementations should emit diagnostics in the form:
+
+```
+<file>:<line>[:<col>]: <severity>: <message> [<rule-id>]
+```
+
+Example:
+
+```
+voxels.cvox:5:1: error: row width 4, expected 3 (per `size 3 2 4`) [E08]
+voxels.cvox:12: warning: pivot [3, 0, 5] outside grid bounds [0..3, 0..3, 0..4] [W01]
+cubit.json:18: error: animation 'walk' targets part 'wing' not in model [X01]
+```
+
+This format is gcc / clang compatible for IDE integration.
+
+---
+
+## 12. Reference examples
+
+The reference repository includes:
+
+- `wolf/` — three-part rigged model (body / head / tail) with idle animation and sockets (`hat`, `mouth`)
+- `crown/` — single-part static accessory designed to attach to `wolf` via the `head:hat` socket
+
+Both pass all v0.1 lint rules at error level.
+
+---
+
+## 13. Future extensions (out of scope for v0.1)
+
+- **Packed format**: `<name>.cubit` (ZIP archive of the package)
+- **External palette references**: share palettes across models, avoiding per-model duplication
+- **Multi-character palette encoding**: 2-character indices for palettes larger than 62
+- **Animation blending**: simultaneous animations with weighted contribution
+- **Animation easing**: per-keyframe interpolation curves beyond linear
+- **Standardized rig vocabularies**: humanoid / quadruped / biped contracts (analogous to VRM humanoid spec)
+- **Inverse kinematics**: solver-driven part chains
+- **Comments in `voxels.cvox`**: `#`-prefixed lines for inline documentation
+- **Per-attachment overrides**: rotation / scale offsets when attaching accessories to sockets
+
+---
+
+## 14. Acknowledgments
+
+Cubit's design draws from prior work in voxel and rigging formats:
+Minecraft Bedrock Edition, Mixamo, MagicaVoxel, VRM, glTF, Pixar USD.
+
+---
+
+*End of specification.*
