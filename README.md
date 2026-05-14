@@ -22,13 +22,28 @@ Files are JSON + plain text only. The format is designed to be:
 
 ## Folder layout
 
+A Cubit model is a **folder**, not a single file:
+
 ```
 my-model/
-├── model.json     rig hierarchy (parent/position) + animations
-└── voxels.txt     palette + per-part (size, pivot, sockets, voxel grid)
+├── cubit.json        manifest: rig hierarchy + animations (+ references)
+├── voxels.cvox       voxel definition: palette + per-part grid + pivots + sockets
+└── anims/            (optional) shared animations
+    └── walk.json
 ```
 
-A model is a folder, not a single file. Animations may also live as separate files for cross-model reuse.
+For distribution, the folder can be packed into a single ZIP:
+
+```
+my-model.cubit        packed package (ZIP of the folder above)
+```
+
+| File | Role | Format | Validation |
+|---|---|---|---|
+| `cubit.json` | manifest (fixed name) | JSON | JSON Schema (`schema/cubit.schema.json`) |
+| `voxels.cvox` | voxel definition | custom text | `cubit-lint` |
+| `anims/*.json` | optional shared animations | JSON | JSON Schema (shared) |
+| `*.cubit` | packed package | ZIP | both, after extraction |
 
 ## Examples
 
@@ -38,10 +53,12 @@ A model is a folder, not a single file. Animations may also live as separate fil
 ## Roadmap
 
 - [ ] Spec document (`SPEC.md`)
+- [ ] JSON Schema for `cubit.json` (`schema/cubit.schema.json`)
+- [ ] Voxel definition linter (`cubit-lint`)
 - [ ] Reference parser (C# / TypeScript)
-- [ ] Shared animation library (`_anim/`)
 - [ ] Web-based editor
 - [ ] Rig vocabulary docs (quadruped / biped / winged / ...)
+- [ ] Packed format spec (`.cubit` ZIP)
 
 ## License
 
