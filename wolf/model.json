@@ -1,0 +1,28 @@
+{
+  "name": "wolf",
+  "parts": [
+    { "name": "body", "position": [0, 0, 0] },
+    { "name": "head", "parent": "body", "position": [1, 2, 4] },
+    { "name": "tail", "parent": "body", "position": [1, 1, 0] }
+  ],
+  "animations": {
+    "idle": {
+      "duration": 2.0,
+      "loop": true,
+      "parts": {
+        "tail": {
+          "0.0": { "rot": [0,   0, 0] },
+          "0.5": { "rot": [0,  25, 0] },
+          "1.0": { "rot": [0,   0, 0] },
+          "1.5": { "rot": [0, -25, 0] },
+          "2.0": { "rot": [0,   0, 0] }
+        },
+        "head": {
+          "0.0": { "rot": [0, 0, 0] },
+          "1.0": { "rot": [5, 0, 0] },
+          "2.0": { "rot": [0, 0, 0] }
+        }
+      }
+    }
+  }
+}

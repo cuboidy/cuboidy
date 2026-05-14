@@ -1,0 +1,19 @@
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor / IDE
+.vscode/
+.idea/
+.vs/
+*.swp
+*.swo
+*~
+
+# Build / dependency outputs (reserved for future tooling)
+bin/
+obj/
+node_modules/
+dist/
+build/
