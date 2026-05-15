@@ -1,4 +1,4 @@
-# Cubit Format Specification
+# Cuboidy Format Specification
 
 **Version:** 0.1 (draft)
 **Status:** Early draft. Subject to change before v1.0.
@@ -7,7 +7,7 @@
 
 ## 1. Overview
 
-Cubit is a text-based open file format for voxel character models with rigged parts, named attachment sockets, and shareable keyframe animations.
+Cuboidy is a text-based open file format for voxel character models with rigged parts, named attachment sockets, and shareable keyframe animations.
 
 Design goals:
 
@@ -16,7 +16,7 @@ Design goals:
 - **Browser-editable** — no proprietary binary, no native dependencies
 - **Self-contained** — references resolve via filesystem only; no registry, no namespace URIs
 
-Cubit draws on prior art:
+Cuboidy draws on prior art:
 
 - **Minecraft Bedrock** geometry / animation — rigid part hierarchy, per-part pivot
 - **Mixamo** clips — cross-rig animation reuse via part-name binding
@@ -24,7 +24,7 @@ Cubit draws on prior art:
 - **VRM** — named attachment points (planned: standardized rig vocabulary)
 - **glTF** — JSON manifest + relative external references
 
-Cubit is **not** a triangle-mesh format. It does not specify skin weights, UV coordinates, materials, or shaders. Voxel parts are rigid; the runtime renders them as flat-shaded cells.
+Cuboidy is **not** a triangle-mesh format. It does not specify skin weights, UV coordinates, materials, or shaders. Voxel parts are rigid; the runtime renders them as flat-shaded cells.
 
 ---
 
@@ -32,11 +32,11 @@ Cubit is **not** a triangle-mesh format. It does not specify skin weights, UV co
 
 | Term | Meaning |
 |---|---|
-| **Cubit format** | The spec defined by this document |
-| **Cubit model** (or **package**) | A single asset, stored as a folder |
-| **Manifest** | `cubit.json` — rig hierarchy and animations |
+| **Cuboidy format** | The spec defined by this document |
+| **Cuboidy model** (or **package**) | A single asset, stored as a folder |
+| **Manifest** | `cuboidy.json` — rig hierarchy and animations |
 | **Voxel definition** | `voxels.cvox` — shape, palette, pivot, sockets |
-| **Packed Cubit** | `<name>.cubit` — ZIP archive of the package (reserved; not specified in v0.1) |
+| **Packed Cuboidy** | `<name>.cuboidy` — ZIP archive of the package (reserved; not specified in v0.1) |
 | **Part** | A rigid voxel sub-object, optionally parented in the hierarchy |
 | **Socket** | A named attachment point on a part |
 | **Keyframe** | A time-indexed pose snapshot for an animated part |
@@ -46,24 +46,24 @@ Cubit is **not** a triangle-mesh format. It does not specify skin weights, UV co
 
 ## 3. Folder structure
 
-A Cubit model is stored as a folder. The folder's name is conventional and not authoritative; the manifest's `name` field is.
+A Cuboidy model is stored as a folder. The folder's name is conventional and not authoritative; the manifest's `name` field is.
 
 ```
 my-model/
-├── cubit.json           required — manifest
+├── cuboidy.json           required — manifest
 ├── voxels.cvox          required — voxel definition
 └── anims/               optional — shared / external animation files
     ├── walk.json
     └── idle.json
 ```
 
-Files not referenced from the manifest and not `cubit.json` / `voxels.cvox` are ignored. The `anims/` subfolder is conventional; animation files may live anywhere in the package.
+Files not referenced from the manifest and not `cuboidy.json` / `voxels.cvox` are ignored. The `anims/` subfolder is conventional; animation files may live anywhere in the package.
 
 ---
 
 ## 4. Coordinate system
 
-Cubit uses a **right-handed coordinate system**:
+Cuboidy uses a **right-handed coordinate system**:
 
 - **+X**: model's right
 - **+Y**: up
@@ -100,7 +100,7 @@ Uniqueness scopes:
 
 ---
 
-## 6. `cubit.json` — manifest
+## 6. `cuboidy.json` — manifest
 
 The manifest is a standard JSON document (no comments, no trailing commas).
 
@@ -402,14 +402,14 @@ Used by `animations` string values (and any future reference fields).
 
 Rules:
 
-- Resolved **relative to the file containing the reference** (typically `cubit.json`)
+- Resolved **relative to the file containing the reference** (typically `cuboidy.json`)
 - Must end in `.json` (explicit extension required)
 - Forward slashes `/` only
 - Absolute paths (leading `/`) are forbidden
 - URLs (`http://`, `https://`, `file://`) are forbidden
 - `namespace:key` URIs are forbidden (the format has no registry)
 
-Examples (assuming reference is from `wolf/cubit.json`):
+Examples (assuming reference is from `wolf/cuboidy.json`):
 
 | Path | Resolves to |
 |---|---|
@@ -433,10 +433,10 @@ Reference cycles (a → b → a) are an error.
 
 | Location | Field | Default |
 |---|---|---|
-| `cubit.json` | part `position` | `[0, 0, 0]` |
-| `cubit.json` | part `parent` | absent → root |
-| `cubit.json` | `animations` | absent → no animations |
-| `cubit.json` | `version` | absent → `"0.1"` |
+| `cuboidy.json` | part `position` | `[0, 0, 0]` |
+| `cuboidy.json` | part `parent` | absent → root |
+| `cuboidy.json` | `animations` | absent → no animations |
+| `cuboidy.json` | `version` | absent → `"0.1"` |
 | Keyframe (first) | `rot` | `[0, 0, 0]` |
 | Keyframe (first) | `pos` | `[0, 0, 0]` |
 | Keyframe (first) | `scale` | `[1, 1, 1]` |
@@ -449,7 +449,7 @@ Reference cycles (a → b → a) are an error.
 
 ## 11. Validation & lint
 
-A Cubit package is **well-formed** if it passes all error-level rules.
+A Cuboidy package is **well-formed** if it passes all error-level rules.
 
 ### 11.1 Severity levels
 
@@ -495,7 +495,7 @@ A Cubit package is **well-formed** if it passes all error-level rules.
 | H01 | Part name violates `lower_snake_case` or `lower-kebab-case` convention |
 | H02 | Pivot uses fractional value in an otherwise integer-aligned grid |
 
-### 11.5 `cubit.json` errors
+### 11.5 `cuboidy.json` errors
 
 | ID | Rule |
 |---|---|
@@ -517,9 +517,9 @@ A Cubit package is **well-formed** if it passes all error-level rules.
 
 | ID | Severity | Rule |
 |---|---|---|
-| X01 | error | `cubit.json` references a part name not defined in `voxels.cvox` |
-| X02 | warning | `voxels.cvox` defines a part not listed in `cubit.json` `parts` |
-| X03 | warning | Animation targets a part not present in `cubit.json` `parts` (cross-rig sharing) |
+| X01 | error | `cuboidy.json` references a part name not defined in `voxels.cvox` |
+| X02 | warning | `voxels.cvox` defines a part not listed in `cuboidy.json` `parts` |
+| X03 | warning | Animation targets a part not present in `cuboidy.json` `parts` (cross-rig sharing) |
 | X04 | runtime error | Attempt to attach to a socket name not declared on the host part |
 
 ### 11.7 Diagnostic format
@@ -535,7 +535,7 @@ Example:
 ```
 voxels.cvox:5:1: error: row width 4, expected 3 (per `size 3 2 4`) [E08]
 voxels.cvox:12: warning: pivot [3, 0, 5] outside grid bounds [0..3, 0..3, 0..4] [W01]
-cubit.json:18: error: animation 'walk' targets part 'wing' not in model [X01]
+cuboidy.json:18: error: animation 'walk' targets part 'wing' not in model [X01]
 ```
 
 This format is gcc / clang compatible for IDE integration.
@@ -555,7 +555,7 @@ Both pass all v0.1 lint rules at error level.
 
 ## 13. Future extensions (out of scope for v0.1)
 
-- **Packed format**: `<name>.cubit` (ZIP archive of the package)
+- **Packed format**: `<name>.cuboidy` (ZIP archive of the package)
 - **External palette references**: share palettes across models, avoiding per-model duplication
 - **Multi-character palette encoding**: 2-character indices for palettes larger than 62
 - **Animation blending**: simultaneous animations with weighted contribution
@@ -569,7 +569,7 @@ Both pass all v0.1 lint rules at error level.
 
 ## 14. Acknowledgments
 
-Cubit's design draws from prior work in voxel and rigging formats:
+Cuboidy's design draws from prior work in voxel and rigging formats:
 Minecraft Bedrock Edition, Mixamo, MagicaVoxel, VRM, glTF, Pixar USD.
 
 ---
