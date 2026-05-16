@@ -1,7 +1,9 @@
 # Cuboidy Format Specification
 
-**Version:** 0.1 (draft)
+**Version:** 0.2 (draft)
 **Status:** Early draft. Subject to change before v1.0.
+
+**Changes since v0.1:** Comments (`//`) added. Declaration order is fully free at all levels (palette / parts / metadata / layer indices). Layer voxel rows may appear inline on the `layer` line. New error codes E15 / E16 / E17 / E19 added; E09 narrowed (out-of-order is no longer an error).
 
 ---
 
@@ -109,7 +111,7 @@ The manifest is a standard JSON document (no comments, no trailing commas).
 ```json
 {
   "name": "<identifier>",
-  "version": "0.1",
+  "version": "0.2",
   "parts": [ ... ],
   "animations": { ... }
 }
@@ -118,7 +120,7 @@ The manifest is a standard JSON document (no comments, no trailing commas).
 | Field | Required | Type | Notes |
 |---|---|---|---|
 | `name` | **yes** | string (identifier) | Model identifier |
-| `version` | no | string | Spec version this model targets. Absent → `"0.1"` |
+| `version` | no | string | Spec version this model targets. Absent → `"0.2"` |
 | `parts` | **yes** | array (non-empty) | At least one part |
 | `animations` | no | object | Map from animation name to definition. Absent → no animations |
 
@@ -243,39 +245,55 @@ A plain-text file with a line-oriented grammar.
 
 ### 7.1 Line classification
 
-Every non-blank line is exactly one of:
+After comment stripping (see §7.11), every non-blank line is exactly one of:
 
 | Type | Pattern | Example |
 |---|---|---|
 | **Palette declaration** | `palette <color>+` | `palette #8B4513 #000000` |
 | **Part declaration** | `part <identifier>` | `part head` |
 | **Metadata** | `<keyword> <args...>` | `size 3 3 3`, `pivot 1 0 1` |
+| **Layer with inline rows** | `layer <N> <row>+` | `layer 0 000 000 000` |
 | **Voxel row** | `[.0-9a-zA-Z]+` (no whitespace) | `000`, `0.0`, `101` |
 
-Blank lines are ignored everywhere. They exist solely for human readability.
+Blank lines are ignored everywhere. They exist solely for human readability. Leading and trailing whitespace on any line is ignored; indenting metadata under its enclosing `part` is recommended for readability but has no semantic effect.
+
+**Declaration order is free at every level:** the `palette` declaration may appear anywhere in the file (before, between, or after parts); part declarations may appear in any order; within a part, the `size`, `pivot`, `socket`, and `layer` declarations may appear in any order; and `layer N` blocks may declare their indices in any order, provided the full range `0..H-1` is covered exactly once.
+
+Readers MUST accept any order. Writers (e.g. the editor's serializer) SHOULD normalize to a canonical order (palette first, parts in manifest order, metadata in `size → pivot → socket → layer` order, layers by index) for diff-friendly output. This is the "be liberal in what you accept, conservative in what you produce" pattern.
 
 ### 7.2 Grammar
 
+The grammar is given informally because element order within `file` and within `part` is unconstrained. A formal LL(1) grammar would force order; the actual rule is "a `part` block contains exactly one `size`, at most one `pivot`, zero or more `socket`, and exactly `H` `layer` blocks, in any order; the file contains exactly one `palette` and one or more `part` blocks, in any order."
+
 ```
-file        := palette-decl part+
+file        := (palette-decl | part)+        (palette-decl appears exactly once;
+                                              part appears 1 or more times;
+                                              any interleaving permitted)
 palette-decl := "palette" (SPACE color)+
 color       := "#" (3 | 4 | 6 | 8) hex-digits
 
-part        := part-decl size-decl (pivot-decl)? socket-decl* layer+
-part-decl   := "part" SPACE identifier
+part        := "part" SPACE identifier
+               (size-decl | pivot-decl | socket-decl | layer)+
+                                              (any order; size exactly once;
+                                               pivot at most once; sockets any count;
+                                               layers exactly H)
+
 size-decl   := "size" SPACE int SPACE int SPACE int
 pivot-decl  := "pivot" SPACE num SPACE num SPACE num
 socket-decl := "socket" SPACE identifier SPACE num SPACE num SPACE num
                 (SPACE "rot" SPACE num SPACE num SPACE num)?
 
-layer       := layer-header voxel-row+
+layer       := layer-header (SPACE voxel-row)* (NEWLINE voxel-row)*
+                                              (rows may appear inline after the
+                                               layer header, on subsequent lines, or
+                                               mixed; total row count must equal D)
 layer-header := "layer" SPACE non-negative-integer
 voxel-row   := /[.0-9a-zA-Z]+/
 ```
 
 All metadata keywords are **2 characters or longer**. This rule reserves single-character lines for voxel data and prevents palette-index collisions with future keywords.
 
-### 7.3 Reserved keywords (v0.1)
+### 7.3 Reserved keywords (v0.2)
 
 - `palette`
 - `part`
@@ -283,8 +301,9 @@ All metadata keywords are **2 characters or longer**. This rule reserves single-
 - `pivot`
 - `socket`
 - `layer`
+- `rot` (sub-keyword inside `socket`)
 
-Unrecognized keywords on a metadata line are an error.
+Unrecognized keywords on a metadata line are an error (E04).
 
 ### 7.4 Palette declaration
 
@@ -292,11 +311,11 @@ Unrecognized keywords on a metadata line are an error.
 palette <color>+
 ```
 
-- Exactly one palette declaration per file
-- Must appear before the first `part`
+- **Exactly one** palette declaration per file (more is E15)
+- May appear **anywhere** in the file — before, between, or after part declarations
 - Each color in hex: `#RGB`, `#RGBA`, `#RRGGBB`, or `#RRGGBBAA`
 - Color space: **sRGB**
-- Maximum **62 colors** (palette indices `0..61`)
+- Maximum **62 colors** (palette indices `0..61`; more is E16)
 - Voxel data references colors by single character:
   - `0`–`9` → palette indices 0–9
   - `a`–`z` → palette indices 10–35
@@ -305,20 +324,26 @@ palette <color>+
 
 Position-based indexing: reordering the palette requires rewriting voxel data. Tooling can automate this.
 
+When voxel rows are parsed before the palette is known (because palette appears later in the file), palette-index validation (E11) is deferred until file assembly completes.
+
 ### 7.5 `part` declaration
 
 ```
 part <identifier>
 ```
 
-Starts a new part section. The parser detects new parts by this keyword; there is no explicit part-end marker.
+Starts a new part section. The parser detects new parts by this keyword; there is no explicit part-end marker. A part section ends at the next top-level keyword (`part` or `palette`) or at end of file.
 
-A `part` must be followed (in order) by:
+A `part` section must contain:
 
-1. `size` (required, exactly one)
-2. `pivot` (optional, at most one)
-3. zero or more `socket`
-4. one or more `layer` blocks
+| Element | Cardinality | Notes |
+|---|---|---|
+| `size` | **exactly 1** | Missing → E13. Duplicate → E17 |
+| `pivot` | at most 1 | Duplicate → E17 |
+| `socket` | 0 or more | Duplicate names → E14 |
+| `layer N` | **exactly H** (covering 0..H-1) | Missing or duplicated index → E09 |
+
+**Order is free.** Any permutation of these elements within a part is valid. Writers should normalize to `size → pivot → socket* → layer*` (with layers sorted by index) for diff stability.
 
 ### 7.6 `size`
 
@@ -357,42 +382,90 @@ socket <identifier> <x> <y> <z> rot <rx> <ry> <rz>
 
 ```
 layer <N>
+layer <N> <row>+
 ```
 
-- Marks the start of voxel data for Y-layer index `N` (0-based)
-- A part must contain exactly H `layer` blocks with indices `0..H-1` in increasing order
-- Each `layer N` is followed by exactly D voxel-row lines
-- The k-th row after `layer N` represents voxel cells at coordinates `(x, N, k)` for `x ∈ 0..W-1`
+- Marks voxel data for Y-layer index `N` (0-based, non-negative integer)
+- A part must contain exactly H `layer` blocks covering indices `0..H-1` exactly once
+- **Index order is free** — `layer 2`, `layer 0`, `layer 1` is valid; missing or duplicate indices are errors (E09)
+- Each layer carries exactly D voxel rows, which may appear:
+  - **Inline** after the `layer N` keyword on the same line, separated by whitespace
+  - **Multi-line** on subsequent lines (each row on its own line)
+  - **Mixed** — partial inline, remainder on following lines
+- The k-th row (in declaration order, regardless of inline/multi-line) represents voxel cells at coordinates `(x, N, k)` for `x ∈ 0..W-1`
+- A row collection ends when D rows have been gathered, or when the next non-blank non-row line appears (another `layer`, a top-level keyword, etc.); short layers are E10
 
 ### 7.10 Voxel row
 
-- Characters drawn from `[.0-9a-zA-Z]`, no whitespace
+- Characters drawn from `[.0-9a-zA-Z]`, no whitespace inside a single row token
 - Length exactly equals W
 - Each character is either `.` (air) or a palette index character (must be within the declared palette range)
+- Multiple row tokens on a single line are separated by whitespace; either spaces or a newline serves as the separator
 
-### 7.11 Example
+### 7.11 Comments
+
+```
+// this is a full-line comment
+size 3 3 3  // this is an end-of-line comment
+```
+
+- A `//` sequence anywhere on a line starts a comment; the comment extends to the end of that line
+- No whitespace context is required around `//`; the `/` character does not appear in any valid Cuboidy token (voxel-row chars `[.0-9a-zA-Z]`, identifiers, hex digits, numeric literals), so `//` cannot collide with data
+- Note: color literals (`#FFFFFF`) use `#`, not `//`, and are unrelated to comments
+- Comments are stripped before line classification (§7.1) and have no semantic effect
+- Writers (the canonical serializer) SHOULD preserve comments verbatim across read/write round-trips, attaching each comment to its enclosing structural element (file header, palette, part, metadata line, layer)
+
+### 7.12 Examples
+
+**Multi-line layer style (compact for visual voxel art):**
 
 ```
 palette #8B4513 #000000
 
 part head
-size 3 3 3
-pivot 1 0 1
-socket hat 1 3 1
-socket mouth 1 1 3
-layer 0
-000
-000
-000
-layer 1
-000
-000
-101
-layer 2
-000
-000
-000
+    size 3 3 3
+    pivot 1 0 1
+    socket hat 1 3 1
+    socket mouth 1 1 3
+    layer 0
+        000
+        000
+        000
+    layer 1
+        000
+        000
+        101
+    layer 2
+        000
+        000
+        000
 ```
+
+**Inline layer style (compact for small parts and AI generation):**
+
+```
+// crown — single part static accessory
+palette #FFD700
+
+part crown
+    size 3 2 3
+    pivot 1 0 1
+    layer 0  000 000 000
+    layer 1  0.0 ... 0.0
+```
+
+**Free-order example (palette at end, layers out of index order):**
+
+```
+part body
+    size 1 2 1
+    layer 1  0      // top
+    layer 0  0      // bottom
+
+palette #FF0000
+```
+
+All three parse to equivalent in-memory models.
 
 ---
 
@@ -436,7 +509,7 @@ Reference cycles (a → b → a) are an error.
 | `cuboidy.json` | part `position` | `[0, 0, 0]` |
 | `cuboidy.json` | part `parent` | absent → root |
 | `cuboidy.json` | `animations` | absent → no animations |
-| `cuboidy.json` | `version` | absent → `"0.1"` |
+| `cuboidy.json` | `version` | absent → `"0.2"` |
 | Keyframe (first) | `rot` | `[0, 0, 0]` |
 | Keyframe (first) | `pos` | `[0, 0, 0]` |
 | Keyframe (first) | `scale` | `[1, 1, 1]` |
@@ -465,18 +538,24 @@ A Cuboidy package is **well-formed** if it passes all error-level rules.
 |---|---|
 | E01 | Missing `palette` declaration |
 | E02 | Invalid palette color format |
-| E03 | Invalid `part` header (e.g., missing identifier) |
+| E03 | Invalid `part` header (missing or non-identifier name) |
 | E04 | Unknown metadata keyword |
 | E05 | Invalid `pivot` arguments (count or value) |
 | E06 | Invalid `socket` arguments |
 | E07 | Voxel row contains a character outside `[.0-9a-zA-Z]` |
 | E08 | Voxel row width does not match declared `W` |
-| E09 | Layer index out of range, duplicated, or out of order |
+| E09 | Layer index out of range `[0..H-1]`, or duplicated within a part |
 | E10 | Wrong number of voxel rows in a layer (must be exactly `D`) |
 | E11 | Voxel character references a palette index outside the declared palette |
 | E12 | Duplicate `part` name within file |
 | E13 | Missing `size` for a part |
 | E14 | Duplicate socket name within a part |
+| E15 | Duplicate `palette` declaration |
+| E16 | Palette exceeds 62-color maximum |
+| E17 | Invalid metadata arguments (wrong count, non-numeric where number expected, or duplicate `size`/`pivot` within a part) |
+| E19 | File contains a `palette` but zero `part` declarations |
+
+Note: in v0.1, palette overflow and duplicate palette were folded into E02; invalid `size`/`layer` argument shapes were folded into E13/E09; declaration-order violations had no dedicated code. v0.2 separates these into E15 / E16 / E17, and removes the order-violation case entirely (order is now free).
 
 ### 11.3 `voxels.cvox` warnings
 
@@ -549,11 +628,11 @@ The reference repository includes:
 - `wolf/` — three-part rigged model (body / head / tail) with idle animation and sockets (`hat`, `mouth`)
 - `crown/` — single-part static accessory designed to attach to `wolf` via the `head:hat` socket
 
-Both pass all v0.1 lint rules at error level.
+Both pass all v0.2 lint rules at error level.
 
 ---
 
-## 13. Future extensions (out of scope for v0.1)
+## 13. Future extensions (out of scope for v0.2)
 
 - **Packed format**: `<name>.cuboidy` (ZIP archive of the package)
 - **External palette references**: share palettes across models, avoiding per-model duplication
@@ -562,8 +641,8 @@ Both pass all v0.1 lint rules at error level.
 - **Animation easing**: per-keyframe interpolation curves beyond linear
 - **Standardized rig vocabularies**: humanoid / quadruped / biped contracts (analogous to VRM humanoid spec)
 - **Inverse kinematics**: solver-driven part chains
-- **Comments in `voxels.cvox`**: `#`-prefixed lines for inline documentation
 - **Per-attachment overrides**: rotation / scale offsets when attaching accessories to sockets
+- **JSON-style comments in `cuboidy.json`**: JSON itself does not support comments; a side-car or JSON5-style extension is under discussion
 
 ---
 

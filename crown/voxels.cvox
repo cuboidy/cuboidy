@@ -1,13 +1,11 @@
-palette #FFD700
+// crown — single-part static accessory
+// Designed to attach to wolf via the head:hat socket.
+// Demonstrates Cuboidy v0.2 style: indented metadata, inline layer rows, comments.
+
+palette #FFD700  // gold
 
 part crown
-size 3 2 3
-pivot 1 0 1
-layer 0
-000
-000
-000
-layer 1
-0.0
-...
-0.0
+    size 3 2 3
+    pivot 1 0 1
+    layer 0  000 000 000  // solid base
+    layer 1  0.0 ... 0.0  // 4 corner pillars (hollow top)

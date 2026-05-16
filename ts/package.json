@@ -1,0 +1,13 @@
+{
+  "name": "cuboidy-workspace",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Cuboidy TypeScript implementations (workspace root)",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present"
+  }
+}
