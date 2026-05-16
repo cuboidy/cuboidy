@@ -1,0 +1,6 @@
+// layer 5 is out of range [0..H-1] when H=1 → E09
+palette #FF0000
+part box
+    size 1 1 1
+    layer 5
+    0

@@ -24,6 +24,14 @@ fixtures/
 └── cvox/        voxels.cvox negative cases (Exx, Wxx)
 ```
 
-Each invalid fixture should fail with exactly the diagnostic ID in its filename.
-Add an inline comment in JSON (via a `"__note"` field that the parser ignores)
-or via a sidecar `.expected.txt` for cvox files when the failure intent is non-obvious.
+Each invalid fixture must fail with exactly the diagnostic ID in its filename.
+For cvox cases, the intent is documented as a `// ...` comment on the first
+line of the file. For JSON cases (which have no comment syntax) include a
+`"__note"` field that parsers ignore.
+
+## Cross-implementation parity
+
+These fixtures are the canonical contract for behavioral parity across
+implementations (TypeScript, C#, ...). A new implementation passes parity
+testing when, for every fixture, it reports the diagnostic code encoded in
+the filename.

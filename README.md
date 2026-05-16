@@ -2,7 +2,7 @@
 
 An open text-based file format for voxel character models, rigs, and animations.
 
-**Status: v0.1 draft. See [SPEC.md](SPEC.md) for the formal specification.**
+**Status: v0.2 draft. See [SPEC.md](SPEC.md) for the formal specification.**
 
 ## What it is
 
@@ -52,7 +52,9 @@ my-model.cuboidy        packed package (ZIP of the folder above)
 
 ## Roadmap
 
-- [x] Spec document (`SPEC.md`) — v0.1 draft
+- [x] Spec document (`SPEC.md`) — v0.2 draft
+- [x] Reference parser (TypeScript) — `ts/packages/core/`, full v0.2 grammar
+- [x] Cross-file lint — X01 error / X02 warning
 - [ ] JSON Schema for `cuboidy.json` (`schema/cuboidy.schema.json`)
 - [ ] Voxel definition linter (`cuboidy-lint`)
 - [ ] Reference parser (C# / TypeScript)
@@ -62,4 +64,5 @@ my-model.cuboidy        packed package (ZIP of the folder above)
 
 ## License
 
-TBD.
+[MIT](LICENSE). The reference parser, examples, and specification are released
+under the MIT license. Implementations in any language are encouraged.

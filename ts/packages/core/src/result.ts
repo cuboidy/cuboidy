@@ -1,6 +1,6 @@
 export type Result<T> =
   | { ok: true; value: T }
-  | { ok: false; code: CvoxErrorCode; message: string };
+  | { ok: false; code: CuboidyErrorCode; message: string };
 
 export type CvoxErrorCode =
   | 'E01'
@@ -22,10 +22,14 @@ export type CvoxErrorCode =
   | 'E17'
   | 'E19';
 
+export type ManifestErrorCode = 'C01' | 'C02' | 'C13';
+
+export type CuboidyErrorCode = CvoxErrorCode | ManifestErrorCode;
+
 export function ok<T>(value: T): Result<T> {
   return { ok: true, value };
 }
 
-export function err<T>(code: CvoxErrorCode, message: string): Result<T> {
+export function err<T>(code: CuboidyErrorCode, message: string): Result<T> {
   return { ok: false, code, message };
 }

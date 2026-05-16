@@ -107,13 +107,14 @@ describe('classifyLine', () => {
   });
 
   describe('errors', () => {
-    it('E04: unknown keyword', () => {
-      const result = classifyLine('foo bar');
-      expect(result.kind).toBe('error');
-      if (result.kind === 'error') {
-        expect(result.code).toBe('E04');
-        expect(result.message).toMatch(/foo/);
-      }
+    it('returns keyword line for unknown keyword (E04 raised later by parser)', () => {
+      // v0.2: classify is permissive about keyword identity; the parser
+      // decides whether an unknown keyword is row continuation (§7.9) or E04.
+      expect(classifyLine('foo bar')).toEqual({
+        kind: 'keyword',
+        keyword: 'foo',
+        args: ['bar'],
+      });
     });
 
     it('E07: voxel row with invalid character (hyphen)', () => {
@@ -130,6 +131,44 @@ describe('classifyLine', () => {
       if (result.kind === 'error') {
         expect(result.code).toBe('E07');
       }
+    });
+  });
+
+  describe('bare keyword lines (v0.2)', () => {
+    it('classifies bare `part` as keyword with no args', () => {
+      expect(classifyLine('part')).toEqual({
+        kind: 'keyword',
+        keyword: 'part',
+        args: [],
+      });
+    });
+
+    it('classifies bare `size` as keyword with no args', () => {
+      expect(classifyLine('size')).toEqual({
+        kind: 'keyword',
+        keyword: 'size',
+        args: [],
+      });
+    });
+
+    it('classifies bare `palette` as keyword with no args', () => {
+      expect(classifyLine('palette')).toEqual({
+        kind: 'keyword',
+        keyword: 'palette',
+        args: [],
+      });
+    });
+
+    it('classifies bare `layer` as keyword with no args', () => {
+      expect(classifyLine('layer')).toEqual({
+        kind: 'keyword',
+        keyword: 'layer',
+        args: [],
+      });
+    });
+
+    it('a non-keyword single token is still a voxel row', () => {
+      expect(classifyLine('foo')).toEqual({ kind: 'voxel-row', text: 'foo' });
     });
   });
 });

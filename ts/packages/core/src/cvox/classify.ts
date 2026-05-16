@@ -1,12 +1,14 @@
+import { stripComment } from './comment.js';
+
 export type CvoxLine =
   | { kind: 'blank' }
   | { kind: 'keyword'; keyword: string; args: string[] }
   | { kind: 'voxel-row'; text: string }
   | { kind: 'error'; code: CvoxLineErrorCode; message: string };
 
-export type CvoxLineErrorCode = 'E04' | 'E07';
+export type CvoxLineErrorCode = 'E07';
 
-const KNOWN_KEYWORDS = new Set([
+export const KNOWN_KEYWORDS: ReadonlySet<string> = new Set([
   'palette',
   'part',
   'size',
@@ -15,9 +17,7 @@ const KNOWN_KEYWORDS = new Set([
   'layer',
 ]);
 
-const VOXEL_ROW_RE = /^[.0-9a-zA-Z]+$/;
-
-import { stripComment } from './comment.js';
+export const VOXEL_ROW_RE = /^[.0-9a-zA-Z]+$/;
 
 export function classifyLine(raw: string): CvoxLine {
   const trimmed = stripComment(raw).trim();
@@ -25,16 +25,14 @@ export function classifyLine(raw: string): CvoxLine {
 
   if (/\s/.test(trimmed)) {
     const tokens = trimmed.split(/\s+/);
-    const keyword = tokens[0]!;
-    const args = tokens.slice(1);
-    if (!KNOWN_KEYWORDS.has(keyword)) {
-      return {
-        kind: 'error',
-        code: 'E04',
-        message: `unknown keyword '${keyword}'`,
-      };
-    }
-    return { kind: 'keyword', keyword, args };
+    return { kind: 'keyword', keyword: tokens[0]!, args: tokens.slice(1) };
+  }
+
+  // Single-token line: bare keyword (no args) takes precedence over voxel-row
+  // so that `part` alone yields a clear E03 from the part handler rather than
+  // a confusing E10/E11 from being parsed as a voxel row.
+  if (KNOWN_KEYWORDS.has(trimmed)) {
+    return { kind: 'keyword', keyword: trimmed, args: [] };
   }
 
   if (VOXEL_ROW_RE.test(trimmed)) {

@@ -332,7 +332,7 @@ When voxel rows are parsed before the palette is known (because palette appears 
 part <identifier>
 ```
 
-Starts a new part section. The parser detects new parts by this keyword; there is no explicit part-end marker. A part section ends at the next top-level keyword (`part` or `palette`) or at end of file.
+Starts a new part section. The parser detects new parts by this keyword; there is no explicit part-end marker. A part section ends at the next `part` keyword or at end of file. The `palette` declaration is file-level, not part-level — it may appear inside the textual span of a part section without ending it.
 
 A `part` section must contain:
 
@@ -352,8 +352,9 @@ size <W> <H> <D>
 ```
 
 - W = X-axis width, H = Y-axis height, D = Z-axis depth
-- All values are non-negative integers
+- All values are positive integers in the range `[1, 1024]` per axis (zero or negative values, fractions, and values exceeding 1024 are E17)
 - Total voxel cells = W × H × D
+- The 1024 cap is a sanity bound to keep validation and rendering tractable; future spec versions may relax it
 
 ### 7.7 `pivot`
 
@@ -385,15 +386,16 @@ layer <N>
 layer <N> <row>+
 ```
 
-- Marks voxel data for Y-layer index `N` (0-based, non-negative integer)
+- Marks voxel data for Y-layer index `N` (0-based, non-negative integer in range `[0, H-1]`; out-of-range or duplicate is E09)
 - A part must contain exactly H `layer` blocks covering indices `0..H-1` exactly once
-- **Index order is free** — `layer 2`, `layer 0`, `layer 1` is valid; missing or duplicate indices are errors (E09)
+- **Index order is free** — `layer 2`, `layer 0`, `layer 1` is valid
 - Each layer carries exactly D voxel rows, which may appear:
   - **Inline** after the `layer N` keyword on the same line, separated by whitespace
-  - **Multi-line** on subsequent lines (each row on its own line)
-  - **Mixed** — partial inline, remainder on following lines
+  - **Multi-line** on subsequent lines (each line carrying one or more row tokens, whitespace-separated)
+  - **Mixed** — any combination of the above
 - The k-th row (in declaration order, regardless of inline/multi-line) represents voxel cells at coordinates `(x, N, k)` for `x ∈ 0..W-1`
-- A row collection ends when D rows have been gathered, or when the next non-blank non-row line appears (another `layer`, a top-level keyword, etc.); short layers are E10
+- A row collection (the "active layer") closes implicitly at the next non-row line: another `layer` declaration, any other metadata or top-level keyword (`part`, `size`, `pivot`, `socket`, `palette`), or end of file. Row count is **not** validated streaming; assembly-time validation reports E10 if the total collected row count for any layer is not exactly D
+- A line whose first whitespace-separated token is not a known keyword AND which contains only valid voxel-row tokens (`[.0-9a-zA-Z]+`) is treated as a continuation of the active layer; if no layer is active, such a line is E04
 
 ### 7.10 Voxel row
 
@@ -465,7 +467,7 @@ part body
 palette #FF0000
 ```
 
-All three parse to equivalent in-memory models.
+All three are valid Cuboidy v0.2 input and demonstrate three different syntactic styles. They describe different models (head / crown / body), not the same model in three notations.
 
 ---
 
@@ -552,7 +554,7 @@ A Cuboidy package is **well-formed** if it passes all error-level rules.
 | E14 | Duplicate socket name within a part |
 | E15 | Duplicate `palette` declaration |
 | E16 | Palette exceeds 62-color maximum |
-| E17 | Invalid metadata arguments (wrong count, non-numeric where number expected, or duplicate `size`/`pivot` within a part) |
+| E17 | Invalid arguments to a metadata or top-level declaration (wrong count, non-numeric where number expected, out-of-range value such as `size` dimension `0` or `> 1024`, or duplicate `size`/`pivot` within a part) |
 | E19 | File contains a `palette` but zero `part` declarations |
 
 Note: in v0.1, palette overflow and duplicate palette were folded into E02; invalid `size`/`layer` argument shapes were folded into E13/E09; declaration-order violations had no dedicated code. v0.2 separates these into E15 / E16 / E17, and removes the order-violation case entirely (order is now free).
@@ -618,6 +620,19 @@ cuboidy.json:18: error: animation 'walk' targets part 'wing' not in model [X01]
 ```
 
 This format is gcc / clang compatible for IDE integration.
+
+### 11.8 Error precedence
+
+When a single input could match more than one error (common under v0.2 free-order rules), implementations MUST report **the first error encountered during a single forward pass of the input**, with errors raised during assembly (after the full file is read) coming after all line-by-line errors.
+
+Concrete precedence:
+
+1. Comment stripping (no errors possible).
+2. Line classification: E07 (invalid voxel-row character).
+3. Per-line parsing of keyword args: E02 (palette color), E03 (part header), E05 (pivot), E06 (socket), E17 (size / layer / palette args), E15 (duplicate palette), E16 (palette overflow), E12 (duplicate part name), E14 (duplicate socket), E09 (duplicate layer index within a part), E04 (unknown keyword that is not row continuation), E10 (voxel row outside any layer).
+4. End-of-file assembly: E13 (missing size), E09 (layer coverage), E10 (layer row count), E11 (palette index), E01 (missing palette), E19 (no parts).
+
+A conformant implementation that reports a different error than this precedence implies is non-conforming for cross-implementation parity testing, but its output is still useful to the user.
 
 ---
 

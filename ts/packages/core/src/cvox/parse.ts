@@ -1,5 +1,10 @@
-import { err, ok, type CvoxErrorCode, type Result } from '../result.js';
-import { classifyLine, type CvoxLine } from './classify.js';
+import { err, ok, type CuboidyErrorCode, type Result } from '../result.js';
+import {
+  KNOWN_KEYWORDS,
+  VOXEL_ROW_RE,
+  classifyLine,
+  type CvoxLine,
+} from './classify.js';
 import { type Palette, parsePalette } from './palette.js';
 import { parsePartHeader, parseSize, type Size } from './part.js';
 import { parsePivot, type Pivot } from './pivot.js';
@@ -98,6 +103,28 @@ class CvoxAssembler {
   }
 
   private handleKeyword(keyword: string, args: readonly string[]): Result<void> {
+    // SPEC §7.9: a line whose first token is not a known keyword AND whose
+    // tokens are all valid voxel-row shapes is treated as a continuation of
+    // the active layer. This must be checked before flushing.
+    if (!KNOWN_KEYWORDS.has(keyword)) {
+      if (this.cur?.active) {
+        const tokens = [keyword, ...args];
+        if (tokens.every((t) => VOXEL_ROW_RE.test(t))) {
+          for (const rowText of tokens) {
+            this.cur.active.rows.push(rowText);
+          }
+          return ok(undefined);
+        }
+      }
+      return this.fail('E04', `unknown keyword '${keyword}'`);
+    }
+
+    // Q(b): any known keyword line closes the active layer.
+    // Q(a): `palette` is file-level and does NOT close the current part
+    // section, but it does close the active layer (no rows belong to it).
+    const flushR = this.flushActiveLayer();
+    if (!flushR.ok) return flushR;
+
     if (keyword === 'palette') return this.handlePalette(args);
     if (keyword === 'part') return this.handlePart(args);
 
@@ -299,7 +326,7 @@ class CvoxAssembler {
     });
   }
 
-  private fail<T>(code: CvoxErrorCode, message: string): Result<T> {
+  private fail<T>(code: CuboidyErrorCode, message: string): Result<T> {
     return err(code, `line ${this.lineNo}: ${message}`);
   }
 }

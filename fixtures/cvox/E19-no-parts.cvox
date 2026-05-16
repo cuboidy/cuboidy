@@ -1,0 +1,2 @@
+// palette declared but no `part` → E19
+palette #FF0000

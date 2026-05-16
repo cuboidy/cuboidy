@@ -1,7 +1,8 @@
 {
   "name": "@cuboidy/core",
   "version": "0.0.0",
-  "description": "Cuboidy reference parser, serializer, schema, and lint (TypeScript)",
+  "description": "Cuboidy reference parser and lint (TypeScript). Serializer and full manifest validation are in progress.",
+  "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

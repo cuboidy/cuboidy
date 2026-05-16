@@ -1,0 +1,6 @@
+// Two `palette` declarations → E15
+palette #FF0000
+part box
+    size 1 1 1
+    layer 0  0
+palette #00FF00

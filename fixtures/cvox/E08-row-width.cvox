@@ -1,0 +1,8 @@
+// Row width 4, but `size 3 1 3` says W=3 → E08
+palette #FF0000
+part box
+    size 3 1 3
+    layer 0
+    0000
+    000
+    000

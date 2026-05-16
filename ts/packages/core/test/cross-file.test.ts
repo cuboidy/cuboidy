@@ -1,16 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { ManifestSchema } from '../src/manifest.js';
+import { parseManifest } from '../src/manifest.js';
 import { parseCvox } from '../src/cvox/parse.js';
 import { validateCrossFile } from '../src/lint/cross-file.js';
 import { readFixtureJson, readFixtureText } from './helpers/fixtures.js';
 
 async function loadModel(folder: string) {
-  const manifest = ManifestSchema.parse(
+  const manifestR = parseManifest(
     await readFixtureJson(`${folder}/cuboidy.json`),
   );
+  if (!manifestR.ok) throw new Error(`manifest parse failed: ${manifestR.message}`);
   const voxelDef = parseCvox(await readFixtureText(`${folder}/voxels.cvox`));
   if (!voxelDef.ok) throw new Error(`cvox parse failed: ${voxelDef.message}`);
-  return { manifest, voxelDef: voxelDef.value };
+  return { manifest: manifestR.value, voxelDef: voxelDef.value };
+}
+
+function manifestOrThrow(json: unknown) {
+  const r = parseManifest(json);
+  if (!r.ok) throw new Error(`manifest parse failed: ${r.message}`);
+  return r.value;
 }
 
 describe('validateCrossFile', () => {
@@ -26,13 +33,13 @@ describe('validateCrossFile', () => {
 
   it('X01: error when manifest references a part missing from voxels', async () => {
     const { voxelDef } = await loadModel('wolf');
-    const manifest = ManifestSchema.parse({
+    const manifest = manifestOrThrow({
       name: 'wolf',
       parts: [
         { name: 'body' },
         { name: 'head', parent: 'body' },
         { name: 'tail', parent: 'body' },
-        { name: 'tongue', parent: 'head' }, // not in voxels
+        { name: 'tongue', parent: 'head' },
       ],
     });
     const diags = validateCrossFile(manifest, voxelDef);
@@ -44,12 +51,11 @@ describe('validateCrossFile', () => {
 
   it('X02: warning when voxels define a part not in manifest', async () => {
     const { voxelDef } = await loadModel('wolf');
-    const manifest = ManifestSchema.parse({
+    const manifest = manifestOrThrow({
       name: 'wolf',
       parts: [
         { name: 'body' },
         { name: 'head', parent: 'body' },
-        // tail intentionally omitted
       ],
     });
     const diags = validateCrossFile(manifest, voxelDef);
@@ -61,12 +67,11 @@ describe('validateCrossFile', () => {
 
   it('reports both X01 and X02 when present', async () => {
     const { voxelDef } = await loadModel('wolf');
-    const manifest = ManifestSchema.parse({
+    const manifest = manifestOrThrow({
       name: 'wolf',
       parts: [
         { name: 'body' },
-        { name: 'wing' }, // X01: not in voxels
-        // head + tail in voxels but not here → 2 × X02
+        { name: 'wing' },
       ],
     });
     const diags = validateCrossFile(manifest, voxelDef);

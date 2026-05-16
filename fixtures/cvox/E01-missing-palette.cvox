@@ -1,0 +1,4 @@
+// No `palette` declaration anywhere → E01
+part box
+    size 1 1 1
+    layer 0  0

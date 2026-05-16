@@ -67,10 +67,21 @@ describe('parseSize', () => {
     if (r.ok) expect(r.value).toEqual({ w: 3, h: 4, d: 5 });
   });
 
-  it('accepts zero dimensions', () => {
-    const r = parseSize(['0', '0', '0']);
+  it('E17: rejects zero dimensions (v0.2: min 1)', () => {
+    const r = parseSize(['0', '1', '1']);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('E17');
+  });
+
+  it('E17: rejects dimensions exceeding 1024 (v0.2 max)', () => {
+    const r = parseSize(['1025', '1', '1']);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('E17');
+  });
+
+  it('accepts max dimension 1024', () => {
+    const r = parseSize(['1024', '1', '1']);
     expect(r.ok).toBe(true);
-    if (r.ok) expect(r.value).toEqual({ w: 0, h: 0, d: 0 });
   });
 
   it('E17: rejects too few args', () => {

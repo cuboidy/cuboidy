@@ -22,6 +22,9 @@ export function parsePartHeader(args: readonly string[]): Result<string> {
   return ok(name);
 }
 
+const SIZE_MIN = 1;
+const SIZE_MAX = 1024;
+
 export function parseSize(args: readonly string[]): Result<Size> {
   if (args.length !== 3) {
     return err('E17', `size expects 3 args (W H D), got ${args.length}`);
@@ -31,6 +34,12 @@ export function parseSize(args: readonly string[]): Result<Size> {
     const n = parseNonNegInt(arg);
     if (n === null) {
       return err('E17', `size dimension '${arg}' is not a non-negative integer`);
+    }
+    if (n < SIZE_MIN || n > SIZE_MAX) {
+      return err(
+        'E17',
+        `size dimension ${n} is out of range [${SIZE_MIN}..${SIZE_MAX}]`,
+      );
     }
     parsed.push(n);
   }
