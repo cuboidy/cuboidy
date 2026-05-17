@@ -559,6 +559,35 @@ describe('parseCvox', () => {
       }
     });
 
+    it('pivot extra numeric arg surfaces as E10 under integrated parsing (SPEC §7.7)', () => {
+      // Token-stream model: extras beyond the 3 (or 7-with-rot) args are
+      // not stolen by pivot. They fall through to the main loop. With no
+      // active layer here, the stray `5` becomes E10.
+      const text = [
+        'palette #FF0000',
+        'part box',
+        '    size 1 1 1',
+        '    pivot 1 0 1 5',
+        '    layer 0  0',
+      ].join('\n');
+      const r = parseCvox(text);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('E10');
+    });
+
+    it('socket extra numeric arg surfaces as E10 under integrated parsing', () => {
+      const text = [
+        'palette #FF0000',
+        'part box',
+        '    size 1 1 1',
+        '    socket s 0 0 0 5',
+        '    layer 0  0',
+      ].join('\n');
+      const r = parseCvox(text);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('E10');
+    });
+
     it('E04: bad-char token with no active layer open', () => {
       // After `pivot` closes the active layer, a non-voxel-row, non-keyword
       // token has no row context to belong to — that's E04.

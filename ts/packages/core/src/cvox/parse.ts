@@ -201,7 +201,10 @@ class CvoxParser {
       );
     }
     // Pivot has 3 args (pos only) or 7 args (pos + 'rot' + 3 rot values).
-    // Pull 3 first, then peek for the `rot` sub-keyword.
+    // Pull 3 first, then peek for the `rot` sub-keyword. Tokens beyond
+    // that boundary are not stolen — they fall through to the main loop
+    // and are diagnosed there (E10/E04). The library-level parsePivot()
+    // still enforces strict 3-or-7 arity for direct callers (SPEC §7.7).
     const args = this.pullArgs(3);
     if (
       this.pos < this.tokens.length &&

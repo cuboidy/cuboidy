@@ -45,6 +45,8 @@ interface ZodIssueLike {
 // Returns true if the value at `path` is undefined in `input` (genuinely
 // missing). Zod 4 drops the `received` field, so the only reliable way to
 // distinguish "missing" from "wrong type" is to walk the input ourselves.
+// Uses Object.hasOwn so that an inherited property on a caller-supplied
+// object does not masquerade as a present field.
 function isMissingAtPath(
   input: unknown,
   path: ReadonlyArray<PropertyKey>,
@@ -52,7 +54,13 @@ function isMissingAtPath(
   let cur: unknown = input;
   for (const key of path) {
     if (cur === null || typeof cur !== 'object') return true;
-    cur = (cur as Record<PropertyKey, unknown>)[key];
+    if (typeof key === 'number') {
+      if (!Array.isArray(cur) || key >= cur.length) return true;
+      cur = cur[key];
+    } else {
+      if (!Object.hasOwn(cur as object, key)) return true;
+      cur = (cur as Record<PropertyKey, unknown>)[key];
+    }
   }
   return cur === undefined;
 }

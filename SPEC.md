@@ -42,7 +42,7 @@ Cuboidy is **not** a triangle-mesh format. It does not specify skin weights, UV 
 | **Part** | A rigid voxel sub-object, optionally parented in the hierarchy |
 | **Socket** | A named attachment point on a part |
 | **Keyframe** | A time-indexed pose snapshot for an animated part |
-| **Rest pose** | A part's pose when no animation is active: rotation identity, scale `[1,1,1]`, position = `part.position` |
+| **Rest pose** | A part's pose when no animation is active: position = `part.position` (in parent space), rotation = the part's `pivot.rot` if present (around `pivot.pos`), else identity, scale = `[1,1,1]` |
 
 ---
 
@@ -189,7 +189,7 @@ Per-part shape, pivot, and sockets live in `voxels.cvox`, not here. See §7.
 
 | Field | Type | Interpretation | Default at first keyframe |
 |---|---|---|---|
-| `rot` | `[rx, ry, rz]` Euler degrees | **Relative** to rest pose (identity) | `[0, 0, 0]` |
+| `rot` | `[rx, ry, rz]` Euler degrees | **Relative** to rest pose rotation (the part's `pivot.rot` if present, else identity). Composed with `pivot.rot` as described in §7.7 | `[0, 0, 0]` |
 | `pos` | `[dx, dy, dz]` voxel units | **Delta** added to `part.position` | `[0, 0, 0]` |
 | `scale` | `[sx, sy, sz]` multipliers | **Multiplier** from rest scale (`[1,1,1]`). Per-axis, non-uniform allowed | `[1, 1, 1]` |
 | `visible` | bool | Visibility toggle | `true` |
@@ -251,7 +251,7 @@ Each token is one of:
 
 | Token | Pattern | Example |
 |---|---|---|
-| **Reserved keyword** | `palette`, `part`, `size`, `pivot`, `socket`, `layer` (and the sub-keyword `rot` after a `socket` name + position) | `size` |
+| **Reserved keyword** | `palette`, `part`, `size`, `pivot`, `socket`, `layer` (and the contextual sub-keyword `rot` after a `pivot` or `socket` position triple) | `size` |
 | **Color literal** | `#` followed by 3, 4, 6, or 8 hex digits | `#8B4513` |
 | **Identifier** | `[a-zA-Z_][a-zA-Z0-9_-]*` | `head`, `leg-fl` |
 | **Number** | integer or decimal, optional leading `-` | `3`, `1.5`, `-2` |
@@ -284,6 +284,7 @@ part        := "part" SPACE identifier
 
 size-decl   := "size" SPACE int SPACE int SPACE int
 pivot-decl  := "pivot" SPACE num SPACE num SPACE num
+                (SPACE "rot" SPACE num SPACE num SPACE num)?
 socket-decl := "socket" SPACE identifier SPACE num SPACE num SPACE num
                 (SPACE "rot" SPACE num SPACE num SPACE num)?
 
@@ -371,8 +372,9 @@ pivot <x> <y> <z> rot <rx> <ry> <rz>
 - Optional. Default: position bottom-center, `[W/2, 0, D/2]`; rotation absent (identity)
 - Position coordinates in **part-local space**, voxel units; may be fractional; may lie outside the grid bounds (W01 lint warning, not error)
 - Optional rotation: 3 Euler angles in degrees, ZXY intrinsic order (§4), introduced by the contextual sub-keyword `rot`
-- **Semantic** (interpretation A — Rest pose rotation): when an animation is not active, the part is rendered with this rotation applied around its pivot position. When an animation is active, the animated rotation is composed with the pivot rotation as `final = pivot.rot ∘ animation.rot`
-- Two arities are valid: 3 args (position only) or 7 args (position + `rot` + rotation). 4-6 or 8+ args is E05; 7 args without the `rot` marker as the 4th token is E05
+- **Semantic** (interpretation A — Rest pose rotation): when an animation is not active, the part is rendered with this rotation applied around its pivot position. When an animation is active, the animated rotation is composed with the pivot rotation. Using matrix-vector convention with column vectors, a part-local point `v_local` lands at `v_parent = part.position + pivot.pos + M_pivot · M_anim · (v_local − pivot.pos)`, where `M_pivot` and `M_anim` are the rotation matrices for `pivot.rot` and the animated keyframe rotation. Equivalently in quaternion form: `q_total = q_pivot · q_anim` (the animation rotation is applied first, in the rest-pose-local frame, then the pivot rotation brings it to the rest orientation)
+- Two arities are valid at the library-level `parsePivot(args)` API: 3 args (position only) or 7 args (position + `rot` + rotation). 4–6 or 8+ args is E05; 7 args without the `rot` marker as the 4th token is E05
+- Under integrated `parseCvox()` parsing of the token stream, the parser consumes exactly 3 tokens (then 3 more iff the next token is `rot`). Tokens beyond that boundary are not stolen by the pivot declaration — they fall through to the main token loop, where they are diagnosed by §11.8 (typically E10 if voxel-row shape, E04 if non-row-shape, both raised in the absence of an active layer). A user writing `pivot 1 0 1 5` will therefore see E10 or E04, not E05; the library-level `parsePivot()` is the entry point that enforces strict arity
 
 ### 7.8 `socket`
 
