@@ -1,15 +1,11 @@
-import { err, ok, type CuboidyErrorCode, type Result } from '../result.js';
-import {
-  KNOWN_KEYWORDS,
-  VOXEL_ROW_RE,
-  classifyLine,
-  type CvoxLine,
-} from './classify.js';
+import { err, ok, type Result } from '../result.js';
+import { KNOWN_KEYWORDS, VOXEL_ROW_RE } from './classify.js';
 import { type Palette, parsePalette } from './palette.js';
 import { parsePartHeader, parseSize, type Size } from './part.js';
 import { parsePivot, type Pivot } from './pivot.js';
 import { parseSocket, type Socket } from './socket.js';
 import { parseLayerHeader, parseVoxelRow } from './layer.js';
+import { tokenize, type Token } from './tokenize.js';
 
 export interface VoxelDefinition {
   palette: Palette;
@@ -46,22 +42,50 @@ class PartBuilder {
   ) {}
 }
 
-class CvoxAssembler {
+class CvoxParser {
+  private readonly tokens: Token[];
+  private pos = 0;
   private palette: Palette | null = null;
   private paletteLineNo = 0;
   private parts: PartBuilder[] = [];
   private partNames = new Set<string>();
   private cur: PartBuilder | null = null;
-  private lineNo = 0;
 
-  parse(text: string): Result<VoxelDefinition> {
-    const lines = text.split(/\r?\n/);
-    for (let i = 0; i < lines.length; i++) {
-      this.lineNo = i + 1;
-      const line = classifyLine(lines[i]!);
-      const r = this.processLine(line);
-      if (!r.ok) return r;
+  constructor(tokens: Token[]) {
+    this.tokens = tokens;
+  }
+
+  parse(): Result<VoxelDefinition> {
+    while (this.pos < this.tokens.length) {
+      const t = this.tokens[this.pos]!;
+
+      if (KNOWN_KEYWORDS.has(t.text)) {
+        // SPEC §7.9: any known keyword closes the active layer (row stream
+        // ends). palette also closes the active layer but does NOT close
+        // the surrounding part section (§7.5).
+        const flushR = this.flushActiveLayer();
+        if (!flushR.ok) return flushR;
+
+        this.pos++;
+        const r = this.dispatchKeyword(t);
+        if (!r.ok) return r;
+        continue;
+      }
+
+      // Not a keyword: either voxel-row continuation or an error.
+      if (VOXEL_ROW_RE.test(t.text)) {
+        if (this.cur?.active) {
+          this.cur.active.rows.push(t.text);
+          this.pos++;
+          continue;
+        }
+        return err('E10', `line ${t.line}: voxel row outside any layer`);
+      }
+
+      return err('E04', `line ${t.line}: unknown token '${t.text}'`);
     }
+
+    // EOF
     const closeR = this.closeCurrentPart();
     if (!closeR.ok) return closeR;
 
@@ -81,155 +105,143 @@ class CvoxAssembler {
     return ok({ palette: this.palette, parts: finalParts });
   }
 
-  private processLine(line: CvoxLine): Result<void> {
-    switch (line.kind) {
-      case 'blank':
-        return ok(undefined);
-      case 'error':
-        return this.fail(line.code, line.message);
-      case 'voxel-row':
-        return this.handleVoxelRow(line.text);
-      case 'keyword':
-        return this.handleKeyword(line.keyword, line.args);
+  // Pull up to `max` tokens (stops at next known keyword OR end of stream)
+  private pullArgs(max: number): string[] {
+    const args: string[] = [];
+    while (args.length < max && this.pos < this.tokens.length) {
+      const t = this.tokens[this.pos]!;
+      if (KNOWN_KEYWORDS.has(t.text)) break;
+      args.push(t.text);
+      this.pos++;
     }
+    return args;
   }
 
-  private handleVoxelRow(text: string): Result<void> {
-    if (this.cur === null || this.cur.active === null) {
-      return this.fail('E10', `voxel row outside any layer`);
+  private dispatchKeyword(kw: Token): Result<void> {
+    switch (kw.text) {
+      case 'palette':
+        return this.consumePalette(kw);
+      case 'part':
+        return this.consumePart(kw);
+      case 'size':
+        return this.consumeSize(kw);
+      case 'pivot':
+        return this.consumePivot(kw);
+      case 'socket':
+        return this.consumeSocket(kw);
+      case 'layer':
+        return this.consumeLayer(kw);
     }
-    this.cur.active.rows.push(text);
     return ok(undefined);
   }
 
-  private handleKeyword(keyword: string, args: readonly string[]): Result<void> {
-    // SPEC §7.9: a line whose first token is not a known keyword AND whose
-    // tokens are all valid voxel-row shapes is treated as a continuation of
-    // the active layer. This must be checked before flushing.
-    if (!KNOWN_KEYWORDS.has(keyword)) {
-      if (this.cur?.active) {
-        const tokens = [keyword, ...args];
-        if (tokens.every((t) => VOXEL_ROW_RE.test(t))) {
-          for (const rowText of tokens) {
-            this.cur.active.rows.push(rowText);
-          }
-          return ok(undefined);
-        }
-      }
-      return this.fail('E04', `unknown keyword '${keyword}'`);
-    }
-
-    // Q(b): any known keyword line closes the active layer.
-    // Q(a): `palette` is file-level and does NOT close the current part
-    // section, but it does close the active layer (no rows belong to it).
-    const flushR = this.flushActiveLayer();
-    if (!flushR.ok) return flushR;
-
-    if (keyword === 'palette') return this.handlePalette(args);
-    if (keyword === 'part') return this.handlePart(args);
-
-    if (this.cur === null) {
-      return this.fail('E03', `'${keyword}' before any part declaration`);
-    }
-
-    switch (keyword) {
-      case 'size':
-        return this.handleSize(args);
-      case 'pivot':
-        return this.handlePivot(args);
-      case 'socket':
-        return this.handleSocket(args);
-      case 'layer':
-        return this.handleLayer(args);
-    }
-    return this.fail('E04', `unknown keyword '${keyword}'`);
-  }
-
-  private handlePalette(args: readonly string[]): Result<void> {
+  private consumePalette(kw: Token): Result<void> {
+    // Palette args run until the next known keyword.
+    const args = this.pullArgs(Number.POSITIVE_INFINITY);
     if (this.palette !== null) {
-      return this.fail(
+      return err(
         'E15',
-        `duplicate palette declaration (first at line ${this.paletteLineNo})`,
+        `line ${kw.line}: duplicate palette declaration (first at line ${this.paletteLineNo})`,
       );
     }
     const r = parsePalette(args);
-    if (!r.ok) return this.fail(r.code, r.message);
+    if (!r.ok) return err(r.code, `line ${kw.line}: ${r.message}`);
     this.palette = r.value;
-    this.paletteLineNo = this.lineNo;
+    this.paletteLineNo = kw.line;
     return ok(undefined);
   }
 
-  private handlePart(args: readonly string[]): Result<void> {
+  private consumePart(kw: Token): Result<void> {
+    const args = this.pullArgs(1);
+    const r = parsePartHeader(args);
+    if (!r.ok) return err(r.code, `line ${kw.line}: ${r.message}`);
+    if (this.partNames.has(r.value)) {
+      return err('E12', `line ${kw.line}: duplicate part name '${r.value}'`);
+    }
     const closeR = this.closeCurrentPart();
     if (!closeR.ok) return closeR;
-    const r = parsePartHeader(args);
-    if (!r.ok) return this.fail(r.code, r.message);
-    if (this.partNames.has(r.value)) {
-      return this.fail('E12', `duplicate part name '${r.value}'`);
-    }
     this.partNames.add(r.value);
-    this.cur = new PartBuilder(r.value, this.lineNo);
+    this.cur = new PartBuilder(r.value, kw.line);
     return ok(undefined);
   }
 
-  private handleSize(args: readonly string[]): Result<void> {
-    const cur = this.cur!;
-    if (cur.size !== null) {
-      return this.fail(
+  private consumeSize(kw: Token): Result<void> {
+    if (this.cur === null) {
+      return err('E03', `line ${kw.line}: 'size' before any part declaration`);
+    }
+    if (this.cur.size !== null) {
+      return err(
         'E17',
-        `duplicate size for part '${cur.name}' (first at line ${cur.sizeLineNo})`,
+        `line ${kw.line}: duplicate size for part '${this.cur.name}' (first at line ${this.cur.sizeLineNo})`,
       );
     }
+    const args = this.pullArgs(3);
     const r = parseSize(args);
-    if (!r.ok) return this.fail(r.code, r.message);
-    cur.size = r.value;
-    cur.sizeLineNo = this.lineNo;
+    if (!r.ok) return err(r.code, `line ${kw.line}: ${r.message}`);
+    this.cur.size = r.value;
+    this.cur.sizeLineNo = kw.line;
     return ok(undefined);
   }
 
-  private handlePivot(args: readonly string[]): Result<void> {
-    const cur = this.cur!;
-    if (cur.pivot !== null) {
-      return this.fail(
+  private consumePivot(kw: Token): Result<void> {
+    if (this.cur === null) {
+      return err('E03', `line ${kw.line}: 'pivot' before any part declaration`);
+    }
+    if (this.cur.pivot !== null) {
+      return err(
         'E17',
-        `duplicate pivot for part '${cur.name}' (first at line ${cur.pivotLineNo})`,
+        `line ${kw.line}: duplicate pivot for part '${this.cur.name}' (first at line ${this.cur.pivotLineNo})`,
       );
     }
+    const args = this.pullArgs(3);
     const r = parsePivot(args);
-    if (!r.ok) return this.fail(r.code, r.message);
-    cur.pivot = r.value;
-    cur.pivotLineNo = this.lineNo;
+    if (!r.ok) return err(r.code, `line ${kw.line}: ${r.message}`);
+    this.cur.pivot = r.value;
+    this.cur.pivotLineNo = kw.line;
     return ok(undefined);
   }
 
-  private handleSocket(args: readonly string[]): Result<void> {
-    const cur = this.cur!;
+  private consumeSocket(kw: Token): Result<void> {
+    if (this.cur === null) {
+      return err('E03', `line ${kw.line}: 'socket' before any part declaration`);
+    }
+    // Socket has 4 args (name x y z) or 8 args (name x y z rot rx ry rz).
+    // Pull 4 first, then peek for the `rot` sub-keyword before pulling more.
+    // This prevents stealing voxel-row tokens that follow a no-rot socket.
+    const args = this.pullArgs(4);
+    if (
+      this.pos < this.tokens.length &&
+      this.tokens[this.pos]!.text === 'rot'
+    ) {
+      args.push(this.tokens[this.pos]!.text);
+      this.pos++;
+      args.push(...this.pullArgs(3));
+    }
     const r = parseSocket(args);
-    if (!r.ok) return this.fail(r.code, r.message);
-    if (cur.socketNames.has(r.value.name)) {
-      return this.fail(
+    if (!r.ok) return err(r.code, `line ${kw.line}: ${r.message}`);
+    if (this.cur.socketNames.has(r.value.name)) {
+      return err(
         'E14',
-        `duplicate socket '${r.value.name}' in part '${cur.name}'`,
+        `line ${kw.line}: duplicate socket '${r.value.name}' in part '${this.cur.name}'`,
       );
     }
-    cur.socketNames.add(r.value.name);
-    cur.sockets.push(r.value);
+    this.cur.socketNames.add(r.value.name);
+    this.cur.sockets.push(r.value);
     return ok(undefined);
   }
 
-  private handleLayer(args: readonly string[]): Result<void> {
-    const cur = this.cur!;
-    const flushR = this.flushActiveLayer();
-    if (!flushR.ok) return flushR;
-
+  private consumeLayer(kw: Token): Result<void> {
+    if (this.cur === null) {
+      return err('E03', `line ${kw.line}: 'layer' before any part declaration`);
+    }
+    const args = this.pullArgs(1);
     const indexR = parseLayerHeader(args);
-    if (!indexR.ok) return this.fail(indexR.code, indexR.message);
-    const idx = indexR.value;
-
-    cur.active = {
-      index: idx,
-      rows: args.slice(1).map((s) => s),
-      indexLineNo: this.lineNo,
+    if (!indexR.ok) return err(indexR.code, `line ${kw.line}: ${indexR.message}`);
+    // Rows are collected by the main loop as voxel-row continuation tokens.
+    this.cur.active = {
+      index: indexR.value,
+      rows: [],
+      indexLineNo: kw.line,
     };
     return ok(undefined);
   }
@@ -325,12 +337,8 @@ class CvoxAssembler {
       voxels,
     });
   }
-
-  private fail<T>(code: CuboidyErrorCode, message: string): Result<T> {
-    return err(code, `line ${this.lineNo}: ${message}`);
-  }
 }
 
 export function parseCvox(text: string): Result<VoxelDefinition> {
-  return new CvoxAssembler().parse(text);
+  return new CvoxParser(tokenize(text)).parse();
 }

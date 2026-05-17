@@ -3,7 +3,7 @@
 **Version:** 0.2 (draft)
 **Status:** Early draft. Subject to change before v1.0.
 
-**Changes since v0.1:** Comments (`//`) added. Declaration order is fully free at all levels (palette / parts / metadata / layer indices). Layer voxel rows may appear inline on the `layer` line. New error codes E15 / E16 / E17 / E19 added; E09 narrowed (out-of-order is no longer an error).
+**Changes since v0.1:** Comments (`//`) added. Declaration order is fully free at all levels (palette / parts / metadata / layer indices). Voxel-row separator is any whitespace including newlines — the entire file (after `//` comment stripping) is a single token stream, so `size\n3\n2\n3` is equivalent to `size 3 2 3`. New error codes E15 / E16 / E17 / E19 added; E09 narrowed (out-of-order is no longer an error).
 
 ---
 
@@ -243,23 +243,27 @@ A model may have at most **one active animation** at a time. Blending, layering,
 
 A plain-text file with a line-oriented grammar.
 
-### 7.1 Line classification
+### 7.1 Token stream
 
-After comment stripping (see §7.11), every non-blank line is exactly one of:
+After per-line `//` comment stripping (see §7.11), the file is treated as a **single token stream** separated by any whitespace — spaces, tabs, and newlines all serve as token separators. Newlines have no syntactic significance outside of comment scope.
 
-| Type | Pattern | Example |
+Each token is one of:
+
+| Token | Pattern | Example |
 |---|---|---|
-| **Palette declaration** | `palette <color>+` | `palette #8B4513 #000000` |
-| **Part declaration** | `part <identifier>` | `part head` |
-| **Metadata** | `<keyword> <args...>` | `size 3 3 3`, `pivot 1 0 1` |
-| **Layer with inline rows** | `layer <N> <row>+` | `layer 0 000 000 000` |
-| **Voxel row** | `[.0-9a-zA-Z]+` (no whitespace) | `000`, `0.0`, `101` |
+| **Reserved keyword** | `palette`, `part`, `size`, `pivot`, `socket`, `layer` (and the sub-keyword `rot` after a `socket` name + position) | `size` |
+| **Color literal** | `#` followed by 3, 4, 6, or 8 hex digits | `#8B4513` |
+| **Identifier** | `[a-zA-Z_][a-zA-Z0-9_-]*` | `head`, `leg-fl` |
+| **Number** | integer or decimal, optional leading `-` | `3`, `1.5`, `-2` |
+| **Voxel row** | `[.0-9a-zA-Z]+` of length `W` (per the enclosing part's `size`) | `000`, `0.0`, `101` |
 
-Blank lines are ignored everywhere. They exist solely for human readability. Leading and trailing whitespace on any line is ignored; indenting metadata under its enclosing `part` is recommended for readability but has no semantic effect.
+A token's role is determined by **context**, not lexical shape alone: the same characters can be an identifier, a number, or a voxel-row token depending on where they appear in the stream. The parser is recursive-descent: each keyword consumes a fixed number of subsequent tokens (or, for `layer`, voxel-row tokens until the next keyword).
 
-**Declaration order is free at every level:** the `palette` declaration may appear anywhere in the file (before, between, or after parts); part declarations may appear in any order; within a part, the `size`, `pivot`, `socket`, and `layer` declarations may appear in any order; and `layer N` blocks may declare their indices in any order, provided the full range `0..H-1` is covered exactly once.
+Consequence: `size 3 3 3` and `size\n3\n3\n3` are equivalent input. `part crown` and `part\ncrown` are equivalent. `layer 0  000  000  000` and `layer 0\n000\n000\n000` and any mixture all yield the same parsed model. Indentation has no semantic meaning; it is purely a readability convention.
 
-Readers MUST accept any order. Writers (e.g. the editor's serializer) SHOULD normalize to a canonical order (palette first, parts in manifest order, metadata in `size → pivot → socket → layer` order, layers by index) for diff-friendly output. This is the "be liberal in what you accept, conservative in what you produce" pattern.
+**Declaration order is free at every level:** the `palette` declaration may appear anywhere in the file; part declarations may appear in any order; within a part, the `size`, `pivot`, `socket`, and `layer` declarations may appear in any order; and `layer N` blocks may declare their indices in any order, provided the full range `0..H-1` is covered exactly once.
+
+Readers MUST accept any order and any whitespace shape. Writers (e.g. the editor's serializer) SHOULD normalize to a canonical form: palette first, parts in manifest order, metadata in `size → pivot → socket → layer` order, layers by index, each keyword on its own line with arguments on the same line, four-space indent under `part`. This is the "be liberal in what you accept, conservative in what you produce" pattern.
 
 ### 7.2 Grammar
 
@@ -389,13 +393,10 @@ layer <N> <row>+
 - Marks voxel data for Y-layer index `N` (0-based, non-negative integer in range `[0, H-1]`; out-of-range or duplicate is E09)
 - A part must contain exactly H `layer` blocks covering indices `0..H-1` exactly once
 - **Index order is free** — `layer 2`, `layer 0`, `layer 1` is valid
-- Each layer carries exactly D voxel rows, which may appear:
-  - **Inline** after the `layer N` keyword on the same line, separated by whitespace
-  - **Multi-line** on subsequent lines (each line carrying one or more row tokens, whitespace-separated)
-  - **Mixed** — any combination of the above
-- The k-th row (in declaration order, regardless of inline/multi-line) represents voxel cells at coordinates `(x, N, k)` for `x ∈ 0..W-1`
-- A row collection (the "active layer") closes implicitly at the next non-row line: another `layer` declaration, any other metadata or top-level keyword (`part`, `size`, `pivot`, `socket`, `palette`), or end of file. Row count is **not** validated streaming; assembly-time validation reports E10 if the total collected row count for any layer is not exactly D
-- A line whose first whitespace-separated token is not a known keyword AND which contains only valid voxel-row tokens (`[.0-9a-zA-Z]+`) is treated as a continuation of the active layer; if no layer is active, such a line is E04
+- After the `N` token, the parser collects voxel-row tokens into the **active layer** until the next reserved keyword (`palette`, `part`, `size`, `pivot`, `socket`, `layer`) or end of file
+- Each layer must accumulate exactly D voxel-row tokens; assembly-time validation reports E10 otherwise. Whitespace between row tokens — spaces, tabs, or newlines — is interchangeable, so the same D tokens can be written inline, on separate lines, or mixed
+- The k-th row (in token order) represents voxel cells at coordinates `(x, N, k)` for `x ∈ 0..W-1`
+- A voxel-row-shape token (`[.0-9a-zA-Z]+`) encountered while no active layer is open is E10 ("voxel row outside any layer")
 
 ### 7.10 Voxel row
 
@@ -623,14 +624,27 @@ This format is gcc / clang compatible for IDE integration.
 
 ### 11.8 Error precedence
 
-When a single input could match more than one error (common under v0.2 free-order rules), implementations MUST report **the first error encountered during a single forward pass of the input**, with errors raised during assembly (after the full file is read) coming after all line-by-line errors.
+When a single input could match more than one error (common under v0.2 free-order rules), implementations MUST report **the first error encountered during a single forward pass over the token stream**, with errors raised during assembly (after all tokens are consumed) coming after all stream-pass errors.
 
 Concrete precedence:
 
-1. Comment stripping (no errors possible).
-2. Line classification: E07 (invalid voxel-row character).
-3. Per-line parsing of keyword args: E02 (palette color), E03 (part header), E05 (pivot), E06 (socket), E17 (size / layer / palette args), E15 (duplicate palette), E16 (palette overflow), E12 (duplicate part name), E14 (duplicate socket), E09 (duplicate layer index within a part), E04 (unknown keyword that is not row continuation), E10 (voxel row outside any layer).
-4. End-of-file assembly: E13 (missing size), E09 (layer coverage), E10 (layer row count), E11 (palette index), E01 (missing palette), E19 (no parts).
+1. Per-line comment stripping (no errors possible).
+2. Tokenization (no errors possible; any non-whitespace sequence is a token).
+3. Token-stream forward pass:
+   - E15 (duplicate palette declaration)
+   - E16 (palette overflow)
+   - E02 (palette color format), E03 (part header), E05 (pivot args), E06 (socket args), E07 (voxel-row invalid char detected at parse-row time), E17 (size / layer / palette args)
+   - E12 (duplicate part name)
+   - E14 (duplicate socket within a part)
+   - E09 (duplicate layer index within a part)
+   - E10 (voxel-row-shape token with no active layer)
+   - E04 (token is neither a known keyword nor of voxel-row shape)
+4. End-of-stream assembly:
+   - E01 (missing palette), E19 (palette but no parts)
+   - E13 (missing size for a part)
+   - E09 (layer coverage: missing index or index out of range)
+   - E10 (layer row count mismatch with D)
+   - E08 (voxel row width mismatch with W) and E11 (palette index out of range), both raised when individual rows are validated against `size` and `palette` at assembly time
 
 A conformant implementation that reports a different error than this precedence implies is non-conforming for cross-implementation parity testing, but its output is still useful to the user.
 

@@ -411,16 +411,99 @@ describe('parseCvox', () => {
       if (!r.ok) expect(r.code).toBe('E17');
     });
 
-    it('E04: unknown keyword when no active layer is open', () => {
-      // After `pivot` (a known keyword), the active layer is flushed.
-      // `wibble` then has no active layer to continue → E04.
+    it('whitespace and newlines are equivalent token separators (part)', () => {
+      const text = ['palette #FF0000', 'part', 'crown', 'size 1 1 1', 'layer 0  0'].join('\n');
+      const r = parseCvox(text);
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.value.parts[0]?.name).toBe('crown');
+    });
+
+    it('size args can span multiple lines', () => {
+      // size 3 1 3 = W=3, H=1, D=3 → one layer with 3 rows
+      const text = [
+        'palette #FF0000',
+        'part box',
+        'size',
+        '3',
+        '1',
+        '3',
+        'layer 0',
+        '000',
+        '000',
+        '000',
+      ].join('\n');
+      const r = parseCvox(text);
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.value.parts[0]?.size).toEqual({ w: 3, h: 1, d: 3 });
+    });
+
+    it('socket args (with rot) can span multiple lines', () => {
+      const text = [
+        'palette #FF0000',
+        'part box',
+        '    size 1 1 1',
+        '    socket',
+        '        hat',
+        '        0',
+        '        0',
+        '        0',
+        '        rot',
+        '        0',
+        '        90',
+        '        0',
+        '    layer 0  0',
+      ].join('\n');
+      const r = parseCvox(text);
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        const s = r.value.parts[0]?.sockets[0];
+        expect(s?.name).toBe('hat');
+        expect(s?.rot).toEqual({ x: 0, y: 90, z: 0 });
+      }
+    });
+
+    it('layer rows can be mixed across many lines with arbitrary whitespace', () => {
+      const text = [
+        'palette #FF0000',
+        'part box',
+        '    size 3 1 4',
+        '    layer  0',
+        '          000  000',  // 2 tokens on this line
+        '',                     // blank lines OK
+        '          000',
+        '          000',
+      ].join('\n');
+      const r = parseCvox(text);
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.value.parts[0]?.voxels[0]).toHaveLength(4);
+    });
+
+    it('palette colors can be split across lines', () => {
+      const text = [
+        'palette',
+        '    #FF0000',
+        '    #00FF00',
+        '    #0000FF',
+        'part box',
+        '    size 1 1 1',
+        '    layer 0  0',
+      ].join('\n');
+      const r = parseCvox(text);
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.value.palette).toHaveLength(3);
+    });
+
+    it('E04: token with non-voxel-row chars and not a keyword', () => {
+      // Under the v0.2 token-stream model, a token of voxel-row shape
+      // (`[.0-9a-zA-Z]+`) is row data when an active layer exists, else E10.
+      // E04 fires only when a token is neither a known keyword nor of
+      // voxel-row shape — e.g., contains characters outside the row alphabet.
       const text = [
         'palette #FF0000',
         'part box',
         '    size 1 1 1',
         '    layer 0  0',
-        '    pivot 0 0 0',  // closes active layer
-        '    wibble 1 2 3',
+        '    wibble! 1 2 3',  // `wibble!` is not voxel-row shape
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
