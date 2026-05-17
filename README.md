@@ -40,10 +40,10 @@ my-model.cuboidy        packed package (ZIP of the folder above)
 
 | File | Role | Format | Validation |
 |---|---|---|---|
-| `cuboidy.json` | manifest (fixed name) | JSON | JSON Schema (`schema/cuboidy.schema.json`) |
-| `voxels.cvox` | voxel definition | custom text | `cuboidy-lint` |
-| `anims/*.json` | optional shared animations | JSON | JSON Schema (shared) |
-| `*.cuboidy` | packed package | ZIP | both, after extraction |
+| `cuboidy.json` | manifest (fixed name) | JSON | `parseManifest()` (TS reference impl); shared JSON Schema is planned (see roadmap) |
+| `voxels.cvox` | voxel definition | custom text | `parseCvox()` (TS reference impl); standalone `cuboidy-lint` CLI is planned |
+| `anims/*.json` | optional shared animations | JSON | not yet validated; planned alongside `cuboidy.schema.json` |
+| `*.cuboidy` | packed package | ZIP | both, after extraction (packed format is reserved for v0.3+) |
 
 ## Examples
 

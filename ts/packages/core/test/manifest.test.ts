@@ -64,4 +64,20 @@ describe('parseManifest', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe('C13');
   });
+
+  it('C13 (not C01): wrong-type `name` falls through to C13', () => {
+    // SPEC §11.5 C01 is "missing", not "wrong type". Wrong-type cases fall
+    // through to the C13 catch-all until SPEC v0.3 introduces dedicated codes.
+    const json = { name: 123, parts: [{ name: 'body' }] };
+    const r = parseManifest(json);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('C13');
+  });
+
+  it('C13 (not C02): wrong-type `parts` falls through to C13', () => {
+    const json = { name: 'test', parts: 'not an array' };
+    const r = parseManifest(json);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('C13');
+  });
 });

@@ -1,11 +1,12 @@
 import { isIdentifier } from '../identifier.js';
 import { err, ok, type Result } from '../result.js';
 import { parseFloatStrict } from './numbers.js';
+import type { Vec3 } from './vec3.js';
 
 export interface Socket {
   name: string;
-  pos: { x: number; y: number; z: number };
-  rot?: { x: number; y: number; z: number };
+  pos: Vec3;
+  rot?: Vec3;
 }
 
 export function parseSocket(args: readonly string[]): Result<Socket> {
@@ -38,10 +39,7 @@ export function parseSocket(args: readonly string[]): Result<Socket> {
   return ok({ name, pos: pos.value, rot: rot.value });
 }
 
-function parseVec3(
-  args: readonly string[],
-  label: string,
-): Result<{ x: number; y: number; z: number }> {
+function parseVec3(args: readonly string[], label: string): Result<Vec3> {
   const xs: number[] = [];
   for (const arg of args) {
     const n = parseFloatStrict(arg);

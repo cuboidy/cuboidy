@@ -19,7 +19,7 @@ describe('parseCvox', () => {
 
       const head = r.value.parts.find((p) => p.name === 'head')!;
       expect(head.size).toEqual({ w: 3, h: 3, d: 3 });
-      expect(head.pivot).toEqual({ x: 1, y: 0, z: 1 });
+      expect(head.pivot.pos).toEqual({ x: 1, y: 0, z: 1 });
       expect(head.sockets).toHaveLength(2);
       expect(head.sockets.map((s) => s.name)).toEqual(['hat', 'mouth']);
       expect(head.voxels).toHaveLength(3);
@@ -52,7 +52,7 @@ describe('parseCvox', () => {
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(true);
-      if (r.ok) expect(r.value.parts[0]?.pivot).toEqual({ x: 2, y: 0, z: 3 });
+      if (r.ok) expect(r.value.parts[0]?.pivot.pos).toEqual({ x: 2, y: 0, z: 3 });
     });
   });
 
@@ -297,7 +297,7 @@ describe('parseCvox', () => {
       const r = parseCvox(text);
       expect(r.ok).toBe(true);
       if (r.ok) {
-        expect(r.value.parts[0]?.pivot).toEqual({ x: 1, y: 0, z: 1 });
+        expect(r.value.parts[0]?.pivot.pos).toEqual({ x: 1, y: 0, z: 1 });
         expect(r.value.parts[0]?.sockets).toHaveLength(1);
       }
     });
@@ -493,26 +493,25 @@ describe('parseCvox', () => {
       if (r.ok) expect(r.value.palette).toHaveLength(3);
     });
 
-    it('E04: token with non-voxel-row chars and not a keyword', () => {
-      // Under the v0.2 token-stream model, a token of voxel-row shape
-      // (`[.0-9a-zA-Z]+`) is row data when an active layer exists, else E10.
-      // E04 fires only when a token is neither a known keyword nor of
-      // voxel-row shape — e.g., contains characters outside the row alphabet.
+    it('E07: bad-char token while an active layer is open', () => {
+      // `wibble!` has `!` outside [.0-9a-zA-Z]. The active layer is open
+      // (one inline row from `layer 0  0`), so the parser expects rows;
+      // a bad-char token in row context is E07, not E04.
       const text = [
         'palette #FF0000',
         'part box',
         '    size 1 1 1',
         '    layer 0  0',
-        '    wibble! 1 2 3',  // `wibble!` is not voxel-row shape
+        '    wibble! 1 2 3',
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('E04');
+      if (!r.ok) expect(r.code).toBe('E07');
     });
 
-    it('E04: unknown keyword with non-row-shape token even with active layer', () => {
-      // `bogus #FF` — `#FF` is not a voxel-row token (contains `#`),
-      // so the line is not row continuation; first token unknown → E04.
+    it('E07: # in a token within an active layer (color literal outside palette)', () => {
+      // `bogus` is voxel-row shape so it appends as a row;
+      // `#FF` then has `#`, not voxel-row shape, active layer open → E07.
       const text = [
         'palette #FF0000',
         'part box',
@@ -520,6 +519,56 @@ describe('parseCvox', () => {
         '    layer 0',
         '    0',
         '    bogus #FF',
+      ].join('\n');
+      const r = parseCvox(text);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('E07');
+    });
+
+    it('pivot with rot (7 args) parses and persists rotation', () => {
+      const text = [
+        'palette #FF0000',
+        'part box',
+        '    size 1 1 1',
+        '    pivot 0 0 0 rot 0 90 0',
+        '    layer 0  0',
+      ].join('\n');
+      const r = parseCvox(text);
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        const p = r.value.parts[0]!.pivot;
+        expect(p.pos).toEqual({ x: 0, y: 0, z: 0 });
+        expect(p.rot).toEqual({ x: 0, y: 90, z: 0 });
+      }
+    });
+
+    it('pivot 3-args (no rot) still works (backward compat)', () => {
+      const text = [
+        'palette #FF0000',
+        'part box',
+        '    size 1 1 1',
+        '    pivot 0 0 0',
+        '    layer 0  0',
+      ].join('\n');
+      const r = parseCvox(text);
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        const p = r.value.parts[0]!.pivot;
+        expect(p.pos).toEqual({ x: 0, y: 0, z: 0 });
+        expect(p.rot).toBeUndefined();
+      }
+    });
+
+    it('E04: bad-char token with no active layer open', () => {
+      // After `pivot` closes the active layer, a non-voxel-row, non-keyword
+      // token has no row context to belong to — that's E04.
+      const text = [
+        'palette #FF0000',
+        'part box',
+        '    size 1 1 1',
+        '    layer 0  0',
+        '    pivot 0 0 0',  // closes active layer
+        '    bogus!',       // no active layer + bad chars → E04
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(false);

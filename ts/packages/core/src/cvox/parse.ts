@@ -72,16 +72,23 @@ class CvoxParser {
         continue;
       }
 
-      // Not a keyword: either voxel-row continuation or an error.
-      if (VOXEL_ROW_RE.test(t.text)) {
-        if (this.cur?.active) {
+      // Not a keyword. Behavior depends on whether a layer is active:
+      //   active layer open: token must be a voxel-row shape, else E07
+      //   no active layer:   voxel-row shape → E10, otherwise → E04
+      if (this.cur?.active) {
+        if (VOXEL_ROW_RE.test(t.text)) {
           this.cur.active.rows.push(t.text);
           this.pos++;
           continue;
         }
+        return err(
+          'E07',
+          `line ${t.line}: voxel row contains character outside [.0-9a-zA-Z] in '${t.text}'`,
+        );
+      }
+      if (VOXEL_ROW_RE.test(t.text)) {
         return err('E10', `line ${t.line}: voxel row outside any layer`);
       }
-
       return err('E04', `line ${t.line}: unknown token '${t.text}'`);
     }
 
@@ -193,7 +200,17 @@ class CvoxParser {
         `line ${kw.line}: duplicate pivot for part '${this.cur.name}' (first at line ${this.cur.pivotLineNo})`,
       );
     }
+    // Pivot has 3 args (pos only) or 7 args (pos + 'rot' + 3 rot values).
+    // Pull 3 first, then peek for the `rot` sub-keyword.
     const args = this.pullArgs(3);
+    if (
+      this.pos < this.tokens.length &&
+      this.tokens[this.pos]!.text === 'rot'
+    ) {
+      args.push(this.tokens[this.pos]!.text);
+      this.pos++;
+      args.push(...this.pullArgs(3));
+    }
     const r = parsePivot(args);
     if (!r.ok) return err(r.code, `line ${kw.line}: ${r.message}`);
     this.cur.pivot = r.value;
@@ -301,9 +318,7 @@ class CvoxParser {
     }
 
     const pivot: Pivot = builder.pivot ?? {
-      x: size.w / 2,
-      y: 0,
-      z: size.d / 2,
+      pos: { x: size.w / 2, y: 0, z: size.d / 2 },
     };
 
     const voxels: number[][][] = [];

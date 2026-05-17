@@ -30,7 +30,8 @@ export function parseManifest(json: unknown): Result<Manifest> {
   if (result.success) return ok(result.data);
 
   const issue = result.error.issues[0]!;
-  const code = mapIssueToCode(issue);
+  const isMissing = isMissingAtPath(json, issue.path);
+  const code = mapIssueToCode(issue, isMissing);
   const path = issue.path.length > 0 ? issue.path.join('.') : '<root>';
   return err(code, `${path}: ${issue.message}`);
 }
@@ -41,27 +42,39 @@ interface ZodIssueLike {
   message: string;
 }
 
-function mapIssueToCode(issue: ZodIssueLike): ManifestErrorCode {
-  // C01: missing top-level `name`
-  if (
-    issue.path.length === 1 &&
-    issue.path[0] === 'name' &&
-    (issue.code === 'invalid_type' || issue.code === 'invalid_value')
-  ) {
+// Returns true if the value at `path` is undefined in `input` (genuinely
+// missing). Zod 4 drops the `received` field, so the only reliable way to
+// distinguish "missing" from "wrong type" is to walk the input ourselves.
+function isMissingAtPath(
+  input: unknown,
+  path: ReadonlyArray<PropertyKey>,
+): boolean {
+  let cur: unknown = input;
+  for (const key of path) {
+    if (cur === null || typeof cur !== 'object') return true;
+    cur = (cur as Record<PropertyKey, unknown>)[key];
+  }
+  return cur === undefined;
+}
+
+function mapIssueToCode(
+  issue: ZodIssueLike,
+  isMissing: boolean,
+): ManifestErrorCode {
+  // C01: top-level `name` is *missing*. SPEC §11.5 narrows C01 to missing,
+  // not "wrong type" — wrong-type cases currently fall through to C13.
+  if (issue.path.length === 1 && issue.path[0] === 'name' && isMissing) {
     return 'C01';
   }
-  // C02: parts array empty or absent
-  if (
-    issue.path.length >= 1 &&
-    issue.path[0] === 'parts' &&
-    (issue.code === 'too_small' ||
-      issue.code === 'invalid_type' ||
-      issue.code === 'invalid_value')
-  ) {
-    return 'C02';
+
+  // C02: top-level `parts` is missing OR empty. Inner-part validation
+  // (parts[i].xxx) falls through to C13 until SPEC v0.3 adds C03-C12.
+  if (issue.path.length === 1 && issue.path[0] === 'parts') {
+    if (isMissing || issue.code === 'too_small') return 'C02';
   }
-  // C13: unknown field (Zod strict mode)
-  if (issue.code === 'unrecognized_keys') return 'C13';
-  // Fallback: treat as C13 generic structural failure
+
+  // C13: unknown field (Zod strict mode), or any other structural failure
+  // not narrowed above. SPEC v0.3 should add codes for wrong-type / bad
+  // identifier / etc.; for now C13 is the fallback bucket.
   return 'C13';
 }

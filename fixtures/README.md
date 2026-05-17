@@ -26,8 +26,9 @@ fixtures/
 
 Each invalid fixture must fail with exactly the diagnostic ID in its filename.
 For cvox cases, the intent is documented as a `// ...` comment on the first
-line of the file. For JSON cases (which have no comment syntax) include a
-`"__note"` field that parsers ignore.
+line of the file. For JSON cases (which have no comment syntax) the filename
+itself documents the intent — no inline note is added because the manifest
+parser runs in strict mode (unknown fields are C13).
 
 ## Cross-implementation parity
 

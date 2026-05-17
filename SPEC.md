@@ -305,9 +305,10 @@ All metadata keywords are **2 characters or longer**. This rule reserves single-
 - `pivot`
 - `socket`
 - `layer`
-- `rot` (sub-keyword inside `socket`)
 
-Unrecognized keywords on a metadata line are an error (E04).
+`rot` is a **contextual sub-keyword** recognized only inside `pivot` and `socket` declarations as the marker that introduces a rotation triple. Outside those contexts, `rot` is a normal voxel-row token (e.g. it can appear in voxel data on a palette with at least 30 colors), an identifier, or whatever the position in the grammar dictates. It is intentionally NOT in the top-level reserved-keyword set, so it does not interrupt the active layer's row collection (§7.9).
+
+An unrecognized top-level token — neither a reserved keyword above nor a voxel-row-shape token continuing an active layer — is E04.
 
 ### 7.4 Palette declaration
 
@@ -364,12 +365,14 @@ size <W> <H> <D>
 
 ```
 pivot <x> <y> <z>
+pivot <x> <y> <z> rot <rx> <ry> <rz>
 ```
 
-- Optional. Default: bottom-center, `[W/2, 0, D/2]`
-- Coordinates in **part-local space**, voxel units
-- May be fractional
-- May lie outside the grid bounds (lint warning, not error)
+- Optional. Default: position bottom-center, `[W/2, 0, D/2]`; rotation absent (identity)
+- Position coordinates in **part-local space**, voxel units; may be fractional; may lie outside the grid bounds (W01 lint warning, not error)
+- Optional rotation: 3 Euler angles in degrees, ZXY intrinsic order (§4), introduced by the contextual sub-keyword `rot`
+- **Semantic** (interpretation A — Rest pose rotation): when an animation is not active, the part is rendered with this rotation applied around its pivot position. When an animation is active, the animated rotation is composed with the pivot rotation as `final = pivot.rot ∘ animation.rot`
+- Two arities are valid: 3 args (position only) or 7 args (position + `rot` + rotation). 4-6 or 8+ args is E05; 7 args without the `rot` marker as the 4th token is E05
 
 ### 7.8 `socket`
 
@@ -633,12 +636,13 @@ Concrete precedence:
 3. Token-stream forward pass:
    - E15 (duplicate palette declaration)
    - E16 (palette overflow)
-   - E02 (palette color format), E03 (part header), E05 (pivot args), E06 (socket args), E07 (voxel-row invalid char detected at parse-row time), E17 (size / layer / palette args)
+   - E02 (palette color format), E03 (part header), E05 (pivot args), E06 (socket args), E17 (size / layer / palette args)
    - E12 (duplicate part name)
    - E14 (duplicate socket within a part)
    - E09 (duplicate layer index within a part)
-   - E10 (voxel-row-shape token with no active layer)
-   - E04 (token is neither a known keyword nor of voxel-row shape)
+   - **E07** (non-keyword token whose characters fall outside `[.0-9a-zA-Z]` while an active layer is open — the token cannot be a row but is appearing in row context)
+   - **E10** (voxel-row-shape token with no active layer open)
+   - **E04** (non-keyword, non-voxel-row-shape token with no active layer open — no row context to belong to)
 4. End-of-stream assembly:
    - E01 (missing palette), E19 (palette but no parts)
    - E13 (missing size for a part)
