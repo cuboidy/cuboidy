@@ -1,5 +1,8 @@
 import { isIdentifier } from '../identifier.js';
 import { err, ok, type Result } from '../result.js';
+import type { TokenCursor } from './cursor.js';
+import type { PartBuilder } from './file-state.js';
+import type { Token } from './tokenize.js';
 import { parseVec3, type Vec3 } from './vec3.js';
 
 export interface Socket {
@@ -36,4 +39,33 @@ export function parseSocket(args: readonly string[]): Result<Socket> {
   if (!rot.ok) return rot;
 
   return ok({ name, pos: pos.value, rot: rot.value });
+}
+
+// SPEC §7.8: parses a `socket` declaration from the token stream and appends
+// to the active PartBuilder. Pulls 4 args (name + pos triple), then peeks for
+// the `rot` sub-keyword to optionally pull 3 more.
+export class SocketParser {
+  constructor(
+    private readonly cursor: TokenCursor,
+    private readonly builder: PartBuilder,
+  ) {}
+
+  parse(kw: Token): Result<void> {
+    const args = this.cursor.pullArgs(4);
+    if (this.cursor.peek()?.text === 'rot') {
+      args.push(this.cursor.advance()!.text);
+      args.push(...this.cursor.pullArgs(3));
+    }
+    const r = parseSocket(args);
+    if (!r.ok) return err(r.code, `line ${kw.line}: ${r.message}`);
+    if (this.builder.socketNames.has(r.value.name)) {
+      return err(
+        'duplicate',
+        `line ${kw.line}: duplicate socket '${r.value.name}' in part '${this.builder.name}'`,
+      );
+    }
+    this.builder.socketNames.add(r.value.name);
+    this.builder.sockets.push(r.value);
+    return ok(undefined);
+  }
 }

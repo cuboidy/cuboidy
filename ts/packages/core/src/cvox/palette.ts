@@ -1,4 +1,7 @@
 import { err, ok, type Result } from '../result.js';
+import type { TokenCursor } from './cursor.js';
+import type { FileState } from './file-state.js';
+import type { Token } from './tokenize.js';
 
 export interface Color {
   r: number;
@@ -83,4 +86,31 @@ function dup(hex: string, i: number): number {
 
 function pair(hex: string, i: number): number {
   return parseInt(hex.slice(i, i + 2), 16);
+}
+
+// SPEC §7.4: parses a `palette` declaration from the token stream and
+// writes to FileState. Detects duplicate palette declarations (only one
+// allowed per file). Pulls args until the next reserved token (so a stray
+// non-color token after palette would surface as `invalid-value` from
+// parsePalette, not by stealing into another production).
+export class PaletteParser {
+  constructor(
+    private readonly cursor: TokenCursor,
+    private readonly fileState: FileState,
+  ) {}
+
+  parse(kw: Token): Result<void> {
+    if (this.fileState.palette !== null) {
+      return err(
+        'duplicate',
+        `line ${kw.line}: duplicate palette declaration (first at line ${this.fileState.paletteLineNo})`,
+      );
+    }
+    const args = this.cursor.pullArgs(Number.POSITIVE_INFINITY);
+    const r = parsePalette(args);
+    if (!r.ok) return err(r.code, `line ${kw.line}: ${r.message}`);
+    this.fileState.palette = r.value;
+    this.fileState.paletteLineNo = kw.line;
+    return ok(undefined);
+  }
 }

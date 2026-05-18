@@ -1,4 +1,7 @@
 import { err, ok, type Result } from '../result.js';
+import type { TokenCursor } from './cursor.js';
+import type { PartBuilder } from './file-state.js';
+import type { Token } from './tokenize.js';
 import { parseVec3, type Vec3 } from './vec3.js';
 
 export interface Pivot {
@@ -30,4 +33,34 @@ export function parsePivot(args: readonly string[]): Result<Pivot> {
   if (!rot.ok) return rot;
 
   return ok({ pos: pos.value, rot: rot.value });
+}
+
+// SPEC §7.7: parses a `pivot` declaration from the token stream and writes
+// to the active PartBuilder. Pulls 3 pos args, then peeks for the `rot`
+// sub-keyword to optionally pull 3 more rot args. Extras beyond the 3 (or 7)
+// fall through to the caller's loop (per §7.2 argument-collection rule).
+export class PivotParser {
+  constructor(
+    private readonly cursor: TokenCursor,
+    private readonly builder: PartBuilder,
+  ) {}
+
+  parse(kw: Token): Result<void> {
+    if (this.builder.pivot !== null) {
+      return err(
+        'duplicate',
+        `line ${kw.line}: duplicate pivot for part '${this.builder.name}' (first at line ${this.builder.pivotLineNo})`,
+      );
+    }
+    const args = this.cursor.pullArgs(3);
+    if (this.cursor.peek()?.text === 'rot') {
+      args.push(this.cursor.advance()!.text);
+      args.push(...this.cursor.pullArgs(3));
+    }
+    const r = parsePivot(args);
+    if (!r.ok) return err(r.code, `line ${kw.line}: ${r.message}`);
+    this.builder.pivot = r.value;
+    this.builder.pivotLineNo = kw.line;
+    return ok(undefined);
+  }
 }
