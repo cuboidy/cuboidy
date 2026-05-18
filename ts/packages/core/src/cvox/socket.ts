@@ -1,7 +1,7 @@
 import { isIdentifier } from '../identifier.js';
 import { err, ok, type Result } from '../result.js';
 import type { TokenCursor } from './cursor.js';
-import type { PartBuilder } from './file-state.js';
+import type { PartBuilder } from './cvox-state.js';
 import type { Token } from './tokenize.js';
 import { parseVec3, type Vec3 } from './vec3.js';
 

@@ -23,7 +23,7 @@ export interface PartDefinition {
 
 // PartBuilder is the mutable accumulator used by PartParser + its sub-parsers
 // (SizeParser, PivotParser, SocketParser, VoxelsParser). It is finalized into
-// a PartDefinition during assembly (FileState.assemble).
+// a PartDefinition during assembly (CvoxState.assemble).
 
 export class PartBuilder {
   size: Size | null = null;
@@ -40,12 +40,12 @@ export class PartBuilder {
   ) {}
 }
 
-// FileState holds the file-scope state shared across sub-parsers. Each parser
+// CvoxState holds the file-scope state shared across sub-parsers. Each parser
 // reads and writes via its reference, isolating "what state belongs to whom"
 // from the parsing logic. The assemble() method finalizes accumulated state
 // into the public VoxelDefinition output.
 
-export class FileState {
+export class CvoxState {
   palette: Palette | null = null;
   paletteLineNo = 0;
   parts: PartBuilder[] = [];

@@ -1,6 +1,6 @@
 import { err, ok, type Result } from '../result.js';
 import type { TokenCursor } from './cursor.js';
-import type { FileState } from './file-state.js';
+import type { CvoxState } from './cvox-state.js';
 import type { Token } from './tokenize.js';
 
 export interface Color {
@@ -89,14 +89,14 @@ function pair(hex: string, i: number): number {
 }
 
 // SPEC §7.4: parses a `palette` declaration from the token stream and
-// writes to FileState. Detects duplicate palette declarations (only one
+// writes to CvoxState. Detects duplicate palette declarations (only one
 // allowed per file). Pulls args until the next reserved token (so a stray
 // non-color token after palette would surface as `invalid-value` from
 // parsePalette, not by stealing into another production).
 export class PaletteParser {
   constructor(
     private readonly cursor: TokenCursor,
-    private readonly fileState: FileState,
+    private readonly fileState: CvoxState,
   ) {}
 
   parse(kw: Token): Result<void> {

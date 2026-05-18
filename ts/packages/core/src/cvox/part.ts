@@ -1,7 +1,7 @@
 import { isIdentifier } from '../identifier.js';
 import { err, ok, type Result } from '../result.js';
 import type { TokenCursor } from './cursor.js';
-import { FileState, PartBuilder } from './file-state.js';
+import { CvoxState, PartBuilder } from './cvox-state.js';
 import { parseNonNegInt } from './numbers.js';
 import { PaletteParser } from './palette.js';
 import { PivotParser } from './pivot.js';
@@ -91,7 +91,7 @@ export class SizeParser {
 export class PartParser {
   constructor(
     private readonly cursor: TokenCursor,
-    private readonly fileState: FileState,
+    private readonly fileState: CvoxState,
   ) {}
 
   parse(partKw: Token): Result<void> {

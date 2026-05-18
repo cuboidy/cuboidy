@@ -1,16 +1,16 @@
 import { err, ok, type Result } from '../result.js';
 import { TokenCursor } from './cursor.js';
 import {
-  FileState,
+  CvoxState,
   type PartDefinition,
   type VoxelDefinition,
-} from './file-state.js';
+} from './cvox-state.js';
 import { PaletteParser } from './palette.js';
 import { PartParser } from './part.js';
 import { tokenize } from './tokenize.js';
 
 // Re-export public output types (the shape returned by parseCvox).
-export type { PartDefinition, VoxelDefinition } from './file-state.js';
+export type { PartDefinition, VoxelDefinition } from './cvox-state.js';
 
 // SPEC §7.2: top-level parser. Dispatches each file-scope token to its
 // production parser (PaletteParser, PartParser) or returns a structural
@@ -21,7 +21,7 @@ export type { PartDefinition, VoxelDefinition } from './file-state.js';
 // owns an inner loop for part-scoped declarations. See SPEC §7.3.3 for the
 // structural validity table.
 export class CvoxParser {
-  private readonly state = new FileState();
+  private readonly state = new CvoxState();
 
   constructor(private readonly cursor: TokenCursor) {}
 

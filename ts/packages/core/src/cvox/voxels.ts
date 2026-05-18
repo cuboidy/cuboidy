@@ -1,6 +1,6 @@
 import { err, ok, type Result } from '../result.js';
 import type { TokenCursor } from './cursor.js';
-import type { PartBuilder } from './file-state.js';
+import type { PartBuilder } from './cvox-state.js';
 import type { Token } from './tokenize.js';
 
 // Raw voxel-row tokens collected during parsing, validated later by
