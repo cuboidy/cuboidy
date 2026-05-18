@@ -11,20 +11,24 @@ fixtures/
 ├── README.md
 ├── cvox/
 │   ├── missing/
-│   │   ├── palette.cvox        no `palette` declaration anywhere
-│   │   └── parts.cvox          palette declared but no `part`
+│   │   ├── palette.cvox          no `palette` declaration anywhere
+│   │   ├── parts.cvox            palette declared but no `part`
+│   │   ├── voxels.cvox           part has size but no voxels block
+│   │   └── voxels-unclosed.cvox  voxels block reaches EOF without `}`
 │   ├── duplicate/
-│   │   └── palette.cvox        two `palette` declarations
+│   │   ├── palette.cvox          two `palette` declarations
+│   │   └── voxels.cvox           two voxels blocks in a single part
 │   ├── invalid-value/
-│   │   ├── layer-out-of-range.cvox
-│   │   └── size-zero.cvox
+│   │   ├── bad-voxel-char.cvox   voxel cell outside [.0-9a-zA-Z]
+│   │   └── size-zero.cvox        size dimension 0 is below the v0.3 min
 │   └── wrong-arity/
-│       ├── row-width.cvox
-│       └── row-count.cvox
+│       ├── row-width.cvox        row width does not match W
+│       ├── row-count.cvox        rows in a layer-section does not match D
+│       └── section-count.cvox    layer-section count does not match H
 └── json/
     └── missing/
-        ├── name.json           missing top-level `name`
-        └── parts.json          missing or empty `parts`
+        ├── name.json             missing top-level `name`
+        └── parts.json            missing or empty `parts`
 ```
 
 Add a `// ...` comment on the first line of each cvox file documenting the

@@ -1,7 +1,8 @@
-// size says D=3 rows per layer, but only 2 are provided → E10
+// size says D=3 rows per layer-section, but only 2 are provided
 palette #FF0000
 part box
     size 1 1 3
-    layer 0
-    0
-    0
+    voxels {
+        0
+        0
+    }

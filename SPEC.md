@@ -1,9 +1,11 @@
 # Cuboidy Format Specification
 
-**Version:** 0.2 (draft)
+**Version:** 0.3 (draft)
 **Status:** Early draft. Subject to change before v1.0.
 
-**Changes since v0.1:** Comments (`//`) added. Declaration order is fully free at all levels (palette / parts / metadata / layer indices). Voxel-row separator is any whitespace including newlines — the entire file (after `//` comment stripping) is a single token stream, so `size\n3\n2\n3` is equivalent to `size 3 2 3`. Pivot may carry an optional rotation (`pivot x y z rot rx ry rz`). **Diagnostic codes are restructured around 5 structural categories** (`missing` / `duplicate` / `unknown` / `invalid-value` / `wrong-arity`); the v0.1 keyword-centric Exx / Cxx / Xxx codes are removed.
+**Changes since v0.2:** Voxel data is now wrapped in a **`voxels { … }` block** with `,` separating layers — this replaces the v0.2 `layer N` keyword and resolves the systemic ambiguity where a voxel-row token spelling a reserved word (e.g. `rot`, `size`, `part`) could collide with grammar. Lexical scoping is reframed as a two-layer model (universal `{` `}` `//` whitespace + context-scoped reserved words); each block-introducing keyword decides what is reserved inside its `{ … }`. The `voxels` block reserves nothing — so any voxel-row character sequence is unambiguously voxel data. The `rot` keyword is no longer a "sub-keyword" but a normal reserved word with **structural validity constrained to `pivot` / `socket` declarations**. Free-order layer indices are dropped (positional now); free-order for `palette` / `part` / `size` / `pivot` / `socket` / `voxels` within their respective scopes is retained.
+
+**Changes since v0.1:** Comments (`//`) added. Declaration order is free for palette / parts / metadata. Token separator is any whitespace including newlines — the entire file (after `//` comment stripping) is a single token stream, so `size\n3\n2\n3` is equivalent to `size 3 2 3`. Pivot may carry an optional rotation (`pivot x y z rot rx ry rz`). **Diagnostic codes are restructured around 5 structural categories** (`missing` / `duplicate` / `unknown` / `invalid-value` / `wrong-arity`); the v0.1 keyword-centric Exx / Cxx / Xxx codes are removed.
 
 ---
 
@@ -38,7 +40,7 @@ Cuboidy is **not** a triangle-mesh format. It does not specify skin weights, UV 
 | **Cuboidy model** (or **package**) | A single asset, stored as a folder |
 | **Manifest** | `cuboidy.json` — rig hierarchy and animations |
 | **Voxel definition** | `voxels.cvox` — shape, palette, pivot, sockets |
-| **Packed Cuboidy** | `<name>.cuboidy` — ZIP archive of the package (reserved; not specified in v0.1) |
+| **Packed Cuboidy** | `<name>.cuboidy` — ZIP archive of the package (reserved; not specified in v0.3) |
 | **Part** | A rigid voxel sub-object, optionally parented in the hierarchy |
 | **Socket** | A named attachment point on a part |
 | **Keyframe** | A time-indexed pose snapshot for an animated part |
@@ -241,75 +243,110 @@ A model may have at most **one active animation** at a time. Blending, layering,
 
 ## 7. `voxels.cvox` — voxel definition
 
-A plain-text file with a line-oriented grammar.
+A plain-text file. Lexing uses a two-layer model (§7.1), parsing is recursive-descent on a single token stream (§7.2).
 
-### 7.1 Token stream
+### 7.1 Lexical structure
 
-After per-line `//` comment stripping (see §7.11), the file is treated as a **single token stream** separated by any whitespace — spaces, tabs, and newlines all serve as token separators. Newlines have no syntactic significance outside of comment scope.
+Cuboidy uses **two layers** of lexing:
 
-Each token is one of:
+**Layer 1 — universal** (active anywhere in the file):
+
+| Element | Behavior |
+|---|---|
+| whitespace (space, tab, newline) | token separator; no syntactic significance |
+| `//` … end-of-line | comment, stripped before tokenization |
+| `{` `}` `,` | 1-character punctuation tokens, recognized everywhere; never appear inside any other token; need no surrounding whitespace (so `voxels{` and `},` tokenize as expected) |
+
+**Layer 2 — context-scoped** (each scope decides what is reserved inside it):
+
+| Scope | Reserved keywords | Special tokens |
+|---|---|---|
+| **top-level** (outside any `{ … }`) | `palette`, `part` | `#` introduces a color literal (palette arg) |
+| **`part` section** (between a `part` keyword and the next `part` or end of file) | `size`, `pivot`, `socket`, `voxels` (and `palette`, which is file-level but may appear textually here) | — |
+| **`pivot` / `socket` declaration** (after the position triple) | `rot` (optional, introduces a rotation triple) | — |
+| **`voxels { … }` block** | **(none)** | every token except the universal `,` `}` is interpreted as a voxel-row string |
+
+The framework generalizes naturally: each block-introducing keyword (currently `voxels`; future versions may add more) decides what is reserved inside its `{ … }`. The `voxels` keyword reserves nothing — so reserved words from other scopes appearing inside `voxels { … }` are simply voxel-row strings.
+
+**Consequence — voxel data is lexically isolated:** a row written as `rot` or `size` or `part` is unambiguously voxel data. The user-visible rule is "reserved words live outside `voxels { … }`; inside, anything goes".
+
+### 7.1.1 Token table
 
 | Token | Pattern | Example |
 |---|---|---|
-| **Reserved keyword** | `palette`, `part`, `size`, `pivot`, `socket`, `layer` (and the contextual sub-keyword `rot` after a `pivot` or `socket` position triple) | `size` |
+| **Reserved keyword** | one of `palette`, `part`, `size`, `pivot`, `socket`, `voxels`, `rot` (per §7.1 scope rules) | `voxels` |
+| **Block delimiter** | `{` or `}` | `{` |
+| **Layer separator** | `,` (only meaningful inside `voxels { … }`) | `,` |
 | **Color literal** | `#` followed by 3, 4, 6, or 8 hex digits | `#8B4513` |
 | **Identifier** | `[a-zA-Z_][a-zA-Z0-9_-]*` | `head`, `leg-fl` |
 | **Number** | integer or decimal, optional leading `-` | `3`, `1.5`, `-2` |
-| **Voxel row** | `[.0-9a-zA-Z]+` of length `W` (per the enclosing part's `size`) | `000`, `0.0`, `101` |
+| **Voxel row** | `[.0-9a-zA-Z]+` (only inside `voxels { … }`; length must equal `W`) | `000`, `0.0`, `101` |
 
-A token's role is determined by **context**, not lexical shape alone: the same characters can be an identifier, a number, or a voxel-row token depending on where they appear in the stream. The parser is recursive-descent: each keyword consumes a fixed number of subsequent tokens (or, for `layer`, voxel-row tokens until the next keyword).
+A token's role is determined by its **scope** (§7.1) and **position** (§7.2 grammar). The same character sequence may be an identifier in one scope and a voxel-row string in another.
 
-Consequence: `size 3 3 3` and `size\n3\n3\n3` are equivalent input. `part crown` and `part\ncrown` are equivalent. `layer 0  000  000  000` and `layer 0\n000\n000\n000` and any mixture all yield the same parsed model. Indentation has no semantic meaning; it is purely a readability convention.
+Consequence: `size 3 3 3` and `size\n3\n3\n3` are equivalent input. `part crown` and `part\ncrown` are equivalent. Inside `voxels { … }`, rows can be inline, multi-line, or mixed. Indentation has no semantic meaning; it is purely a readability convention.
 
-**Declaration order is free at every level:** the `palette` declaration may appear anywhere in the file; part declarations may appear in any order; within a part, the `size`, `pivot`, `socket`, and `layer` declarations may appear in any order; and `layer N` blocks may declare their indices in any order, provided the full range `0..H-1` is covered exactly once.
+**Declaration order is free within each scope:** at top-level, `palette` and `part` declarations may appear in any order; within a `part`, the `size`, `pivot`, `socket`, and `voxels` declarations may appear in any order. **Layer indices inside a `voxels` block are positional** — the first comma-separated section is layer 0, the second is layer 1, etc.
 
-Readers MUST accept any order and any whitespace shape. Writers (e.g. the editor's serializer) SHOULD normalize to a canonical form: palette first, parts in manifest order, metadata in `size → pivot → socket → layer` order, layers by index, each keyword on its own line with arguments on the same line, four-space indent under `part`. This is the "be liberal in what you accept, conservative in what you produce" pattern.
+Readers MUST accept any order and any whitespace shape. Writers (e.g. the editor's serializer) SHOULD normalize to a canonical form: palette first, parts in manifest order, metadata in `size → pivot → socket → voxels` order, each keyword on its own line with arguments on the same line, four-space indent under `part`, layers separated by `,` on its own line. This is the "be liberal in what you accept, conservative in what you produce" pattern.
 
 ### 7.2 Grammar
 
-The grammar is given informally because element order within `file` and within `part` is unconstrained. A formal LL(1) grammar would force order; the actual rule is "a `part` block contains exactly one `size`, at most one `pivot`, zero or more `socket`, and exactly `H` `layer` blocks, in any order; the file contains exactly one `palette` and one or more `part` blocks, in any order."
+The grammar is given informally because element order is unconstrained within each scope. The actual rules are: the file contains exactly one `palette` and one or more `part` blocks, in any order; a `part` contains exactly one `size`, exactly one `voxels`, at most one `pivot`, and zero or more `socket` declarations, in any order.
 
 ```
-file        := (palette-decl | part)+        (palette-decl appears exactly once;
+file         := (palette-decl | part)+        (palette-decl appears exactly once;
                                               part appears 1 or more times;
                                               any interleaving permitted)
-palette-decl := "palette" (SPACE color)+
-color       := "#" (3 | 4 | 6 | 8) hex-digits
+palette-decl := "palette" color+
+color        := "#" (3 | 4 | 6 | 8) hex-digits
 
-part        := "part" SPACE identifier
-               (size-decl | pivot-decl | socket-decl | layer)+
+part         := "part" identifier
+                (size-decl | pivot-decl | socket-decl | voxels-block)+
                                               (any order; size exactly once;
-                                               pivot at most once; sockets any count;
-                                               layers exactly H)
+                                               voxels exactly once;
+                                               pivot at most once;
+                                               sockets any count)
 
-size-decl   := "size" SPACE int SPACE int SPACE int
-pivot-decl  := "pivot" SPACE num SPACE num SPACE num
-                (SPACE "rot" SPACE num SPACE num SPACE num)?
-socket-decl := "socket" SPACE identifier SPACE num SPACE num SPACE num
-                (SPACE "rot" SPACE num SPACE num SPACE num)?
+size-decl    := "size" int int int
+pivot-decl   := "pivot" num num num ("rot" num num num)?
+socket-decl  := "socket" identifier num num num ("rot" num num num)?
 
-layer       := layer-header (SPACE voxel-row)* (NEWLINE voxel-row)*
-                                              (rows may appear inline after the
-                                               layer header, on subsequent lines, or
-                                               mixed; total row count must equal D)
-layer-header := "layer" SPACE non-negative-integer
-voxel-row   := /[.0-9a-zA-Z]+/
+voxels-block := "voxels" "{" layer-section ("," layer-section)* "}"
+layer-section := voxel-row*                   (exactly D rows per layer-section;
+                                              the i-th layer-section is layer i;
+                                              total layer-section count must equal H)
+voxel-row    := /[.0-9a-zA-Z]+/               (length must equal W;
+                                              chars are palette indices or `.`=air;
+                                              all reserved-word strings are valid
+                                              voxel-row tokens inside `voxels { … }`)
 ```
 
-All metadata keywords are **2 characters or longer**. This rule reserves single-character lines for voxel data and prevents palette-index collisions with future keywords.
+Tokens are separated by any whitespace (space, tab, newline) or by the universal punctuation `{` `}` `,` (which need no surrounding whitespace).
 
-### 7.3 Reserved keywords (v0.2)
+### 7.3 Reserved keywords (v0.3)
 
-- `palette`
-- `part`
-- `size`
-- `pivot`
-- `socket`
-- `layer`
+The full reserved-word set is **flat** — there is no concept of "sub-keyword". All reserved words are lexically equal:
 
-`rot` is a **contextual sub-keyword** recognized only inside `pivot` and `socket` declarations as the marker that introduces a rotation triple. Outside those contexts, `rot` is a normal voxel-row token (e.g. it can appear in voxel data on a palette with at least 30 colors), an identifier, or whatever the position in the grammar dictates. It is intentionally NOT in the top-level reserved-keyword set, so it does not interrupt the active layer's row collection (§7.9).
+```
+palette  part  size  pivot  socket  voxels  rot
+```
 
-An unrecognized top-level token — neither a reserved keyword above nor a voxel-row-shape token continuing an active layer — is `unknown`.
+**Structural validity** (where each may appear) is a separate axis, enforced by the parser:
+
+| Keyword | Structurally valid in |
+|---|---|
+| `palette` | top-level (exactly once per file) |
+| `part` | top-level |
+| `size` | within a `part` section (exactly once per part) |
+| `pivot` | within a `part` section (at most once per part) |
+| `socket` | within a `part` section (any count) |
+| `voxels` | within a `part` section (exactly once per part) |
+| `rot` | inside a `pivot` or `socket` declaration, immediately after the position triple |
+
+A reserved word appearing outside its structurally valid scope is reported as `missing` (the required enclosing scope was missing — e.g. `size` before any `part`) or `unknown` (the token had no valid grammatical role at this point).
+
+**Inside a `voxels { … }` block, none of the reserved words above are recognized as keywords** (per §7.1 Layer 2 scope rules). They are interpreted as voxel-row strings and validated against row-width and palette-index rules. A row spelling `rot`, `size`, or `part` is well-formed voxel data when the palette indices fall within range.
 
 ### 7.4 Palette declaration
 
@@ -347,9 +384,9 @@ A `part` section must contain:
 | `size` | **exactly 1** | Missing → `missing`. Duplicate → `duplicate` |
 | `pivot` | at most 1 | Duplicate → `duplicate` |
 | `socket` | 0 or more | Duplicate names → `duplicate` |
-| `layer N` | **exactly H** (covering 0..H-1) | Missing → `missing`; duplicated → `duplicate` |
+| `voxels` | **exactly 1** | Missing → `missing`. Duplicate → `duplicate` |
 
-**Order is free.** Any permutation of these elements within a part is valid. Writers should normalize to `size → pivot → socket* → layer*` (with layers sorted by index) for diff stability.
+**Order is free.** Any permutation of these elements within a part is valid. Writers should normalize to `size → pivot → socket* → voxels` for diff stability.
 
 ### 7.6 `size`
 
@@ -371,10 +408,10 @@ pivot <x> <y> <z> rot <rx> <ry> <rz>
 
 - Optional. Default: position bottom-center, `[W/2, 0, D/2]`; rotation absent (identity)
 - Position coordinates in **part-local space**, voxel units; may be fractional; may lie outside the grid bounds (W01 lint warning, not error)
-- Optional rotation: 3 Euler angles in degrees, ZXY intrinsic order (§4), introduced by the contextual sub-keyword `rot`
+- Optional rotation: 3 Euler angles in degrees, ZXY intrinsic order (§4), introduced by the reserved word `rot` (structurally valid here and in `socket` declarations per §7.3)
 - **Semantic** (interpretation A — Rest pose rotation): when an animation is not active, the part is rendered with this rotation applied around its pivot position. When an animation is active, the animated rotation is composed with the pivot rotation. Using matrix-vector convention with column vectors, a part-local point `v_local` lands at `v_parent = part.position + pivot.pos + M_pivot · M_anim · (v_local − pivot.pos)`, where `M_pivot` and `M_anim` are the rotation matrices for `pivot.rot` and the animated keyframe rotation. Equivalently in quaternion form: `q_total = q_pivot · q_anim` (the animation rotation is applied first, in the rest-pose-local frame, then the pivot rotation brings it to the rest orientation)
 - Two arities are valid at the library-level `parsePivot(args)` API: 3 args (position only) or 7 args (position + `rot` + rotation). 4–6 or 8+ args is `wrong-arity`; 7 args without the `rot` marker as the 4th token is `invalid-value`
-- Under integrated `parseCvox()` parsing of the token stream, the parser consumes exactly 3 tokens (then 3 more iff the next token is `rot`). Tokens beyond that boundary are not stolen by the pivot declaration — they fall through to the main token loop, where they are diagnosed by §11.8 (typically `invalid-value` if voxel-row shape, `unknown` if non-row-shape, both raised in the absence of an active layer). A user writing `pivot 1 0 1 5` will therefore see `invalid-value` or `unknown`, not `wrong-arity`; the library-level `parsePivot()` is the entry point that enforces strict arity
+- Under integrated `parseCvox()` parsing of the token stream, the parser consumes exactly 3 tokens (then 3 more iff the next token is `rot`). Tokens beyond that boundary are not stolen by the pivot declaration — they fall through to the main token loop and are diagnosed by §11.8 (typically `invalid-value` if numeric, `unknown` if a non-keyword identifier). A user writing `pivot 1 0 1 5` will therefore see `invalid-value` or `unknown`, not `wrong-arity`; the library-level `parsePivot()` is the entry point that enforces strict arity
 
 ### 7.8 `socket`
 
@@ -388,23 +425,49 @@ socket <identifier> <x> <y> <z> rot <rx> <ry> <rz>
 - Optional rotation: Euler degrees, ZXY order, default `[0, 0, 0]`
 - Socket name unique within a part
 
-### 7.9 `layer`
+### 7.9 `voxels` block
 
 ```
-layer <N>
-layer <N> <row>+
+voxels {
+  <voxel-row>...     ← layer 0 section (exactly D rows)
+  ,
+  <voxel-row>...     ← layer 1 section (exactly D rows)
+  ,
+  ...                ← H layer-sections total, separated by H-1 commas
+}
 ```
 
-- Marks voxel data for Y-layer index `N` (0-based, non-negative integer in range `[0, H-1]`; out-of-range is `invalid-value`; duplicate is `duplicate`)
-- A part must contain exactly H `layer` blocks covering indices `0..H-1` exactly once
-- **Index order is free** — `layer 2`, `layer 0`, `layer 1` is valid
-- After the `N` token, the parser collects voxel-row tokens into the **active layer** until the next reserved keyword (`palette`, `part`, `size`, `pivot`, `socket`, `layer`) or end of file
-- Each layer must accumulate exactly D voxel-row tokens; assembly-time validation reports `wrong-arity` otherwise. Whitespace between row tokens — spaces, tabs, or newlines — is interchangeable, so the same D tokens can be written inline, on separate lines, or mixed
-- The k-th row (in token order) represents voxel cells at coordinates `(x, N, k)` for `x ∈ 0..W-1`
-- A voxel-row-shape token (`[.0-9a-zA-Z]+`) encountered while no active layer is open is `invalid-value` ("voxel row outside any layer")
+- **Exactly one** `voxels` block per part (missing → `missing`; duplicate → `duplicate`)
+- The block contains H comma-separated **layer-sections**, one per Y-layer index in order
+- The i-th section (0-based) becomes layer `i`. Layer indices are **positional** — there is no `layer N` keyword in v0.3
+- Each layer-section contains exactly D voxel-row tokens (less or more → `wrong-arity`)
+- Whitespace inside the block is purely cosmetic — rows can be inline, multi-line, or mixed; the entire block can be on one line (`voxels { 000 000 000 , .0. 000 .0. }`)
+
+**Lexical isolation** (§7.1 Layer 2): inside `voxels { … }` no reserved words are recognized. Any token (other than the universal `,` and `}`) is interpreted as a voxel-row string and subject only to:
+
+- character set: `[.0-9a-zA-Z]` (other chars → `invalid-value`)
+- length: exactly `W` (mismatch → `wrong-arity`)
+- palette indices: must be `<` palette length (out of range → `invalid-value`)
+
+A row spelling `rot` or `size` or `part` is **valid voxel data** when its 3 characters map to in-range palette indices (`r`=27, `o`=24, `t`=29; `s`=28, `i`=18, `z`=35; `p`=25, `a`=10). The `voxels` keyword reserves nothing; reserved words from other scopes are just letters here.
+
+**Errors:**
+
+| Condition | Code |
+|---|---|
+| `{` missing after `voxels` | `wrong-arity` (or `unknown`/`invalid-value` depending on the offending token) |
+| `}` missing (EOF before close) | `missing` |
+| Layer-section count ≠ H | `wrong-arity` |
+| Row count in a section ≠ D | `wrong-arity` |
+| Row width ≠ W | `wrong-arity` |
+| Character outside `[.0-9a-zA-Z]` in a row | `invalid-value` |
+| Row references palette index ≥ palette length | `invalid-value` |
+
+The k-th row in layer `i` represents voxel cells at coordinates `(x, i, k)` for `x ∈ 0..W-1`.
 
 ### 7.10 Voxel row
 
+- Inside a `voxels { … }` block, every non-punctuation token is a voxel-row candidate
 - Characters drawn from `[.0-9a-zA-Z]`, no whitespace inside a single row token
 - Length exactly equals W
 - Each character is either `.` (air) or a palette index character (must be within the declared palette range)
@@ -415,17 +478,22 @@ layer <N> <row>+
 ```
 // this is a full-line comment
 size 3 3 3  // this is an end-of-line comment
+voxels {
+  // comments work inside voxels blocks too — they are Layer 1 (universal)
+  000
+  000
+}
 ```
 
 - A `//` sequence anywhere on a line starts a comment; the comment extends to the end of that line
-- No whitespace context is required around `//`; the `/` character does not appear in any valid Cuboidy token (voxel-row chars `[.0-9a-zA-Z]`, identifiers, hex digits, numeric literals), so `//` cannot collide with data
+- **Universal scope** (§7.1 Layer 1): comments work in every scope, including inside `voxels { … }` blocks. They are stripped by the tokenizer before any scope-aware parsing
+- No whitespace context is required around `//`; the `/` character does not appear in any valid Cuboidy token, so `//` cannot collide with data
 - Note: color literals (`#FFFFFF`) use `#`, not `//`, and are unrelated to comments
-- Comments are stripped before line classification (§7.1) and have no semantic effect
-- Writers (the canonical serializer) SHOULD preserve comments verbatim across read/write round-trips, attaching each comment to its enclosing structural element (file header, palette, part, metadata line, layer)
+- Writers (the canonical serializer) SHOULD preserve comments verbatim across read/write round-trips, attaching each comment to its enclosing structural element (file header, palette, part, metadata line, voxels block)
 
 ### 7.12 Examples
 
-**Multi-line layer style (compact for visual voxel art):**
+**Multi-line voxels block (compact for visual voxel art):**
 
 ```
 palette #8B4513 #000000
@@ -435,21 +503,22 @@ part head
     pivot 1 0 1
     socket hat 1 3 1
     socket mouth 1 1 3
-    layer 0
+    voxels {
         000
         000
         000
-    layer 1
+        ,
         000
         000
         101
-    layer 2
+        ,
         000
         000
         000
+    }
 ```
 
-**Inline layer style (compact for small parts and AI generation):**
+**Inline voxels block (compact for small parts and AI generation):**
 
 ```
 // crown — single part static accessory
@@ -458,22 +527,40 @@ palette #FFD700
 part crown
     size 3 2 3
     pivot 1 0 1
-    layer 0  000 000 000
-    layer 1  0.0 ... 0.0
+    voxels {
+        000 000 000      // layer 0 — solid base
+        ,
+        0.0 ... 0.0      // layer 1 — 4 corner pillars
+    }
 ```
 
-**Free-order example (palette at end, layers out of index order):**
+**Free-order example (palette at end, voxels before size):**
 
 ```
 part body
+    voxels {
+        0
+        ,
+        0
+    }
     size 1 2 1
-    layer 1  0      // top
-    layer 0  0      // bottom
 
 palette #FF0000
 ```
 
-All three are valid Cuboidy v0.2 input and demonstrate three different syntactic styles. They describe different models (head / crown / body), not the same model in three notations.
+**Reserved-word strings as voxel data** (palette must have at least 30 colors for `rot`, since `t` = palette index 29):
+
+```
+palette #000 #111 ... #01d    // 30 colors
+
+part demo
+    size 3 1 1
+    voxels {
+        rot                   // valid voxel row: palette[27]/[24]/[29]
+    }
+```
+
+All four are valid Cuboidy v0.3 input.
 
 ---
 
@@ -517,7 +604,7 @@ Reference cycles (a → b → a) are an error.
 | `cuboidy.json` | part `position` | `[0, 0, 0]` |
 | `cuboidy.json` | part `parent` | absent → root |
 | `cuboidy.json` | `animations` | absent → no animations |
-| `cuboidy.json` | `version` | absent → `"0.2"` |
+| `cuboidy.json` | `version` | absent → `"0.3"` |
 | Keyframe (first) | `rot` | `[0, 0, 0]` |
 | Keyframe (first) | `pos` | `[0, 0, 0]` |
 | Keyframe (first) | `scale` | `[1, 1, 1]` |
@@ -542,17 +629,17 @@ A Cuboidy package is **well-formed** if it passes all error-level rules.
 
 ### 11.2 Diagnostic codes (structural)
 
-v0.2 uses **five structural codes** to describe errors. The code names what *kind* of structural violation occurred; the message text names *what specifically* — which keyword, which field, which line. Implementations MUST use these exact code strings so that cross-language parity tests can compare outputs by code alone.
+v0.3 uses **five structural codes** to describe errors. The code names what *kind* of structural violation occurred; the message text names *what specifically* — which keyword, which field, which line. Implementations MUST use these exact code strings so that cross-language parity tests can compare outputs by code alone.
 
 | Code | Meaning | Voxel-definition examples |
 |---|---|---|
-| `missing` | A required structural element is absent. | No `palette` declaration in the file; `palette` declared but no `part`; `size` missing in a part; `layer N` indices do not cover `0..H-1`; a metadata keyword (`size` / `pivot` / `socket` / `layer`) used before any `part` |
-| `duplicate` | A unique-constraint violation: an element that should appear at most once appears more than once. | Two `palette` declarations; duplicate `part` name; duplicate socket name within a part; duplicate `size` or `pivot` within a part; duplicate layer index within a part |
-| `unknown` | An unrecognized name appears where the spec defines a closed set. | A token that is neither a reserved keyword nor a voxel-row-shape token in row context |
-| `invalid-value` | A value is present but malformed. | Malformed color hex (`#GG`); voxel row contains a character outside `[.0-9a-zA-Z]`; voxel cell references a palette index that does not exist; layer index out of range `[0..H-1]`; size dimension out of range `[1..1024]`, fractional, or non-numeric; non-numeric `pivot` / `socket` coord; expected `rot` marker but got something else; voxel-row-shape token encountered while no layer is active; identifier failing the §5 regex |
-| `wrong-arity` | An incorrect number of items. | Voxel-row width does not match declared `W`; layer accumulates a row count different from declared `D`; palette has 0 colors or more than 62; wrong number of arguments to a keyword (`size` not 3, `pivot` not 3-or-7, `socket` not 4-or-8, `layer` no index, `part` not 1) |
+| `missing` | A required structural element is absent. | No `palette` declaration in the file; `palette` declared but no `part`; `size` missing in a part; `voxels` missing in a part; `voxels { … }` block unclosed (EOF before `}`); a reserved word used outside its structurally valid scope (e.g. `size` before any `part`, `rot` outside `pivot` / `socket`) |
+| `duplicate` | A unique-constraint violation: an element that should appear at most once appears more than once. | Two `palette` declarations; duplicate `part` name; duplicate socket name within a part; duplicate `size` / `pivot` / `voxels` within a part |
+| `unknown` | An unrecognized name appears where the spec defines a closed set. | A non-keyword identifier appears where no statement is expected; a top-level token has no valid grammatical role |
+| `invalid-value` | A value is present but malformed. | Malformed color hex (`#GG`); voxel row contains a character outside `[.0-9a-zA-Z]`; voxel cell references a palette index that does not exist; size dimension out of range `[1..1024]`, fractional, or non-numeric; non-numeric `pivot` / `socket` coord; expected `rot` marker but got something else; identifier failing the §5 regex |
+| `wrong-arity` | An incorrect number of items. | Voxel-row width does not match declared `W`; a layer-section row count differs from declared `D`; layer-section count differs from declared `H`; palette has 0 colors or more than 62; wrong number of arguments to a keyword (`size` not 3, `pivot` not 3-or-7, `socket` not 4-or-8, `part` not 1) |
 
-Note: v0.1 used per-keyword codes (E01–E19). v0.2 restructures them into the five structural categories above. The keyword/context survives in the message string and in the fixture filenames (`fixtures/cvox/<code>/<descriptor>.cvox`).
+Note: v0.1 used per-keyword codes (E01–E19). v0.2 restructured them into the five structural categories above. v0.3 removed the `layer` keyword and the active-layer concept (replaced by `voxels { … }` blocks), simplifying the precedence rules; the five codes are unchanged. The keyword/context survives in the message string and in the fixture filenames (`fixtures/cvox/<code>/<descriptor>.cvox`).
 
 ### 11.3 `voxels.cvox` warnings
 
@@ -561,7 +648,7 @@ Note: v0.1 used per-keyword codes (E01–E19). v0.2 restructures them into the f
 | W01 | Pivot outside voxel grid bounds |
 | W02 | Socket outside voxel grid bounds |
 | W03 | Palette index declared but never used |
-| W04 | Layer entirely empty (all `.`) |
+| W04 | Layer-section entirely empty (all `.`) |
 | W05 | Part has no solid voxels (all `.`) |
 
 ### 11.4 `voxels.cvox` hints
@@ -614,22 +701,22 @@ This format is gcc / clang compatible for IDE integration.
 
 ### 11.8 Error precedence
 
-When a single input could match more than one error (common under v0.2 free-order rules), implementations MUST report **the first error encountered during a single forward pass over the token stream**, with errors raised during assembly (after all tokens are consumed) coming after all stream-pass errors.
+When a single input could match more than one error (common under free-order rules), implementations MUST report **the first error encountered during a single forward pass over the token stream**, with errors raised during assembly (after all tokens are consumed) coming after all stream-pass errors.
 
 Concrete precedence:
 
 1. Per-line `//` comment stripping (no errors possible).
-2. Tokenization (no errors possible; any non-whitespace sequence becomes a token).
+2. Tokenization (no errors possible; any non-whitespace sequence becomes a token; `{` `}` `,` are 1-char tokens).
 3. Token-stream forward pass — raised at the point the offending token is consumed:
-   - **`duplicate`** — duplicate `palette` declaration; duplicate `part` name; duplicate socket within a part; duplicate `size` or `pivot` within a part; duplicate layer index within a part
-   - **`wrong-arity`** — wrong arg count for any keyword (`palette` empty, `size` not 3, `pivot` not 3-or-7, `socket` not 4-or-8, `layer` no index, `part` not 1); palette overflow (`> 62` colors)
-   - **`invalid-value`** — bad color hex; non-numeric value where number expected; size dimension out of range; identifier failing the §5 regex; missing or wrong `rot` marker; voxel-row-shape token while no layer active; non-keyword token whose characters fall outside `[.0-9a-zA-Z]` while a layer is active
-   - **`missing`** — a metadata keyword (`size`/`pivot`/`socket`/`layer`) consumed before any `part` declaration
-   - **`unknown`** — non-keyword, non-voxel-row-shape token with no active layer to belong to
+   - **`duplicate`** — duplicate `palette` declaration; duplicate `part` name; duplicate socket within a part; duplicate `size` / `pivot` / `voxels` within a part
+   - **`wrong-arity`** — wrong arg count for any keyword (`palette` empty, `size` not 3, `pivot` not 3-or-7, `socket` not 4-or-8, `part` not 1); palette overflow (`> 62` colors); `voxels` not followed by `{`
+   - **`invalid-value`** — bad color hex; non-numeric value where number expected; size dimension out of range; identifier failing the §5 regex; missing or wrong `rot` marker; voxel row contains a character outside `[.0-9a-zA-Z]` (inside `voxels { … }`)
+   - **`missing`** — a metadata reserved word (`size` / `pivot` / `socket` / `voxels`) consumed before any `part` declaration; `voxels { … }` block reaches EOF without `}`; `rot` consumed outside `pivot` / `socket`
+   - **`unknown`** — non-keyword identifier token with no valid grammatical role at this point (top-level or part-section scope)
 4. End-of-stream assembly — raised after all tokens are consumed:
-   - **`missing`** — palette absent; palette declared but no parts; `size` missing in a part; layer index `0..H-1` not all covered
-   - **`invalid-value`** — layer index out of range relative to `H`; voxel cell references a palette index outside the declared palette
-   - **`wrong-arity`** — layer accumulates a row count different from `D`; voxel row width does not match `W`
+   - **`missing`** — palette absent; palette declared but no parts; `size` missing in a part; `voxels` missing in a part
+   - **`invalid-value`** — voxel cell references a palette index outside the declared palette
+   - **`wrong-arity`** — layer-section count differs from `H`; a layer-section row count differs from `D`; voxel row width does not match `W`
 
 A conformant implementation that reports a different code than this precedence implies is non-conforming for cross-implementation parity testing, but its output is still useful to the user.
 
@@ -642,11 +729,11 @@ The reference repository includes:
 - `wolf/` — three-part rigged model (body / head / tail) with idle animation and sockets (`hat`, `mouth`)
 - `crown/` — single-part static accessory designed to attach to `wolf` via the `head:hat` socket
 
-Both pass all v0.2 lint rules at error level.
+Both pass all v0.3 lint rules at error level.
 
 ---
 
-## 13. Future extensions (out of scope for v0.2)
+## 13. Future extensions (out of scope for v0.3)
 
 - **Packed format**: `<name>.cuboidy` (ZIP archive of the package)
 - **External palette references**: share palettes across models, avoiding per-model duplication

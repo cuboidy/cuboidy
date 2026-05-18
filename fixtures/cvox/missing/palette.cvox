@@ -1,4 +1,4 @@
-// No `palette` declaration anywhere → E01
+// No `palette` declaration anywhere
 part box
     size 1 1 1
-    layer 0  0
+    voxels { 0 }

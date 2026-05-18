@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { stripComment } from '../src/cvox/comment.js';
-import { classifyLine } from '../src/cvox/classify.js';
 
 describe('stripComment', () => {
   it('strips full-line comment', () => {
@@ -41,9 +40,7 @@ describe('stripComment', () => {
     expect(stripComment('//')).toBe('');
   });
 
-  it('preserves // inside what looks like a URL (CSS-like ambiguity does NOT arise — Cuboidy has no string literals)', () => {
-    // Cuboidy has no quoted strings; // always means comment.
-    // This test documents that behavior intentionally.
+  it('Cuboidy has no string literals, so // always means comment', () => {
     expect(stripComment('part name //rest')).toBe('part name ');
   });
 
@@ -51,34 +48,5 @@ describe('stripComment', () => {
     expect(stripComment('size 3 3 3  // first // second')).toBe(
       'size 3 3 3  ',
     );
-  });
-});
-
-describe('classifyLine with // comments', () => {
-  it('treats full-line comment as blank', () => {
-    expect(classifyLine('// top of file')).toEqual({ kind: 'blank' });
-  });
-
-  it('classifies keyword line with trailing comment', () => {
-    expect(classifyLine('size 3 3 3  // cube')).toEqual({
-      kind: 'keyword',
-      keyword: 'size',
-      args: ['3', '3', '3'],
-    });
-  });
-
-  it('preserves color args when trailing // comment present', () => {
-    expect(classifyLine('palette #FFFFFF #000000  // whites')).toEqual({
-      kind: 'keyword',
-      keyword: 'palette',
-      args: ['#FFFFFF', '#000000'],
-    });
-  });
-
-  it('classifies voxel row with trailing comment', () => {
-    expect(classifyLine('000  // row 0')).toEqual({
-      kind: 'voxel-row',
-      text: '000',
-    });
   });
 });

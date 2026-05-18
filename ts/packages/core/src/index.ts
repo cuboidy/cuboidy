@@ -4,7 +4,7 @@ export type { Manifest, Part } from './manifest.js';
 export { parseCvox } from './cvox/parse.js';
 export type { VoxelDefinition, PartDefinition } from './cvox/parse.js';
 
-export { AIR } from './cvox/layer.js';
+export { AIR } from './cvox/voxel-row.js';
 export type { Color, Palette } from './cvox/palette.js';
 export type { Size } from './cvox/part.js';
 export type { Pivot } from './cvox/pivot.js';

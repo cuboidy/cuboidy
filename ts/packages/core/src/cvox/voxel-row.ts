@@ -1,23 +1,10 @@
 import { err, ok, type Result } from '../result.js';
-import { parseNonNegInt } from './numbers.js';
 
 export const AIR = -1;
 
-export function parseLayerHeader(args: readonly string[]): Result<number> {
-  if (args.length < 1) {
-    return err('wrong-arity', `layer expects an index arg, got none`);
-  }
-  const s = args[0]!;
-  const n = parseNonNegInt(s);
-  if (n === null) {
-    return err(
-      'invalid-value',
-      `layer index '${s}' is not a non-negative integer`,
-    );
-  }
-  return ok(n);
-}
-
+// Inside a voxels { ... } block, every non-punctuation token is a voxel-row
+// candidate. parseVoxelRow validates it against the declared row width (W)
+// and the palette length. Characters outside [.0-9a-zA-Z] are invalid-value.
 export function parseVoxelRow(
   text: string,
   w: number,

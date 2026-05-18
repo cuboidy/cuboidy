@@ -1,2 +1,2 @@
-// palette declared but no `part` → E19
+// palette declared but no `part`
 palette #FF0000

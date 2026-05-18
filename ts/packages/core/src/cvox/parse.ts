@@ -1,10 +1,9 @@
 import { err, ok, type Result } from '../result.js';
-import { KNOWN_KEYWORDS, VOXEL_ROW_RE } from './classify.js';
 import { type Palette, parsePalette } from './palette.js';
 import { parsePartHeader, parseSize, type Size } from './part.js';
 import { parsePivot, type Pivot } from './pivot.js';
 import { parseSocket, type Socket } from './socket.js';
-import { parseLayerHeader, parseVoxelRow } from './layer.js';
+import { parseVoxelRow } from './voxel-row.js';
 import { tokenize, type Token } from './tokenize.js';
 
 export interface VoxelDefinition {
@@ -20,10 +19,34 @@ export interface PartDefinition {
   voxels: readonly (readonly (readonly number[])[])[];
 }
 
-interface RawLayer {
-  index: number;
-  rows: string[];
-  indexLineNo: number;
+// SPEC §7.3: the full flat reserved-word set. Structural validity (where
+// each may appear) is enforced by the parser, not by the lexical category.
+// `rot` is a reserved word with structural validity constrained to pivot
+// and socket declarations.
+const RESERVED_WORDS: ReadonlySet<string> = new Set([
+  'palette',
+  'part',
+  'size',
+  'pivot',
+  'socket',
+  'voxels',
+  'rot',
+]);
+
+interface RawRow {
+  text: string;
+  line: number;
+  col: number;
+}
+
+interface RawSection {
+  rows: RawRow[];
+  startLine: number;
+}
+
+interface RawVoxels {
+  sections: RawSection[];
+  voxelsLine: number;
 }
 
 class PartBuilder {
@@ -33,8 +56,7 @@ class PartBuilder {
   pivotLineNo = 0;
   sockets: Socket[] = [];
   socketNames = new Set<string>();
-  layers = new Map<number, RawLayer>();
-  active: RawLayer | null = null;
+  voxels: RawVoxels | null = null;
 
   constructor(
     public readonly name: string,
@@ -58,43 +80,60 @@ class CvoxParser {
   parse(): Result<VoxelDefinition> {
     while (this.pos < this.tokens.length) {
       const t = this.tokens[this.pos]!;
-
-      if (KNOWN_KEYWORDS.has(t.text)) {
-        // SPEC §7.9: any known keyword closes the active layer (row stream
-        // ends). palette also closes the active layer but does NOT close
-        // the surrounding part section (§7.5).
-        const flushR = this.flushActiveLayer();
-        if (!flushR.ok) return flushR;
-
-        this.pos++;
-        const r = this.dispatchKeyword(t);
-        if (!r.ok) return r;
-        continue;
-      }
-
-      // Not a keyword. Behavior depends on whether a layer is active:
-      //   active layer open: token must be a voxel-row shape, else E07
-      //   no active layer:   voxel-row shape → E10, otherwise → E04
-      if (this.cur?.active) {
-        if (VOXEL_ROW_RE.test(t.text)) {
-          this.cur.active.rows.push(t.text);
-          this.pos++;
-          continue;
+      this.pos++;
+      switch (t.text) {
+        case 'palette': {
+          const r = this.consumePalette(t);
+          if (!r.ok) return r;
+          break;
         }
-        return err(
-          'invalid-value',
-          `line ${t.line}: voxel row contains character outside [.0-9a-zA-Z] in '${t.text}'`,
-        );
+        case 'part': {
+          const r = this.consumePart(t);
+          if (!r.ok) return r;
+          break;
+        }
+        case 'size': {
+          const r = this.consumeSize(t);
+          if (!r.ok) return r;
+          break;
+        }
+        case 'pivot': {
+          const r = this.consumePivot(t);
+          if (!r.ok) return r;
+          break;
+        }
+        case 'socket': {
+          const r = this.consumeSocket(t);
+          if (!r.ok) return r;
+          break;
+        }
+        case 'voxels': {
+          const r = this.consumeVoxels(t);
+          if (!r.ok) return r;
+          break;
+        }
+        case 'rot':
+          return err(
+            'missing',
+            `line ${t.line}: 'rot' is only valid inside a pivot or socket declaration`,
+          );
+        case '{':
+        case '}':
+        case ',':
+          return err(
+            'unknown',
+            `line ${t.line}: unexpected '${t.text}' at top level`,
+          );
+        default:
+          return err(
+            'unknown',
+            `line ${t.line}: unknown token '${t.text}'`,
+          );
       }
-      if (VOXEL_ROW_RE.test(t.text)) {
-        return err('invalid-value', `line ${t.line}: voxel row outside any layer`);
-      }
-      return err('unknown', `line ${t.line}: unknown token '${t.text}'`);
     }
 
     // EOF
-    const closeR = this.closeCurrentPart();
-    if (!closeR.ok) return closeR;
+    this.closeCurrentPart();
 
     if (this.palette === null) {
       return err('missing', 'missing palette declaration');
@@ -112,38 +151,21 @@ class CvoxParser {
     return ok({ palette: this.palette, parts: finalParts });
   }
 
-  // Pull up to `max` tokens (stops at next known keyword OR end of stream)
+  // Pull up to `max` tokens, stopping at the next reserved word or
+  // universal punctuation ({ } ,) or end of stream.
   private pullArgs(max: number): string[] {
     const args: string[] = [];
     while (args.length < max && this.pos < this.tokens.length) {
       const t = this.tokens[this.pos]!;
-      if (KNOWN_KEYWORDS.has(t.text)) break;
+      if (RESERVED_WORDS.has(t.text)) break;
+      if (t.text === '{' || t.text === '}' || t.text === ',') break;
       args.push(t.text);
       this.pos++;
     }
     return args;
   }
 
-  private dispatchKeyword(kw: Token): Result<void> {
-    switch (kw.text) {
-      case 'palette':
-        return this.consumePalette(kw);
-      case 'part':
-        return this.consumePart(kw);
-      case 'size':
-        return this.consumeSize(kw);
-      case 'pivot':
-        return this.consumePivot(kw);
-      case 'socket':
-        return this.consumeSocket(kw);
-      case 'layer':
-        return this.consumeLayer(kw);
-    }
-    return ok(undefined);
-  }
-
   private consumePalette(kw: Token): Result<void> {
-    // Palette args run until the next known keyword.
     const args = this.pullArgs(Number.POSITIVE_INFINITY);
     if (this.palette !== null) {
       return err(
@@ -165,8 +187,7 @@ class CvoxParser {
     if (this.partNames.has(r.value)) {
       return err('duplicate', `line ${kw.line}: duplicate part name '${r.value}'`);
     }
-    const closeR = this.closeCurrentPart();
-    if (!closeR.ok) return closeR;
+    this.closeCurrentPart();
     this.partNames.add(r.value);
     this.cur = new PartBuilder(r.value, kw.line);
     return ok(undefined);
@@ -200,11 +221,8 @@ class CvoxParser {
         `line ${kw.line}: duplicate pivot for part '${this.cur.name}' (first at line ${this.cur.pivotLineNo})`,
       );
     }
-    // Pivot has 3 args (pos only) or 7 args (pos + 'rot' + 3 rot values).
-    // Pull 3 first, then peek for the `rot` sub-keyword. Tokens beyond
-    // that boundary are not stolen — they fall through to the main loop
-    // and are diagnosed there (E10/E04). The library-level parsePivot()
-    // still enforces strict 3-or-7 arity for direct callers (SPEC §7.7).
+    // SPEC §7.7: pivot has 3 args (pos only) or 7 args (pos + rot + 3
+    // rot values). Pull 3 first, then peek for the `rot` keyword.
     const args = this.pullArgs(3);
     if (
       this.pos < this.tokens.length &&
@@ -225,9 +243,6 @@ class CvoxParser {
     if (this.cur === null) {
       return err('missing', `line ${kw.line}: 'socket' before any part declaration`);
     }
-    // Socket has 4 args (name x y z) or 8 args (name x y z rot rx ry rz).
-    // Pull 4 first, then peek for the `rot` sub-keyword before pulling more.
-    // This prevents stealing voxel-row tokens that follow a no-rot socket.
     const args = this.pullArgs(4);
     if (
       this.pos < this.tokens.length &&
@@ -250,45 +265,70 @@ class CvoxParser {
     return ok(undefined);
   }
 
-  private consumeLayer(kw: Token): Result<void> {
+  private consumeVoxels(kw: Token): Result<void> {
     if (this.cur === null) {
-      return err('missing', `line ${kw.line}: 'layer' before any part declaration`);
+      return err('missing', `line ${kw.line}: 'voxels' before any part declaration`);
     }
-    const args = this.pullArgs(1);
-    const indexR = parseLayerHeader(args);
-    if (!indexR.ok) return err(indexR.code, `line ${kw.line}: ${indexR.message}`);
-    // Rows are collected by the main loop as voxel-row continuation tokens.
-    this.cur.active = {
-      index: indexR.value,
-      rows: [],
-      indexLineNo: kw.line,
-    };
-    return ok(undefined);
-  }
-
-  private flushActiveLayer(): Result<void> {
-    const cur = this.cur;
-    if (cur === null || cur.active === null) return ok(undefined);
-    const layer = cur.active;
-    if (cur.layers.has(layer.index)) {
-      const prev = cur.layers.get(layer.index)!;
+    if (this.cur.voxels !== null) {
       return err(
         'duplicate',
-        `line ${layer.indexLineNo}: duplicate layer index ${layer.index} in part '${cur.name}' (first at line ${prev.indexLineNo})`,
+        `line ${kw.line}: duplicate voxels block for part '${this.cur.name}' (first at line ${this.cur.voxels.voxelsLine})`,
       );
     }
-    cur.layers.set(layer.index, layer);
-    cur.active = null;
-    return ok(undefined);
+    // Expect opening `{`
+    if (this.pos >= this.tokens.length) {
+      return err(
+        'wrong-arity',
+        `line ${kw.line}: 'voxels' must be followed by '{' (got end of file)`,
+      );
+    }
+    const open = this.tokens[this.pos]!;
+    if (open.text !== '{') {
+      return err(
+        'wrong-arity',
+        `line ${open.line}: 'voxels' must be followed by '{' (got '${open.text}')`,
+      );
+    }
+    this.pos++;
+
+    // SPEC §7.1 Layer 2: inside voxels {} no reserved words are recognized.
+    // Every token except `,` and `}` is a voxel-row candidate. `{` inside
+    // is unexpected (no nesting).
+    const sections: RawSection[] = [];
+    let current: RawSection = { rows: [], startLine: kw.line };
+    while (this.pos < this.tokens.length) {
+      const t = this.tokens[this.pos]!;
+      if (t.text === '}') {
+        this.pos++;
+        sections.push(current);
+        this.cur.voxels = { sections, voxelsLine: kw.line };
+        return ok(undefined);
+      }
+      if (t.text === ',') {
+        sections.push(current);
+        this.pos++;
+        current = { rows: [], startLine: t.line };
+        continue;
+      }
+      if (t.text === '{') {
+        return err(
+          'invalid-value',
+          `line ${t.line}: unexpected '{' inside voxels block`,
+        );
+      }
+      current.rows.push({ text: t.text, line: t.line, col: t.col });
+      this.pos++;
+    }
+    return err(
+      'missing',
+      `line ${kw.line}: unclosed voxels block (missing '}')`,
+    );
   }
 
-  private closeCurrentPart(): Result<void> {
-    if (this.cur === null) return ok(undefined);
-    const flushR = this.flushActiveLayer();
-    if (!flushR.ok) return flushR;
+  private closeCurrentPart(): void {
+    if (this.cur === null) return;
     this.parts.push(this.cur);
     this.cur = null;
-    return ok(undefined);
   }
 
   private assemblePart(
@@ -301,23 +341,20 @@ class CvoxParser {
         `line ${builder.headerLineNo}: part '${builder.name}' missing size`,
       );
     }
-    const size = builder.size;
-
-    for (const [idx, layer] of builder.layers) {
-      if (idx >= size.h) {
-        return err(
-          'invalid-value',
-          `line ${layer.indexLineNo}: layer index ${idx} out of range [0..${size.h - 1}] for part '${builder.name}'`,
-        );
-      }
+    if (builder.voxels === null) {
+      return err(
+        'missing',
+        `line ${builder.headerLineNo}: part '${builder.name}' missing voxels block`,
+      );
     }
-    for (let y = 0; y < size.h; y++) {
-      if (!builder.layers.has(y)) {
-        return err(
-          'missing',
-          `part '${builder.name}' missing layer index ${y} (has ${builder.layers.size} of ${size.h})`,
-        );
-      }
+    const size = builder.size;
+    const voxelsRaw = builder.voxels;
+
+    if (voxelsRaw.sections.length !== size.h) {
+      return err(
+        'wrong-arity',
+        `line ${voxelsRaw.voxelsLine}: voxels block for part '${builder.name}' has ${voxelsRaw.sections.length} layer-section(s), expected ${size.h}`,
+      );
     }
 
     const pivot: Pivot = builder.pivot ?? {
@@ -326,20 +363,20 @@ class CvoxParser {
 
     const voxels: number[][][] = [];
     for (let y = 0; y < size.h; y++) {
-      const layer = builder.layers.get(y)!;
-      if (layer.rows.length !== size.d) {
+      const section = voxelsRaw.sections[y]!;
+      if (section.rows.length !== size.d) {
         return err(
           'wrong-arity',
-          `line ${layer.indexLineNo}: layer ${y} in part '${builder.name}' has ${layer.rows.length} row(s), expected ${size.d}`,
+          `line ${section.startLine}: voxels block for part '${builder.name}' layer ${y} has ${section.rows.length} row(s), expected ${size.d}`,
         );
       }
       const layerCells: number[][] = [];
-      for (const rowText of layer.rows) {
-        const rowR = parseVoxelRow(rowText, size.w, palette.length);
+      for (const row of section.rows) {
+        const rowR = parseVoxelRow(row.text, size.w, palette.length);
         if (!rowR.ok) {
           return err(
             rowR.code,
-            `part '${builder.name}' layer ${y}: ${rowR.message}`,
+            `line ${row.line}: part '${builder.name}' layer ${y}: ${rowR.message}`,
           );
         }
         layerCells.push(rowR.value);

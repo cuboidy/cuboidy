@@ -1,6 +1,5 @@
-// W=0 is below the v0.2 min of 1 → E17
+// W=0 is below the v0.3 min of 1
 palette #FF0000
 part box
     size 0 1 1
-    layer 0
-    0
+    voxels { 0 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseCvox } from '../src/cvox/parse.js';
 import { readFixtureText } from './helpers/fixtures.js';
 
-describe('parseCvox', () => {
+describe('parseCvox (v0.3 voxels block grammar)', () => {
   describe('positive', () => {
     it('parses wolf/voxels.cvox', async () => {
       const text = await readFixtureText('wolf/voxels.cvox');
@@ -42,157 +42,101 @@ describe('parseCvox', () => {
         'palette #FF0000',
         'part box',
         'size 4 1 6',
-        'layer 0',
+        'voxels {',
         '0000',
         '0000',
         '0000',
         '0000',
         '0000',
         '0000',
+        '}',
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(true);
       if (r.ok) expect(r.value.parts[0]?.pivot.pos).toEqual({ x: 2, y: 0, z: 3 });
     });
-  });
 
-  describe('errors', () => {
-    it('E01: rejects missing palette', () => {
-      const text = 'part head\nsize 1 1 1\nlayer 0\n0';
-      const r = parseCvox(text);
-      expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('missing');
-    });
-
-    it('E12: rejects duplicate part name', () => {
+    it('parses positional layer indices (no layer keyword)', () => {
       const text = [
-        'palette #FF0000',
-        'part a',
-        'size 1 1 1',
-        'layer 0',
+        'palette #FF0000 #00FF00',
+        'part stack',
+        'size 1 3 1',
+        'voxels {',
         '0',
-        'part a',
-        'size 1 1 1',
-        'layer 0',
+        ',',
+        '1',
+        ',',
         '0',
-      ].join('\n');
-      const r = parseCvox(text);
-      expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('duplicate');
-    });
-
-    it('E14: rejects duplicate socket name within a part', () => {
-      const text = [
-        'palette #FF0000',
-        'part head',
-        'size 1 1 1',
-        'socket s 0 0 0',
-        'socket s 0 0 0',
-        'layer 0',
-        '0',
-      ].join('\n');
-      const r = parseCvox(text);
-      expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('duplicate');
-    });
-
-    it('E13: rejects part missing size', () => {
-      const text = [
-        'palette #FF0000',
-        'part head',
-        'layer 0',
-        '0',
-      ].join('\n');
-      const r = parseCvox(text);
-      expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('missing');
-    });
-
-    it('accepts layer indices in any order (v0.2 free-order)', () => {
-      const text = [
-        'palette #FF0000',
-        'part head',
-        'size 1 2 1',
-        'layer 1',
-        '0',
-        'layer 0',
-        '0',
+        '}',
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(true);
       if (r.ok) {
-        expect(r.value.parts[0]?.voxels).toHaveLength(2);
+        // voxels[y][z][x]
+        expect(r.value.parts[0]?.voxels[0]?.[0]?.[0]).toBe(0);
+        expect(r.value.parts[0]?.voxels[1]?.[0]?.[0]).toBe(1);
+        expect(r.value.parts[0]?.voxels[2]?.[0]?.[0]).toBe(0);
       }
     });
+  });
 
-    it('E09: rejects duplicate layer index', () => {
-      const text = [
-        'palette #FF0000',
-        'part head',
-        'size 1 2 1',
-        'layer 0',
-        '0',
-        'layer 0',
-        '0',
-      ].join('\n');
+  describe('missing', () => {
+    it('rejects missing palette', () => {
+      const text = 'part head\nsize 1 1 1\nvoxels { 0 }';
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('duplicate');
+      if (!r.ok) expect(r.code).toBe('missing');
     });
 
-    it('E09: rejects layer index >= H', () => {
-      const text = [
-        'palette #FF0000',
-        'part head',
-        'size 1 1 1',
-        'layer 5',
-        '0',
-      ].join('\n');
+    it('rejects file with palette but no parts', () => {
+      const r = parseCvox('palette #FF0000');
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('missing');
+    });
+
+    it('rejects part missing size', () => {
+      const text = 'palette #FF0000\npart head\nvoxels { 0 }';
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('invalid-value');
+      if (!r.ok) expect(r.code).toBe('missing');
     });
 
-    it('E10: rejects layer with too few rows', () => {
-      const text = [
-        'palette #FF0000',
-        'part head',
-        'size 3 1 4',
-        'layer 0',
-        '000',
-        '000',
-        '000',
-      ].join('\n');
+    it('rejects part missing voxels', () => {
+      const text = 'palette #FF0000\npart head\nsize 1 1 1';
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('wrong-arity');
+      if (!r.ok) expect(r.code).toBe('missing');
     });
 
-    it('E10: rejects layer with too many rows (caught on next layer)', () => {
-      const text = [
-        'palette #FF0000',
-        'part head',
-        'size 3 2 2',
-        'layer 0',
-        '000',
-        '000',
-        '000', // extra
-        'layer 1',
-        '000',
-        '000',
-      ].join('\n');
+    it('rejects unclosed voxels block', () => {
+      const text = 'palette #FF0000\npart head\nsize 1 1 1\nvoxels { 0';
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('wrong-arity');
+      if (!r.ok) expect(r.code).toBe('missing');
     });
 
-    it('E15: rejects duplicate palette declaration', () => {
+    it('rejects metadata keyword before any part', () => {
+      const text = 'palette #FF0000\nsize 1 1 1';
+      const r = parseCvox(text);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('missing');
+    });
+
+    it('rejects rot outside pivot/socket', () => {
+      const text = 'palette #FF0000\nrot 0 0 0';
+      const r = parseCvox(text);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('missing');
+    });
+  });
+
+  describe('duplicate', () => {
+    it('rejects duplicate palette declaration', () => {
       const text = [
         'palette #FF0000',
         'part box',
         'size 1 1 1',
-        'layer 0',
-        '0',
+        'voxels { 0 }',
         'palette #00FF00',
       ].join('\n');
       const r = parseCvox(text);
@@ -200,36 +144,65 @@ describe('parseCvox', () => {
       if (!r.ok) expect(r.code).toBe('duplicate');
     });
 
-    it('E19: rejects file with palette but no parts', () => {
-      const text = 'palette #FF0000';
-      const r = parseCvox(text);
-      expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('missing');
-    });
-
-    it('E17: rejects duplicate size in a part', () => {
+    it('rejects duplicate part name', () => {
       const text = [
         'palette #FF0000',
-        'part head',
-        'size 1 1 1',
-        'size 2 2 2',
-        'layer 0',
-        '0',
+        'part a', 'size 1 1 1', 'voxels { 0 }',
+        'part a', 'size 1 1 1', 'voxels { 0 }',
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.code).toBe('duplicate');
     });
 
-    it('E17: rejects duplicate pivot in a part', () => {
+    it('rejects duplicate socket name within a part', () => {
+      const text = [
+        'palette #FF0000',
+        'part head',
+        'size 1 1 1',
+        'socket s 0 0 0',
+        'socket s 0 0 0',
+        'voxels { 0 }',
+      ].join('\n');
+      const r = parseCvox(text);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('duplicate');
+    });
+
+    it('rejects duplicate size in a part', () => {
+      const text = [
+        'palette #FF0000',
+        'part head',
+        'size 1 1 1',
+        'size 2 2 2',
+        'voxels { 0 }',
+      ].join('\n');
+      const r = parseCvox(text);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('duplicate');
+    });
+
+    it('rejects duplicate pivot in a part', () => {
       const text = [
         'palette #FF0000',
         'part head',
         'size 1 1 1',
         'pivot 0 0 0',
         'pivot 0 0 0',
-        'layer 0',
-        '0',
+        'voxels { 0 }',
+      ].join('\n');
+      const r = parseCvox(text);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('duplicate');
+    });
+
+    it('rejects duplicate voxels block in a part', () => {
+      const text = [
+        'palette #FF0000',
+        'part head',
+        'size 1 1 1',
+        'voxels { 0 }',
+        'voxels { 0 }',
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
@@ -237,46 +210,254 @@ describe('parseCvox', () => {
     });
   });
 
-  describe('v0.2 free-order parsing', () => {
-    it('parses inline layer rows', () => {
-      const text = [
-        'palette #FF0000',
-        'part box',
-        'size 3 1 3',
-        'layer 0 000 000 000',
-      ].join('\n');
-      const r = parseCvox(text);
-      expect(r.ok).toBe(true);
-      if (r.ok) {
-        expect(r.value.parts[0]?.voxels).toEqual([
-          [
-            [0, 0, 0],
-            [0, 0, 0],
-            [0, 0, 0],
-          ],
-        ]);
-      }
+  describe('wrong-arity', () => {
+    it('rejects bare `part` (no identifier)', () => {
+      const r = parseCvox('palette #FF0000\npart');
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('wrong-arity');
     });
 
-    it('parses mixed inline + multi-line layer rows', () => {
+    it('rejects bare `size` (no args)', () => {
+      const r = parseCvox('palette #FF0000\npart box\nsize');
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('wrong-arity');
+    });
+
+    it('rejects voxels block missing opening `{`', () => {
+      const text = 'palette #FF0000\npart box\nsize 1 1 1\nvoxels 0';
+      const r = parseCvox(text);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('wrong-arity');
+    });
+
+    it('rejects layer-section count mismatch (too few)', () => {
       const text = [
         'palette #FF0000',
-        'part box',
+        'part head',
+        'size 1 3 1',
+        'voxels { 0 , 0 }', // 2 sections, expected H=3
+      ].join('\n');
+      const r = parseCvox(text);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('wrong-arity');
+    });
+
+    it('rejects layer-section count mismatch (too many)', () => {
+      const text = [
+        'palette #FF0000',
+        'part head',
+        'size 1 1 1',
+        'voxels { 0 , 0 }', // 2 sections, expected H=1
+      ].join('\n');
+      const r = parseCvox(text);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('wrong-arity');
+    });
+
+    it('rejects row count in a section ≠ D (too few)', () => {
+      const text = [
+        'palette #FF0000',
+        'part head',
         'size 3 1 4',
-        'layer 0 000 000',
-        '000',
-        '000',
+        'voxels { 000 000 000 }', // 3 rows, expected D=4
+      ].join('\n');
+      const r = parseCvox(text);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('wrong-arity');
+    });
+
+    it('rejects row count in a section ≠ D (too many)', () => {
+      const text = [
+        'palette #FF0000',
+        'part head',
+        'size 3 2 2',
+        'voxels { 000 000 000 , 000 000 }',
+      ].join('\n');
+      const r = parseCvox(text);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('wrong-arity');
+    });
+
+    it('rejects voxel row width ≠ W', () => {
+      const text = [
+        'palette #FF0000',
+        'part head',
+        'size 3 1 3',
+        'voxels { 0000 000 000 }', // first row width 4 ≠ W=3
+      ].join('\n');
+      const r = parseCvox(text);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('wrong-arity');
+    });
+  });
+
+  describe('invalid-value', () => {
+    it('rejects voxel cell outside [.0-9a-zA-Z]', () => {
+      const text = [
+        'palette #FF0000',
+        'part box',
+        'size 3 1 1',
+        'voxels { 00! }',
+      ].join('\n');
+      const r = parseCvox(text);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('invalid-value');
+    });
+
+    it('rejects palette index out of range', () => {
+      const text = [
+        'palette #FF0000', // 1 color
+        'part box',
+        'size 3 1 1',
+        'voxels { 012 }', // index 1 and 2 are out of range
+      ].join('\n');
+      const r = parseCvox(text);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('invalid-value');
+    });
+
+    it('rejects nested `{` inside voxels block', () => {
+      const text = [
+        'palette #FF0000',
+        'part box',
+        'size 1 1 1',
+        'voxels { { 0 } }',
+      ].join('\n');
+      const r = parseCvox(text);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('invalid-value');
+    });
+  });
+
+  describe('unknown', () => {
+    it('rejects stray punctuation at top level', () => {
+      const r = parseCvox(',');
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('unknown');
+    });
+
+    it('rejects unknown identifier at top level', () => {
+      const r = parseCvox('mystery 1 2 3');
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('unknown');
+    });
+  });
+
+  describe('lexical isolation inside voxels block', () => {
+    it('reserved words (rot, size, part) are valid voxel-row strings inside voxels', () => {
+      // palette must have >=30 colors for `rot`: r=27, o=24, t=29
+      const palette = [
+        '#000', '#001', '#002', '#003', '#004', '#005', '#006', '#007', '#008', '#009',
+        '#00a', '#00b', '#00c', '#00d', '#00e', '#00f', '#010', '#011', '#012', '#013',
+        '#014', '#015', '#016', '#017', '#018', '#019', '#01a', '#01b', '#01c', '#01d',
+      ].join(' ');
+      const text = [
+        `palette ${palette}`,
+        'part demo',
+        'size 3 1 1',
+        'voxels { rot }', // rot as voxel row → indices [27, 24, 29]
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(true);
-      if (r.ok) expect(r.value.parts[0]?.voxels[0]).toHaveLength(4);
+      if (r.ok) expect(r.value.parts[0]?.voxels[0]?.[0]).toEqual([27, 24, 29]);
     });
 
+    it('voxel-row text "size" parses as voxel data with 30+ color palette', () => {
+      const palette = Array.from({ length: 36 }, (_, i) => `#${i.toString(16).padStart(3, '0')}`).join(' ');
+      const text = [
+        `palette ${palette}`,
+        'part demo',
+        'size 4 1 1',
+        'voxels { size }', // s=28, i=18, z=35, e=14
+      ].join('\n');
+      const r = parseCvox(text);
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.value.parts[0]?.voxels[0]?.[0]).toEqual([28, 18, 35, 14]);
+    });
+  });
+
+  describe('whitespace and comments', () => {
+    it('parses voxels block on a single line', () => {
+      const text = 'palette #FF0000\npart box\nsize 3 1 3\nvoxels { 000 000 000 }';
+      const r = parseCvox(text);
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.value.parts[0]?.voxels[0]).toHaveLength(3);
+    });
+
+    it('parses voxels with commas adjacent to rows (no whitespace required)', () => {
+      const text = 'palette #FF0000\npart box\nsize 1 2 1\nvoxels{0,0}';
+      const r = parseCvox(text);
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.value.parts[0]?.voxels).toHaveLength(2);
+    });
+
+    it('parses comments inside voxels block', () => {
+      const text = [
+        'palette #FF0000',
+        'part box',
+        'size 1 2 1',
+        'voxels {',
+        '  // layer 0',
+        '  0',
+        '  ,',
+        '  // layer 1',
+        '  0',
+        '}',
+      ].join('\n');
+      const r = parseCvox(text);
+      expect(r.ok).toBe(true);
+    });
+
+    it('parses with full-line and trailing comments', () => {
+      const text = [
+        '// the box model',
+        'palette #FF0000  // red',
+        '',
+        'part box  // the box',
+        '    size 1 1 1',
+        '    voxels { 0 }  // filled',
+      ].join('\n');
+      const r = parseCvox(text);
+      expect(r.ok).toBe(true);
+    });
+
+    it('size args can span multiple lines', () => {
+      const text = [
+        'palette #FF0000',
+        'part box',
+        'size',
+        '3',
+        '1',
+        '3',
+        'voxels { 000 000 000 }',
+      ].join('\n');
+      const r = parseCvox(text);
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.value.parts[0]?.size).toEqual({ w: 3, h: 1, d: 3 });
+    });
+
+    it('palette colors can be split across lines', () => {
+      const text = [
+        'palette',
+        '    #FF0000',
+        '    #00FF00',
+        '    #0000FF',
+        'part box',
+        '    size 1 1 1',
+        '    voxels { 0 }',
+      ].join('\n');
+      const r = parseCvox(text);
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.value.palette).toHaveLength(3);
+    });
+  });
+
+  describe('free-order within scope', () => {
     it('parses palette declared after parts', () => {
       const text = [
         'part box',
         '    size 1 1 1',
-        '    layer 0  0',
+        '    voxels { 0 }',
         '',
         'palette #FF0000',
       ].join('\n');
@@ -285,13 +466,13 @@ describe('parseCvox', () => {
       if (r.ok) expect(r.value.palette).toHaveLength(1);
     });
 
-    it('parses metadata in any order (pivot before size, socket before size)', () => {
+    it('parses metadata in any order (pivot before size, voxels before size)', () => {
       const text = [
         'palette #FF0000',
         'part box',
         '    pivot 1 0 1',
         '    socket s 0 0 0',
-        '    layer 0  0',
+        '    voxels { 0 }',
         '    size 1 1 1',
       ].join('\n');
       const r = parseCvox(text);
@@ -302,37 +483,12 @@ describe('parseCvox', () => {
       }
     });
 
-    it('parses with full-line and trailing comments', () => {
-      const text = [
-        '// the box model',
-        'palette #FF0000  // red',
-        '',
-        'part box  // the box',
-        '    size 1 1 1',
-        '    layer 0  0  // filled',
-      ].join('\n');
-      const r = parseCvox(text);
-      expect(r.ok).toBe(true);
-    });
-
-    it('parses indented metadata under part (whitespace tolerance)', () => {
-      const text = [
-        'palette #FF0000',
-        'part box',
-        '        size 1 1 1',
-        '        layer 0  0',
-      ].join('\n');
-      const r = parseCvox(text);
-      expect(r.ok).toBe(true);
-    });
-
-    it('palette mid-part does not close the part (v0.2 §7.5)', () => {
-      // palette appears between size and layer; the part should remain open.
+    it('palette mid-part does not close the part', () => {
       const text = [
         'part box',
         '    size 1 1 1',
         '    palette #FF0000',
-        '    layer 0  0',
+        '    voxels { 0 }',
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(true);
@@ -342,99 +498,58 @@ describe('parseCvox', () => {
         expect(r.value.parts[0]?.voxels).toEqual([[[0]]]);
       }
     });
+  });
 
-    it('layer indices in any order produce voxels at the correct Y slot', () => {
-      // Confirms that out-of-order declarations are reassembled by index,
-      // not by declaration order.
+  describe('pivot/socket with rot', () => {
+    it('pivot with rot (7 args) parses and persists rotation', () => {
       const text = [
-        'palette #FF0000 #00FF00',
-        'part stack',
-        '    size 1 3 1',
-        '    layer 2  1',
-        '    layer 0  0',
-        '    layer 1  1',
+        'palette #FF0000',
+        'part box',
+        '    size 1 1 1',
+        '    pivot 0 0 0 rot 0 90 0',
+        '    voxels { 0 }',
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(true);
       if (r.ok) {
-        // voxels[y][z][x]; y is the layer index
-        expect(r.value.parts[0]?.voxels[0]?.[0]?.[0]).toBe(0); // layer 0
-        expect(r.value.parts[0]?.voxels[1]?.[0]?.[0]).toBe(1); // layer 1
-        expect(r.value.parts[0]?.voxels[2]?.[0]?.[0]).toBe(1); // layer 2
+        const p = r.value.parts[0]!.pivot;
+        expect(p.pos).toEqual({ x: 0, y: 0, z: 0 });
+        expect(p.rot).toEqual({ x: 0, y: 90, z: 0 });
       }
     });
 
-    it('metadata between rows closes the active layer (E10)', () => {
-      // A non-row keyword arriving while the active layer has not received
-      // its full D rows must report E10 immediately, not silently consume
-      // later rows into the same layer.
-      const text = [
-        'palette #FF0000',
-        'part head',
-        '    size 1 1 2',  // D=2 rows expected per layer
-        '    layer 0',
-        '    0',           // 1st row (need 2)
-        '    socket s 0 0 0',  // socket closes active layer prematurely
-        '    0',           // would have been 2nd row but layer is closed
-      ].join('\n');
-      const r = parseCvox(text);
-      expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('invalid-value');
-    });
-
-    it('row continuation on subsequent line (v0.2 §7.9 multi-row token)', () => {
-      // `0 0` on a line after `layer N` is treated as two row tokens
-      // belonging to the active layer.
-      const text = [
-        'palette #FF0000',
-        'part head',
-        '    size 1 1 2',
-        '    layer 0',
-        '    0 0',  // 2 row tokens on the same subsequent line
-      ].join('\n');
-      const r = parseCvox(text);
-      expect(r.ok).toBe(true);
-      if (r.ok) expect(r.value.parts[0]?.voxels[0]).toHaveLength(2);
-    });
-
-    it('E03: bare `part` (no identifier) yields a clear E03', () => {
-      const text = ['palette #FF0000', 'part'].join('\n');
-      const r = parseCvox(text);
-      expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('wrong-arity');
-    });
-
-    it('E17: bare `size` (no args) yields E17', () => {
-      const text = ['palette #FF0000', 'part box', 'size'].join('\n');
-      const r = parseCvox(text);
-      expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('wrong-arity');
-    });
-
-    it('whitespace and newlines are equivalent token separators (part)', () => {
-      const text = ['palette #FF0000', 'part', 'crown', 'size 1 1 1', 'layer 0  0'].join('\n');
-      const r = parseCvox(text);
-      expect(r.ok).toBe(true);
-      if (r.ok) expect(r.value.parts[0]?.name).toBe('crown');
-    });
-
-    it('size args can span multiple lines', () => {
-      // size 3 1 3 = W=3, H=1, D=3 → one layer with 3 rows
+    it('pivot 3-args (no rot) still works', () => {
       const text = [
         'palette #FF0000',
         'part box',
-        'size',
-        '3',
-        '1',
-        '3',
-        'layer 0',
-        '000',
-        '000',
-        '000',
+        '    size 1 1 1',
+        '    pivot 0 0 0',
+        '    voxels { 0 }',
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(true);
-      if (r.ok) expect(r.value.parts[0]?.size).toEqual({ w: 3, h: 1, d: 3 });
+      if (r.ok) {
+        const p = r.value.parts[0]!.pivot;
+        expect(p.pos).toEqual({ x: 0, y: 0, z: 0 });
+        expect(p.rot).toBeUndefined();
+      }
+    });
+
+    it('socket with rot (8 args) persists rotation', () => {
+      const text = [
+        'palette #FF0000',
+        'part box',
+        '    size 1 1 1',
+        '    socket hat 0 0 0 rot 0 90 0',
+        '    voxels { 0 }',
+      ].join('\n');
+      const r = parseCvox(text);
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        const s = r.value.parts[0]?.sockets[0];
+        expect(s?.name).toBe('hat');
+        expect(s?.rot).toEqual({ x: 0, y: 90, z: 0 });
+      }
     });
 
     it('socket args (with rot) can span multiple lines', () => {
@@ -451,7 +566,7 @@ describe('parseCvox', () => {
         '        0',
         '        90',
         '        0',
-        '    layer 0  0',
+        '    voxels { 0 }',
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(true);
@@ -462,142 +577,16 @@ describe('parseCvox', () => {
       }
     });
 
-    it('layer rows can be mixed across many lines with arbitrary whitespace', () => {
-      const text = [
-        'palette #FF0000',
-        'part box',
-        '    size 3 1 4',
-        '    layer  0',
-        '          000  000',  // 2 tokens on this line
-        '',                     // blank lines OK
-        '          000',
-        '          000',
-      ].join('\n');
-      const r = parseCvox(text);
-      expect(r.ok).toBe(true);
-      if (r.ok) expect(r.value.parts[0]?.voxels[0]).toHaveLength(4);
-    });
-
-    it('palette colors can be split across lines', () => {
-      const text = [
-        'palette',
-        '    #FF0000',
-        '    #00FF00',
-        '    #0000FF',
-        'part box',
-        '    size 1 1 1',
-        '    layer 0  0',
-      ].join('\n');
-      const r = parseCvox(text);
-      expect(r.ok).toBe(true);
-      if (r.ok) expect(r.value.palette).toHaveLength(3);
-    });
-
-    it('E07: bad-char token while an active layer is open', () => {
-      // `wibble!` has `!` outside [.0-9a-zA-Z]. The active layer is open
-      // (one inline row from `layer 0  0`), so the parser expects rows;
-      // a bad-char token in row context is E07, not E04.
-      const text = [
-        'palette #FF0000',
-        'part box',
-        '    size 1 1 1',
-        '    layer 0  0',
-        '    wibble! 1 2 3',
-      ].join('\n');
-      const r = parseCvox(text);
-      expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('invalid-value');
-    });
-
-    it('E07: # in a token within an active layer (color literal outside palette)', () => {
-      // `bogus` is voxel-row shape so it appends as a row;
-      // `#FF` then has `#`, not voxel-row shape, active layer open → E07.
-      const text = [
-        'palette #FF0000',
-        'part box',
-        '    size 1 1 2',
-        '    layer 0',
-        '    0',
-        '    bogus #FF',
-      ].join('\n');
-      const r = parseCvox(text);
-      expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('invalid-value');
-    });
-
-    it('pivot with rot (7 args) parses and persists rotation', () => {
-      const text = [
-        'palette #FF0000',
-        'part box',
-        '    size 1 1 1',
-        '    pivot 0 0 0 rot 0 90 0',
-        '    layer 0  0',
-      ].join('\n');
-      const r = parseCvox(text);
-      expect(r.ok).toBe(true);
-      if (r.ok) {
-        const p = r.value.parts[0]!.pivot;
-        expect(p.pos).toEqual({ x: 0, y: 0, z: 0 });
-        expect(p.rot).toEqual({ x: 0, y: 90, z: 0 });
-      }
-    });
-
-    it('pivot 3-args (no rot) still works (backward compat)', () => {
-      const text = [
-        'palette #FF0000',
-        'part box',
-        '    size 1 1 1',
-        '    pivot 0 0 0',
-        '    layer 0  0',
-      ].join('\n');
-      const r = parseCvox(text);
-      expect(r.ok).toBe(true);
-      if (r.ok) {
-        const p = r.value.parts[0]!.pivot;
-        expect(p.pos).toEqual({ x: 0, y: 0, z: 0 });
-        expect(p.rot).toBeUndefined();
-      }
-    });
-
-    it('pivot extra numeric arg surfaces as E10 under integrated parsing (SPEC §7.7)', () => {
-      // Token-stream model: extras beyond the 3 (or 7-with-rot) args are
-      // not stolen by pivot. They fall through to the main loop. With no
-      // active layer here, the stray `5` becomes E10.
+    it('pivot extra numeric arg surfaces as unknown under integrated parsing', () => {
+      // Token-stream model: extras beyond 3 (or 7-with-rot) args are not stolen
+      // by pivot. They fall through to the main loop. With no active voxels
+      // context, a stray `5` is an unknown top-level token.
       const text = [
         'palette #FF0000',
         'part box',
         '    size 1 1 1',
         '    pivot 1 0 1 5',
-        '    layer 0  0',
-      ].join('\n');
-      const r = parseCvox(text);
-      expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('invalid-value');
-    });
-
-    it('socket extra numeric arg surfaces as E10 under integrated parsing', () => {
-      const text = [
-        'palette #FF0000',
-        'part box',
-        '    size 1 1 1',
-        '    socket s 0 0 0 5',
-        '    layer 0  0',
-      ].join('\n');
-      const r = parseCvox(text);
-      expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('invalid-value');
-    });
-
-    it('E04: bad-char token with no active layer open', () => {
-      // After `pivot` closes the active layer, a non-voxel-row, non-keyword
-      // token has no row context to belong to — that's E04.
-      const text = [
-        'palette #FF0000',
-        'part box',
-        '    size 1 1 1',
-        '    layer 0  0',
-        '    pivot 0 0 0',  // closes active layer
-        '    bogus!',       // no active layer + bad chars → E04
+        '    voxels { 0 }',
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
