@@ -330,16 +330,30 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
   });
 
   describe('unknown', () => {
-    it('rejects stray punctuation at top level', () => {
-      const r = parseCvox(',');
-      expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('unknown');
-    });
-
     it('rejects unknown identifier at top level', () => {
       const r = parseCvox('mystery 1 2 3');
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.code).toBe('unknown');
+    });
+  });
+
+  describe('missing (reserved token outside valid scope)', () => {
+    it('rejects stray `,` at top level', () => {
+      const r = parseCvox(',');
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('missing');
+    });
+
+    it('rejects stray `{` at top level', () => {
+      const r = parseCvox('{ 0 }');
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('missing');
+    });
+
+    it('rejects stray `}` at top level', () => {
+      const r = parseCvox('}');
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('missing');
     });
   });
 

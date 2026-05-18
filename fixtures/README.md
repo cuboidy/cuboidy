@@ -11,23 +11,26 @@ fixtures/
 ├── README.md
 ├── cvox/
 │   ├── missing/
-│   │   ├── palette.cvox          no `palette` declaration anywhere
-│   │   ├── parts.cvox            palette declared but no `part`
-│   │   ├── voxels.cvox           part has size but no voxels block
-│   │   └── voxels-unclosed.cvox  voxels block reaches EOF without `}`
+│   │   ├── palette.cvox            no `palette` declaration anywhere
+│   │   ├── parts.cvox              palette declared but no `part`
+│   │   ├── voxels.cvox             part has size but no voxels block
+│   │   ├── voxels-unclosed.cvox    voxels block reaches EOF without `}`
+│   │   ├── stray-comma.cvox        `,` outside any voxels block
+│   │   ├── stray-open-brace.cvox   `{` outside its valid scope (after `voxels`)
+│   │   ├── stray-close-brace.cvox  `}` outside any voxels block
+│   │   └── stray-rot.cvox          `rot` outside pivot/socket
 │   ├── duplicate/
-│   │   ├── palette.cvox          two `palette` declarations
-│   │   └── voxels.cvox           two voxels blocks in a single part
+│   │   ├── palette.cvox            two `palette` declarations
+│   │   └── voxels.cvox             two voxels blocks in a single part
 │   ├── invalid-value/
-│   │   ├── bad-voxel-char.cvox   voxel cell outside [.0-9a-zA-Z]
-│   │   └── size-zero.cvox        size dimension 0 is below the v0.3 min
+│   │   ├── bad-voxel-char.cvox     voxel cell outside [.0-9a-zA-Z]
+│   │   └── size-zero.cvox          size dimension 0 is below the v0.3 min
 │   ├── unknown/
-│   │   ├── unknown-keyword.cvox  non-reserved identifier at top level
-│   │   └── stray-punct.cvox      `,` outside any voxels block
+│   │   └── unknown-keyword.cvox    non-reserved identifier at top level
 │   └── wrong-arity/
-│       ├── row-width.cvox        row width does not match W
-│       ├── row-count.cvox        rows in a layer-section does not match D
-│       └── section-count.cvox    layer-section count does not match H
+│       ├── row-width.cvox          row width does not match W
+│       ├── row-count.cvox          rows in a layer-section does not match D
+│       └── section-count.cvox      layer-section count does not match H
 └── json/
     └── missing/
         ├── name.json             missing top-level `name`

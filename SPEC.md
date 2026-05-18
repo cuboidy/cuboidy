@@ -247,38 +247,46 @@ A plain-text file. Lexing uses a two-layer model (§7.1), parsing is recursive-d
 
 ### 7.1 Lexical structure
 
-Cuboidy uses **two layers** of lexing:
+Cuboidy's lexer recognizes one unified category — **reserved tokens** — split by syntactic shape into two sub-categories. Both stop argument collection (§7.2), neither participates in identifier slots, and together they are the only tokens with grammatical significance outside of voxel data.
 
-**Layer 1 — universal** (active anywhere in the file):
+**Reserved punctuation — universal scope** (always recognized as 1-character tokens, anywhere in the file):
+
+| Token | Role | Need surrounding whitespace? |
+|---|---|---|
+| `{` | open a `voxels` block | no — `voxels{` tokenizes as `voxels` + `{` |
+| `}` | close a `voxels` block | no — `},` tokenizes as `}` + `,` |
+| `,` | layer-section separator inside a `voxels` block | no — `0,0` tokenizes as `0` + `,` + `0` |
+
+These three tokens are **always significant**, including inside a `voxels { … }` block. They never appear inside another token (none of them is in the voxel-cell character set `[.0-9a-zA-Z]`), so they cannot collide with voxel data.
+
+**Reserved keywords — context-scoped** (the full set is flat — 7 words — but each is only recognized as a *statement-starting keyword* in a specific scope; full structural validity table in §7.3):
+
+| Scope | Statement-starting keywords recognized here | Other lexical features |
+|---|---|---|
+| **top-level** (outside any `{ … }`) | `palette`, `part` | `#` introduces a color literal (palette arg) |
+| **`part` section** (between a `part` keyword and the next `part` or end of file) | `size`, `pivot`, `socket`, `voxels` (and `palette`, which is file-level but may appear textually here without closing the part — see §7.5) | — |
+| **`pivot` / `socket` declaration** (after the position triple) | `rot` (optional, introduces a rotation triple) | — |
+| **`voxels { … }` block** | **(none)** — alphabetic reserved keywords have no lexical privilege here; every token except the reserved punctuation `,` `}` is interpreted as a voxel-row string | — |
+
+**Non-tokenized lexical primitives** (also universal, but never produce tokens):
 
 | Element | Behavior |
 |---|---|
 | whitespace (space, tab, newline) | token separator; no syntactic significance |
 | `//` … end-of-line | comment, stripped before tokenization |
-| `{` `}` `,` | 1-character punctuation tokens, recognized everywhere; never appear inside any other token; need no surrounding whitespace (so `voxels{` and `},` tokenize as expected) |
 
-**Layer 2 — context-scoped** (each scope decides which reserved words are recognized as **valid statement starters** within it; full structural validity rules per keyword live in §7.3):
+**Lexical vs structural — two separate axes.** The set of *lexical* reserved tokens is fixed (7 keywords + 3 punctuation). What changes by scope is *structural validity* — which reserved token can appear here and what role it plays. A reserved token never participates in identifier slots: the parser collects arguments to a keyword until the next reserved token (§7.2), so `part rot` does not name a part `rot` — it fails as a `part` header with 0 identifier arguments. To put a string spelled like a reserved keyword into the model, place it inside a `voxels { … }` block where alphabetic keywords have no lexical privilege. (The 3 reserved punctuation tokens never decay into voxel-row strings, however, because their characters fall outside `[.0-9a-zA-Z]`.)
 
-| Scope | Statement-starting keywords recognized here | Special tokens |
-|---|---|---|
-| **top-level** (outside any `{ … }`) | `palette`, `part` | `#` introduces a color literal (palette arg) |
-| **`part` section** (between a `part` keyword and the next `part` or end of file) | `size`, `pivot`, `socket`, `voxels` (and `palette`, which is file-level but may appear textually here without closing the part — see §7.5) | — |
-| **`pivot` / `socket` declaration** (after the position triple) | `rot` (optional, introduces a rotation triple) | — |
-| **`voxels { … }` block** | **(none)** | every token except the universal `,` `}` is interpreted as a voxel-row string |
+The framework generalizes naturally: each block-introducing keyword (currently `voxels`; future versions may add more) decides what is reserved inside its `{ … }`. The `voxels` keyword reserves no alphabetic keywords — so alphabetic reserved keywords from other scopes appearing inside `voxels { … }` are simply voxel-row strings.
 
-**Lexical vs structural — two separate axes.** The set of *lexically* reserved words is a flat 7-element list (§7.3); it never changes by scope. What changes by scope is *structural validity* — which reserved word can start a statement here. A reserved word never participates in identifier slots: the parser collects arguments to a keyword until the next reserved word or universal punctuation (§7.2 note), so `part rot` does not name a part `rot` — it fails as a `part` header with 0 identifier arguments. To put a string spelled like a reserved word into the model, place it inside a `voxels { … }` block where reserved words have no lexical privilege.
-
-The framework generalizes naturally: each block-introducing keyword (currently `voxels`; future versions may add more) decides what is reserved inside its `{ … }`. The `voxels` keyword reserves nothing — so reserved words from other scopes appearing inside `voxels { … }` are simply voxel-row strings.
-
-**Consequence — voxel data is lexically isolated:** a row written as `rot` or `size` or `part` is unambiguously voxel data. The user-visible rule is "reserved words live outside `voxels { … }`; inside, anything goes".
+**Consequence — voxel data is lexically isolated:** a row written as `rot` or `size` or `part` is unambiguously voxel data. The user-visible rule is "alphabetic reserved keywords live outside `voxels { … }`; inside, anything goes — except the 3 reserved punctuation tokens, which always retain their structural role".
 
 ### 7.1.1 Token table
 
 | Token | Pattern | Example |
 |---|---|---|
 | **Reserved keyword** | one of `palette`, `part`, `size`, `pivot`, `socket`, `voxels`, `rot` (per §7.1 scope rules) | `voxels` |
-| **Block delimiter** | `{` or `}` | `{` |
-| **Layer separator** | `,` (only meaningful inside `voxels { … }`) | `,` |
+| **Reserved punctuation** | `{` `}` `,` (always 1-character tokens, universal scope) | `{` |
 | **Color literal** | `#` followed by 3, 4, 6, or 8 hex digits | `#8B4513` |
 | **Identifier** | `[a-zA-Z_][a-zA-Z0-9_-]*` | `head`, `leg-fl` |
 | **Number** | integer or decimal, optional leading `-` | `3`, `1.5`, `-2` |
@@ -324,29 +332,39 @@ voxel-row    := /[.0-9a-zA-Z]+/               (length must equal W;
                                               voxel-row tokens inside `voxels { … }`)
 ```
 
-Tokens are separated by any whitespace (space, tab, newline) or by the universal punctuation `{` `}` `,` (which need no surrounding whitespace).
+Tokens are separated by any whitespace (space, tab, newline) or by the reserved punctuation `{` `}` `,` (which need no surrounding whitespace).
 
-**Argument collection rule (Postel reader semantics).** When the integrated parser is reading arguments to a keyword (`palette` colors, `part` identifier, `size` ints, `pivot` / `socket` nums, `voxels` opening `{`), it pulls tokens from the stream **until the next reserved word or universal punctuation `{` `}` `,`** — whichever comes first. The library-level entry points (`parsePart(args)`, `parseSize(args)`, etc.) receive whatever slice was pulled and validate strict arity:
+**Argument collection rule (Postel reader semantics).** When the integrated parser is reading arguments to a keyword (`palette` colors, `part` identifier, `size` ints, `pivot` / `socket` nums, `voxels` opening `{`), it pulls tokens from the stream **until the next reserved token** — keyword or punctuation, whichever comes first. The library-level entry points (`parsePart(args)`, `parseSize(args)`, etc.) receive whatever slice was pulled and validate strict arity:
 
 - If the pulled count is less than required, the library returns `wrong-arity`.
 - If the pulled count is more than required, the library returns `wrong-arity` (library entry only).
 - Under the integrated parser, the keyword consumes only its required count; extras stay in the stream and are diagnosed by the main loop at the next iteration (typically `unknown` for a stray identifier, `invalid-value` for a stray number where no statement is expected). This is documented per-keyword in §7.5–§7.9.
 
-Concretely: `part rot` pulls 0 identifier tokens (because `rot` is reserved and stops collection), so `parsePart([])` returns `wrong-arity`. `size 1 1 1 9` pulls 3 ints, sets the size, and leaves `9` for the main loop to diagnose as `unknown`. This rule is what makes "reserved words are not valid identifiers" an automatic consequence of the lexer.
+Concretely: `part rot` pulls 0 identifier tokens (because `rot` is reserved and stops collection), so `parsePart([])` returns `wrong-arity`. `size 1 1 1 9` pulls 3 ints, sets the size, and leaves `9` for the main loop to diagnose as `unknown`. This rule is what makes "reserved tokens are not valid identifiers" an automatic consequence of the lexer.
 
 **`palette` mid-part.** The `palette` keyword is file-level (§7.5): it may appear anywhere in the file, including inside the textual span of a `part` section. It does **not** close the surrounding part — the part remains open after the `palette` declaration is consumed. The grammar above shows `part := "part" identifier (size-decl | pivot-decl | socket-decl | voxels-block)+`, but a reader MUST accept a `palette-decl` interleaved into that sequence without closing the part. This special-case applies only to `palette`; all other top-level statement starters (`part`) close the surrounding part.
 
-### 7.3 Reserved keywords (v0.3)
+### 7.3 Reserved tokens (v0.3)
 
-The full reserved-word set is **flat** — there is no concept of "sub-keyword". All reserved words are lexically equal:
+The reserved-token set is **flat** — there is no concept of "sub-keyword". It has two sub-categories distinguished only by syntactic shape; both share the property "stops argument collection (§7.2) and never appears in an identifier slot".
+
+#### 7.3.1 Reserved keywords (7, alphabetic)
 
 ```
 palette  part  size  pivot  socket  voxels  rot
 ```
 
-**Structural validity** (where each may appear) is a separate axis, enforced by the parser:
+#### 7.3.2 Reserved punctuation (3, symbol)
 
-| Keyword | Structurally valid in |
+```
+{   }   ,
+```
+
+#### 7.3.3 Structural validity
+
+Each reserved token has a single structurally valid position. Outside that position it is reported as `missing` (the required enclosing scope is absent).
+
+| Token | Structurally valid in |
 |---|---|
 | `palette` | top-level (exactly once per file) |
 | `part` | top-level |
@@ -355,10 +373,15 @@ palette  part  size  pivot  socket  voxels  rot
 | `socket` | within a `part` section (any count) |
 | `voxels` | within a `part` section (exactly once per part) |
 | `rot` | inside a `pivot` or `socket` declaration, immediately after the position triple |
+| `{` | immediately after the `voxels` keyword (opens a voxels block) |
+| `}` | inside a voxels block (closes it) |
+| `,` | inside a voxels block (separates layer-sections) |
 
-A reserved word appearing outside its structurally valid scope is reported as `missing` (the required enclosing scope was missing — e.g. `size` before any `part`) or `unknown` (the token had no valid grammatical role at this point).
+#### 7.3.4 Lexical privilege inside `voxels { … }`
 
-**Inside a `voxels { … }` block, none of the reserved words above are recognized as keywords** (per §7.1 Layer 2 scope rules). They are interpreted as voxel-row strings and validated against row-width and palette-index rules. A row spelling `rot`, `size`, or `part` is well-formed voxel data when the palette indices fall within range.
+Inside a `voxels { … }` block, the **alphabetic reserved keywords lose their lexical privilege** — they are interpreted as voxel-row strings and validated against row-width and palette-index rules. A row spelling `rot`, `size`, or `part` is well-formed voxel data when the palette indices fall within range.
+
+The **3 reserved punctuation tokens retain their structural role inside the block**: `}` always closes the block, `,` always separates layer-sections, and `{` is reported as `invalid-value` (no nesting allowed). They cannot decay into voxel-row strings because their characters (`{`, `}`, `,`) fall outside the voxel-cell character set `[.0-9a-zA-Z]`.
 
 ### 7.4 Palette declaration
 
@@ -723,10 +746,10 @@ Concrete precedence:
 2. Tokenization (no errors possible; any non-whitespace sequence becomes a token; `{` `}` `,` are 1-char tokens).
 3. Token-stream forward pass — raised at the point the offending token is consumed:
    - **`duplicate`** — duplicate `palette` declaration; duplicate `part` name; duplicate socket within a part; duplicate `size` / `pivot` / `voxels` within a part
-   - **`wrong-arity`** — too-few args for any keyword consumed by the integrated parser (`palette` empty, `size` < 3, `pivot` < 3, `socket` < 4, `part` < 1; per §7.2's argument-collection rule, this happens when a reserved word or `{` `}` `,` arrives before enough args are collected); palette overflow (`> 62` colors); `voxels` not followed by `{`; nested `{` inside `voxels { … }`
+   - **`wrong-arity`** — too-few args for any keyword consumed by the integrated parser (`palette` empty, `size` < 3, `pivot` < 3, `socket` < 4, `part` < 1; per §7.2's argument-collection rule, this happens when a reserved token arrives before enough args are collected); palette overflow (`> 62` colors); `voxels` not followed by `{`; nested `{` inside `voxels { … }`
    - **`invalid-value`** — bad color hex; non-numeric value where number expected; size dimension out of range; identifier failing the §5 regex; missing or wrong `rot` marker
-   - **`missing`** — a part-scoped reserved word (`size` / `pivot` / `socket` / `voxels`) consumed before any `part` declaration; `voxels { … }` block reaches EOF without `}`; `rot` consumed outside `pivot` / `socket`
-   - **`unknown`** — non-keyword token with no valid grammatical role at this point. This includes extras left over after a keyword consumed its required args (e.g. the `9` in `size 1 1 1 9`, the `b` in `part a b`, the `5` in `pivot 1 0 1 5` — see per-keyword notes in §7.5–§7.9)
+   - **`missing`** — a reserved token consumed outside its structurally valid scope (per §7.3.3): a part-scoped keyword (`size` / `pivot` / `socket` / `voxels`) before any `part` declaration; `rot` outside `pivot` / `socket`; `{` / `}` / `,` at top level or in any position where its enclosing scope is absent; `voxels { … }` block reaches EOF without `}`
+   - **`unknown`** — non-reserved token with no valid grammatical role at this point. This includes extras left over after a keyword consumed its required args (e.g. the `9` in `size 1 1 1 9`, the `b` in `part a b`, the `5` in `pivot 1 0 1 5` — see per-keyword notes in §7.5–§7.9), and stray identifiers / numbers at top level
 4. End-of-stream assembly — raised after all tokens are consumed (validation deferred because palette may be declared anywhere in the file, so voxel-row content cannot be validated at consumption time):
    - **`missing`** — palette absent; palette declared but no parts; `size` missing in a part; `voxels` missing in a part
    - **`invalid-value`** — voxel cell character outside `[.0-9a-zA-Z]`; voxel cell references a palette index outside the declared palette

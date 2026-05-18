@@ -19,11 +19,11 @@ export interface PartDefinition {
   voxels: readonly (readonly (readonly number[])[])[];
 }
 
-// SPEC §7.3: the full flat reserved-word set. Structural validity (where
-// each may appear) is enforced by the parser, not by the lexical category.
-// `rot` is a reserved word with structural validity constrained to pivot
-// and socket declarations.
-const RESERVED_WORDS: ReadonlySet<string> = new Set([
+// SPEC §7.3: the full flat reserved-token set, split into two sub-categories
+// by syntactic shape but unified by parsing semantic (both stop argument
+// collection, both never participate in identifier slots). Structural
+// validity per token lives in §7.3.3, enforced by the dispatch table below.
+const RESERVED_KEYWORDS: readonly string[] = [
   'palette',
   'part',
   'size',
@@ -31,6 +31,11 @@ const RESERVED_WORDS: ReadonlySet<string> = new Set([
   'socket',
   'voxels',
   'rot',
+];
+const RESERVED_PUNCTUATION: readonly string[] = ['{', '}', ','];
+const RESERVED_TOKENS: ReadonlySet<string> = new Set([
+  ...RESERVED_KEYWORDS,
+  ...RESERVED_PUNCTUATION,
 ]);
 
 interface RawRow {
@@ -81,55 +86,25 @@ class CvoxParser {
     while (this.pos < this.tokens.length) {
       const t = this.tokens[this.pos]!;
       this.pos++;
+      // SPEC §7.3.3: dispatch every reserved token to its own consume method.
+      // The default branch handles non-reserved tokens (stray identifiers /
+      // numbers / etc.) as `unknown`.
+      let r: Result<void>;
       switch (t.text) {
-        case 'palette': {
-          const r = this.consumePalette(t);
-          if (!r.ok) return r;
-          break;
-        }
-        case 'part': {
-          const r = this.consumePart(t);
-          if (!r.ok) return r;
-          break;
-        }
-        case 'size': {
-          const r = this.consumeSize(t);
-          if (!r.ok) return r;
-          break;
-        }
-        case 'pivot': {
-          const r = this.consumePivot(t);
-          if (!r.ok) return r;
-          break;
-        }
-        case 'socket': {
-          const r = this.consumeSocket(t);
-          if (!r.ok) return r;
-          break;
-        }
-        case 'voxels': {
-          const r = this.consumeVoxels(t);
-          if (!r.ok) return r;
-          break;
-        }
-        case 'rot':
-          return err(
-            'missing',
-            `line ${t.line}: 'rot' is only valid inside a pivot or socket declaration`,
-          );
-        case '{':
-        case '}':
-        case ',':
-          return err(
-            'unknown',
-            `line ${t.line}: unexpected '${t.text}' at top level`,
-          );
+        case 'palette': r = this.consumePalette(t); break;
+        case 'part':    r = this.consumePart(t); break;
+        case 'size':    r = this.consumeSize(t); break;
+        case 'pivot':   r = this.consumePivot(t); break;
+        case 'socket':  r = this.consumeSocket(t); break;
+        case 'voxels':  r = this.consumeVoxels(t); break;
+        case 'rot':     r = this.consumeRot(t); break;
+        case '{':       r = this.consumeOpenBrace(t); break;
+        case '}':       r = this.consumeCloseBrace(t); break;
+        case ',':       r = this.consumeComma(t); break;
         default:
-          return err(
-            'unknown',
-            `line ${t.line}: unknown token '${t.text}'`,
-          );
+          return err('unknown', `line ${t.line}: unknown token '${t.text}'`);
       }
+      if (!r.ok) return r;
     }
 
     // EOF
@@ -151,14 +126,14 @@ class CvoxParser {
     return ok({ palette: this.palette, parts: finalParts });
   }
 
-  // Pull up to `max` tokens, stopping at the next reserved word or
-  // universal punctuation ({ } ,) or end of stream.
+  // Pull up to `max` tokens, stopping at the next reserved token (SPEC §7.2
+  // argument-collection rule). Reserved tokens — keyword or punctuation —
+  // both terminate collection uniformly.
   private pullArgs(max: number): string[] {
     const args: string[] = [];
     while (args.length < max && this.pos < this.tokens.length) {
       const t = this.tokens[this.pos]!;
-      if (RESERVED_WORDS.has(t.text)) break;
-      if (t.text === '{' || t.text === '}' || t.text === ',') break;
+      if (RESERVED_TOKENS.has(t.text)) break;
       args.push(t.text);
       this.pos++;
     }
@@ -322,6 +297,40 @@ class CvoxParser {
     return err(
       'missing',
       `line ${kw.line}: unclosed voxels block (missing '}')`,
+    );
+  }
+
+  // The following 4 consume methods handle reserved tokens that are only
+  // structurally valid as part of a containing statement (consumed via peek
+  // in consumePivot/consumeSocket/consumeVoxels). When dispatched directly
+  // from the main loop, it means the user wrote them outside their valid
+  // scope — the structurally required enclosing context is missing.
+
+  private consumeRot(kw: Token): Result<void> {
+    return err(
+      'missing',
+      `line ${kw.line}: 'rot' is only valid inside a pivot or socket declaration (after the position triple)`,
+    );
+  }
+
+  private consumeOpenBrace(kw: Token): Result<void> {
+    return err(
+      'missing',
+      `line ${kw.line}: unexpected '{' (only valid immediately after a 'voxels' keyword)`,
+    );
+  }
+
+  private consumeCloseBrace(kw: Token): Result<void> {
+    return err(
+      'missing',
+      `line ${kw.line}: unexpected '}' (no open voxels block to close)`,
+    );
+  }
+
+  private consumeComma(kw: Token): Result<void> {
+    return err(
+      'missing',
+      `line ${kw.line}: unexpected ',' (only valid inside a voxels block as a layer-section separator)`,
     );
   }
 

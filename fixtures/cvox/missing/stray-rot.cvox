@@ -1,0 +1,7 @@
+// `rot` at top level — reserved keyword outside its valid scope
+// (only valid inside pivot/socket after position triple)
+rot 0 0 0
+palette #FF0000
+part box
+    size 1 1 1
+    voxels { 0 }

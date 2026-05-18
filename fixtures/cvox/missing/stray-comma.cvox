@@ -1,0 +1,7 @@
+// `,` at top level — reserved punctuation outside its valid scope
+// (only valid inside a voxels block as a layer-section separator)
+,
+palette #FF0000
+part box
+    size 1 1 1
+    voxels { 0 }
