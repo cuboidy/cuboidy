@@ -26,37 +26,37 @@ describe('parsePartHeader', () => {
   it('E03: rejects empty args (no identifier)', () => {
     const r = parsePartHeader([]);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E03');
+    if (!r.ok) expect(r.code).toBe('wrong-arity');
   });
 
   it('E03: rejects multiple args', () => {
     const r = parsePartHeader(['head', 'extra']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E03');
+    if (!r.ok) expect(r.code).toBe('wrong-arity');
   });
 
   it('E03: rejects identifier with leading digit', () => {
     const r = parsePartHeader(['1bad']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E03');
+    if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 
   it('E03: rejects identifier with leading hyphen', () => {
     const r = parsePartHeader(['-bad']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E03');
+    if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 
   it('E03: rejects identifier with special chars', () => {
     const r = parsePartHeader(['bad.name']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E03');
+    if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 
   it('E03: rejects non-ASCII identifier', () => {
     const r = parsePartHeader(['頭']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E03');
+    if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 });
 
@@ -67,16 +67,16 @@ describe('parseSize', () => {
     if (r.ok) expect(r.value).toEqual({ w: 3, h: 4, d: 5 });
   });
 
-  it('E17: rejects zero dimensions (v0.2: min 1)', () => {
+  it('rejects zero dimensions (v0.2: min 1)', () => {
     const r = parseSize(['0', '1', '1']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E17');
+    if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 
-  it('E17: rejects dimensions exceeding 1024 (v0.2 max)', () => {
+  it('rejects dimensions exceeding 1024 (v0.2 max)', () => {
     const r = parseSize(['1025', '1', '1']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E17');
+    if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 
   it('accepts max dimension 1024', () => {
@@ -84,33 +84,33 @@ describe('parseSize', () => {
     expect(r.ok).toBe(true);
   });
 
-  it('E17: rejects too few args', () => {
+  it('rejects too few args', () => {
     const r = parseSize(['3', '3']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E17');
+    if (!r.ok) expect(r.code).toBe('wrong-arity');
   });
 
-  it('E17: rejects too many args', () => {
+  it('rejects too many args', () => {
     const r = parseSize(['3', '3', '3', '3']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E17');
+    if (!r.ok) expect(r.code).toBe('wrong-arity');
   });
 
   it('E17: rejects negative dimensions', () => {
     const r = parseSize(['-1', '3', '3']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E17');
+    if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 
   it('E17: rejects fractional dimensions', () => {
     const r = parseSize(['3.5', '3', '3']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E17');
+    if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 
   it('E17: rejects non-numeric dimensions', () => {
     const r = parseSize(['abc', '3', '3']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E17');
+    if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 });

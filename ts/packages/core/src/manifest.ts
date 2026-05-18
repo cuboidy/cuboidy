@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { err, ok, type ManifestErrorCode, type Result } from './result.js';
+import { err, ok, type CuboidyErrorCode, type Result } from './result.js';
 
 const Identifier = z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_-]*$/);
 
@@ -68,21 +68,30 @@ function isMissingAtPath(
 function mapIssueToCode(
   issue: ZodIssueLike,
   isMissing: boolean,
-): ManifestErrorCode {
-  // C01: top-level `name` is *missing*. SPEC §11.5 narrows C01 to missing,
-  // not "wrong type" — wrong-type cases currently fall through to C13.
-  if (issue.path.length === 1 && issue.path[0] === 'name' && isMissing) {
-    return 'C01';
+): CuboidyErrorCode {
+  // Genuinely missing required top-level field (name or parts).
+  if (
+    isMissing &&
+    issue.path.length === 1 &&
+    (issue.path[0] === 'name' || issue.path[0] === 'parts')
+  ) {
+    return 'missing';
   }
 
-  // C02: top-level `parts` is missing OR empty. Inner-part validation
-  // (parts[i].xxx) falls through to C13 until SPEC v0.3 adds C03-C12.
-  if (issue.path.length === 1 && issue.path[0] === 'parts') {
-    if (isMissing || issue.code === 'too_small') return 'C02';
+  // Empty top-level parts array.
+  if (
+    issue.path.length === 1 &&
+    issue.path[0] === 'parts' &&
+    issue.code === 'too_small'
+  ) {
+    return 'missing';
   }
 
-  // C13: unknown field (Zod strict mode), or any other structural failure
-  // not narrowed above. SPEC v0.3 should add codes for wrong-type / bad
-  // identifier / etc.; for now C13 is the fallback bucket.
-  return 'C13';
+  // Unknown JSON field (Zod strict mode catches it).
+  if (issue.code === 'unrecognized_keys') return 'unknown';
+
+  // Fallback: anything else (wrong type, bad identifier, etc.) is treated
+  // as a value error. SPEC v0.3 may split this further as manifest
+  // validation grows (parent cycle, animation refs, etc.).
+  return 'invalid-value';
 }

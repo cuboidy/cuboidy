@@ -6,7 +6,7 @@ export type CvoxLine =
   | { kind: 'voxel-row'; text: string }
   | { kind: 'error'; code: CvoxLineErrorCode; message: string };
 
-export type CvoxLineErrorCode = 'E07';
+export type CvoxLineErrorCode = 'invalid-value';
 
 export const KNOWN_KEYWORDS: ReadonlySet<string> = new Set([
   'palette',
@@ -41,7 +41,7 @@ export function classifyLine(raw: string): CvoxLine {
 
   return {
     kind: 'error',
-    code: 'E07',
+    code: 'invalid-value',
     message: `voxel row contains character outside [.0-9a-zA-Z]`,
   };
 }

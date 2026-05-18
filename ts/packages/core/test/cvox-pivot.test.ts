@@ -35,30 +35,30 @@ describe('parsePivot', () => {
   it('E05: rejects 4 args (neither 3 nor 7)', () => {
     const r = parsePivot(['1', '0', '1', 'rot']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E05');
+    if (!r.ok) expect(r.code).toBe('wrong-arity');
   });
 
   it("E05: rejects 7 args without 'rot' marker", () => {
     const r = parsePivot(['1', '0', '1', 'foo', '0', '90', '0']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E05');
+    if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 
   it('E05: rejects too few args', () => {
     const r = parsePivot(['1', '0']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E05');
+    if (!r.ok) expect(r.code).toBe('wrong-arity');
   });
 
   it('E05: rejects too many args', () => {
     const r = parsePivot(['1', '0', '1', '0']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E05');
+    if (!r.ok) expect(r.code).toBe('wrong-arity');
   });
 
   it('E05: rejects non-numeric coord', () => {
     const r = parsePivot(['abc', '0', '1']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E05');
+    if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 });

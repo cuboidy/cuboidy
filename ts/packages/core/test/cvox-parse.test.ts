@@ -61,7 +61,7 @@ describe('parseCvox', () => {
       const text = 'part head\nsize 1 1 1\nlayer 0\n0';
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('E01');
+      if (!r.ok) expect(r.code).toBe('missing');
     });
 
     it('E12: rejects duplicate part name', () => {
@@ -78,7 +78,7 @@ describe('parseCvox', () => {
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('E12');
+      if (!r.ok) expect(r.code).toBe('duplicate');
     });
 
     it('E14: rejects duplicate socket name within a part', () => {
@@ -93,7 +93,7 @@ describe('parseCvox', () => {
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('E14');
+      if (!r.ok) expect(r.code).toBe('duplicate');
     });
 
     it('E13: rejects part missing size', () => {
@@ -105,7 +105,7 @@ describe('parseCvox', () => {
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('E13');
+      if (!r.ok) expect(r.code).toBe('missing');
     });
 
     it('accepts layer indices in any order (v0.2 free-order)', () => {
@@ -137,7 +137,7 @@ describe('parseCvox', () => {
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('E09');
+      if (!r.ok) expect(r.code).toBe('duplicate');
     });
 
     it('E09: rejects layer index >= H', () => {
@@ -150,7 +150,7 @@ describe('parseCvox', () => {
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('E09');
+      if (!r.ok) expect(r.code).toBe('invalid-value');
     });
 
     it('E10: rejects layer with too few rows', () => {
@@ -165,7 +165,7 @@ describe('parseCvox', () => {
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('E10');
+      if (!r.ok) expect(r.code).toBe('wrong-arity');
     });
 
     it('E10: rejects layer with too many rows (caught on next layer)', () => {
@@ -183,7 +183,7 @@ describe('parseCvox', () => {
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('E10');
+      if (!r.ok) expect(r.code).toBe('wrong-arity');
     });
 
     it('E15: rejects duplicate palette declaration', () => {
@@ -197,14 +197,14 @@ describe('parseCvox', () => {
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('E15');
+      if (!r.ok) expect(r.code).toBe('duplicate');
     });
 
     it('E19: rejects file with palette but no parts', () => {
       const text = 'palette #FF0000';
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('E19');
+      if (!r.ok) expect(r.code).toBe('missing');
     });
 
     it('E17: rejects duplicate size in a part', () => {
@@ -218,7 +218,7 @@ describe('parseCvox', () => {
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('E17');
+      if (!r.ok) expect(r.code).toBe('duplicate');
     });
 
     it('E17: rejects duplicate pivot in a part', () => {
@@ -233,7 +233,7 @@ describe('parseCvox', () => {
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('E17');
+      if (!r.ok) expect(r.code).toBe('duplicate');
     });
   });
 
@@ -379,7 +379,7 @@ describe('parseCvox', () => {
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('E10');
+      if (!r.ok) expect(r.code).toBe('invalid-value');
     });
 
     it('row continuation on subsequent line (v0.2 §7.9 multi-row token)', () => {
@@ -401,14 +401,14 @@ describe('parseCvox', () => {
       const text = ['palette #FF0000', 'part'].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('E03');
+      if (!r.ok) expect(r.code).toBe('wrong-arity');
     });
 
     it('E17: bare `size` (no args) yields E17', () => {
       const text = ['palette #FF0000', 'part box', 'size'].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('E17');
+      if (!r.ok) expect(r.code).toBe('wrong-arity');
     });
 
     it('whitespace and newlines are equivalent token separators (part)', () => {
@@ -506,7 +506,7 @@ describe('parseCvox', () => {
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('E07');
+      if (!r.ok) expect(r.code).toBe('invalid-value');
     });
 
     it('E07: # in a token within an active layer (color literal outside palette)', () => {
@@ -522,7 +522,7 @@ describe('parseCvox', () => {
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('E07');
+      if (!r.ok) expect(r.code).toBe('invalid-value');
     });
 
     it('pivot with rot (7 args) parses and persists rotation', () => {
@@ -572,7 +572,7 @@ describe('parseCvox', () => {
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('E10');
+      if (!r.ok) expect(r.code).toBe('invalid-value');
     });
 
     it('socket extra numeric arg surfaces as E10 under integrated parsing', () => {
@@ -585,7 +585,7 @@ describe('parseCvox', () => {
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('E10');
+      if (!r.ok) expect(r.code).toBe('invalid-value');
     });
 
     it('E04: bad-char token with no active layer open', () => {
@@ -601,7 +601,7 @@ describe('parseCvox', () => {
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('E04');
+      if (!r.ok) expect(r.code).toBe('unknown');
     });
   });
 });

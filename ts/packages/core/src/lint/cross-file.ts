@@ -13,7 +13,7 @@ export function validateCrossFile(
   for (const name of manifestParts) {
     if (!voxelParts.has(name)) {
       diags.push({
-        code: 'X01',
+        code: 'missing',
         severity: 'error',
         message: `part '${name}' is in manifest but not in voxels.cvox`,
       });
@@ -23,7 +23,7 @@ export function validateCrossFile(
   for (const name of voxelParts) {
     if (!manifestParts.has(name)) {
       diags.push({
-        code: 'X02',
+        code: 'unknown',
         severity: 'warning',
         message: `part '${name}' is in voxels.cvox but not in manifest`,
       });

@@ -82,14 +82,14 @@ class CvoxParser {
           continue;
         }
         return err(
-          'E07',
+          'invalid-value',
           `line ${t.line}: voxel row contains character outside [.0-9a-zA-Z] in '${t.text}'`,
         );
       }
       if (VOXEL_ROW_RE.test(t.text)) {
-        return err('E10', `line ${t.line}: voxel row outside any layer`);
+        return err('invalid-value', `line ${t.line}: voxel row outside any layer`);
       }
-      return err('E04', `line ${t.line}: unknown token '${t.text}'`);
+      return err('unknown', `line ${t.line}: unknown token '${t.text}'`);
     }
 
     // EOF
@@ -97,10 +97,10 @@ class CvoxParser {
     if (!closeR.ok) return closeR;
 
     if (this.palette === null) {
-      return err('E01', 'missing palette declaration');
+      return err('missing', 'missing palette declaration');
     }
     if (this.parts.length === 0) {
-      return err('E19', 'file contains palette but no parts');
+      return err('missing', 'file contains palette but no parts');
     }
 
     const finalParts: PartDefinition[] = [];
@@ -147,7 +147,7 @@ class CvoxParser {
     const args = this.pullArgs(Number.POSITIVE_INFINITY);
     if (this.palette !== null) {
       return err(
-        'E15',
+        'duplicate',
         `line ${kw.line}: duplicate palette declaration (first at line ${this.paletteLineNo})`,
       );
     }
@@ -163,7 +163,7 @@ class CvoxParser {
     const r = parsePartHeader(args);
     if (!r.ok) return err(r.code, `line ${kw.line}: ${r.message}`);
     if (this.partNames.has(r.value)) {
-      return err('E12', `line ${kw.line}: duplicate part name '${r.value}'`);
+      return err('duplicate', `line ${kw.line}: duplicate part name '${r.value}'`);
     }
     const closeR = this.closeCurrentPart();
     if (!closeR.ok) return closeR;
@@ -174,11 +174,11 @@ class CvoxParser {
 
   private consumeSize(kw: Token): Result<void> {
     if (this.cur === null) {
-      return err('E03', `line ${kw.line}: 'size' before any part declaration`);
+      return err('missing', `line ${kw.line}: 'size' before any part declaration`);
     }
     if (this.cur.size !== null) {
       return err(
-        'E17',
+        'duplicate',
         `line ${kw.line}: duplicate size for part '${this.cur.name}' (first at line ${this.cur.sizeLineNo})`,
       );
     }
@@ -192,11 +192,11 @@ class CvoxParser {
 
   private consumePivot(kw: Token): Result<void> {
     if (this.cur === null) {
-      return err('E03', `line ${kw.line}: 'pivot' before any part declaration`);
+      return err('missing', `line ${kw.line}: 'pivot' before any part declaration`);
     }
     if (this.cur.pivot !== null) {
       return err(
-        'E17',
+        'duplicate',
         `line ${kw.line}: duplicate pivot for part '${this.cur.name}' (first at line ${this.cur.pivotLineNo})`,
       );
     }
@@ -223,7 +223,7 @@ class CvoxParser {
 
   private consumeSocket(kw: Token): Result<void> {
     if (this.cur === null) {
-      return err('E03', `line ${kw.line}: 'socket' before any part declaration`);
+      return err('missing', `line ${kw.line}: 'socket' before any part declaration`);
     }
     // Socket has 4 args (name x y z) or 8 args (name x y z rot rx ry rz).
     // Pull 4 first, then peek for the `rot` sub-keyword before pulling more.
@@ -241,7 +241,7 @@ class CvoxParser {
     if (!r.ok) return err(r.code, `line ${kw.line}: ${r.message}`);
     if (this.cur.socketNames.has(r.value.name)) {
       return err(
-        'E14',
+        'duplicate',
         `line ${kw.line}: duplicate socket '${r.value.name}' in part '${this.cur.name}'`,
       );
     }
@@ -252,7 +252,7 @@ class CvoxParser {
 
   private consumeLayer(kw: Token): Result<void> {
     if (this.cur === null) {
-      return err('E03', `line ${kw.line}: 'layer' before any part declaration`);
+      return err('missing', `line ${kw.line}: 'layer' before any part declaration`);
     }
     const args = this.pullArgs(1);
     const indexR = parseLayerHeader(args);
@@ -273,7 +273,7 @@ class CvoxParser {
     if (cur.layers.has(layer.index)) {
       const prev = cur.layers.get(layer.index)!;
       return err(
-        'E09',
+        'duplicate',
         `line ${layer.indexLineNo}: duplicate layer index ${layer.index} in part '${cur.name}' (first at line ${prev.indexLineNo})`,
       );
     }
@@ -297,7 +297,7 @@ class CvoxParser {
   ): Result<PartDefinition> {
     if (builder.size === null) {
       return err(
-        'E13',
+        'missing',
         `line ${builder.headerLineNo}: part '${builder.name}' missing size`,
       );
     }
@@ -306,7 +306,7 @@ class CvoxParser {
     for (const [idx, layer] of builder.layers) {
       if (idx >= size.h) {
         return err(
-          'E09',
+          'invalid-value',
           `line ${layer.indexLineNo}: layer index ${idx} out of range [0..${size.h - 1}] for part '${builder.name}'`,
         );
       }
@@ -314,7 +314,7 @@ class CvoxParser {
     for (let y = 0; y < size.h; y++) {
       if (!builder.layers.has(y)) {
         return err(
-          'E09',
+          'missing',
           `part '${builder.name}' missing layer index ${y} (has ${builder.layers.size} of ${size.h})`,
         );
       }
@@ -329,7 +329,7 @@ class CvoxParser {
       const layer = builder.layers.get(y)!;
       if (layer.rows.length !== size.d) {
         return err(
-          'E10',
+          'wrong-arity',
           `line ${layer.indexLineNo}: layer ${y} in part '${builder.name}' has ${layer.rows.length} row(s), expected ${size.d}`,
         );
       }

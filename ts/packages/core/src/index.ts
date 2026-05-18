@@ -14,9 +14,4 @@ export type { Vec3 } from './cvox/vec3.js';
 export { validateCrossFile } from './lint/cross-file.js';
 export type { Diagnostic, Severity } from './diagnostic.js';
 
-export type {
-  CuboidyErrorCode,
-  CvoxErrorCode,
-  ManifestErrorCode,
-  Result,
-} from './result.js';
+export type { CuboidyErrorCode, Result } from './result.js';

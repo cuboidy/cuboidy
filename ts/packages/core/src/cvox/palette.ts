@@ -15,11 +15,14 @@ const HEX_RE = /^#([0-9a-fA-F]+)$/;
 
 export function parsePalette(args: readonly string[]): Result<Palette> {
   if (args.length === 0) {
-    return err('E17', 'palette declaration requires at least one color');
+    return err(
+      'wrong-arity',
+      'palette declaration requires at least one color',
+    );
   }
   if (args.length > MAX_PALETTE) {
     return err(
-      'E16',
+      'wrong-arity',
       `palette has ${args.length} colors, max ${MAX_PALETTE}`,
     );
   }
@@ -28,7 +31,7 @@ export function parsePalette(args: readonly string[]): Result<Palette> {
   for (const arg of args) {
     const color = parseHexColor(arg);
     if (color === null) {
-      return err('E02', `invalid color '${arg}'`);
+      return err('invalid-value', `invalid color '${arg}'`);
     }
     colors.push(color);
   }

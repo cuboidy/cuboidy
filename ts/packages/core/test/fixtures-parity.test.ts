@@ -14,46 +14,49 @@ const REPO_ROOT = resolve(
 );
 
 /**
- * For every fixture file under `fixtures/cvox/` and `fixtures/json/`, the
- * implementation must report the diagnostic code encoded in the filename
- * (e.g. `E08-row-width.cvox` must yield code `E08`). This is the parity
- * contract for cross-language implementations.
+ * Fixtures are organised as `fixtures/{cvox,json}/<code>/<descriptor>.<ext>`,
+ * where `<code>` is the structural error code the parser must emit for every
+ * file in that subdirectory. This is the cross-implementation parity contract.
  */
 describe('fixtures parity', () => {
-  it('every cvox fixture reports the expected error code', async () => {
-    const dir = join(REPO_ROOT, 'fixtures/cvox');
-    const files = await readdir(dir);
-    expect(files.length).toBeGreaterThan(0);
+  it('every cvox fixture under fixtures/cvox/<code>/ reports that code', async () => {
+    const root = join(REPO_ROOT, 'fixtures/cvox');
+    const codeDirs = await readdir(root);
+    expect(codeDirs.length).toBeGreaterThan(0);
 
-    for (const file of files) {
-      const expected = file.split('-')[0]!;
-      const text = await readFixtureText(`fixtures/cvox/${file}`);
-      const r = parseCvox(text);
-      expect(r.ok, `${file} should fail but parsed OK`).toBe(false);
-      if (!r.ok) {
-        expect(
-          r.code,
-          `${file}: expected ${expected}, got ${r.code} (${r.message})`,
-        ).toBe(expected);
+    for (const code of codeDirs) {
+      const files = await readdir(join(root, code));
+      for (const file of files) {
+        const text = await readFixtureText(`fixtures/cvox/${code}/${file}`);
+        const r = parseCvox(text);
+        expect(r.ok, `${code}/${file} should fail but parsed OK`).toBe(false);
+        if (!r.ok) {
+          expect(
+            r.code,
+            `${code}/${file}: expected ${code}, got ${r.code} (${r.message})`,
+          ).toBe(code);
+        }
       }
     }
   });
 
-  it('every json fixture reports the expected error code', async () => {
-    const dir = join(REPO_ROOT, 'fixtures/json');
-    const files = await readdir(dir);
-    expect(files.length).toBeGreaterThan(0);
+  it('every json fixture under fixtures/json/<code>/ reports that code', async () => {
+    const root = join(REPO_ROOT, 'fixtures/json');
+    const codeDirs = await readdir(root);
+    expect(codeDirs.length).toBeGreaterThan(0);
 
-    for (const file of files) {
-      const expected = file.split('-')[0]!;
-      const json = await readFixtureJson(`fixtures/json/${file}`);
-      const r = parseManifest(json);
-      expect(r.ok, `${file} should fail but parsed OK`).toBe(false);
-      if (!r.ok) {
-        expect(
-          r.code,
-          `${file}: expected ${expected}, got ${r.code} (${r.message})`,
-        ).toBe(expected);
+    for (const code of codeDirs) {
+      const files = await readdir(join(root, code));
+      for (const file of files) {
+        const json = await readFixtureJson(`fixtures/json/${code}/${file}`);
+        const r = parseManifest(json);
+        expect(r.ok, `${code}/${file} should fail but parsed OK`).toBe(false);
+        if (!r.ok) {
+          expect(
+            r.code,
+            `${code}/${file}: expected ${code}, got ${r.code} (${r.message})`,
+          ).toBe(code);
+        }
       }
     }
   });

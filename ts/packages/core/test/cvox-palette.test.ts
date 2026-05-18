@@ -60,25 +60,25 @@ describe('parsePalette', () => {
     it('E17: rejects empty palette (invalid args)', () => {
       const r = parsePalette([]);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('E17');
+      if (!r.ok) expect(r.code).toBe('wrong-arity');
     });
 
     it('E02: rejects color without # prefix', () => {
       const r = parsePalette(['8B4513']);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('E02');
+      if (!r.ok) expect(r.code).toBe('invalid-value');
     });
 
     it('E02: rejects color with wrong hex length', () => {
       const r = parsePalette(['#FF']);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('E02');
+      if (!r.ok) expect(r.code).toBe('invalid-value');
     });
 
     it('E02: rejects color with non-hex chars', () => {
       const r = parsePalette(['#GGGGGG']);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('E02');
+      if (!r.ok) expect(r.code).toBe('invalid-value');
     });
 
     it('E16: rejects palette of 63 colors (overflow)', () => {
@@ -86,7 +86,7 @@ describe('parsePalette', () => {
       const r = parsePalette(args);
       expect(r.ok).toBe(false);
       if (!r.ok) {
-        expect(r.code).toBe('E16');
+        expect(r.code).toBe('wrong-arity');
         expect(r.message).toMatch(/62/);
       }
     });

@@ -30,18 +30,18 @@ describe('parseManifest', () => {
     expect(r.value.parts[0]?.name).toBe('crown');
   });
 
-  it('C01: rejects manifest without name', async () => {
-    const json = await readFixtureJson('fixtures/json/C01-missing-name.json');
+  it('rejects manifest without name (missing)', async () => {
+    const json = await readFixtureJson('fixtures/json/missing/name.json');
     const r = parseManifest(json);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('C01');
+    if (!r.ok) expect(r.code).toBe('missing');
   });
 
-  it('C02: rejects manifest with empty parts', async () => {
-    const json = await readFixtureJson('fixtures/json/C02-empty-parts.json');
+  it('rejects manifest with empty parts (missing)', async () => {
+    const json = await readFixtureJson('fixtures/json/missing/parts.json');
     const r = parseManifest(json);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('C02');
+    if (!r.ok) expect(r.code).toBe('missing');
   });
 
   it('C13: rejects manifest with unknown top-level field', () => {
@@ -52,7 +52,7 @@ describe('parseManifest', () => {
     };
     const r = parseManifest(json);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('C13');
+    if (!r.ok) expect(r.code).toBe('unknown');
   });
 
   it('C13: rejects manifest with unknown field on a part', () => {
@@ -62,22 +62,22 @@ describe('parseManifest', () => {
     };
     const r = parseManifest(json);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('C13');
+    if (!r.ok) expect(r.code).toBe('unknown');
   });
 
-  it('C13 (not C01): wrong-type `name` falls through to C13', () => {
-    // SPEC §11.5 C01 is "missing", not "wrong type". Wrong-type cases fall
-    // through to the C13 catch-all until SPEC v0.3 introduces dedicated codes.
+  it('invalid-value (not missing): wrong-type `name` falls through to invalid-value', () => {
+    // The `missing` code is narrowed to genuinely absent fields. Wrong-type
+    // cases fall through to invalid-value as a value-shape error.
     const json = { name: 123, parts: [{ name: 'body' }] };
     const r = parseManifest(json);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('C13');
+    if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 
-  it('C13 (not C02): wrong-type `parts` falls through to C13', () => {
+  it('invalid-value (not missing): wrong-type `parts` falls through to invalid-value', () => {
     const json = { name: 'test', parts: 'not an array' };
     const r = parseManifest(json);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('C13');
+    if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 });

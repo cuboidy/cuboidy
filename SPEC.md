@@ -3,7 +3,7 @@
 **Version:** 0.2 (draft)
 **Status:** Early draft. Subject to change before v1.0.
 
-**Changes since v0.1:** Comments (`//`) added. Declaration order is fully free at all levels (palette / parts / metadata / layer indices). Voxel-row separator is any whitespace including newlines — the entire file (after `//` comment stripping) is a single token stream, so `size\n3\n2\n3` is equivalent to `size 3 2 3`. New error codes E15 / E16 / E17 / E19 added; E09 narrowed (out-of-order is no longer an error).
+**Changes since v0.1:** Comments (`//`) added. Declaration order is fully free at all levels (palette / parts / metadata / layer indices). Voxel-row separator is any whitespace including newlines — the entire file (after `//` comment stripping) is a single token stream, so `size\n3\n2\n3` is equivalent to `size 3 2 3`. Pivot may carry an optional rotation (`pivot x y z rot rx ry rz`). **Diagnostic codes are restructured around 5 structural categories** (`missing` / `duplicate` / `unknown` / `invalid-value` / `wrong-arity`); the v0.1 keyword-centric Exx / Cxx / Xxx codes are removed.
 
 ---
 
@@ -309,7 +309,7 @@ All metadata keywords are **2 characters or longer**. This rule reserves single-
 
 `rot` is a **contextual sub-keyword** recognized only inside `pivot` and `socket` declarations as the marker that introduces a rotation triple. Outside those contexts, `rot` is a normal voxel-row token (e.g. it can appear in voxel data on a palette with at least 30 colors), an identifier, or whatever the position in the grammar dictates. It is intentionally NOT in the top-level reserved-keyword set, so it does not interrupt the active layer's row collection (§7.9).
 
-An unrecognized top-level token — neither a reserved keyword above nor a voxel-row-shape token continuing an active layer — is E04.
+An unrecognized top-level token — neither a reserved keyword above nor a voxel-row-shape token continuing an active layer — is `unknown`.
 
 ### 7.4 Palette declaration
 
@@ -317,11 +317,11 @@ An unrecognized top-level token — neither a reserved keyword above nor a voxel
 palette <color>+
 ```
 
-- **Exactly one** palette declaration per file (more is E15)
+- **Exactly one** palette declaration per file (more is `duplicate`)
 - May appear **anywhere** in the file — before, between, or after part declarations
 - Each color in hex: `#RGB`, `#RGBA`, `#RRGGBB`, or `#RRGGBBAA`
 - Color space: **sRGB**
-- Maximum **62 colors** (palette indices `0..61`; more is E16)
+- Maximum **62 colors** (palette indices `0..61`; more is `wrong-arity`)
 - Voxel data references colors by single character:
   - `0`–`9` → palette indices 0–9
   - `a`–`z` → palette indices 10–35
@@ -330,7 +330,7 @@ palette <color>+
 
 Position-based indexing: reordering the palette requires rewriting voxel data. Tooling can automate this.
 
-When voxel rows are parsed before the palette is known (because palette appears later in the file), palette-index validation (E11) is deferred until file assembly completes.
+When voxel rows are parsed before the palette is known (because palette appears later in the file), palette-index validation (the assembly-time `invalid-value` check) is deferred until file assembly completes.
 
 ### 7.5 `part` declaration
 
@@ -344,10 +344,10 @@ A `part` section must contain:
 
 | Element | Cardinality | Notes |
 |---|---|---|
-| `size` | **exactly 1** | Missing → E13. Duplicate → E17 |
-| `pivot` | at most 1 | Duplicate → E17 |
-| `socket` | 0 or more | Duplicate names → E14 |
-| `layer N` | **exactly H** (covering 0..H-1) | Missing or duplicated index → E09 |
+| `size` | **exactly 1** | Missing → `missing`. Duplicate → `duplicate` |
+| `pivot` | at most 1 | Duplicate → `duplicate` |
+| `socket` | 0 or more | Duplicate names → `duplicate` |
+| `layer N` | **exactly H** (covering 0..H-1) | Missing → `missing`; duplicated → `duplicate` |
 
 **Order is free.** Any permutation of these elements within a part is valid. Writers should normalize to `size → pivot → socket* → layer*` (with layers sorted by index) for diff stability.
 
@@ -358,7 +358,7 @@ size <W> <H> <D>
 ```
 
 - W = X-axis width, H = Y-axis height, D = Z-axis depth
-- All values are positive integers in the range `[1, 1024]` per axis (zero or negative values, fractions, and values exceeding 1024 are E17)
+- All values are positive integers in the range `[1, 1024]` per axis (zero or negative values, fractions, and values exceeding 1024 are `invalid-value`)
 - Total voxel cells = W × H × D
 - The 1024 cap is a sanity bound to keep validation and rendering tractable; future spec versions may relax it
 
@@ -373,8 +373,8 @@ pivot <x> <y> <z> rot <rx> <ry> <rz>
 - Position coordinates in **part-local space**, voxel units; may be fractional; may lie outside the grid bounds (W01 lint warning, not error)
 - Optional rotation: 3 Euler angles in degrees, ZXY intrinsic order (§4), introduced by the contextual sub-keyword `rot`
 - **Semantic** (interpretation A — Rest pose rotation): when an animation is not active, the part is rendered with this rotation applied around its pivot position. When an animation is active, the animated rotation is composed with the pivot rotation. Using matrix-vector convention with column vectors, a part-local point `v_local` lands at `v_parent = part.position + pivot.pos + M_pivot · M_anim · (v_local − pivot.pos)`, where `M_pivot` and `M_anim` are the rotation matrices for `pivot.rot` and the animated keyframe rotation. Equivalently in quaternion form: `q_total = q_pivot · q_anim` (the animation rotation is applied first, in the rest-pose-local frame, then the pivot rotation brings it to the rest orientation)
-- Two arities are valid at the library-level `parsePivot(args)` API: 3 args (position only) or 7 args (position + `rot` + rotation). 4–6 or 8+ args is E05; 7 args without the `rot` marker as the 4th token is E05
-- Under integrated `parseCvox()` parsing of the token stream, the parser consumes exactly 3 tokens (then 3 more iff the next token is `rot`). Tokens beyond that boundary are not stolen by the pivot declaration — they fall through to the main token loop, where they are diagnosed by §11.8 (typically E10 if voxel-row shape, E04 if non-row-shape, both raised in the absence of an active layer). A user writing `pivot 1 0 1 5` will therefore see E10 or E04, not E05; the library-level `parsePivot()` is the entry point that enforces strict arity
+- Two arities are valid at the library-level `parsePivot(args)` API: 3 args (position only) or 7 args (position + `rot` + rotation). 4–6 or 8+ args is `wrong-arity`; 7 args without the `rot` marker as the 4th token is `invalid-value`
+- Under integrated `parseCvox()` parsing of the token stream, the parser consumes exactly 3 tokens (then 3 more iff the next token is `rot`). Tokens beyond that boundary are not stolen by the pivot declaration — they fall through to the main token loop, where they are diagnosed by §11.8 (typically `invalid-value` if voxel-row shape, `unknown` if non-row-shape, both raised in the absence of an active layer). A user writing `pivot 1 0 1 5` will therefore see `invalid-value` or `unknown`, not `wrong-arity`; the library-level `parsePivot()` is the entry point that enforces strict arity
 
 ### 7.8 `socket`
 
@@ -395,13 +395,13 @@ layer <N>
 layer <N> <row>+
 ```
 
-- Marks voxel data for Y-layer index `N` (0-based, non-negative integer in range `[0, H-1]`; out-of-range or duplicate is E09)
+- Marks voxel data for Y-layer index `N` (0-based, non-negative integer in range `[0, H-1]`; out-of-range is `invalid-value`; duplicate is `duplicate`)
 - A part must contain exactly H `layer` blocks covering indices `0..H-1` exactly once
 - **Index order is free** — `layer 2`, `layer 0`, `layer 1` is valid
 - After the `N` token, the parser collects voxel-row tokens into the **active layer** until the next reserved keyword (`palette`, `part`, `size`, `pivot`, `socket`, `layer`) or end of file
-- Each layer must accumulate exactly D voxel-row tokens; assembly-time validation reports E10 otherwise. Whitespace between row tokens — spaces, tabs, or newlines — is interchangeable, so the same D tokens can be written inline, on separate lines, or mixed
+- Each layer must accumulate exactly D voxel-row tokens; assembly-time validation reports `wrong-arity` otherwise. Whitespace between row tokens — spaces, tabs, or newlines — is interchangeable, so the same D tokens can be written inline, on separate lines, or mixed
 - The k-th row (in token order) represents voxel cells at coordinates `(x, N, k)` for `x ∈ 0..W-1`
-- A voxel-row-shape token (`[.0-9a-zA-Z]+`) encountered while no active layer is open is E10 ("voxel row outside any layer")
+- A voxel-row-shape token (`[.0-9a-zA-Z]+`) encountered while no active layer is open is `invalid-value` ("voxel row outside any layer")
 
 ### 7.10 Voxel row
 
@@ -540,30 +540,19 @@ A Cuboidy package is **well-formed** if it passes all error-level rules.
 | **Warning** (`W`) | Spec-valid but suspicious | Load with warning emitted |
 | **Hint** (`H`) | Style or convention | Load with hint emitted |
 
-### 11.2 `voxels.cvox` errors
+### 11.2 Diagnostic codes (structural)
 
-| ID | Rule |
-|---|---|
-| E01 | Missing `palette` declaration |
-| E02 | Invalid palette color format |
-| E03 | Invalid `part` header (missing or non-identifier name) |
-| E04 | Unknown metadata keyword |
-| E05 | Invalid `pivot` arguments (count or value) |
-| E06 | Invalid `socket` arguments |
-| E07 | Voxel row contains a character outside `[.0-9a-zA-Z]` |
-| E08 | Voxel row width does not match declared `W` |
-| E09 | Layer index out of range `[0..H-1]`, or duplicated within a part |
-| E10 | Wrong number of voxel rows in a layer (must be exactly `D`) |
-| E11 | Voxel character references a palette index outside the declared palette |
-| E12 | Duplicate `part` name within file |
-| E13 | Missing `size` for a part |
-| E14 | Duplicate socket name within a part |
-| E15 | Duplicate `palette` declaration |
-| E16 | Palette exceeds 62-color maximum |
-| E17 | Invalid arguments to a metadata or top-level declaration (wrong count, non-numeric where number expected, out-of-range value such as `size` dimension `0` or `> 1024`, or duplicate `size`/`pivot` within a part) |
-| E19 | File contains a `palette` but zero `part` declarations |
+v0.2 uses **five structural codes** to describe errors. The code names what *kind* of structural violation occurred; the message text names *what specifically* — which keyword, which field, which line. Implementations MUST use these exact code strings so that cross-language parity tests can compare outputs by code alone.
 
-Note: in v0.1, palette overflow and duplicate palette were folded into E02; invalid `size`/`layer` argument shapes were folded into E13/E09; declaration-order violations had no dedicated code. v0.2 separates these into E15 / E16 / E17, and removes the order-violation case entirely (order is now free).
+| Code | Meaning | Voxel-definition examples |
+|---|---|---|
+| `missing` | A required structural element is absent. | No `palette` declaration in the file; `palette` declared but no `part`; `size` missing in a part; `layer N` indices do not cover `0..H-1`; a metadata keyword (`size` / `pivot` / `socket` / `layer`) used before any `part` |
+| `duplicate` | A unique-constraint violation: an element that should appear at most once appears more than once. | Two `palette` declarations; duplicate `part` name; duplicate socket name within a part; duplicate `size` or `pivot` within a part; duplicate layer index within a part |
+| `unknown` | An unrecognized name appears where the spec defines a closed set. | A token that is neither a reserved keyword nor a voxel-row-shape token in row context |
+| `invalid-value` | A value is present but malformed. | Malformed color hex (`#GG`); voxel row contains a character outside `[.0-9a-zA-Z]`; voxel cell references a palette index that does not exist; layer index out of range `[0..H-1]`; size dimension out of range `[1..1024]`, fractional, or non-numeric; non-numeric `pivot` / `socket` coord; expected `rot` marker but got something else; voxel-row-shape token encountered while no layer is active; identifier failing the §5 regex |
+| `wrong-arity` | An incorrect number of items. | Voxel-row width does not match declared `W`; layer accumulates a row count different from declared `D`; palette has 0 colors or more than 62; wrong number of arguments to a keyword (`size` not 3, `pivot` not 3-or-7, `socket` not 4-or-8, `layer` no index, `part` not 1) |
+
+Note: v0.1 used per-keyword codes (E01–E19). v0.2 restructures them into the five structural categories above. The keyword/context survives in the message string and in the fixture filenames (`fixtures/cvox/<code>/<descriptor>.cvox`).
 
 ### 11.3 `voxels.cvox` warnings
 
@@ -584,30 +573,26 @@ Note: in v0.1, palette overflow and duplicate palette were folded into E02; inva
 
 ### 11.5 `cuboidy.json` errors
 
-| ID | Rule |
+Manifest errors use the same five structural codes (§11.2). The TS reference implementation maps observed validation failures as follows; other implementations should converge on the same mapping for parity:
+
+| Code | Manifest examples |
 |---|---|
-| C01 | Missing top-level `name` |
-| C02 | `parts` is empty or absent |
-| C03 | Part `parent` references a non-existent part |
-| C04 | Parent chain contains a cycle |
-| C05 | Animation `duration` is less than the largest time key |
-| C06 | An animated part's time keys do not start at `"0.0"` |
-| C07 | Time keys not strictly increasing |
-| C08 | External animation reference path does not end in `.json` |
-| C09 | External animation reference uses absolute path, URL, or namespace URI |
-| C10 | External animation references form a cycle |
-| C11 | Duplicate part name |
-| C12 | Duplicate animation name |
-| C13 | Unknown field encountered (warning by default; can be promoted to error) |
+| `missing` | Top-level `name` is absent; top-level `parts` is absent or empty |
+| `duplicate` | Duplicate part name; duplicate animation name (planned) |
+| `unknown` | A field other than `name` / `version` / `parts` / `animations` is present at the top level; a field other than `name` / `parent` / `position` is present inside a part |
+| `invalid-value` | Wrong type for a field (e.g. `name` is a number); identifier failing the §5 regex; `parent` references a non-existent part (planned); parent chain contains a cycle (planned); animation reference path malformed (planned); animation `duration` less than the largest time key (planned); time keys not strictly increasing or not starting at `"0.0"` (planned) |
+| `wrong-arity` | (no current cases for the manifest; reserved for future use) |
+
+Items marked "planned" are not yet implemented in the TS reference; the catch-all `invalid-value` may surface generic Zod messages for those cases until then.
 
 ### 11.6 Cross-file rules
 
-| ID | Severity | Rule |
+| Code | Severity | Rule |
 |---|---|---|
-| X01 | error | `cuboidy.json` references a part name not defined in `voxels.cvox` |
-| X02 | warning | `voxels.cvox` defines a part not listed in `cuboidy.json` `parts` |
-| X03 | warning | Animation targets a part not present in `cuboidy.json` `parts` (cross-rig sharing) |
-| X04 | runtime error | Attempt to attach to a socket name not declared on the host part |
+| `missing` | error | `cuboidy.json` references a part name not defined in `voxels.cvox` |
+| `unknown` | warning | `voxels.cvox` defines a part not listed in `cuboidy.json` `parts` |
+| `unknown` | warning | Animation targets a part not present in `cuboidy.json` `parts` (cross-rig sharing; planned) |
+| `unknown` | runtime error | Attempt to attach to a socket name not declared on the host part (planned) |
 
 ### 11.7 Diagnostic format
 
@@ -620,9 +605,9 @@ Implementations should emit diagnostics in the form:
 Example:
 
 ```
-voxels.cvox:5:1: error: row width 4, expected 3 (per `size 3 2 4`) [E08]
+voxels.cvox:5:1: error: row width 4, expected 3 (per `size 3 2 4`) [wrong-arity]
 voxels.cvox:12: warning: pivot [3, 0, 5] outside grid bounds [0..3, 0..3, 0..4] [W01]
-cuboidy.json:18: error: animation 'walk' targets part 'wing' not in model [X01]
+cuboidy.json:18: error: animation 'walk' targets part 'wing' not in model [missing]
 ```
 
 This format is gcc / clang compatible for IDE integration.
@@ -633,26 +618,20 @@ When a single input could match more than one error (common under v0.2 free-orde
 
 Concrete precedence:
 
-1. Per-line comment stripping (no errors possible).
-2. Tokenization (no errors possible; any non-whitespace sequence is a token).
-3. Token-stream forward pass:
-   - E15 (duplicate palette declaration)
-   - E16 (palette overflow)
-   - E02 (palette color format), E03 (part header), E05 (pivot args), E06 (socket args), E17 (size / layer / palette args)
-   - E12 (duplicate part name)
-   - E14 (duplicate socket within a part)
-   - E09 (duplicate layer index within a part)
-   - **E07** (non-keyword token whose characters fall outside `[.0-9a-zA-Z]` while an active layer is open — the token cannot be a row but is appearing in row context)
-   - **E10** (voxel-row-shape token with no active layer open)
-   - **E04** (non-keyword, non-voxel-row-shape token with no active layer open — no row context to belong to)
-4. End-of-stream assembly:
-   - E01 (missing palette), E19 (palette but no parts)
-   - E13 (missing size for a part)
-   - E09 (layer coverage: missing index or index out of range)
-   - E10 (layer row count mismatch with D)
-   - E08 (voxel row width mismatch with W) and E11 (palette index out of range), both raised when individual rows are validated against `size` and `palette` at assembly time
+1. Per-line `//` comment stripping (no errors possible).
+2. Tokenization (no errors possible; any non-whitespace sequence becomes a token).
+3. Token-stream forward pass — raised at the point the offending token is consumed:
+   - **`duplicate`** — duplicate `palette` declaration; duplicate `part` name; duplicate socket within a part; duplicate `size` or `pivot` within a part; duplicate layer index within a part
+   - **`wrong-arity`** — wrong arg count for any keyword (`palette` empty, `size` not 3, `pivot` not 3-or-7, `socket` not 4-or-8, `layer` no index, `part` not 1); palette overflow (`> 62` colors)
+   - **`invalid-value`** — bad color hex; non-numeric value where number expected; size dimension out of range; identifier failing the §5 regex; missing or wrong `rot` marker; voxel-row-shape token while no layer active; non-keyword token whose characters fall outside `[.0-9a-zA-Z]` while a layer is active
+   - **`missing`** — a metadata keyword (`size`/`pivot`/`socket`/`layer`) consumed before any `part` declaration
+   - **`unknown`** — non-keyword, non-voxel-row-shape token with no active layer to belong to
+4. End-of-stream assembly — raised after all tokens are consumed:
+   - **`missing`** — palette absent; palette declared but no parts; `size` missing in a part; layer index `0..H-1` not all covered
+   - **`invalid-value`** — layer index out of range relative to `H`; voxel cell references a palette index outside the declared palette
+   - **`wrong-arity`** — layer accumulates a row count different from `D`; voxel row width does not match `W`
 
-A conformant implementation that reports a different error than this precedence implies is non-conforming for cross-implementation parity testing, but its output is still useful to the user.
+A conformant implementation that reports a different code than this precedence implies is non-conforming for cross-implementation parity testing, but its output is still useful to the user.
 
 ---
 

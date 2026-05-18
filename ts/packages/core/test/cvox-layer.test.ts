@@ -17,7 +17,7 @@ describe('parseLayerHeader', () => {
   it('E17: rejects empty args', () => {
     const r = parseLayerHeader([]);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E17');
+    if (!r.ok) expect(r.code).toBe('wrong-arity');
   });
 
   it('accepts multiple args (extras are inline-row tokens, handled by caller)', () => {
@@ -32,19 +32,19 @@ describe('parseLayerHeader', () => {
   it('E17: rejects negative index', () => {
     const r = parseLayerHeader(['-1']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E17');
+    if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 
   it('E17: rejects fractional index', () => {
     const r = parseLayerHeader(['1.5']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E17');
+    if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 
   it('E17: rejects non-numeric index', () => {
     const r = parseLayerHeader(['top']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E17');
+    if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 });
 
@@ -82,36 +82,36 @@ describe('parseVoxelRow', () => {
   it('E08: rejects row shorter than W', () => {
     const r = parseVoxelRow('00', 3, 1);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E08');
+    if (!r.ok) expect(r.code).toBe('wrong-arity');
   });
 
   it('E08: rejects row longer than W', () => {
     const r = parseVoxelRow('0000', 3, 1);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E08');
+    if (!r.ok) expect(r.code).toBe('wrong-arity');
   });
 
   it('E08: rejects empty row when W > 0', () => {
     const r = parseVoxelRow('', 3, 1);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E08');
+    if (!r.ok) expect(r.code).toBe('wrong-arity');
   });
 
   it('E11: rejects palette index outside declared palette (digit)', () => {
     const r = parseVoxelRow('012', 3, 2);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E11');
+    if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 
   it('E11: rejects lowercase index outside palette', () => {
     const r = parseVoxelRow('abc', 3, 11);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E11');
+    if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 
   it('E11: rejects uppercase index outside palette', () => {
     const r = parseVoxelRow('A', 1, 36);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E11');
+    if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 });

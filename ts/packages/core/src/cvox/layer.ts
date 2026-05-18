@@ -5,12 +5,15 @@ export const AIR = -1;
 
 export function parseLayerHeader(args: readonly string[]): Result<number> {
   if (args.length < 1) {
-    return err('E17', `layer expects an index arg, got none`);
+    return err('wrong-arity', `layer expects an index arg, got none`);
   }
   const s = args[0]!;
   const n = parseNonNegInt(s);
   if (n === null) {
-    return err('E17', `layer index '${s}' is not a non-negative integer`);
+    return err(
+      'invalid-value',
+      `layer index '${s}' is not a non-negative integer`,
+    );
   }
   return ok(n);
 }
@@ -22,7 +25,7 @@ export function parseVoxelRow(
 ): Result<number[]> {
   if (text.length !== w) {
     return err(
-      'E08',
+      'wrong-arity',
       `voxel row length ${text.length}, expected ${w}`,
     );
   }
@@ -31,11 +34,14 @@ export function parseVoxelRow(
     const c = text[i]!;
     const idx = charToIndex(c);
     if (idx === null) {
-      return err('E07', `voxel cell '${c}' is not in [.0-9a-zA-Z]`);
+      return err(
+        'invalid-value',
+        `voxel cell '${c}' is not in [.0-9a-zA-Z]`,
+      );
     }
     if (idx !== AIR && idx >= paletteSize) {
       return err(
-        'E11',
+        'invalid-value',
         `voxel cell '${c}' references palette index ${idx}, palette has ${paletteSize}`,
       );
     }

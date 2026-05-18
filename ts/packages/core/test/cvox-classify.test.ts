@@ -121,7 +121,7 @@ describe('classifyLine', () => {
       const result = classifyLine('00-');
       expect(result.kind).toBe('error');
       if (result.kind === 'error') {
-        expect(result.code).toBe('E07');
+        expect(result.code).toBe('invalid-value');
       }
     });
 
@@ -129,7 +129,7 @@ describe('classifyLine', () => {
       const result = classifyLine('00xあ');
       expect(result.kind).toBe('error');
       if (result.kind === 'error') {
-        expect(result.code).toBe('E07');
+        expect(result.code).toBe('invalid-value');
       }
     });
   });

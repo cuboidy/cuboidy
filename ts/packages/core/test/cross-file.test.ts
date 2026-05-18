@@ -44,7 +44,7 @@ describe('validateCrossFile', () => {
     });
     const diags = validateCrossFile(manifest, voxelDef);
     expect(diags).toHaveLength(1);
-    expect(diags[0]?.code).toBe('X01');
+    expect(diags[0]?.code).toBe('missing');
     expect(diags[0]?.severity).toBe('error');
     expect(diags[0]?.message).toMatch(/tongue/);
   });
@@ -60,7 +60,7 @@ describe('validateCrossFile', () => {
     });
     const diags = validateCrossFile(manifest, voxelDef);
     expect(diags).toHaveLength(1);
-    expect(diags[0]?.code).toBe('X02');
+    expect(diags[0]?.code).toBe('unknown');
     expect(diags[0]?.severity).toBe('warning');
     expect(diags[0]?.message).toMatch(/tail/);
   });
@@ -76,6 +76,6 @@ describe('validateCrossFile', () => {
     });
     const diags = validateCrossFile(manifest, voxelDef);
     const codes = diags.map((d) => d.code).sort();
-    expect(codes).toEqual(['X01', 'X02', 'X02']);
+    expect(codes).toEqual(['missing', 'unknown', 'unknown']);
   });
 });

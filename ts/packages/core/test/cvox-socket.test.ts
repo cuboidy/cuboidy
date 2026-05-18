@@ -37,60 +37,60 @@ describe('parseSocket', () => {
   it('E06: rejects empty args', () => {
     const r = parseSocket([]);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E06');
+    if (!r.ok) expect(r.code).toBe('wrong-arity');
   });
 
   it('E06: rejects name-only', () => {
     const r = parseSocket(['hat']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E06');
+    if (!r.ok) expect(r.code).toBe('wrong-arity');
   });
 
   it('E06: rejects 3 args (name + 2 coords)', () => {
     const r = parseSocket(['hat', '1', '3']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E06');
+    if (!r.ok) expect(r.code).toBe('wrong-arity');
   });
 
   it('E06: rejects 5 args without rot keyword', () => {
     const r = parseSocket(['hat', '1', '3', '1', '2']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E06');
+    if (!r.ok) expect(r.code).toBe('wrong-arity');
   });
 
   it('E06: rejects unknown keyword in 5th position', () => {
     const r = parseSocket(['hat', '1', '3', '1', 'foo', '0', '90', '0']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E06');
+    if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 
   it('E06: rejects rot with no args', () => {
     const r = parseSocket(['hat', '1', '3', '1', 'rot']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E06');
+    if (!r.ok) expect(r.code).toBe('wrong-arity');
   });
 
   it('E06: rejects rot with too few args', () => {
     const r = parseSocket(['hat', '1', '3', '1', 'rot', '0', '90']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E06');
+    if (!r.ok) expect(r.code).toBe('wrong-arity');
   });
 
   it('E06: rejects rot with too many args', () => {
     const r = parseSocket(['hat', '1', '3', '1', 'rot', '0', '90', '0', '0']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E06');
+    if (!r.ok) expect(r.code).toBe('wrong-arity');
   });
 
   it('E06: rejects invalid socket name', () => {
     const r = parseSocket(['1bad', '1', '3', '1']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E06');
+    if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 
   it('E06: rejects non-numeric coord', () => {
     const r = parseSocket(['hat', 'abc', '3', '1']);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('E06');
+    if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 });
