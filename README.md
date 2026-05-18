@@ -2,7 +2,7 @@
 
 An open text-based file format for voxel character models, rigs, and animations.
 
-**Status: v0.2 draft. See [SPEC.md](SPEC.md) for the formal specification.**
+**Status: v0.3 draft. See [SPEC.md](SPEC.md) for the formal specification.**
 
 ## What it is
 
@@ -19,6 +19,25 @@ Files are JSON + plain text only. The format is designed to be:
 - **AI-authorable** — structure favors generation reliability over byte efficiency
 - **Browser-editable** — no proprietary binary, no native runtime dependencies
 - **Self-contained** — no registry, no namespace lookups; everything resolves via filesystem
+
+## At a glance
+
+A minimal Cuboidy voxel definition (`voxels.cvox`) — a `crown` part, 3×2×3 voxels, gold:
+
+```
+palette #FFD700                    // gold
+
+part crown
+    size 3 2 3
+    pivot 1 0 1
+    voxels {
+        000 000 000                // layer 0 — solid base
+        ,
+        0.0 ... 0.0                // layer 1 — 4 corner pillars (hollow top)
+    }
+```
+
+The `voxels { … }` block holds the voxel data; comma separates Y-layers (positional indexing). Inside the block, anything but `,` and `}` is interpreted as a voxel row — even strings that spell reserved words like `rot` or `size` are unambiguously voxel data. See SPEC §7 for the full grammar.
 
 ## Folder layout
 
@@ -43,7 +62,7 @@ my-model.cuboidy        packed package (ZIP of the folder above)
 | `cuboidy.json` | manifest (fixed name) | JSON | `parseManifest()` (TS reference impl); shared JSON Schema is planned (see roadmap) |
 | `voxels.cvox` | voxel definition | custom text | `parseCvox()` (TS reference impl); standalone `cuboidy-lint` CLI is planned |
 | `anims/*.json` | optional shared animations | JSON | not yet validated; planned alongside `cuboidy.schema.json` |
-| `*.cuboidy` | packed package | ZIP | both, after extraction (packed format is reserved for v0.3+) |
+| `*.cuboidy` | packed package | ZIP | both, after extraction (packed format is reserved for a future spec version) |
 
 ## Examples
 
@@ -52,13 +71,15 @@ my-model.cuboidy        packed package (ZIP of the folder above)
 
 ## Roadmap
 
-- [x] Spec document (`SPEC.md`) — v0.2 draft
-- [x] Reference parser (TypeScript) — `ts/packages/core/`, full v0.2 grammar
-- [x] Cross-file lint — X01 error / X02 warning
+- [x] Spec document (`SPEC.md`) — v0.3 draft
+- [x] Reference parser (TypeScript) — `ts/packages/core/`, full v0.3 grammar (125 tests)
+- [x] Cross-file lint — `missing` error / `unknown` warning between manifest and voxels
+- [x] Shared parity fixtures — `fixtures/cvox/<code>/` and `fixtures/json/<code>/`, contract for cross-implementation conformance
 - [ ] JSON Schema for `cuboidy.json` (`schema/cuboidy.schema.json`)
-- [ ] Voxel definition linter (`cuboidy-lint`)
-- [ ] Reference parser (C# / TypeScript)
-- [ ] Web-based editor
+- [ ] Canonical serializer (reader-tolerant / writer-strict, comment-preserving round-trip)
+- [ ] Voxel definition linter (`cuboidy-lint`) — warnings (W01–W05) and hints (H01–H02)
+- [ ] Reference parser (C#)
+- [ ] Web-based editor (`ts/packages/web/`)
 - [ ] Rig vocabulary docs (quadruped / biped / winged / ...)
 - [ ] Packed format spec (`.cuboidy` ZIP)
 
