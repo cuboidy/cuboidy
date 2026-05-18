@@ -86,7 +86,7 @@ export class SizeParser {
 // SPEC §7.5: parses a `part` declaration including its full body (all
 // part-scoped metadata: size, pivot, socket*, voxels, in any order). Owns
 // its own inner loop, dispatching each part-scoped reserved token to its
-// sub-parser. Yields control back to FileParser when the next `part` token
+// sub-parser. Yields control back to CvoxParser when the next `part` token
 // is peeked or EOF is reached.
 export class PartParser {
   constructor(
@@ -112,7 +112,7 @@ export class PartParser {
     // Inner loop: consume part-scoped declarations until the next 'part' or EOF.
     while (this.cursor.hasMore()) {
       const peek = this.cursor.peek()!;
-      if (peek.text === 'part') break; // yield to FileParser for the next part
+      if (peek.text === 'part') break; // yield to CvoxParser for the next part
       const t = this.cursor.advance()!;
       let r: Result<void>;
       switch (t.text) {

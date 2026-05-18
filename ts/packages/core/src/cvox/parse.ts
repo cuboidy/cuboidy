@@ -20,7 +20,7 @@ export type { PartDefinition, VoxelDefinition } from './file-state.js';
 // own stream advancement via a shared TokenCursor. PartParser additionally
 // owns an inner loop for part-scoped declarations. See SPEC §7.3.3 for the
 // structural validity table.
-export class FileParser {
+export class CvoxParser {
   private readonly state = new FileState();
 
   constructor(private readonly cursor: TokenCursor) {}
@@ -76,5 +76,5 @@ export class FileParser {
 }
 
 export function parseCvox(text: string): Result<VoxelDefinition> {
-  return new FileParser(new TokenCursor(tokenize(text))).parse();
+  return new CvoxParser(new TokenCursor(tokenize(text))).parse();
 }
