@@ -1,10 +1,9 @@
 import { err, ok, type Result } from '../result.js';
 import type { Palette } from './palette.js';
 import type { Pivot } from './pivot.js';
-import type { Size } from './part.js';
+import type { PartState, Size } from './part.js';
 import type { Socket } from './socket.js';
 import { parseVoxelRow } from './voxel-row.js';
-import type { RawVoxels } from './voxels.js';
 
 // Output types — the result of a successful parseCvox call.
 
@@ -21,38 +20,21 @@ export interface PartDefinition {
   voxels: readonly (readonly (readonly number[])[])[];
 }
 
-// PartBuilder is the mutable accumulator used by PartParser + its sub-parsers
-// (SizeParser, PivotParser, SocketParser, VoxelsParser). It is finalized into
-// a PartDefinition during assembly (CvoxState.assemble).
-
-export class PartBuilder {
-  size: Size | null = null;
-  sizeLineNo = 0;
-  pivot: Pivot | null = null;
-  pivotLineNo = 0;
-  sockets: Socket[] = [];
-  socketNames = new Set<string>();
-  voxels: RawVoxels | null = null;
-
-  constructor(
-    public readonly name: string,
-    public readonly headerLineNo: number,
-  ) {}
-}
-
-// CvoxState holds the file-scope state shared across sub-parsers. Each parser
-// reads and writes via its reference, isolating "what state belongs to whom"
-// from the parsing logic. The assemble() method finalizes accumulated state
-// into the public VoxelDefinition output.
+// CvoxState holds file-scope state shared across sub-parsers. Each parser
+// reads its parent state (this for top-level parsers, PartState for
+// part-scoped parsers) for duplicate detection; the caller of each parser
+// commits the returned value back to this state. The assemble() method
+// finalizes accumulated state into the public VoxelDefinition output.
 
 export class CvoxState {
   palette: Palette | null = null;
   paletteLineNo = 0;
-  parts: PartBuilder[] = [];
+  parts: PartState[] = [];
   partNames = new Set<string>();
 
-  commitPart(builder: PartBuilder): void {
-    this.parts.push(builder);
+  commitPart(state: PartState): void {
+    this.partNames.add(state.name);
+    this.parts.push(state);
   }
 
   assemble(): Result<VoxelDefinition> {
@@ -65,8 +47,8 @@ export class CvoxState {
 
     const palette = this.palette;
     const finalParts: PartDefinition[] = [];
-    for (const builder of this.parts) {
-      const r = assemblePart(builder, palette);
+    for (const part of this.parts) {
+      const r = assemblePart(part, palette);
       if (!r.ok) return r;
       finalParts.push(r.value);
     }
@@ -75,32 +57,32 @@ export class CvoxState {
 }
 
 function assemblePart(
-  builder: PartBuilder,
+  part: PartState,
   palette: Palette,
 ): Result<PartDefinition> {
-  if (builder.size === null) {
+  if (part.size === null) {
     return err(
       'missing',
-      `line ${builder.headerLineNo}: part '${builder.name}' missing size`,
+      `line ${part.headerLineNo}: part '${part.name}' missing size`,
     );
   }
-  if (builder.voxels === null) {
+  if (part.voxels === null) {
     return err(
       'missing',
-      `line ${builder.headerLineNo}: part '${builder.name}' missing voxels block`,
+      `line ${part.headerLineNo}: part '${part.name}' missing voxels block`,
     );
   }
-  const size = builder.size;
-  const voxelsRaw = builder.voxels;
+  const size = part.size;
+  const voxelsRaw = part.voxels;
 
   if (voxelsRaw.sections.length !== size.h) {
     return err(
       'wrong-arity',
-      `line ${voxelsRaw.voxelsLine}: voxels block for part '${builder.name}' has ${voxelsRaw.sections.length} layer-section(s), expected ${size.h}`,
+      `line ${voxelsRaw.voxelsLine}: voxels block for part '${part.name}' has ${voxelsRaw.sections.length} layer-section(s), expected ${size.h}`,
     );
   }
 
-  const pivot: Pivot = builder.pivot ?? {
+  const pivot: Pivot = part.pivot ?? {
     pos: { x: size.w / 2, y: 0, z: size.d / 2 },
   };
 
@@ -110,7 +92,7 @@ function assemblePart(
     if (section.rows.length !== size.d) {
       return err(
         'wrong-arity',
-        `line ${section.startLine}: voxels block for part '${builder.name}' layer ${y} has ${section.rows.length} row(s), expected ${size.d}`,
+        `line ${section.startLine}: voxels block for part '${part.name}' layer ${y} has ${section.rows.length} row(s), expected ${size.d}`,
       );
     }
     const layerCells: number[][] = [];
@@ -119,7 +101,7 @@ function assemblePart(
       if (!rowR.ok) {
         return err(
           rowR.code,
-          `line ${row.line}: part '${builder.name}' layer ${y}: ${rowR.message}`,
+          `line ${row.line}: part '${part.name}' layer ${y}: ${rowR.message}`,
         );
       }
       layerCells.push(rowR.value);
@@ -128,10 +110,10 @@ function assemblePart(
   }
 
   return ok({
-    name: builder.name,
+    name: part.name,
     size,
     pivot,
-    sockets: builder.sockets,
+    sockets: part.sockets,
     voxels,
   });
 }

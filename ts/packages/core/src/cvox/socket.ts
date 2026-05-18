@@ -1,7 +1,7 @@
 import { isIdentifier } from '../identifier.js';
 import { err, ok, type Result } from '../result.js';
 import type { TokenCursor } from './cursor.js';
-import type { PartBuilder } from './cvox-state.js';
+import type { PartState } from './part.js';
 import type { Token } from './tokenize.js';
 import { parseVec3, type Vec3 } from './vec3.js';
 
@@ -41,16 +41,17 @@ export function parseSocket(args: readonly string[]): Result<Socket> {
   return ok({ name, pos: pos.value, rot: rot.value });
 }
 
-// SPEC §7.8: parses a `socket` declaration from the token stream and appends
-// to the active PartBuilder. Pulls 4 args (name + pos triple), then peeks for
-// the `rot` sub-keyword to optionally pull 3 more.
+// SPEC §7.8: parses a `socket` declaration. Pulls 4 args (name + pos
+// triple), then peeks for the `rot` sub-keyword to optionally pull 3 more.
+// Reads parent PartState to detect duplicate socket names. Returns the
+// parsed Socket; the caller appends it to PartState.
 export class SocketParser {
   constructor(
     private readonly cursor: TokenCursor,
-    private readonly builder: PartBuilder,
+    private readonly partState: PartState,
   ) {}
 
-  parse(kw: Token): Result<void> {
+  parse(kw: Token): Result<Socket> {
     const args = this.cursor.pullArgs(4);
     if (this.cursor.peek()?.text === 'rot') {
       args.push(this.cursor.advance()!.text);
@@ -58,14 +59,12 @@ export class SocketParser {
     }
     const r = parseSocket(args);
     if (!r.ok) return err(r.code, `line ${kw.line}: ${r.message}`);
-    if (this.builder.socketNames.has(r.value.name)) {
+    if (this.partState.socketNames.has(r.value.name)) {
       return err(
         'duplicate',
-        `line ${kw.line}: duplicate socket '${r.value.name}' in part '${this.builder.name}'`,
+        `line ${kw.line}: duplicate socket '${r.value.name}' in part '${this.partState.name}'`,
       );
     }
-    this.builder.socketNames.add(r.value.name);
-    this.builder.sockets.push(r.value);
-    return ok(undefined);
+    return r;
   }
 }

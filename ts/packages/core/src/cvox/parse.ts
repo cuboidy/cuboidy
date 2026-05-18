@@ -28,14 +28,20 @@ export class CvoxParser {
   parse(): Result<VoxelDefinition> {
     while (this.cursor.hasMore()) {
       const t = this.cursor.advance()!;
-      let r: Result<void>;
       switch (t.text) {
-        case 'palette':
-          r = new PaletteParser(this.cursor, this.state).parse(t);
+        case 'palette': {
+          const r = new PaletteParser(this.cursor, this.state).parse(t);
+          if (!r.ok) return r;
+          this.state.palette = r.value;
+          this.state.paletteLineNo = t.line;
           break;
-        case 'part':
-          r = new PartParser(this.cursor, this.state).parse(t);
+        }
+        case 'part': {
+          const r = new PartParser(this.cursor, this.state).parse(t);
+          if (!r.ok) return r;
+          this.state.commitPart(r.value);
           break;
+        }
         // stray reserved tokens at file scope — their structurally valid
         // enclosing scope is missing (SPEC §7.3.3)
         case 'size':
@@ -69,7 +75,6 @@ export class CvoxParser {
         default:
           return err('unknown', `line ${t.line}: unknown token '${t.text}'`);
       }
-      if (!r.ok) return r;
     }
     return this.state.assemble();
   }

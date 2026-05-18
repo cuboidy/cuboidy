@@ -88,9 +88,10 @@ function pair(hex: string, i: number): number {
   return parseInt(hex.slice(i, i + 2), 16);
 }
 
-// SPEC §7.4: parses a `palette` declaration from the token stream and
-// writes to CvoxState. Detects duplicate palette declarations (only one
-// allowed per file). Pulls args until the next reserved token (so a stray
+// SPEC §7.4: parses a `palette` declaration. Reads parent CvoxState to
+// detect duplicate palette declarations (only one allowed per file).
+// Returns the parsed Palette; the caller is responsible for writing it
+// back to CvoxState. Pulls args until the next reserved token (so a stray
 // non-color token after palette would surface as `invalid-value` from
 // parsePalette, not by stealing into another production).
 export class PaletteParser {
@@ -99,7 +100,7 @@ export class PaletteParser {
     private readonly fileState: CvoxState,
   ) {}
 
-  parse(kw: Token): Result<void> {
+  parse(kw: Token): Result<Palette> {
     if (this.fileState.palette !== null) {
       return err(
         'duplicate',
@@ -109,8 +110,6 @@ export class PaletteParser {
     const args = this.cursor.pullArgs(Number.POSITIVE_INFINITY);
     const r = parsePalette(args);
     if (!r.ok) return err(r.code, `line ${kw.line}: ${r.message}`);
-    this.fileState.palette = r.value;
-    this.fileState.paletteLineNo = kw.line;
-    return ok(undefined);
+    return r;
   }
 }

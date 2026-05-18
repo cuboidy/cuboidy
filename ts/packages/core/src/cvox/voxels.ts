@@ -1,10 +1,10 @@
 import { err, ok, type Result } from '../result.js';
 import type { TokenCursor } from './cursor.js';
-import type { PartBuilder } from './cvox-state.js';
+import type { PartState } from './part.js';
 import type { Token } from './tokenize.js';
 
 // Raw voxel-row tokens collected during parsing, validated later by
-// FileState.assemble against the part's size and the file's palette.
+// CvoxState.assemble against the part's size and the file's palette.
 
 export interface RawRow {
   text: string;
@@ -26,18 +26,19 @@ export interface RawVoxels {
 // dispatches `}` (block close), `,` (layer-section separator), `{` (nested
 // error), and any other token (voxel-row candidate). Reserved keywords from
 // other scopes are treated as voxel-row strings here (lexical isolation
-// per SPEC §7.3.4).
+// per SPEC §7.3.4). Reads parent PartState to detect duplicate voxels
+// blocks. Returns the parsed RawVoxels; the caller writes it back.
 export class VoxelsParser {
   constructor(
     private readonly cursor: TokenCursor,
-    private readonly builder: PartBuilder,
+    private readonly partState: PartState,
   ) {}
 
-  parse(kw: Token): Result<void> {
-    if (this.builder.voxels !== null) {
+  parse(kw: Token): Result<RawVoxels> {
+    if (this.partState.voxels !== null) {
       return err(
         'duplicate',
-        `line ${kw.line}: duplicate voxels block for part '${this.builder.name}' (first at line ${this.builder.voxels.voxelsLine})`,
+        `line ${kw.line}: duplicate voxels block for part '${this.partState.name}' (first at line ${this.partState.voxels.voxelsLine})`,
       );
     }
 
@@ -65,8 +66,7 @@ export class VoxelsParser {
       switch (t.text) {
         case '}':
           sections.push(current);
-          this.builder.voxels = { sections, voxelsLine: kw.line };
-          return ok(undefined);
+          return ok({ sections, voxelsLine: kw.line });
         case ',':
           sections.push(current);
           current = { rows: [], startLine: t.line };
