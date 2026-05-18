@@ -1,0 +1,6 @@
+// `,` at top level has no valid grammatical role
+,
+palette #FF0000
+part box
+    size 1 1 1
+    voxels { 0 }

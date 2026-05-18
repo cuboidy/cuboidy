@@ -1,0 +1,7 @@
+// `mystery` is not a reserved word and has no valid grammatical role at top level.
+// Placed before any reserved word so it is consumed at top-level dispatch.
+mystery 1 2 3
+palette #FF0000
+part box
+    size 1 1 1
+    voxels { 0 }

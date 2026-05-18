@@ -113,7 +113,7 @@ The manifest is a standard JSON document (no comments, no trailing commas).
 ```json
 {
   "name": "<identifier>",
-  "version": "0.2",
+  "version": "0.3",
   "parts": [ ... ],
   "animations": { ... }
 }
@@ -122,7 +122,7 @@ The manifest is a standard JSON document (no comments, no trailing commas).
 | Field | Required | Type | Notes |
 |---|---|---|---|
 | `name` | **yes** | string (identifier) | Model identifier |
-| `version` | no | string | Spec version this model targets. Absent → `"0.2"` |
+| `version` | no | string | Spec version this model targets. Absent → `"0.3"` |
 | `parts` | **yes** | array (non-empty) | At least one part |
 | `animations` | no | object | Map from animation name to definition. Absent → no animations |
 
@@ -257,14 +257,16 @@ Cuboidy uses **two layers** of lexing:
 | `//` … end-of-line | comment, stripped before tokenization |
 | `{` `}` `,` | 1-character punctuation tokens, recognized everywhere; never appear inside any other token; need no surrounding whitespace (so `voxels{` and `},` tokenize as expected) |
 
-**Layer 2 — context-scoped** (each scope decides what is reserved inside it):
+**Layer 2 — context-scoped** (each scope decides which reserved words are recognized as **valid statement starters** within it; full structural validity rules per keyword live in §7.3):
 
-| Scope | Reserved keywords | Special tokens |
+| Scope | Statement-starting keywords recognized here | Special tokens |
 |---|---|---|
 | **top-level** (outside any `{ … }`) | `palette`, `part` | `#` introduces a color literal (palette arg) |
-| **`part` section** (between a `part` keyword and the next `part` or end of file) | `size`, `pivot`, `socket`, `voxels` (and `palette`, which is file-level but may appear textually here) | — |
+| **`part` section** (between a `part` keyword and the next `part` or end of file) | `size`, `pivot`, `socket`, `voxels` (and `palette`, which is file-level but may appear textually here without closing the part — see §7.5) | — |
 | **`pivot` / `socket` declaration** (after the position triple) | `rot` (optional, introduces a rotation triple) | — |
 | **`voxels { … }` block** | **(none)** | every token except the universal `,` `}` is interpreted as a voxel-row string |
+
+**Lexical vs structural — two separate axes.** The set of *lexically* reserved words is a flat 7-element list (§7.3); it never changes by scope. What changes by scope is *structural validity* — which reserved word can start a statement here. A reserved word never participates in identifier slots: the parser collects arguments to a keyword until the next reserved word or universal punctuation (§7.2 note), so `part rot` does not name a part `rot` — it fails as a `part` header with 0 identifier arguments. To put a string spelled like a reserved word into the model, place it inside a `voxels { … }` block where reserved words have no lexical privilege.
 
 The framework generalizes naturally: each block-introducing keyword (currently `voxels`; future versions may add more) decides what is reserved inside its `{ … }`. The `voxels` keyword reserves nothing — so reserved words from other scopes appearing inside `voxels { … }` are simply voxel-row strings.
 
@@ -323,6 +325,16 @@ voxel-row    := /[.0-9a-zA-Z]+/               (length must equal W;
 ```
 
 Tokens are separated by any whitespace (space, tab, newline) or by the universal punctuation `{` `}` `,` (which need no surrounding whitespace).
+
+**Argument collection rule (Postel reader semantics).** When the integrated parser is reading arguments to a keyword (`palette` colors, `part` identifier, `size` ints, `pivot` / `socket` nums, `voxels` opening `{`), it pulls tokens from the stream **until the next reserved word or universal punctuation `{` `}` `,`** — whichever comes first. The library-level entry points (`parsePart(args)`, `parseSize(args)`, etc.) receive whatever slice was pulled and validate strict arity:
+
+- If the pulled count is less than required, the library returns `wrong-arity`.
+- If the pulled count is more than required, the library returns `wrong-arity` (library entry only).
+- Under the integrated parser, the keyword consumes only its required count; extras stay in the stream and are diagnosed by the main loop at the next iteration (typically `unknown` for a stray identifier, `invalid-value` for a stray number where no statement is expected). This is documented per-keyword in §7.5–§7.9.
+
+Concretely: `part rot` pulls 0 identifier tokens (because `rot` is reserved and stops collection), so `parsePart([])` returns `wrong-arity`. `size 1 1 1 9` pulls 3 ints, sets the size, and leaves `9` for the main loop to diagnose as `unknown`. This rule is what makes "reserved words are not valid identifiers" an automatic consequence of the lexer.
+
+**`palette` mid-part.** The `palette` keyword is file-level (§7.5): it may appear anywhere in the file, including inside the textual span of a `part` section. It does **not** close the surrounding part — the part remains open after the `palette` declaration is consumed. The grammar above shows `part := "part" identifier (size-decl | pivot-decl | socket-decl | voxels-block)+`, but a reader MUST accept a `palette-decl` interleaved into that sequence without closing the part. This special-case applies only to `palette`; all other top-level statement starters (`part`) close the surrounding part.
 
 ### 7.3 Reserved keywords (v0.3)
 
@@ -442,6 +454,7 @@ voxels {
 - The i-th section (0-based) becomes layer `i`. Layer indices are **positional** — there is no `layer N` keyword in v0.3
 - Each layer-section contains exactly D voxel-row tokens (less or more → `wrong-arity`)
 - Whitespace inside the block is purely cosmetic — rows can be inline, multi-line, or mixed; the entire block can be on one line (`voxels { 000 000 000 , .0. 000 .0. }`)
+- **Leading and trailing `,` and consecutive `,,` create empty layer-sections.** `voxels { , 0 }` produces 2 sections (the first with 0 rows); `voxels { 0 , }` produces 2 sections (the second with 0 rows); `voxels { , }` produces 2 empty sections. These are syntactically well-formed but fail at assembly with `wrong-arity` unless `D = 0` (which the spec disallows: `size` dimensions are in `[1, 1024]` per §7.6, so empty sections always fail). The writer's canonical form omits leading/trailing/consecutive commas
 
 **Lexical isolation** (§7.1 Layer 2): inside `voxels { … }` no reserved words are recognized. Any token (other than the universal `,` and `}`) is interpreted as a voxel-row string and subject only to:
 
@@ -457,6 +470,7 @@ A row spelling `rot` or `size` or `part` is **valid voxel data** when its 3 char
 |---|---|
 | `{` missing after `voxels` | `wrong-arity` (or `unknown`/`invalid-value` depending on the offending token) |
 | `}` missing (EOF before close) | `missing` |
+| Nested `{` inside a `voxels { … }` block (no nesting permitted) | `invalid-value` |
 | Layer-section count ≠ H | `wrong-arity` |
 | Row count in a section ≠ D | `wrong-arity` |
 | Row width ≠ W | `wrong-arity` |
@@ -709,14 +723,16 @@ Concrete precedence:
 2. Tokenization (no errors possible; any non-whitespace sequence becomes a token; `{` `}` `,` are 1-char tokens).
 3. Token-stream forward pass — raised at the point the offending token is consumed:
    - **`duplicate`** — duplicate `palette` declaration; duplicate `part` name; duplicate socket within a part; duplicate `size` / `pivot` / `voxels` within a part
-   - **`wrong-arity`** — wrong arg count for any keyword (`palette` empty, `size` not 3, `pivot` not 3-or-7, `socket` not 4-or-8, `part` not 1); palette overflow (`> 62` colors); `voxels` not followed by `{`
-   - **`invalid-value`** — bad color hex; non-numeric value where number expected; size dimension out of range; identifier failing the §5 regex; missing or wrong `rot` marker; voxel row contains a character outside `[.0-9a-zA-Z]` (inside `voxels { … }`)
-   - **`missing`** — a metadata reserved word (`size` / `pivot` / `socket` / `voxels`) consumed before any `part` declaration; `voxels { … }` block reaches EOF without `}`; `rot` consumed outside `pivot` / `socket`
-   - **`unknown`** — non-keyword identifier token with no valid grammatical role at this point (top-level or part-section scope)
-4. End-of-stream assembly — raised after all tokens are consumed:
+   - **`wrong-arity`** — too-few args for any keyword consumed by the integrated parser (`palette` empty, `size` < 3, `pivot` < 3, `socket` < 4, `part` < 1; per §7.2's argument-collection rule, this happens when a reserved word or `{` `}` `,` arrives before enough args are collected); palette overflow (`> 62` colors); `voxels` not followed by `{`; nested `{` inside `voxels { … }`
+   - **`invalid-value`** — bad color hex; non-numeric value where number expected; size dimension out of range; identifier failing the §5 regex; missing or wrong `rot` marker
+   - **`missing`** — a part-scoped reserved word (`size` / `pivot` / `socket` / `voxels`) consumed before any `part` declaration; `voxels { … }` block reaches EOF without `}`; `rot` consumed outside `pivot` / `socket`
+   - **`unknown`** — non-keyword token with no valid grammatical role at this point. This includes extras left over after a keyword consumed its required args (e.g. the `9` in `size 1 1 1 9`, the `b` in `part a b`, the `5` in `pivot 1 0 1 5` — see per-keyword notes in §7.5–§7.9)
+4. End-of-stream assembly — raised after all tokens are consumed (validation deferred because palette may be declared anywhere in the file, so voxel-row content cannot be validated at consumption time):
    - **`missing`** — palette absent; palette declared but no parts; `size` missing in a part; `voxels` missing in a part
-   - **`invalid-value`** — voxel cell references a palette index outside the declared palette
+   - **`invalid-value`** — voxel cell character outside `[.0-9a-zA-Z]`; voxel cell references a palette index outside the declared palette
    - **`wrong-arity`** — layer-section count differs from `H`; a layer-section row count differs from `D`; voxel row width does not match `W`
+
+**Library-entry-point arity vs integrated arity** (informational): the library-level entry points `parsePart(args)`, `parseSize(args)`, `parsePivot(args)`, `parseSocket(args)`, `parsePalette(args)` enforce strict `wrong-arity` for both too-few and too-many arguments — they see the args slice the caller hands them. The integrated parser (`parseCvox`) however *cannot* return `wrong-arity` for too-many args of a keyword, because per §7.2 it consumes only the required count and lets extras fall through. Implementations MUST be consistent within each entry point.
 
 A conformant implementation that reports a different code than this precedence implies is non-conforming for cross-implementation parity testing, but its output is still useful to the user.
 

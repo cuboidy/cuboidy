@@ -21,6 +21,9 @@ fixtures/
 │   ├── invalid-value/
 │   │   ├── bad-voxel-char.cvox   voxel cell outside [.0-9a-zA-Z]
 │   │   └── size-zero.cvox        size dimension 0 is below the v0.3 min
+│   ├── unknown/
+│   │   ├── unknown-keyword.cvox  non-reserved identifier at top level
+│   │   └── stray-punct.cvox      `,` outside any voxels block
 │   └── wrong-arity/
 │       ├── row-width.cvox        row width does not match W
 │       ├── row-count.cvox        rows in a layer-section does not match D

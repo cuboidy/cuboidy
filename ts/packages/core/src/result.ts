@@ -17,7 +17,7 @@ export type CuboidyErrorCode =
   | 'unknown'
   // A value is present but malformed: bad hex color, voxel-row character
   // outside the palette alphabet, palette index out of range, identifier
-  // failing the §5 regex, layer index out of range, etc.
+  // failing the §5 regex, size dimension out of range, etc.
   | 'invalid-value'
   // An incorrect number of items: wrong arg count for a keyword, voxel-row
   // width not matching `W`, row count per layer not matching `D`, palette
