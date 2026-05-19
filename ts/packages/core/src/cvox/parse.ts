@@ -1,45 +1,74 @@
 import { err, ok, type Result } from '../result.js';
 import { TokenCursor } from './cursor.js';
-import {
-  CvoxState,
-  type Part,
-  type Cvox,
-} from './cvox-state.js';
-import { PaletteParser } from './palette.js';
-import { PartParser } from './part.js';
+import { PaletteParser, type Palette } from './palette.js';
+import { assemblePart, PartParser, type ParsedPart, type Size } from './part.js';
+import type { Pivot } from './pivot.js';
+import type { Socket } from './socket.js';
 import { tokenize } from './tokenize.js';
 
-// Re-export public output types (the shape returned by parseCvox).
-export type { Part, Cvox } from './cvox-state.js';
+// Public output types (the shape returned by parseCvox).
 
-// SPEC §7.2: top-level parser. Dispatches each file-scope token to its
-// production parser (PaletteParser, PartParser) or returns a structural
-// error for tokens that have no valid grammatical role at file scope.
+export interface Cvox {
+  palette: Palette;
+  parts: Part[];
+}
+
+export interface Part {
+  name: string;
+  size: Size;
+  pivot: Pivot;
+  sockets: readonly Socket[];
+  voxels: readonly (readonly (readonly number[])[])[];
+}
+
+// SPEC §7.2: top-level parser. Holds file-scope state in private fields
+// (palette, parts, partNames) and dispatches each file-scope token to its
+// production parser (PaletteParser, PartParser). Sub-parsers receive this
+// CvoxParser instance and read state via the read-only accessor methods
+// (hasPalette, hasPartName) for early duplicate detection. State mutation
+// is done by this parser itself in the dispatch loop.
 //
-// Per-production parsers (Palette/Part/Size/Pivot/Socket/Voxels) own their
-// own stream advancement via a shared TokenCursor. PartParser additionally
-// owns an inner loop for part-scoped declarations. See SPEC §7.3.3 for the
-// structural validity table.
+// At EOF, assemble() validates structural completeness and resolves each
+// ParsedPart into the final Part by applying the palette to its raw voxel
+// data.
 export class CvoxParser {
-  private readonly state = new CvoxState();
+  private palette: Palette | null = null;
+  private paletteLineNo = 0;
+  private parts: ParsedPart[] = [];
+  private partNames = new Set<string>();
 
   constructor(private readonly cursor: TokenCursor) {}
+
+  // Read-only accessors for sub-parsers.
+  hasPalette(): boolean { return this.palette !== null; }
+  getPaletteLineNo(): number { return this.paletteLineNo; }
+  hasPartName(name: string): boolean { return this.partNames.has(name); }
+
+  // Called by PartParser when it processes a mid-part `palette` declaration
+  // (the file-level escape per SPEC §7.5). PartParser cannot directly
+  // mutate the CvoxParser's private fields, so this method exposes the
+  // single write operation it needs.
+  setPalette(palette: Palette, line: number): void {
+    this.palette = palette;
+    this.paletteLineNo = line;
+  }
 
   parse(): Result<Cvox> {
     while (this.cursor.hasMore()) {
       const t = this.cursor.advance()!;
       switch (t.text) {
         case 'palette': {
-          const r = new PaletteParser(this.cursor, this.state).parse(t);
+          const r = new PaletteParser(this.cursor, this).parse(t);
           if (!r.ok) return r;
-          this.state.palette = r.value;
-          this.state.paletteLineNo = t.line;
+          this.palette = r.value;
+          this.paletteLineNo = t.line;
           break;
         }
         case 'part': {
-          const r = new PartParser(this.cursor, this.state).parse(t);
+          const r = new PartParser(this.cursor, this).parse(t);
           if (!r.ok) return r;
-          this.state.commitPart(r.value);
+          this.partNames.add(r.value.name);
+          this.parts.push(r.value);
           break;
         }
         // stray reserved tokens at file scope — their structurally valid
@@ -76,7 +105,24 @@ export class CvoxParser {
           return err('unknown', `line ${t.line}: unknown token '${t.text}'`);
       }
     }
-    return this.state.assemble();
+    return this.assemble();
+  }
+
+  private assemble(): Result<Cvox> {
+    if (this.palette === null) {
+      return err('missing', 'missing palette declaration');
+    }
+    if (this.parts.length === 0) {
+      return err('missing', 'file contains palette but no parts');
+    }
+    const palette = this.palette;
+    const finalParts: Part[] = [];
+    for (const parsed of this.parts) {
+      const r = assemblePart(parsed, palette);
+      if (!r.ok) return r;
+      finalParts.push(r.value);
+    }
+    return ok({ palette, parts: finalParts });
   }
 }
 

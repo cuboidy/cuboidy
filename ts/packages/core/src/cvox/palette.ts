@@ -1,6 +1,6 @@
 import { err, ok, type Result } from '../result.js';
 import type { TokenCursor } from './cursor.js';
-import type { CvoxState } from './cvox-state.js';
+import type { CvoxParser } from './parse.js';
 import type { Token } from './tokenize.js';
 
 export interface Color {
@@ -88,23 +88,23 @@ function pair(hex: string, i: number): number {
   return parseInt(hex.slice(i, i + 2), 16);
 }
 
-// SPEC §7.4: parses a `palette` declaration. Reads parent CvoxState to
-// detect duplicate palette declarations (only one allowed per file).
-// Returns the parsed Palette; the caller is responsible for writing it
-// back to CvoxState. Pulls args until the next reserved token (so a stray
-// non-color token after palette would surface as `invalid-value` from
-// parsePalette, not by stealing into another production).
+// SPEC §7.4: parses a `palette` declaration. Calls parent CvoxParser's
+// hasPalette() accessor to detect duplicate palette declarations (only one
+// allowed per file). Returns the parsed Palette; the caller writes it back.
+// Pulls args until the next reserved token (so a stray non-color token
+// after palette surfaces as `invalid-value` from parsePalette, not by
+// stealing into another production).
 export class PaletteParser {
   constructor(
     private readonly cursor: TokenCursor,
-    private readonly fileState: CvoxState,
+    private readonly cvoxParser: CvoxParser,
   ) {}
 
   parse(kw: Token): Result<Palette> {
-    if (this.fileState.palette !== null) {
+    if (this.cvoxParser.hasPalette()) {
       return err(
         'duplicate',
-        `line ${kw.line}: duplicate palette declaration (first at line ${this.fileState.paletteLineNo})`,
+        `line ${kw.line}: duplicate palette declaration (first at line ${this.cvoxParser.getPaletteLineNo()})`,
       );
     }
     const args = this.cursor.pullArgs(Number.POSITIVE_INFINITY);

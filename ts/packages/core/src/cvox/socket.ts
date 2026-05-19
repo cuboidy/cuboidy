@@ -1,7 +1,7 @@
 import { isIdentifier } from '../identifier.js';
 import { err, ok, type Result } from '../result.js';
 import type { TokenCursor } from './cursor.js';
-import type { PartState } from './part.js';
+import type { PartParser } from './part.js';
 import type { Token } from './tokenize.js';
 import { parseVec3, type Vec3 } from './vec3.js';
 
@@ -43,12 +43,12 @@ export function parseSocket(args: readonly string[]): Result<Socket> {
 
 // SPEC §7.8: parses a `socket` declaration. Pulls 4 args (name + pos
 // triple), then peeks for the `rot` sub-keyword to optionally pull 3 more.
-// Reads parent PartState to detect duplicate socket names. Returns the
-// parsed Socket; the caller appends it to PartState.
+// Calls parent PartParser's hasSocketName() accessor to detect duplicate
+// socket names. Returns the parsed Socket; the caller appends it.
 export class SocketParser {
   constructor(
     private readonly cursor: TokenCursor,
-    private readonly partState: PartState,
+    private readonly partParser: PartParser,
   ) {}
 
   parse(kw: Token): Result<Socket> {
@@ -59,10 +59,10 @@ export class SocketParser {
     }
     const r = parseSocket(args);
     if (!r.ok) return err(r.code, `line ${kw.line}: ${r.message}`);
-    if (this.partState.socketNames.has(r.value.name)) {
+    if (this.partParser.hasSocketName(r.value.name)) {
       return err(
         'duplicate',
-        `line ${kw.line}: duplicate socket '${r.value.name}' in part '${this.partState.name}'`,
+        `line ${kw.line}: duplicate socket '${r.value.name}' in part '${this.partParser.getName()}'`,
       );
     }
     return r;

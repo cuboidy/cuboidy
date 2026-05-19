@@ -1,6 +1,6 @@
 import { err, ok, type Result } from '../result.js';
 import type { TokenCursor } from './cursor.js';
-import type { PartState } from './part.js';
+import type { PartParser } from './part.js';
 import type { Token } from './tokenize.js';
 import { parseVec3, type Vec3 } from './vec3.js';
 
@@ -35,22 +35,21 @@ export function parsePivot(args: readonly string[]): Result<Pivot> {
   return ok({ pos: pos.value, rot: rot.value });
 }
 
-// SPEC §7.7: parses a `pivot` declaration. Reads parent PartState to detect
-// duplicate pivot (at most one per part). Pulls 3 pos args, then peeks for
-// the `rot` sub-keyword to optionally pull 3 more rot args. Extras beyond
-// the 3 (or 7) fall through to the caller's loop (per §7.2 argument-
-// collection rule). Returns the parsed Pivot; the caller writes it back.
+// SPEC §7.7: parses a `pivot` declaration. Calls parent PartParser's
+// hasPivot() accessor to detect duplicate at header time. Pulls 3 pos args,
+// then peeks for the `rot` sub-keyword to optionally pull 3 more rot args.
+// Extras beyond the 3 (or 7) fall through to the caller's loop (per §7.2).
 export class PivotParser {
   constructor(
     private readonly cursor: TokenCursor,
-    private readonly partState: PartState,
+    private readonly partParser: PartParser,
   ) {}
 
   parse(kw: Token): Result<Pivot> {
-    if (this.partState.pivot !== null) {
+    if (this.partParser.hasPivot()) {
       return err(
         'duplicate',
-        `line ${kw.line}: duplicate pivot for part '${this.partState.name}' (first at line ${this.partState.pivotLineNo})`,
+        `line ${kw.line}: duplicate pivot for part '${this.partParser.getName()}' (first at line ${this.partParser.getPivotLineNo()})`,
       );
     }
     const args = this.cursor.pullArgs(3);
