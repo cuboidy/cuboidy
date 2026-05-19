@@ -100,6 +100,7 @@ export function assemblePart(
 // reference). Reads parent CvoxParser to detect duplicate part name at
 // header time (preserves SPEC §11.8 forward-pass precedence).
 export class PartParser {
+  private partName = '';
   private size: Size | null = null;
   private sizeLineNo = 0;
   private pivot: Pivot | null = null;
@@ -114,12 +115,20 @@ export class PartParser {
     private readonly cvoxParser: CvoxParser,
   ) {}
 
+  // Accessors used by SocketParser for early duplicate detection (its
+  // duplicate condition depends on the socket name, which is mid-parse —
+  // see socket.ts). Other sub-parsers do their duplicate check inline in
+  // the PartParser switch case and don't need accessors.
+  getName(): string { return this.partName; }
+  hasSocketName(name: string): boolean { return this.socketNames.has(name); }
+
   parse(partKw: Token): Result<ParsedPart> {
     // Header: read identifier
     const nameArgs = this.cursor.pullArgs(1);
     const nameR = parsePartHeader(nameArgs);
     if (!nameR.ok) return err(nameR.code, `line ${partKw.line}: ${nameR.message}`);
     const name = nameR.value;
+    this.partName = name;
     // Early duplicate check via parent CvoxParser (SPEC §11.8: header-time
     // detection, before body is parsed).
     if (this.cvoxParser.hasPartName(name)) {
@@ -162,15 +171,11 @@ export class PartParser {
           break;
         }
         case 'socket': {
-          const r = new SocketParser(this.cursor).parse(t);
+          // SocketParser does the early duplicate check itself via this
+          // PartParser's hasSocketName() accessor (the dup condition
+          // depends on the socket name, which is mid-parse).
+          const r = new SocketParser(this.cursor, this).parse(t);
           if (!r.ok) return r;
-          // Dup check after parse — name isn't known until parsed.
-          if (this.socketNames.has(r.value.name)) {
-            return err(
-              'duplicate',
-              `line ${t.line}: duplicate socket '${r.value.name}' in part '${name}'`,
-            );
-          }
           this.socketNames.add(r.value.name);
           this.sockets.push(r.value);
           break;
