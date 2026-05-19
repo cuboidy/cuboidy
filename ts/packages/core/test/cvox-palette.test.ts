@@ -88,10 +88,12 @@ describe('PaletteParser', () => {
       if (!r.ok) expect(r.code).toBe('wrong-arity');
     });
 
-    it('E02: rejects color without # prefix', () => {
+    it('a bare token without # prefix is not color-like, so palette stops empty', () => {
+      // Boundary is "# prefix"; '8B4513' doesn't qualify, palette consumes
+      // 0 colors → wrong-arity. The bare token is left for the caller.
       const r = parsePalette('8B4513');
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.code).toBe('invalid-value');
+      if (!r.ok) expect(r.code).toBe('wrong-arity');
     });
 
     it('E02: rejects color with wrong hex length', () => {

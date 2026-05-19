@@ -8,9 +8,9 @@ import { stripComment } from './comment.js';
 //                the content without the surrounding quotes. The lexer
 //                requires the closing `"` on the same line; unmatched
 //                opening `"` falls through to bare tokenization.
-// kind drives §7.5 / §7.8 (identifier slots require `string`) and is used
-// by `isReserved` to ensure a quoted `"part"` is never confused with the
-// reserved keyword `part`.
+// kind drives §7.5 / §7.8 (identifier slots require `string`). A quoted
+// `"part"` is kind='string' and is never confused with the bare reserved
+// keyword `part` (kind='bare'); each parser dispatches on (kind, text).
 export interface Token {
   text: string;
   line: number;

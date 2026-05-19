@@ -1,7 +1,6 @@
 import { err, ok, type Result } from '../result.js';
 import type { TokenCursor } from './cursor.js';
 import type { CvoxParser } from './parse.js';
-import { isReserved } from './reserved.js';
 import type { Token } from './tokenize.js';
 
 export interface Color {
@@ -65,10 +64,18 @@ function pair(hex: string, i: number): number {
 }
 
 // SPEC §7.4: parses a `palette` declaration. Variable arity (1..62 colors)
-// so it uses an open loop that consumes value-tokens until a reserved
-// token or EOF. Per-color errors (invalid hex, over-max) reference that
-// color's token line. Calls parent CvoxParser's hasPalette() accessor to
-// detect duplicate palette declarations.
+// so it uses an open loop that consumes value-tokens until the next token
+// stops looking color-like. "Color-like" is a cheap prefix check: a bare
+// token starting with `#`. Once inside, parseHexColor does the full
+// validation — a malformed `#GG` is the palette's responsibility (context
+// is clear) and surfaces as `invalid-value` with a color-context message,
+// while non-color tokens (reserved keywords, identifiers, string tokens)
+// silently end the palette and are dispatched by the parent CvoxParser.
+//
+// This prefix-based boundary lets the parser stay context-driven without
+// importing a generic "reserved-ness" predicate — colors have a fixed
+// leading sigil per SPEC §7.4, so the discriminator is the format
+// definition itself.
 export class PaletteParser {
   constructor(
     private readonly cursor: TokenCursor,
@@ -85,14 +92,9 @@ export class PaletteParser {
     const colors: Color[] = [];
     while (true) {
       const t = this.cursor.peek();
-      if (t === null || isReserved(t)) break;
+      if (t === null) break;
+      if (t.kind !== 'bare' || !t.text.startsWith('#')) break;
       this.cursor.advance();
-      if (t.kind !== 'bare') {
-        return err(
-          'invalid-value',
-          `line ${t.line}: palette expects bare color literal, got quoted string "${t.text}"`,
-        );
-      }
       const color = parseHexColor(t.text);
       if (color === null) {
         return err('invalid-value', `line ${t.line}: invalid color '${t.text}'`);
