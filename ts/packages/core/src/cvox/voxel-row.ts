@@ -53,3 +53,16 @@ function charToIndex(c: string): number | null {
   if (code >= UPPER_A && code <= UPPER_Z) return code - UPPER_A + 36;
   return null;
 }
+
+// Inverse of charToIndex: palette index → voxel-row character. Used by
+// the serializer. AIR (-1) is rendered as `.`; indices 0..9 become
+// '0'-'9'; 10..35 become 'a'-'z'; 36..61 become 'A'-'Z'. Throws on
+// out-of-range input — palette can hold at most 62 colors (SPEC §7.4),
+// so a well-formed Cvox AST never overflows this mapping.
+export function indexToChar(idx: number): string {
+  if (idx === AIR) return '.';
+  if (idx >= 0 && idx <= 9) return String.fromCharCode(ZERO + idx);
+  if (idx >= 10 && idx <= 35) return String.fromCharCode(LOWER_A + idx - 10);
+  if (idx >= 36 && idx <= 61) return String.fromCharCode(UPPER_A + idx - 36);
+  throw new RangeError(`indexToChar: index ${idx} out of range (expected AIR or 0..61)`);
+}

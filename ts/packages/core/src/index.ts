@@ -2,6 +2,7 @@ export { ManifestSchema, ManifestPartSchema, parseManifest } from './manifest.js
 export type { Manifest, ManifestPart } from './manifest.js';
 
 export { parseCvox } from './cvox/parse.js';
+export { serializeCvox } from './cvox/serialize.js';
 
 export { AIR } from './cvox/voxel-row.js';
 export type {

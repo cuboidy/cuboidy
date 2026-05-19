@@ -76,7 +76,7 @@ my-model.cuboidy        packed package (ZIP of the folder above)
 - [x] Cross-file lint — `missing` error / `unknown` warning between manifest and voxels
 - [x] Shared parity fixtures — `fixtures/cvox/<code>/` and `fixtures/json/<code>/`, contract for cross-implementation conformance
 - [x] JSON Schema for `cuboidy.json` — `schema/cuboidy.schema.json` (Draft 2020-12, derived from the Zod ManifestSchema; reference via `"$schema": "https://cuboidy.com/schema/cuboidy.schema.json"` or the GitHub raw URL)
-- [ ] Canonical serializer (reader-tolerant / writer-strict, comment-preserving round-trip)
+- [x] Canonical serializer (reader-tolerant / writer-strict) — `serializeCvox(cvox)` produces canonical text; round-trip with `parseCvox` verified. Comment preservation deferred to Phase 2 (no current consumer needs it; will be added alongside the web editor)
 - [ ] Voxel definition linter (`cuboidy-lint`) — warnings (W01–W05) and hints (H01–H02)
 - [ ] Reference parser (C#)
 - [ ] Web-based editor (`ts/packages/web/`)
