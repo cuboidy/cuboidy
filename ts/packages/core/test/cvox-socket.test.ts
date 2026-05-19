@@ -52,10 +52,12 @@ describe('SocketParser', () => {
     if (!r.ok) expect(r.code).toBe('wrong-arity');
   });
 
-  it('E06: rejects missing name (next is reserved)', () => {
+  it('E06: rejects bare reserved word in name slot', () => {
     const r = parseSocket('part');
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('wrong-arity');
+    // The name slot requires a quoted string; bare `part` fails the kind
+    // check, not the arity check.
+    if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 
   it('E06: rejects bare name (must be quoted)', () => {

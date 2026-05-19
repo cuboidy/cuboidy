@@ -20,7 +20,8 @@ export class PivotParser {
   parse(kw: Token): Result<Pivot> {
     const posR = pullVec3(this.cursor, kw, 'pivot position');
     if (!posR.ok) return posR;
-    if (this.cursor.peek()?.text !== 'rot') {
+    const next = this.cursor.peek();
+    if (next === null || next.kind !== 'bare' || next.text !== 'rot') {
       return ok({ pos: posR.value });
     }
     this.cursor.advance();

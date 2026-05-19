@@ -1,6 +1,6 @@
 import { isIdentifier } from '../identifier.js';
 import { err, ok, type Result } from '../result.js';
-import { expectValue, type TokenCursor } from './cursor.js';
+import type { TokenCursor } from './cursor.js';
 import type { PartParser } from './part.js';
 import type { Token } from './tokenize.js';
 import { pullVec3, type Vec3 } from './vec3.js';
@@ -28,9 +28,14 @@ export class SocketParser {
   ) {}
 
   parse(kw: Token): Result<Socket> {
-    const nameR = expectValue(this.cursor, kw, 'socket', 4, 0);
-    if (!nameR.ok) return nameR;
-    const nameTok = nameR.value;
+    const nameTok = this.cursor.peek();
+    if (nameTok === null) {
+      return err(
+        'wrong-arity',
+        `line ${kw.line}: socket expects an identifier name`,
+      );
+    }
+    this.cursor.advance();
     if (nameTok.kind !== 'string') {
       return err(
         'invalid-value',
@@ -55,7 +60,8 @@ export class SocketParser {
     const posR = pullVec3(this.cursor, kw, 'socket position');
     if (!posR.ok) return posR;
 
-    if (this.cursor.peek()?.text !== 'rot') {
+    const next = this.cursor.peek();
+    if (next === null || next.kind !== 'bare' || next.text !== 'rot') {
       return ok({ name, pos: posR.value });
     }
     this.cursor.advance();

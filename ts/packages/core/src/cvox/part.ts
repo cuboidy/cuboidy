@@ -1,6 +1,6 @@
 import { isIdentifier } from '../identifier.js';
 import { err, ok, type Result } from '../result.js';
-import { expectValue, type TokenCursor } from './cursor.js';
+import type { TokenCursor } from './cursor.js';
 import type { CvoxParser, Part } from './parse.js';
 import { PaletteParser, type Palette } from './palette.js';
 import { PivotParser, type Pivot } from './pivot.js';
@@ -112,9 +112,14 @@ export class PartParser {
     // Header: pull the part name. SPEC §7.5 requires a quoted string here
     // (kind='string') so the lexer disambiguates `part "part"` (a part
     // literally named `part`) from `part part` (the reserved keyword).
-    const nameR = expectValue(this.cursor, partKw, 'part', 1, 0);
-    if (!nameR.ok) return nameR;
-    const nameTok = nameR.value;
+    const nameTok = this.cursor.peek();
+    if (nameTok === null) {
+      return err(
+        'wrong-arity',
+        `line ${partKw.line}: part expects an identifier name`,
+      );
+    }
+    this.cursor.advance();
     if (nameTok.kind !== 'string') {
       return err(
         'invalid-value',

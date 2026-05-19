@@ -40,12 +40,15 @@ describe('SizeParser', () => {
     if (!r.ok) expect(r.code).toBe('wrong-arity');
   });
 
-  it('rejects too few args (hit reserved token)', () => {
+  it('rejects bare reserved word in number slot', () => {
     const r = parseSize('3 3 part');
     expect(r.ok).toBe(false);
     if (!r.ok) {
-      expect(r.code).toBe('wrong-arity');
-      expect(r.message).toContain("reserved 'part'");
+      // Reserved tokens are not number-shaped, so parseNonNegInt rejects
+      // them like any other non-numeric text — no need for a separate
+      // "reserved" check in the size parser.
+      expect(r.code).toBe('invalid-value');
+      expect(r.message).toContain("'part'");
     }
   });
 
@@ -110,12 +113,15 @@ describe('PartParser header validation (via parseCvox)', () => {
     }
   });
 
-  it('rejects missing identifier (next token is reserved)', () => {
+  it('rejects bare reserved word in name slot', () => {
     const r = parseCvox('palette #fff\npart size 1 1 1');
     expect(r.ok).toBe(false);
     if (!r.ok) {
-      expect(r.code).toBe('wrong-arity');
-      expect(r.message).toContain("reserved 'size'");
+      // Bare `size` here fails the kind check (the slot wants a quoted
+      // string) — no separate reserved-keyword guard is needed.
+      expect(r.code).toBe('invalid-value');
+      expect(r.message).toContain('quoted identifier');
+      expect(r.message).toContain('size');
     }
   });
 

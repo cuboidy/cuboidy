@@ -33,7 +33,8 @@ export class VoxelsParser {
   constructor(private readonly cursor: TokenCursor) {}
 
   parse(kw: Token): Result<RawVoxels> {
-    // Expect opening `{`
+    // Expect opening `{` (must be bare — a string `"{"` is not a structural
+    // open-brace).
     const open = this.cursor.peek();
     if (open === null) {
       return err(
@@ -41,10 +42,11 @@ export class VoxelsParser {
         `line ${kw.line}: 'voxels' must be followed by '{' (got end of file)`,
       );
     }
-    if (open.text !== '{') {
+    if (open.kind !== 'bare' || open.text !== '{') {
+      const got = open.kind === 'string' ? `"${open.text}"` : `'${open.text}'`;
       return err(
         'wrong-arity',
-        `line ${open.line}: 'voxels' must be followed by '{' (got '${open.text}')`,
+        `line ${open.line}: 'voxels' must be followed by '{' (got ${got})`,
       );
     }
     this.cursor.advance();
