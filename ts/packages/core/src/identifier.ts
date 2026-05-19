@@ -13,9 +13,9 @@ import { RESERVED_KEYWORDS } from './cvox/reserved.js';
 // isIdentifier, so `part part` correctly errors as "invalid identifier"
 // rather than parsing as a part named `part`.
 //
-// Punctuation tokens (`{`, `}`, `,`) are not consulted: they fail the
-// regex anyway (non-identifier chars), so the reserved set we need is
-// just the keyword subset, not the full RESERVED_TOKENS.
+// Punctuation tokens (`{`, `}`, `,`) are not consulted — they fail the
+// IDENTIFIER_RE anyway, so the reserved set the identifier rule needs is
+// just the keyword subset.
 
 const RESERVED_KEYWORD_SET = new Set(RESERVED_KEYWORDS);
 
