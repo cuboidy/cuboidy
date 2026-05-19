@@ -1,8 +1,9 @@
 import { err, ok, type Result } from '../result.js';
 import { TokenCursor } from './cursor.js';
 import { PaletteParser, type Palette } from './palette.js';
-import { assemblePart, PartParser, type ParsedPart, type Size } from './part.js';
+import { assemblePart, PartParser, type ParsedPart } from './part.js';
 import type { Pivot } from './pivot.js';
+import type { Size } from './size.js';
 import type { Socket } from './socket.js';
 import { tokenize } from './tokenize.js';
 

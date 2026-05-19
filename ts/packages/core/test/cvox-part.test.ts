@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parsePartHeader, parseSize } from '../src/cvox/part.js';
+import { parsePartHeader } from '../src/cvox/part.js';
+import { parseSize } from '../src/cvox/size.js';
 
 describe('parsePartHeader', () => {
   it('parses single identifier', () => {
