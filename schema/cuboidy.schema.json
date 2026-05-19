@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cuboidy.com/schema/cuboidy.schema.json",
+  "title": "Cuboidy Manifest",
+  "description": "Schema for cuboidy.json — the manifest file of a Cuboidy v0.5 model package (rig hierarchy + animation references). Generated from the Zod ManifestSchema in @cuboidy/core.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-zA-Z_][a-zA-Z0-9_-]*$",
+      "not": {
+        "enum": [
+          "palette",
+          "part",
+          "size",
+          "pivot",
+          "socket",
+          "voxels",
+          "rot"
+        ]
+      }
+    },
+    "version": {
+      "type": "string"
+    },
+    "parts": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-zA-Z_][a-zA-Z0-9_-]*$",
+            "not": {
+              "enum": [
+                "palette",
+                "part",
+                "size",
+                "pivot",
+                "socket",
+                "voxels",
+                "rot"
+              ]
+            }
+          },
+          "parent": {
+            "type": "string",
+            "pattern": "^[a-zA-Z_][a-zA-Z0-9_-]*$",
+            "not": {
+              "enum": [
+                "palette",
+                "part",
+                "size",
+                "pivot",
+                "socket",
+                "voxels",
+                "rot"
+              ]
+            }
+          },
+          "position": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "animations": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {}
+    }
+  },
+  "required": [
+    "name",
+    "parts"
+  ],
+  "additionalProperties": false
+}

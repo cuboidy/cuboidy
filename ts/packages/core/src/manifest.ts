@@ -1,10 +1,20 @@
 import { z } from 'zod';
-import { isIdentifier } from './identifier.js';
+import { IDENTIFIER_RE } from './identifier.js';
+import { RESERVED_KEYWORDS } from './cvox/reserved.js';
 import { err, ok, type CuboidyErrorCode, type Result } from './result.js';
 
+// Split into `.regex()` + `.refine()` so the IDENTIFIER_RE pattern
+// serializes to JSON Schema (consumed by editors, third-party
+// validators) and the reserved-keyword check still fires at runtime.
+// The generated JSON Schema's post-process step injects an equivalent
+// `not.enum` so the two checks stay in parity for external tooling too.
+const RESERVED_KEYWORD_SET = new Set(RESERVED_KEYWORDS);
 const Identifier = z
   .string()
-  .refine(isIdentifier, { message: 'must be a valid identifier (letters/digits/_/-, not starting with a digit or hyphen, not a reserved keyword)' });
+  .regex(IDENTIFIER_RE, 'must match the identifier regex (letters/digits/_/-, no leading digit or hyphen)')
+  .refine((s) => !RESERVED_KEYWORD_SET.has(s), {
+    message: 'must not be a reserved cvox keyword',
+  });
 
 const Vec3 = z.tuple([z.number(), z.number(), z.number()]);
 
