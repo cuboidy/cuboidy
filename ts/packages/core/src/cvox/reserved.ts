@@ -1,6 +1,8 @@
 // SPEC §7.3: the flat reserved-token set, split into two sub-categories
-// by syntactic shape but unified by parsing semantic. See the Token Cursor
-// (cursor.ts) for how pullArgs uses isReserved as its stop predicate.
+// by syntactic shape but unified by parsing semantic. Production parsers
+// (size, pivot, socket, palette, part header) use isReserved as the stop
+// predicate when pulling value-tokens, so reserved tokens never get
+// silently consumed into an identifier or numeric slot.
 
 export const RESERVED_KEYWORDS: readonly string[] = [
   'palette',

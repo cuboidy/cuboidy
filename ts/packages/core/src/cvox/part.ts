@@ -1,6 +1,6 @@
 import { isIdentifier } from '../identifier.js';
 import { err, ok, type Result } from '../result.js';
-import type { TokenCursor } from './cursor.js';
+import { expectValue, type TokenCursor } from './cursor.js';
 import type { CvoxParser, Part } from './parse.js';
 import { PaletteParser, type Palette } from './palette.js';
 import { PivotParser, type Pivot } from './pivot.js';
@@ -22,20 +22,6 @@ export interface ParsedPart {
   pivotLineNo: number;
   sockets: readonly Socket[];
   voxels: RawVoxels;
-}
-
-export function parsePartHeader(args: readonly string[]): Result<string> {
-  if (args.length !== 1) {
-    return err(
-      'wrong-arity',
-      `part header expects exactly 1 identifier, got ${args.length}`,
-    );
-  }
-  const name = args[0]!;
-  if (!isIdentifier(name)) {
-    return err('invalid-value', `invalid part identifier '${name}'`);
-  }
-  return ok(name);
 }
 
 // Resolves a ParsedPart into the final immutable Part using the file's
@@ -123,18 +109,24 @@ export class PartParser {
   hasSocketName(name: string): boolean { return this.socketNames.has(name); }
 
   parse(partKw: Token): Result<ParsedPart> {
-    // Header: read identifier
-    const nameArgs = this.cursor.pullArgs(1);
-    const nameR = parsePartHeader(nameArgs);
-    if (!nameR.ok) return err(nameR.code, `line ${partKw.line}: ${nameR.message}`);
-    const name = nameR.value;
+    // Header: pull the part name (single identifier value-token).
+    const nameR = expectValue(this.cursor, partKw, 'part', 1, 0);
+    if (!nameR.ok) return nameR;
+    const nameTok = nameR.value;
+    const name = nameTok.text;
+    if (!isIdentifier(name)) {
+      return err(
+        'invalid-value',
+        `line ${nameTok.line}: invalid part identifier '${name}'`,
+      );
+    }
     this.partName = name;
     // Early duplicate check via parent CvoxParser (SPEC §11.8: header-time
     // detection, before body is parsed).
     if (this.cvoxParser.hasPartName(name)) {
       return err(
         'duplicate',
-        `line ${partKw.line}: duplicate part name '${name}'`,
+        `line ${nameTok.line}: duplicate part name '${name}'`,
       );
     }
 

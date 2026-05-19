@@ -1,9 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { parsePivot } from '../src/cvox/pivot.js';
+import { TokenCursor } from '../src/cvox/cursor.js';
+import { PivotParser } from '../src/cvox/pivot.js';
+import { tokenize, type Token } from '../src/cvox/tokenize.js';
 
-describe('parsePivot', () => {
+function parsePivot(input: string) {
+  const cursor = new TokenCursor(tokenize(input));
+  const kw: Token = { text: 'pivot', line: 1, col: 1 };
+  return new PivotParser(cursor).parse(kw);
+}
+
+describe('PivotParser', () => {
   it('parses integer coords (pos only)', () => {
-    const r = parsePivot(['1', '0', '1']);
+    const r = parsePivot('1 0 1');
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.value.pos).toEqual({ x: 1, y: 0, z: 1 });
@@ -12,19 +20,19 @@ describe('parsePivot', () => {
   });
 
   it('parses fractional coords (pos only)', () => {
-    const r = parsePivot(['1.5', '0', '1.5']);
+    const r = parsePivot('1.5 0 1.5');
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.value.pos).toEqual({ x: 1.5, y: 0, z: 1.5 });
   });
 
   it('accepts negative coords (warning is a lint concern, not parse error)', () => {
-    const r = parsePivot(['-1', '0', '1']);
+    const r = parsePivot('-1 0 1');
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.value.pos).toEqual({ x: -1, y: 0, z: 1 });
   });
 
-  it('parses pivot with rotation (7 args)', () => {
-    const r = parsePivot(['1', '0', '1', 'rot', '0', '90', '0']);
+  it('parses pivot with rotation', () => {
+    const r = parsePivot('1 0 1 rot 0 90 0');
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.value.pos).toEqual({ x: 1, y: 0, z: 1 });
@@ -32,33 +40,48 @@ describe('parsePivot', () => {
     }
   });
 
-  it('E05: rejects 4 args (neither 3 nor 7)', () => {
-    const r = parsePivot(['1', '0', '1', 'rot']);
+  it('E05: rejects rot with no triple (EOF)', () => {
+    const r = parsePivot('1 0 1 rot');
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe('wrong-arity');
   });
 
-  it("E05: rejects 7 args without 'rot' marker", () => {
-    const r = parsePivot(['1', '0', '1', 'foo', '0', '90', '0']);
+  it('E05: rejects rot with too few triple args (EOF)', () => {
+    const r = parsePivot('1 0 1 rot 0 90');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('wrong-arity');
+  });
+
+  it('E05: rejects too few pos args (EOF)', () => {
+    const r = parsePivot('1 0');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('wrong-arity');
+  });
+
+  it('E05: rejects too few pos args (hit reserved)', () => {
+    const r = parsePivot('1 0 part');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('wrong-arity');
+  });
+
+  it('E05: rejects non-numeric pos coord', () => {
+    const r = parsePivot('abc 0 1');
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 
-  it('E05: rejects too few args', () => {
-    const r = parsePivot(['1', '0']);
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('wrong-arity');
-  });
-
-  it('E05: rejects too many args', () => {
-    const r = parsePivot(['1', '0', '1', '0']);
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('wrong-arity');
-  });
-
-  it('E05: rejects non-numeric coord', () => {
-    const r = parsePivot(['abc', '0', '1']);
+  it('E05: rejects non-numeric rot coord', () => {
+    const r = parsePivot('1 0 1 rot abc 90 0');
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe('invalid-value');
+  });
+
+  it("returns pos-only when next token is not 'rot' (leaves it for caller)", () => {
+    const cursor = new TokenCursor(tokenize('1 0 1 socket hat 1 1 1'));
+    const kw: Token = { text: 'pivot', line: 1, col: 1 };
+    const r = new PivotParser(cursor).parse(kw);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.rot).toBeUndefined();
+    expect(cursor.peek()?.text).toBe('socket');
   });
 });

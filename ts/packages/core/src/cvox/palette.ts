@@ -1,6 +1,7 @@
 import { err, ok, type Result } from '../result.js';
 import type { TokenCursor } from './cursor.js';
 import type { CvoxParser } from './parse.js';
+import { isReserved } from './reserved.js';
 import type { Token } from './tokenize.js';
 
 export interface Color {
@@ -15,31 +16,6 @@ export type Palette = readonly Color[];
 const MAX_PALETTE = 62;
 
 const HEX_RE = /^#([0-9a-fA-F]+)$/;
-
-export function parsePalette(args: readonly string[]): Result<Palette> {
-  if (args.length === 0) {
-    return err(
-      'wrong-arity',
-      'palette declaration requires at least one color',
-    );
-  }
-  if (args.length > MAX_PALETTE) {
-    return err(
-      'wrong-arity',
-      `palette has ${args.length} colors, max ${MAX_PALETTE}`,
-    );
-  }
-
-  const colors: Color[] = [];
-  for (const arg of args) {
-    const color = parseHexColor(arg);
-    if (color === null) {
-      return err('invalid-value', `invalid color '${arg}'`);
-    }
-    colors.push(color);
-  }
-  return ok(colors);
-}
 
 function parseHexColor(s: string): Color | null {
   const m = HEX_RE.exec(s);
@@ -88,12 +64,11 @@ function pair(hex: string, i: number): number {
   return parseInt(hex.slice(i, i + 2), 16);
 }
 
-// SPEC §7.4: parses a `palette` declaration. Calls parent CvoxParser's
-// hasPalette() accessor to detect duplicate palette declarations (only one
-// allowed per file). Returns the parsed Palette; the caller writes it back.
-// Pulls args until the next reserved token (so a stray non-color token
-// after palette surfaces as `invalid-value` from parsePalette, not by
-// stealing into another production).
+// SPEC §7.4: parses a `palette` declaration. Variable arity (1..62 colors)
+// so it uses an open loop that consumes value-tokens until a reserved
+// token or EOF. Per-color errors (invalid hex, over-max) reference that
+// color's token line. Calls parent CvoxParser's hasPalette() accessor to
+// detect duplicate palette declarations.
 export class PaletteParser {
   constructor(
     private readonly cursor: TokenCursor,
@@ -107,9 +82,29 @@ export class PaletteParser {
         `line ${kw.line}: duplicate palette declaration (first at line ${this.cvoxParser.getPaletteLineNo()})`,
       );
     }
-    const args = this.cursor.pullArgs(Number.POSITIVE_INFINITY);
-    const r = parsePalette(args);
-    if (!r.ok) return err(r.code, `line ${kw.line}: ${r.message}`);
-    return r;
+    const colors: Color[] = [];
+    while (true) {
+      const t = this.cursor.peek();
+      if (t === null || isReserved(t.text)) break;
+      this.cursor.advance();
+      const color = parseHexColor(t.text);
+      if (color === null) {
+        return err('invalid-value', `line ${t.line}: invalid color '${t.text}'`);
+      }
+      if (colors.length >= MAX_PALETTE) {
+        return err(
+          'wrong-arity',
+          `line ${t.line}: palette exceeds max ${MAX_PALETTE} colors`,
+        );
+      }
+      colors.push(color);
+    }
+    if (colors.length === 0) {
+      return err(
+        'wrong-arity',
+        `line ${kw.line}: palette declaration requires at least one color`,
+      );
+    }
+    return ok(colors);
   }
 }

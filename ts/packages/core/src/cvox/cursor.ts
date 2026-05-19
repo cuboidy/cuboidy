@@ -1,11 +1,9 @@
+import { err, ok, type Result } from '../result.js';
 import { isReserved } from './reserved.js';
 import type { Token } from './tokenize.js';
 
 // Stream-walking primitive over the token sequence. Each production parser
 // holds a reference to the same TokenCursor — they share the position state.
-// SPEC §7.2: pullArgs stops at the next reserved token (keyword or
-// punctuation), enforcing the "reserved tokens never participate in
-// identifier slots" rule mechanically.
 export class TokenCursor {
   private pos = 0;
 
@@ -25,15 +23,34 @@ export class TokenCursor {
   hasMore(): boolean {
     return this.pos < this.tokens.length;
   }
+}
 
-  pullArgs(max: number): string[] {
-    const args: string[] = [];
-    while (args.length < max && this.pos < this.tokens.length) {
-      const t = this.tokens[this.pos]!;
-      if (isReserved(t.text)) break;
-      args.push(t.text);
-      this.pos++;
-    }
-    return args;
+// Pulls one value-token (non-reserved, non-EOF) and advances. Returns
+// wrong-arity with the offending token's line if the next token is reserved
+// or the stream is exhausted. Used by production parsers that need a fixed
+// number of value-tokens (size, vec3 triples, identifier names). The
+// returned Token preserves per-token line/col so downstream type-check
+// errors (e.g. "'abc' is not a number") can point at the exact token.
+export function expectValue(
+  cursor: TokenCursor,
+  kw: Token,
+  label: string,
+  expected: number,
+  have: number,
+): Result<Token> {
+  const t = cursor.peek();
+  if (t === null) {
+    return err(
+      'wrong-arity',
+      `line ${kw.line}: ${label} expects ${expected} arg(s), got ${have}`,
+    );
   }
+  if (isReserved(t.text)) {
+    return err(
+      'wrong-arity',
+      `line ${kw.line}: ${label} expects ${expected} arg(s), got ${have} before reserved '${t.text}' at line ${t.line}`,
+    );
+  }
+  cursor.advance();
+  return ok(t);
 }

@@ -1,5 +1,7 @@
-import { err, ok, type CuboidyErrorCode, type Result } from '../result.js';
+import { err, ok, type Result } from '../result.js';
+import { expectValue, type TokenCursor } from './cursor.js';
 import { parseFloatStrict } from './numbers.js';
+import type { Token } from './tokenize.js';
 
 // Shared 3-component vector. Used for both positions (voxel units) and
 // rotations (Euler degrees, ZXY order per SPEC §4). TypeScript is structural,
@@ -11,19 +13,29 @@ export interface Vec3 {
   z: number;
 }
 
-// Parse exactly three numeric tokens into a Vec3. Caller supplies the
-// structural error code and a contextual label that goes into the error
-// message (e.g. 'pivot position', 'socket rotation').
-export function parseVec3(
-  args: readonly string[],
-  code: CuboidyErrorCode,
+// Pulls 3 numeric value-tokens from the cursor and assembles a Vec3. Used
+// by PivotParser and SocketParser for both pos and (optional) rot triples.
+// `label` is used in error messages (e.g. 'pivot position', 'socket
+// rotation'). Errors include the offending token's line: arity errors
+// reference the keyword line, type-mismatch errors reference the bad
+// token's line.
+export function pullVec3(
+  cursor: TokenCursor,
+  kw: Token,
   label: string,
 ): Result<Vec3> {
+  const axes = ['x', 'y', 'z'] as const;
   const xs: number[] = [];
-  for (const arg of args) {
-    const n = parseFloatStrict(arg);
+  for (let i = 0; i < 3; i++) {
+    const tR = expectValue(cursor, kw, label, 3, i);
+    if (!tR.ok) return tR;
+    const t = tR.value;
+    const n = parseFloatStrict(t.text);
     if (n === null) {
-      return err(code, `${label} coord '${arg}' is not a number`);
+      return err(
+        'invalid-value',
+        `line ${t.line}: ${label} ${axes[i]} '${t.text}' is not a number`,
+      );
     }
     xs.push(n);
   }
