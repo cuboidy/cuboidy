@@ -17,6 +17,7 @@ export type {
 } from './cvox/types.js';
 
 export { validateCrossFile } from './lint/cross-file.js';
-export type { Diagnostic, Severity } from './diagnostic.js';
+export { lintCvox } from './lint/voxel-rules.js';
+export type { Diagnostic, LintRuleId, Severity } from './diagnostic.js';
 
 export type { CuboidyErrorCode, Result } from './result.js';
