@@ -3,7 +3,7 @@ import type { TokenCursor } from './cursor.js';
 import { expectIdentifier } from './expect.js';
 import type { PartParser } from './part.js';
 import type { Token } from './tokenize.js';
-import { pullVec3, type Vec3 } from './vec3.js';
+import { expectVec3, type Vec3 } from './vec3.js';
 
 export interface Socket {
   name: string;
@@ -39,7 +39,7 @@ export class SocketParser {
       );
     }
 
-    const posR = pullVec3(this.cursor, kw, 'socket position');
+    const posR = expectVec3(this.cursor, kw, 'socket position');
     if (!posR.ok) return posR;
 
     const next = this.cursor.peek();
@@ -47,7 +47,7 @@ export class SocketParser {
       return ok({ name, pos: posR.value });
     }
     this.cursor.advance();
-    const rotR = pullVec3(this.cursor, kw, 'socket rotation');
+    const rotR = expectVec3(this.cursor, kw, 'socket rotation');
     if (!rotR.ok) return rotR;
     return ok({ name, pos: posR.value, rot: rotR.value });
   }

@@ -61,7 +61,7 @@ describe('PivotParser', () => {
   it('E05: rejects bare reserved word in pos slot', () => {
     const r = parsePivot('1 0 part');
     expect(r.ok).toBe(false);
-    // Bare reserved tokens are not number-shaped; pullVec3 reports the
+    // Bare reserved tokens are not number-shaped; expectVec3 reports the
     // type mismatch rather than treating it as "too few args".
     if (!r.ok) expect(r.code).toBe('invalid-value');
   });

@@ -1,7 +1,7 @@
 import { ok, type Result } from '../result.js';
 import type { TokenCursor } from './cursor.js';
 import type { Token } from './tokenize.js';
-import { pullVec3, type Vec3 } from './vec3.js';
+import { expectVec3, type Vec3 } from './vec3.js';
 
 export interface Pivot {
   pos: Vec3;
@@ -18,14 +18,14 @@ export class PivotParser {
   constructor(private readonly cursor: TokenCursor) {}
 
   parse(kw: Token): Result<Pivot> {
-    const posR = pullVec3(this.cursor, kw, 'pivot position');
+    const posR = expectVec3(this.cursor, kw, 'pivot position');
     if (!posR.ok) return posR;
     const next = this.cursor.peek();
     if (next === null || next.kind !== 'bare' || next.text !== 'rot') {
       return ok({ pos: posR.value });
     }
     this.cursor.advance();
-    const rotR = pullVec3(this.cursor, kw, 'pivot rotation');
+    const rotR = expectVec3(this.cursor, kw, 'pivot rotation');
     if (!rotR.ok) return rotR;
     return ok({ pos: posR.value, rot: rotR.value });
   }

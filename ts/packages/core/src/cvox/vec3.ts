@@ -13,11 +13,17 @@ export interface Vec3 {
   z: number;
 }
 
-// Pulls 3 numeric value-tokens from the cursor and assembles a Vec3. Used
-// by PivotParser and SocketParser for both pos and (optional) rot triples.
-// `label` is used in error messages (e.g. 'pivot position', 'socket
-// rotation') and gets the axis appended per coord.
-export function pullVec3(
+// Expects 3 numeric value-tokens from the cursor and assembles a Vec3.
+// Used by PivotParser and SocketParser for both pos and (optional) rot
+// triples. `label` is used in error messages (e.g. 'pivot position',
+// 'socket rotation') and gets the axis appended per coord.
+//
+// Sibling of the single-token expect* family in expect.ts — kept here
+// because it composes from expectNumber and produces the Vec3 type
+// declared in this file. Naming convention: expect* = "assert a typed
+// value at the cursor head", whether single-token (expectNumber) or
+// multi-token-composed (expectVec3).
+export function expectVec3(
   cursor: TokenCursor,
   kw: Token,
   label: string,
