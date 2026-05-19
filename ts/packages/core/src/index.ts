@@ -1,8 +1,8 @@
-export { ManifestSchema, PartSchema, parseManifest } from './manifest.js';
-export type { Manifest, Part } from './manifest.js';
+export { ManifestSchema, ManifestPartSchema, parseManifest } from './manifest.js';
+export type { Manifest, ManifestPart } from './manifest.js';
 
 export { parseCvox } from './cvox/parse.js';
-export type { VoxelDefinition, PartDefinition } from './cvox/parse.js';
+export type { Cvox, Part } from './cvox/parse.js';
 
 export { AIR } from './cvox/voxel-row.js';
 export type { Color, Palette } from './cvox/palette.js';

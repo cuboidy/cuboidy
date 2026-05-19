@@ -5,7 +5,7 @@ const Identifier = z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_-]*$/);
 
 const Vec3 = z.tuple([z.number(), z.number(), z.number()]);
 
-export const PartSchema = z
+export const ManifestPartSchema = z
   .object({
     name: Identifier,
     parent: Identifier.optional(),
@@ -17,13 +17,13 @@ export const ManifestSchema = z
   .object({
     name: Identifier,
     version: z.string().optional(),
-    parts: z.array(PartSchema).min(1),
+    parts: z.array(ManifestPartSchema).min(1),
     animations: z.record(z.string(), z.unknown()).optional(),
   })
   .strict();
 
 export type Manifest = z.infer<typeof ManifestSchema>;
-export type Part = z.infer<typeof PartSchema>;
+export type ManifestPart = z.infer<typeof ManifestPartSchema>;
 
 export function parseManifest(json: unknown): Result<Manifest> {
   const result = ManifestSchema.safeParse(json);

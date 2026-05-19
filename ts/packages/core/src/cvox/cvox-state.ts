@@ -7,12 +7,12 @@ import { parseVoxelRow } from './voxel-row.js';
 
 // Output types — the result of a successful parseCvox call.
 
-export interface VoxelDefinition {
+export interface Cvox {
   palette: Palette;
-  parts: PartDefinition[];
+  parts: Part[];
 }
 
-export interface PartDefinition {
+export interface Part {
   name: string;
   size: Size;
   pivot: Pivot;
@@ -24,7 +24,7 @@ export interface PartDefinition {
 // reads its parent state (this for top-level parsers, PartState for
 // part-scoped parsers) for duplicate detection; the caller of each parser
 // commits the returned value back to this state. The assemble() method
-// finalizes accumulated state into the public VoxelDefinition output.
+// finalizes accumulated state into the public Cvox output.
 
 export class CvoxState {
   palette: Palette | null = null;
@@ -37,7 +37,7 @@ export class CvoxState {
     this.parts.push(state);
   }
 
-  assemble(): Result<VoxelDefinition> {
+  assemble(): Result<Cvox> {
     if (this.palette === null) {
       return err('missing', 'missing palette declaration');
     }
@@ -46,7 +46,7 @@ export class CvoxState {
     }
 
     const palette = this.palette;
-    const finalParts: PartDefinition[] = [];
+    const finalParts: Part[] = [];
     for (const part of this.parts) {
       const r = assemblePart(part, palette);
       if (!r.ok) return r;
@@ -59,7 +59,7 @@ export class CvoxState {
 function assemblePart(
   part: PartState,
   palette: Palette,
-): Result<PartDefinition> {
+): Result<Part> {
   if (part.size === null) {
     return err(
       'missing',

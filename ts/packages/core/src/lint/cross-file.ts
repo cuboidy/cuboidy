@@ -1,10 +1,10 @@
 import type { Diagnostic } from '../diagnostic.js';
-import type { VoxelDefinition } from '../cvox/parse.js';
+import type { Cvox } from '../cvox/parse.js';
 import type { Manifest } from '../manifest.js';
 
 export function validateCrossFile(
   manifest: Manifest,
-  voxelDef: VoxelDefinition,
+  voxelDef: Cvox,
 ): Diagnostic[] {
   const diags: Diagnostic[] = [];
   const manifestParts = new Set(manifest.parts.map((p) => p.name));
