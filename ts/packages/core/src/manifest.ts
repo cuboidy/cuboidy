@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { IDENTIFIER_RE } from './identifier.js';
+import { isIdentifier } from './identifier.js';
 import { err, ok, type CuboidyErrorCode, type Result } from './result.js';
 
-const Identifier = z.string().regex(IDENTIFIER_RE);
+const Identifier = z
+  .string()
+  .refine(isIdentifier, { message: 'must be a valid identifier (letters/digits/_/-, not starting with a digit or hyphen, not a reserved keyword)' });
 
 const Vec3 = z.tuple([z.number(), z.number(), z.number()]);
 

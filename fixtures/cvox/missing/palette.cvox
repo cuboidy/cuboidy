@@ -1,4 +1,4 @@
 // No `palette` declaration anywhere
-part "box"
+part box
     size 1 1 1
     voxels { 0 }

@@ -44,7 +44,7 @@ describe('stripComment', () => {
     // stripComment runs before tokenization and is quote-unaware. This means
     // identifier names (which the §5 regex restricts to alphanumeric + `-_`)
     // cannot contain `//`, which is fine because the rule already forbids `/`.
-    expect(stripComment('part "name" //rest')).toBe('part "name" ');
+    expect(stripComment('part name //rest')).toBe('part name ');
   });
 
   it('handles multiple // — only first matters', () => {

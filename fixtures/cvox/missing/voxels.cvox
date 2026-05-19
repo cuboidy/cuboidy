@@ -1,4 +1,4 @@
 // part has size but no voxels block
 palette #FF0000
-part "box"
+part box
     size 1 1 1

@@ -1,5 +1,5 @@
 // W=0 is below the v0.3 min of 1
 palette #FF0000
-part "box"
+part box
     size 0 1 1
     voxels { 0 }

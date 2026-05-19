@@ -5,7 +5,7 @@
 
 palette #FFD700  // gold
 
-part "crown"
+part crown
     size 3 2 3
     pivot 1 0 1
     voxels {

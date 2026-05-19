@@ -2,7 +2,7 @@
 
 An open text-based file format for voxel character models, rigs, and animations.
 
-**Status: v0.4 draft. See [SPEC.md](SPEC.md) for the formal specification.**
+**Status: v0.5 draft. See [SPEC.md](SPEC.md) for the formal specification.**
 
 ## What it is
 
@@ -27,7 +27,7 @@ A minimal Cuboidy voxel definition (`voxels.cvox`) — a `crown` part, 3×2×3 v
 ```
 palette #FFD700                    // gold
 
-part "crown"
+part crown
     size 3 2 3
     pivot 1 0 1
     voxels {
@@ -37,7 +37,7 @@ part "crown"
     }
 ```
 
-Identifier names (part / socket) are written as double-quoted string literals so the lexer disambiguates them from reserved keywords (`part`, `size`, `pivot`, …) at tokenization time. The `voxels { … }` block holds the voxel data; comma separates Y-layers (positional indexing). Inside the block, anything but `,` and `}` is interpreted as a voxel row — even strings that spell reserved words like `rot` or `size` are unambiguously voxel data. See SPEC §7 for the full grammar.
+Identifier names (part / socket) are bare tokens. The identifier rule (§5) excludes reserved keywords (`part`, `size`, `pivot`, …), so `part part` correctly fails as "invalid identifier" rather than parsing as a part literally named `part`. The `voxels { … }` block holds the voxel data; comma separates Y-layers (positional indexing). Inside the block, anything but `,` and `}` is interpreted as a voxel row — even strings that spell reserved words like `rot` or `size` are unambiguously voxel data. See SPEC §7 for the full grammar.
 
 ## Folder layout
 
@@ -71,8 +71,8 @@ my-model.cuboidy        packed package (ZIP of the folder above)
 
 ## Roadmap
 
-- [x] Spec document (`SPEC.md`) — v0.4 draft
-- [x] Reference parser (TypeScript) — `ts/packages/core/`, full v0.4 grammar (131 tests)
+- [x] Spec document (`SPEC.md`) — v0.5 draft
+- [x] Reference parser (TypeScript) — `ts/packages/core/`, full v0.5 grammar (131 tests)
 - [x] Cross-file lint — `missing` error / `unknown` warning between manifest and voxels
 - [x] Shared parity fixtures — `fixtures/cvox/<code>/` and `fixtures/json/<code>/`, contract for cross-implementation conformance
 - [ ] JSON Schema for `cuboidy.json` (`schema/cuboidy.schema.json`)

@@ -89,13 +89,13 @@ describe('SizeParser', () => {
 // exercised through parseCvox. The identifier rule itself is tested in
 // isIdentifier.test.ts; here we verify the wiring.
 describe('PartParser header validation (via parseCvox)', () => {
-  it('accepts a quoted identifier name', () => {
-    const r = parseCvox('palette #fff\npart "head"\nsize 1 1 1\nvoxels { . }');
+  it('accepts a bare identifier name', () => {
+    const r = parseCvox('palette #fff\npart head\nsize 1 1 1\nvoxels { . }');
     expect(r.ok).toBe(true);
   });
 
-  it('rejects an invalid identifier (leading digit) inside quotes', () => {
-    const r = parseCvox('palette #fff\npart "1bad"\nsize 1 1 1\nvoxels { . }');
+  it('rejects an invalid identifier (leading digit)', () => {
+    const r = parseCvox('palette #fff\npart 1bad\nsize 1 1 1\nvoxels { . }');
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.code).toBe('invalid-value');
@@ -103,12 +103,12 @@ describe('PartParser header validation (via parseCvox)', () => {
     }
   });
 
-  it('rejects bare identifier (must be quoted)', () => {
-    const r = parseCvox('palette #fff\npart head\nsize 1 1 1\nvoxels { . }');
+  it('rejects quoted identifier (cvox names are bare)', () => {
+    const r = parseCvox('palette #fff\npart "head"\nsize 1 1 1\nvoxels { . }');
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.code).toBe('invalid-value');
-      expect(r.message).toContain('quoted identifier');
+      expect(r.message).toContain('quoted string');
       expect(r.message).toContain('head');
     }
   });
@@ -117,10 +117,9 @@ describe('PartParser header validation (via parseCvox)', () => {
     const r = parseCvox('palette #fff\npart size 1 1 1');
     expect(r.ok).toBe(false);
     if (!r.ok) {
-      // Bare `size` here fails the kind check (the slot wants a quoted
-      // string) — no separate reserved-keyword guard is needed.
+      // Bare `size` is a reserved keyword — isIdentifier rejects it.
       expect(r.code).toBe('invalid-value');
-      expect(r.message).toContain('quoted identifier');
+      expect(r.message).toContain('invalid identifier');
       expect(r.message).toContain('size');
     }
   });

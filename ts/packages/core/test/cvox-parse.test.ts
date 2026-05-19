@@ -40,7 +40,7 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
     it('applies default pivot [W/2, 0, D/2] when omitted', () => {
       const text = [
         'palette #FF0000',
-        'part "box"',
+        'part box',
         'size 4 1 6',
         'voxels {',
         '0000',
@@ -59,7 +59,7 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
     it('parses positional layer indices (no layer keyword)', () => {
       const text = [
         'palette #FF0000 #00FF00',
-        'part "stack"',
+        'part stack',
         'size 1 3 1',
         'voxels {',
         '0',
@@ -82,7 +82,7 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
 
   describe('missing', () => {
     it('rejects missing palette', () => {
-      const text = 'part "head"\nsize 1 1 1\nvoxels { 0 }';
+      const text = 'part head\nsize 1 1 1\nvoxels { 0 }';
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.code).toBe('missing');
@@ -95,21 +95,21 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
     });
 
     it('rejects part missing size', () => {
-      const text = 'palette #FF0000\npart "head"\nvoxels { 0 }';
+      const text = 'palette #FF0000\npart head\nvoxels { 0 }';
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.code).toBe('missing');
     });
 
     it('rejects part missing voxels', () => {
-      const text = 'palette #FF0000\npart "head"\nsize 1 1 1';
+      const text = 'palette #FF0000\npart head\nsize 1 1 1';
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.code).toBe('missing');
     });
 
     it('rejects unclosed voxels block', () => {
-      const text = 'palette #FF0000\npart "head"\nsize 1 1 1\nvoxels { 0';
+      const text = 'palette #FF0000\npart head\nsize 1 1 1\nvoxels { 0';
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.code).toBe('missing');
@@ -134,7 +134,7 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
     it('rejects duplicate palette declaration', () => {
       const text = [
         'palette #FF0000',
-        'part "box"',
+        'part box',
         'size 1 1 1',
         'voxels { 0 }',
         'palette #00FF00',
@@ -147,8 +147,8 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
     it('rejects duplicate part name', () => {
       const text = [
         'palette #FF0000',
-        'part "a"', 'size 1 1 1', 'voxels { 0 }',
-        'part "a"', 'size 1 1 1', 'voxels { 0 }',
+        'part a', 'size 1 1 1', 'voxels { 0 }',
+        'part a', 'size 1 1 1', 'voxels { 0 }',
       ].join('\n');
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
@@ -158,10 +158,10 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
     it('rejects duplicate socket name within a part', () => {
       const text = [
         'palette #FF0000',
-        'part "head"',
+        'part head',
         'size 1 1 1',
-        'socket "s" 0 0 0',
-        'socket "s" 0 0 0',
+        'socket s 0 0 0',
+        'socket s 0 0 0',
         'voxels { 0 }',
       ].join('\n');
       const r = parseCvox(text);
@@ -172,7 +172,7 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
     it('rejects duplicate size in a part', () => {
       const text = [
         'palette #FF0000',
-        'part "head"',
+        'part head',
         'size 1 1 1',
         'size 2 2 2',
         'voxels { 0 }',
@@ -185,7 +185,7 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
     it('rejects duplicate pivot in a part', () => {
       const text = [
         'palette #FF0000',
-        'part "head"',
+        'part head',
         'size 1 1 1',
         'pivot 0 0 0',
         'pivot 0 0 0',
@@ -199,7 +199,7 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
     it('rejects duplicate voxels block in a part', () => {
       const text = [
         'palette #FF0000',
-        'part "head"',
+        'part head',
         'size 1 1 1',
         'voxels { 0 }',
         'voxels { 0 }',
@@ -218,13 +218,13 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
     });
 
     it('rejects bare `size` (no args)', () => {
-      const r = parseCvox('palette #FF0000\npart "box"\nsize');
+      const r = parseCvox('palette #FF0000\npart box\nsize');
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.code).toBe('wrong-arity');
     });
 
     it('rejects voxels block missing opening `{`', () => {
-      const text = 'palette #FF0000\npart "box"\nsize 1 1 1\nvoxels 0';
+      const text = 'palette #FF0000\npart box\nsize 1 1 1\nvoxels 0';
       const r = parseCvox(text);
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.code).toBe('wrong-arity');
@@ -233,7 +233,7 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
     it('rejects layer-section count mismatch (too few)', () => {
       const text = [
         'palette #FF0000',
-        'part "head"',
+        'part head',
         'size 1 3 1',
         'voxels { 0 , 0 }', // 2 sections, expected H=3
       ].join('\n');
@@ -245,7 +245,7 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
     it('rejects layer-section count mismatch (too many)', () => {
       const text = [
         'palette #FF0000',
-        'part "head"',
+        'part head',
         'size 1 1 1',
         'voxels { 0 , 0 }', // 2 sections, expected H=1
       ].join('\n');
@@ -257,7 +257,7 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
     it('rejects row count in a section ≠ D (too few)', () => {
       const text = [
         'palette #FF0000',
-        'part "head"',
+        'part head',
         'size 3 1 4',
         'voxels { 000 000 000 }', // 3 rows, expected D=4
       ].join('\n');
@@ -269,7 +269,7 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
     it('rejects row count in a section ≠ D (too many)', () => {
       const text = [
         'palette #FF0000',
-        'part "head"',
+        'part head',
         'size 3 2 2',
         'voxels { 000 000 000 , 000 000 }',
       ].join('\n');
@@ -281,7 +281,7 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
     it('rejects voxel row width ≠ W', () => {
       const text = [
         'palette #FF0000',
-        'part "head"',
+        'part head',
         'size 3 1 3',
         'voxels { 0000 000 000 }', // first row width 4 ≠ W=3
       ].join('\n');
@@ -295,7 +295,7 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
     it('rejects voxel cell outside [.0-9a-zA-Z]', () => {
       const text = [
         'palette #FF0000',
-        'part "box"',
+        'part box',
         'size 3 1 1',
         'voxels { 00! }',
       ].join('\n');
@@ -307,7 +307,7 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
     it('rejects palette index out of range', () => {
       const text = [
         'palette #FF0000', // 1 color
-        'part "box"',
+        'part box',
         'size 3 1 1',
         'voxels { 012 }', // index 1 and 2 are out of range
       ].join('\n');
@@ -319,7 +319,7 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
     it('rejects nested `{` inside voxels block', () => {
       const text = [
         'palette #FF0000',
-        'part "box"',
+        'part box',
         'size 1 1 1',
         'voxels { { 0 } }',
       ].join('\n');
@@ -367,7 +367,7 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
       ].join(' ');
       const text = [
         `palette ${palette}`,
-        'part "demo"',
+        'part demo',
         'size 3 1 1',
         'voxels { rot }', // rot as voxel row → indices [27, 24, 29]
       ].join('\n');
@@ -380,7 +380,7 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
       const palette = Array.from({ length: 36 }, (_, i) => `#${i.toString(16).padStart(3, '0')}`).join(' ');
       const text = [
         `palette ${palette}`,
-        'part "demo"',
+        'part demo',
         'size 4 1 1',
         'voxels { size }', // s=28, i=18, z=35, e=14
       ].join('\n');
@@ -392,14 +392,14 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
 
   describe('whitespace and comments', () => {
     it('parses voxels block on a single line', () => {
-      const text = 'palette #FF0000\npart "box"\nsize 3 1 3\nvoxels { 000 000 000 }';
+      const text = 'palette #FF0000\npart box\nsize 3 1 3\nvoxels { 000 000 000 }';
       const r = parseCvox(text);
       expect(r.ok).toBe(true);
       if (r.ok) expect(r.value.parts[0]?.voxels[0]).toHaveLength(3);
     });
 
     it('parses voxels with commas adjacent to rows (no whitespace required)', () => {
-      const text = 'palette #FF0000\npart "box"\nsize 1 2 1\nvoxels{0,0}';
+      const text = 'palette #FF0000\npart box\nsize 1 2 1\nvoxels{0,0}';
       const r = parseCvox(text);
       expect(r.ok).toBe(true);
       if (r.ok) expect(r.value.parts[0]?.voxels).toHaveLength(2);
@@ -408,7 +408,7 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
     it('parses comments inside voxels block', () => {
       const text = [
         'palette #FF0000',
-        'part "box"',
+        'part box',
         'size 1 2 1',
         'voxels {',
         '  // layer 0',
@@ -427,7 +427,7 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
         '// the box model',
         'palette #FF0000  // red',
         '',
-        'part "box"  // the box',
+        'part box  // the box',
         '    size 1 1 1',
         '    voxels { 0 }  // filled',
       ].join('\n');
@@ -438,7 +438,7 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
     it('size args can span multiple lines', () => {
       const text = [
         'palette #FF0000',
-        'part "box"',
+        'part box',
         'size',
         '3',
         '1',
@@ -456,7 +456,7 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
         '    #FF0000',
         '    #00FF00',
         '    #0000FF',
-        'part "box"',
+        'part box',
         '    size 1 1 1',
         '    voxels { 0 }',
       ].join('\n');
@@ -469,7 +469,7 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
   describe('free-order within scope', () => {
     it('parses palette declared after parts', () => {
       const text = [
-        'part "box"',
+        'part box',
         '    size 1 1 1',
         '    voxels { 0 }',
         '',
@@ -483,9 +483,9 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
     it('parses metadata in any order (pivot before size, voxels before size)', () => {
       const text = [
         'palette #FF0000',
-        'part "box"',
+        'part box',
         '    pivot 1 0 1',
-        '    socket "s" 0 0 0',
+        '    socket s 0 0 0',
         '    voxels { 0 }',
         '    size 1 1 1',
       ].join('\n');
@@ -499,7 +499,7 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
 
     it('palette mid-part does not close the part', () => {
       const text = [
-        'part "box"',
+        'part box',
         '    size 1 1 1',
         '    palette #FF0000',
         '    voxels { 0 }',
@@ -518,7 +518,7 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
     it('pivot with rot (7 args) parses and persists rotation', () => {
       const text = [
         'palette #FF0000',
-        'part "box"',
+        'part box',
         '    size 1 1 1',
         '    pivot 0 0 0 rot 0 90 0',
         '    voxels { 0 }',
@@ -535,7 +535,7 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
     it('pivot 3-args (no rot) still works', () => {
       const text = [
         'palette #FF0000',
-        'part "box"',
+        'part box',
         '    size 1 1 1',
         '    pivot 0 0 0',
         '    voxels { 0 }',
@@ -552,9 +552,9 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
     it('socket with rot (8 args) persists rotation', () => {
       const text = [
         'palette #FF0000',
-        'part "box"',
+        'part box',
         '    size 1 1 1',
-        '    socket "hat" 0 0 0 rot 0 90 0',
+        '    socket hat 0 0 0 rot 0 90 0',
         '    voxels { 0 }',
       ].join('\n');
       const r = parseCvox(text);
@@ -569,10 +569,10 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
     it('socket args (with rot) can span multiple lines', () => {
       const text = [
         'palette #FF0000',
-        'part "box"',
+        'part box',
         '    size 1 1 1',
         '    socket',
-        '        "hat"',
+        '        hat',
         '        0',
         '        0',
         '        0',
@@ -597,7 +597,7 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
       // context, a stray `5` is an unknown top-level token.
       const text = [
         'palette #FF0000',
-        'part "box"',
+        'part box',
         '    size 1 1 1',
         '    pivot 1 0 1 5',
         '    voxels { 0 }',

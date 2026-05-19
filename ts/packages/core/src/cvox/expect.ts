@@ -78,10 +78,11 @@ export function expectNonNegInt(
   return ok({ value: n, token: t });
 }
 
-// Expects a quoted identifier (kind='string') whose content matches the
-// §5 identifier regex. The two checks (kind + content) are bundled here
-// since they always fire together for identifier slots in cvox (`part`,
-// `socket` names).
+// Expects a bare identifier (kind='bare') whose text satisfies the §5
+// isIdentifier rule. The rule rejects reserved keywords, so `part part`
+// surfaces as "invalid identifier 'part'" rather than parsing as a part
+// named 'part'. String-kind tokens (`"head"`) are rejected — cvox names
+// are always bare; quotes have no role here.
 export function expectIdentifier(
   cursor: TokenCursor,
   kw: Token,
@@ -90,16 +91,16 @@ export function expectIdentifier(
   const tR = next(cursor, kw, label);
   if (!tR.ok) return tR;
   const t = tR.value;
-  if (t.kind !== 'string') {
+  if (t.kind !== 'bare') {
     return err(
       'invalid-value',
-      `line ${t.line}: ${label}: expected quoted identifier (e.g. "head"), got bare token '${t.text}'`,
+      `line ${t.line}: ${label}: expected bare identifier, got quoted string "${t.text}"`,
     );
   }
   if (!isIdentifier(t.text)) {
     return err(
       'invalid-value',
-      `line ${t.line}: ${label}: invalid identifier "${t.text}"`,
+      `line ${t.line}: ${label}: invalid identifier '${t.text}' (may be a reserved keyword)`,
     );
   }
   return ok({ value: t.text, token: t });

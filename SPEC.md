@@ -1,9 +1,11 @@
 # Cuboidy Format Specification
 
-**Version:** 0.4 (draft)
+**Version:** 0.5 (draft)
 **Status:** Early draft. Subject to change before v1.0.
 
-**Changes since v0.3:** Identifier names in `voxels.cvox` (part name in `part "<name>"`, socket name in `socket "<name>" …`) are now written as **double-quoted string literals**. The lexer recognises `"..."` as a distinct token kind, eliminating any ambiguity between identifier names and reserved keywords at the *lexical* level — a quoted `"part"` is unambiguously a user identifier, while a bare `part` is unambiguously the keyword. The "reserved keywords lose lexical privilege inside voxels block" framework (§7.1) is unchanged; the new rule simply adds a second axis of disambiguation that applies outside the voxels block too. Numeric and color slots (`size`, `pivot`, `socket` pos/rot, `palette`) reject string tokens with `invalid-value`. Bare `part X` / `socket X …` (the v0.3 syntax) now fails with `invalid-value` — migration is a mechanical quote-wrap.
+**Changes since v0.4:** Identifier names in `voxels.cvox` revert to **bare tokens** (`part head`, `socket hat 1 3 1`) — the v0.4 mandatory-quote rule is dropped. The disambiguation that quotes provided is moved into the identifier rule itself (§5): an identifier MUST NOT match any reserved cvox keyword. With that rule in place, bare `part part` correctly errors as "invalid identifier 'part'" (a reserved keyword cannot be used as an identifier), while bare `part head` parses cleanly as a part named `head`. Net result: no quotes anywhere in cvox files, and the cross-file `cuboidy.json` schema applies the same stronger rule (`manifest.ts` uses the strengthened `isIdentifier` function) so any name valid in one file is valid in the other. Migration from v0.4 is a mechanical strip of quotes from `part "<name>"` → `part <name>` and `socket "<name>" …` → `socket <name> …`. String-kind tokenization (`"..."`) is preserved at the lexer level for future use but has no role in cvox v0.5 grammar.
+
+**Changes since v0.3:** (superseded by v0.5; see above for the current rule.) v0.4 added mandatory quoting to identifier slots to disambiguate from reserved keywords. v0.5 collapses that into the identifier rule, recovering bare-name syntax.
 
 **Changes since v0.2:** Voxel data is now wrapped in a **`voxels { … }` block** with `,` separating layers — this replaces the v0.2 `layer N` keyword and resolves the systemic ambiguity where a voxel-row token spelling a reserved word (e.g. `rot`, `size`, `part`) could collide with grammar. Lexical scoping is reframed as a two-layer model (universal `{` `}` `//` whitespace + context-scoped reserved words); each block-introducing keyword decides what is reserved inside its `{ … }`. The `voxels` block reserves nothing — so any voxel-row character sequence is unambiguously voxel data. The `rot` keyword is no longer a "sub-keyword" but a normal reserved word with **structural validity constrained to `pivot` / `socket` declarations**. Free-order layer indices are dropped (positional now); free-order for `palette` / `part` / `size` / `pivot` / `socket` / `voxels` within their respective scopes is retained.
 
@@ -97,8 +99,9 @@ Names for parts, sockets, animations, and the model itself match:
 - ASCII only (no Unicode)
 - Hyphen `-` allowed (`leg-fl`, `ear-l`)
 - No leading digit or hyphen
+- **Must not match a reserved cvox keyword** (§7.3) — i.e., `palette`, `part`, `size`, `pivot`, `socket`, `voxels`, `rot` are not valid identifiers, even though they satisfy the regex above
 
-In `voxels.cvox`, identifier names (the `part` name in §7.5 and the `socket` name in §7.8) are written as **double-quoted string literals** — `part "head"`, `socket "hat" 1 0 0`. The quoting disambiguates user identifiers from reserved keywords at the lexical level; the content inside the quotes is still subject to the regex above. In `cuboidy.json`, names are plain JSON strings — JSON has its own string syntax, so no additional quoting convention is needed.
+In `voxels.cvox`, identifier names (the `part` name in §7.5 and the `socket` name in §7.8) are written as **bare tokens** — `part head`, `socket hat 1 0 0`. No quoting is needed because the reserved-keyword exclusion above makes bare names lexically unambiguous: `part part` is rejected as "invalid identifier" rather than parsing as a part named `part`. In `cuboidy.json`, names are plain JSON strings — JSON has its own string syntax — and the same identifier rule applies (the manifest schema uses the strengthened `isIdentifier`).
 
 Uniqueness scopes:
 
@@ -279,7 +282,7 @@ These three tokens are **always significant**, including inside a `voxels { … 
 | whitespace (space, tab, newline) | token separator; no syntactic significance |
 | `//` … end-of-line | comment, stripped before tokenization |
 
-**Lexical vs structural — two separate axes.** The set of *lexical* reserved tokens is fixed (7 keywords + 3 punctuation). What changes by scope is *structural validity* — which reserved token can appear here and what role it plays. A reserved (bare) token never participates in identifier slots: identifier slots require a `string`-kind token (§7.5, §7.8), so the bare reserved `part` can never appear in a part-name position regardless of what the parser does. A bare non-reserved identifier (e.g. `head` without quotes) is also rejected in identifier slots, with `invalid-value` reporting that a quoted identifier was expected. To put a name spelled like a reserved keyword into the model, write `part "part"` — the string-kind quoting makes the slot unambiguous. To put a reserved-spelled string inside the voxel grid, write a row inside `voxels { … }` where alphabetic keywords have no lexical privilege. (The 3 reserved punctuation tokens never decay into voxel-row strings, however, because their characters fall outside `[.0-9a-zA-Z]`.)
+**Lexical vs structural — two separate axes.** The set of *lexical* reserved tokens is fixed (7 keywords + 3 punctuation). What changes by scope is *structural validity* — which reserved token can appear here and what role it plays. A reserved keyword token never participates in identifier slots: the §5 identifier rule excludes reserved keywords, so bare `part part` fails `isIdentifier` and surfaces as "invalid identifier 'part'" rather than parsing as a part literally named `part`. Identifier slots take bare tokens — string-kind tokens (`"..."`) are rejected, since cvox identifiers are always bare. A name spelled like a reserved keyword cannot be expressed at all in cvox; the user must pick a different name (or wrap their model in a non-reserved synonym). To put a reserved-spelled string inside the voxel grid, write a row inside `voxels { … }` where alphabetic keywords have no lexical privilege. (The 3 reserved punctuation tokens never decay into voxel-row strings, however, because their characters fall outside `[.0-9a-zA-Z]`.)
 
 The framework generalizes naturally: each block-introducing keyword (currently `voxels`; future versions may add more) decides what is reserved inside its `{ … }`. The `voxels` keyword reserves no alphabetic keywords — so alphabetic reserved keywords from other scopes appearing inside `voxels { … }` are simply voxel-row strings.
 
@@ -287,7 +290,7 @@ The framework generalizes naturally: each block-introducing keyword (currently `
 
 ### 7.1.1 Token table
 
-Every token has a **kind**: `bare` (whitespace-delimited; covers everything in v0.3) or `string` (a `"..."` literal). The patterns below describe the *text* of a token after kind-classification.
+Every token has a **kind**: `bare` (whitespace-delimited; covers all cvox identifier slots and value slots) or `string` (a `"..."` literal). The string-kind is preserved at the lexer level for future extensibility, but no v0.5 production accepts it — every identifier, number, and color slot expects bare. Encountering a string-kind token in any slot surfaces as `invalid-value`. The patterns below describe the *text* of a token after kind-classification.
 
 | Token | Kind | Pattern | Example |
 |---|---|---|---|
@@ -418,10 +421,10 @@ When voxel rows are parsed before the palette is known (because palette appears 
 ### 7.5 `part` declaration
 
 ```
-part "<identifier>"
+part <identifier>
 ```
 
-Starts a new part section. The name slot accepts only a `string`-kind token (a `"..."` literal); the content inside the quotes must match the §5 identifier regex. The parser detects new parts by this keyword; there is no explicit part-end marker. A part section ends at the next bare `part` keyword or at end of file. (A quoted `"part"` is a string-kind token and does not terminate the surrounding part — it would only appear in an identifier slot.) The `palette` declaration is file-level, not part-level — it may appear inside the textual span of a part section without ending it.
+Starts a new part section. The name slot accepts a bare token that satisfies the §5 identifier rule (regex + not a reserved keyword). The parser detects new parts by the `part` keyword; there is no explicit part-end marker. A part section ends at the next bare `part` keyword or at end of file. The `palette` declaration is file-level, not part-level — it may appear inside the textual span of a part section without ending it.
 
 A `part` section must contain:
 
@@ -462,8 +465,8 @@ pivot <x> <y> <z> rot <rx> <ry> <rz>
 ### 7.8 `socket`
 
 ```
-socket "<identifier>" <x> <y> <z>
-socket "<identifier>" <x> <y> <z> rot <rx> <ry> <rz>
+socket <identifier> <x> <y> <z>
+socket <identifier> <x> <y> <z> rot <rx> <ry> <rz>
 ```
 
 - Zero or more per part
@@ -547,11 +550,11 @@ voxels {
 ```
 palette #8B4513 #000000
 
-part "head"
+part head
     size 3 3 3
     pivot 1 0 1
-    socket "hat" 1 3 1
-    socket "mouth" 1 1 3
+    socket hat 1 3 1
+    socket mouth 1 1 3
     voxels {
         000
         000
@@ -573,7 +576,7 @@ part "head"
 // crown — single part static accessory
 palette #FFD700
 
-part "crown"
+part crown
     size 3 2 3
     pivot 1 0 1
     voxels {
@@ -586,7 +589,7 @@ part "crown"
 **Free-order example (palette at end, voxels before size):**
 
 ```
-part "body"
+part body
     voxels {
         0
         ,
@@ -602,24 +605,14 @@ palette #FF0000
 ```
 palette #000 #111 ... #01d    // 30 colors
 
-part "demo"
+part demo
     size 3 1 1
     voxels {
         rot                   // valid voxel row: palette[27]/[24]/[29]
     }
 ```
 
-**Part named after a reserved keyword** — perfectly valid because the quoting disambiguates:
-
-```
-palette #FF0000
-
-part "part"
-    size 1 1 1
-    voxels { 0 }
-```
-
-All five are valid Cuboidy v0.4 input.
+All four are valid Cuboidy v0.5 input. (Note: a part literally named after a reserved keyword like `part part` is not expressible — v0.4 allowed this via quoting, but v0.5's strengthened identifier rule rejects reserved keywords in identifier slots. Pick a non-reserved name.)
 
 ---
 
@@ -695,7 +688,7 @@ v0.3 uses **five structural codes** to describe errors. The code names what *kin
 | `missing` | A required structural element is absent. | No `palette` declaration in the file; `palette` declared but no `part`; `size` missing in a part; `voxels` missing in a part; `voxels { … }` block unclosed (EOF before `}`); a reserved word used outside its structurally valid scope (e.g. `size` before any `part`, `rot` outside `pivot` / `socket`) |
 | `duplicate` | A unique-constraint violation: an element that should appear at most once appears more than once. | Two `palette` declarations; duplicate `part` name; duplicate socket name within a part; duplicate `size` / `pivot` / `voxels` within a part |
 | `unknown` | An unrecognized name appears where the spec defines a closed set. | A non-keyword identifier appears where no statement is expected; a top-level token has no valid grammatical role |
-| `invalid-value` | A value is present but malformed. | Malformed color hex (`#GG`); voxel row contains a character outside `[.0-9a-zA-Z]`; voxel cell references a palette index that does not exist; size dimension out of range `[1..1024]`, fractional, or non-numeric; non-numeric `pivot` / `socket` coord; expected `rot` marker but got something else; identifier failing the §5 regex; identifier slot received a bare token instead of a `"..."` string (e.g. `part head` instead of `part "head"`); numeric or color slot received a string token (e.g. `size "3" 1 1`) |
+| `invalid-value` | A value is present but malformed. | Malformed color hex (`#GG`); voxel row contains a character outside `[.0-9a-zA-Z]`; voxel cell references a palette index that does not exist; size dimension out of range `[1..1024]`, fractional, or non-numeric; non-numeric `pivot` / `socket` coord; expected `rot` marker but got something else; identifier failing the §5 rule (regex failure or reserved-keyword name like `part part`); identifier slot received a quoted string instead of a bare token (e.g. `part "head"`); numeric or color slot received a string token (e.g. `size "3" 1 1`) |
 | `wrong-arity` | An incorrect number of items. | Voxel-row width does not match declared `W`; a layer-section row count differs from declared `D`; layer-section count differs from declared `H`; palette has 0 colors or more than 62; wrong number of arguments to a keyword (`size` not 3, `pivot` not 3-or-7, `socket` not 4-or-8, `part` not 1) |
 
 Note: v0.1 used per-keyword codes (E01–E19). v0.2 restructured them into the five structural categories above. v0.3 removed the `layer` keyword and the active-layer concept (replaced by `voxels { … }` blocks), simplifying the precedence rules; the five codes are unchanged. The keyword/context survives in the message string and in the fixture filenames (`fixtures/cvox/<code>/<descriptor>.cvox`).
@@ -769,9 +762,9 @@ Concrete precedence:
 3. Token-stream forward pass — raised at the point the offending token is consumed:
    - **`duplicate`** — duplicate `palette` declaration; duplicate `part` name; duplicate socket within a part; duplicate `size` / `pivot` / `voxels` within a part
    - **`wrong-arity`** — too-few args for any keyword (`palette` empty, `size` < 3, `pivot` < 3, `socket` < 4, `part` < 1) detected when the token stream ends before the slot is filled; palette overflow (`> 62` colors); `voxels` not followed by `{`. (A bare reserved word or quoted string appearing where a number/identifier was expected does *not* produce `wrong-arity` — it produces `invalid-value`, since the parser successfully pulled a token whose kind or shape doesn't match the slot.)
-   - **`invalid-value`** — bad color hex; non-numeric value where number expected; size dimension out of range; identifier failing the §5 regex; missing or wrong `rot` marker; identifier slot received a bare token instead of a `"..."` string (`part head` → "expects a quoted identifier name"); numeric or color slot received a string token
+   - **`invalid-value`** — bad color hex; non-numeric value where number expected; size dimension out of range; identifier failing the §5 rule (regex or reserved-keyword); missing or wrong `rot` marker; identifier slot received a quoted string (`part "head"` → "expected bare identifier, got quoted string"); numeric or color slot received a string token
    - **`missing`** — a reserved token consumed outside its structurally valid scope (per §7.3.3): a part-scoped keyword (`size` / `pivot` / `socket` / `voxels`) before any `part` declaration; `rot` outside `pivot` / `socket`; `{` / `}` / `,` at top level or in any position where its enclosing scope is absent; `voxels { … }` block reaches EOF without `}`
-   - **`unknown`** — non-reserved token with no valid grammatical role at this point. This includes extras left over after a keyword consumed its required args (e.g. the `9` in `size 1 1 1 9`, the `b` in `part "a" b`, the `5` in `pivot 1 0 1 5` — see per-keyword notes in §7.5–§7.9), and stray identifiers / numbers / quoted strings at top level (a misplaced `"foo"` at top-level reports `unknown` with "unexpected quoted string at top level")
+   - **`unknown`** — non-reserved token with no valid grammatical role at this point. This includes extras left over after a keyword consumed its required args (e.g. the `9` in `size 1 1 1 9`, the `b` in `part a b`, the `5` in `pivot 1 0 1 5` — see per-keyword notes in §7.5–§7.9), and stray identifiers / numbers / quoted strings at top level (a misplaced `"foo"` at top-level reports `unknown` with "unexpected quoted string at top level")
 4. End-of-stream assembly — raised after all tokens are consumed (validation deferred because palette may be declared anywhere in the file, so voxel-row content cannot be validated at consumption time):
    - **`missing`** — palette absent; palette declared but no parts; `size` missing in a part; `voxels` missing in a part
    - **`invalid-value`** — voxel cell character outside `[.0-9a-zA-Z]`; voxel cell references a palette index outside the declared palette
