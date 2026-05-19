@@ -1,5 +1,6 @@
 import { err, ok, type Result } from '../result.js';
 import type { TokenCursor } from './cursor.js';
+import { expectPunct } from './expect.js';
 import type { Token } from './tokenize.js';
 
 // Raw voxel-row tokens collected during parsing, validated later by
@@ -33,23 +34,8 @@ export class VoxelsParser {
   constructor(private readonly cursor: TokenCursor) {}
 
   parse(kw: Token): Result<RawVoxels> {
-    // Expect opening `{` (must be bare — a string `"{"` is not a structural
-    // open-brace).
-    const open = this.cursor.peek();
-    if (open === null) {
-      return err(
-        'wrong-arity',
-        `line ${kw.line}: 'voxels' must be followed by '{' (got end of file)`,
-      );
-    }
-    if (open.kind !== 'bare' || open.text !== '{') {
-      const got = open.kind === 'string' ? `"${open.text}"` : `'${open.text}'`;
-      return err(
-        'wrong-arity',
-        `line ${open.line}: 'voxels' must be followed by '{' (got ${got})`,
-      );
-    }
-    this.cursor.advance();
+    const openR = expectPunct(this.cursor, kw, '{', 'voxels block opening');
+    if (!openR.ok) return openR;
 
     // Inner loop: parse body until `}`. The block-structural punctuation
     // (`{` `}` `,`) is bare-only — a string-kind token, even with text

@@ -1,6 +1,6 @@
 import { err, ok, type Result } from '../result.js';
 import type { TokenCursor } from './cursor.js';
-import { parseNonNegInt } from './numbers.js';
+import { expectNonNegInt } from './expect.js';
 import type { Token } from './tokenize.js';
 
 export interface Size {
@@ -12,14 +12,10 @@ export interface Size {
 const SIZE_MIN = 1;
 const SIZE_MAX = 1024;
 
-// SPEC §7.6: parses a `size` declaration. Advances per-token. Per-arg errors
-// (kind mismatch, non-integer, range) reference the offending dimension's
-// own line; EOF references the `size` keyword line. A bare reserved token
-// like `part` lands in the `parseNonNegInt` branch — "got 'part'" — which
-// is the correct framing: size expected a number, the user supplied
-// something that isn't one. The duplicate check (at most one size per
-// part) happens in the caller — PartParser — immediately before this is
-// invoked.
+// SPEC §7.6: parses a `size` declaration. Pulls 3 non-negative integers
+// via expectNonNegInt (which handles EOF, kind mismatch, and non-integer
+// text), then range-checks each. Range errors reference the offending
+// token's own line (preserved through the Expected<T> wrapper).
 export class SizeParser {
   constructor(private readonly cursor: TokenCursor) {}
 
@@ -27,31 +23,13 @@ export class SizeParser {
     const labels = ['W', 'H', 'D'] as const;
     const xs: number[] = [];
     for (let i = 0; i < 3; i++) {
-      const t = this.cursor.peek();
-      if (t === null) {
-        return err(
-          'wrong-arity',
-          `line ${kw.line}: size expects 3 args (W H D), got ${i}`,
-        );
-      }
-      this.cursor.advance();
-      if (t.kind !== 'bare') {
-        return err(
-          'invalid-value',
-          `line ${t.line}: size dimension ${labels[i]} expects a number, got quoted string "${t.text}"`,
-        );
-      }
-      const n = parseNonNegInt(t.text);
-      if (n === null) {
-        return err(
-          'invalid-value',
-          `line ${t.line}: size dimension ${labels[i]} expects a non-negative integer, got '${t.text}'`,
-        );
-      }
+      const r = expectNonNegInt(this.cursor, kw, `size dimension ${labels[i]}`);
+      if (!r.ok) return r;
+      const { value: n, token } = r.value;
       if (n < SIZE_MIN || n > SIZE_MAX) {
         return err(
           'invalid-value',
-          `line ${t.line}: size dimension ${labels[i]}=${n} is out of range [${SIZE_MIN}..${SIZE_MAX}]`,
+          `line ${token.line}: size dimension ${labels[i]}=${n} is out of range [${SIZE_MIN}..${SIZE_MAX}]`,
         );
       }
       xs.push(n);

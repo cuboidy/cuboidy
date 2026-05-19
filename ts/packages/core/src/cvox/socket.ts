@@ -1,6 +1,6 @@
-import { isIdentifier } from '../identifier.js';
 import { err, ok, type Result } from '../result.js';
 import type { TokenCursor } from './cursor.js';
+import { expectIdentifier } from './expect.js';
 import type { PartParser } from './part.js';
 import type { Token } from './tokenize.js';
 import { pullVec3, type Vec3 } from './vec3.js';
@@ -12,15 +12,15 @@ export interface Socket {
 }
 
 // SPEC §7.8: parses a `socket` declaration. Advances per-token:
-// 1. Pull the name (identifier) — required.
+// 1. Pull the name (quoted identifier) via expectIdentifier.
 // 2. Early duplicate check via parent PartParser.hasSocketName(). Done
 //    here (not in PartParser) because the dup condition depends on the
 //    socket name, which is mid-parse — the inline-check-before-invoke
 //    pattern used for size/pivot/voxels can't apply.
 // 3. Pull the pos triple.
-// 4. If next token is `rot`, advance and pull the rot triple. Otherwise
-//    leave the next token for the caller (socket has no "extra args"
-//    failure mode of its own).
+// 4. If next token is bare `rot`, advance and pull the rot triple.
+//    Otherwise leave the next token for the caller (socket has no "extra
+//    args" failure mode of its own).
 export class SocketParser {
   constructor(
     private readonly cursor: TokenCursor,
@@ -28,27 +28,9 @@ export class SocketParser {
   ) {}
 
   parse(kw: Token): Result<Socket> {
-    const nameTok = this.cursor.peek();
-    if (nameTok === null) {
-      return err(
-        'wrong-arity',
-        `line ${kw.line}: socket expects an identifier name`,
-      );
-    }
-    this.cursor.advance();
-    if (nameTok.kind !== 'string') {
-      return err(
-        'invalid-value',
-        `line ${nameTok.line}: socket expects a quoted identifier name (e.g. "hat"), got bare token '${nameTok.text}'`,
-      );
-    }
-    const name = nameTok.text;
-    if (!isIdentifier(name)) {
-      return err(
-        'invalid-value',
-        `line ${nameTok.line}: invalid socket name "${name}"`,
-      );
-    }
+    const nameR = expectIdentifier(this.cursor, kw, 'socket name');
+    if (!nameR.ok) return nameR;
+    const { value: name, token: nameTok } = nameR.value;
 
     if (this.partParser.hasSocketName(name)) {
       return err(
