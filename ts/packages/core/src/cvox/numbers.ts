@@ -1,5 +1,11 @@
 const NON_NEG_INT_RE = /^\d+$/;
-const FLOAT_RE = /^-?(\d+(\.\d+)?|\.\d+)([eE][+-]?\d+)?$/;
+// SPEC §7.1.1 (table row "Number"): integer or decimal, optional leading `-`.
+// No leading `.` (`.5` is rejected — must be `0.5`). No exponent notation
+// (`1e2` is rejected) — cvox numeric slots are voxel coordinates, pivot
+// offsets, and rotation degrees, none of which benefit from scientific
+// notation. If exponent support is ever needed, update SPEC and this regex
+// together.
+const FLOAT_RE = /^-?\d+(\.\d+)?$/;
 
 export function parseNonNegInt(s: string): number | null {
   if (!NON_NEG_INT_RE.test(s)) return null;

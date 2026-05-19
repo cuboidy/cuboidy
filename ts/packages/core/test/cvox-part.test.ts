@@ -4,8 +4,14 @@ import { parseCvox } from '../src/cvox/parse.js';
 import { SizeParser } from '../src/cvox/size.js';
 import { tokenize, type Token } from '../src/cvox/tokenize.js';
 
+function lex(input: string): Token[] {
+  const r = tokenize(input);
+  if (!r.ok) throw new Error(`tokenize failed: ${r.message}`);
+  return r.value;
+}
+
 function parseSize(input: string) {
-  const cursor = new TokenCursor(tokenize(input));
+  const cursor = new TokenCursor(lex(input));
   const kw: Token = { text: 'size', line: 1, col: 1 };
   return new SizeParser(cursor).parse(kw);
 }
@@ -77,7 +83,7 @@ describe('SizeParser', () => {
   });
 
   it('leaves later tokens for the caller (stops after 3rd value)', () => {
-    const cursor = new TokenCursor(tokenize('3 4 5 part'));
+    const cursor = new TokenCursor(lex('3 4 5 part'));
     const kw: Token = { text: 'size', line: 1, col: 1 };
     const r = new SizeParser(cursor).parse(kw);
     expect(r.ok).toBe(true);
@@ -87,7 +93,8 @@ describe('SizeParser', () => {
 
 // PartParser header validation runs as part of the full parse and is
 // exercised through parseCvox. The identifier rule itself is tested in
-// isIdentifier.test.ts; here we verify the wiring.
+// identifier.test.ts; here we verify the wiring (header pulls the name,
+// applies the rule, surfaces the right error code).
 describe('PartParser header validation (via parseCvox)', () => {
   it('accepts a bare identifier name', () => {
     const r = parseCvox('palette #fff\npart head\nsize 1 1 1\nvoxels { . }');

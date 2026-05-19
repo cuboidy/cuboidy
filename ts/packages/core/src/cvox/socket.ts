@@ -7,7 +7,7 @@ import type { Socket } from './types.js';
 import { expectVec3 } from './vec3.js';
 
 // SPEC §7.8: parses a `socket` declaration. Advances per-token:
-// 1. Pull the name (quoted identifier) via expectIdentifier.
+// 1. Pull the name (bare identifier) via expectIdentifier.
 // 2. Early duplicate check via parent PartParser.hasSocketName(). Done
 //    here (not in PartParser) because the dup condition depends on the
 //    socket name, which is mid-parse — the inline-check-before-invoke

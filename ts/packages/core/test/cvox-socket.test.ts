@@ -5,8 +5,14 @@ import { PartParser } from '../src/cvox/part.js';
 import { SocketParser } from '../src/cvox/socket.js';
 import { tokenize, type Token } from '../src/cvox/tokenize.js';
 
+function lex(input: string): Token[] {
+  const r = tokenize(input);
+  if (!r.ok) throw new Error(`tokenize failed: ${r.message}`);
+  return r.value;
+}
+
 function parseSocket(input: string) {
-  const cursor = new TokenCursor(tokenize(input));
+  const cursor = new TokenCursor(lex(input));
   const cvoxParser = new CvoxParser(new TokenCursor([]));
   const partParser = new PartParser(cursor, cvoxParser);
   const kw: Token = { text: 'socket', line: 1, col: 1 };
@@ -100,7 +106,7 @@ describe('SocketParser', () => {
   });
 
   it("returns pos-only when next token is not 'rot' (leaves it for caller)", () => {
-    const cursor = new TokenCursor(tokenize('hat 1 3 1 size 1 1 1'));
+    const cursor = new TokenCursor(lex('hat 1 3 1 size 1 1 1'));
     const cvoxParser = new CvoxParser(new TokenCursor([]));
     const partParser = new PartParser(cursor, cvoxParser);
     const kw: Token = { text: 'socket', line: 1, col: 1 };

@@ -117,5 +117,7 @@ export class CvoxParser {
 }
 
 export function parseCvox(text: string): Result<Cvox> {
-  return new CvoxParser(new TokenCursor(tokenize(text))).parse();
+  const tokensR = tokenize(text);
+  if (!tokensR.ok) return tokensR;
+  return new CvoxParser(new TokenCursor(tokensR.value)).parse();
 }

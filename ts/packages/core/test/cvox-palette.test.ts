@@ -4,8 +4,14 @@ import { PaletteParser } from '../src/cvox/palette.js';
 import { CvoxParser } from '../src/cvox/parse.js';
 import { tokenize, type Token } from '../src/cvox/tokenize.js';
 
+function lex(input: string): Token[] {
+  const r = tokenize(input);
+  if (!r.ok) throw new Error(`tokenize failed: ${r.message}`);
+  return r.value;
+}
+
 function parsePalette(input: string) {
-  const cursor = new TokenCursor(tokenize(input));
+  const cursor = new TokenCursor(lex(input));
   const cvoxParser = new CvoxParser(new TokenCursor([]));
   const kw: Token = { text: 'palette', line: 1, col: 1 };
   return new PaletteParser(cursor, cvoxParser).parse(kw);
@@ -66,7 +72,7 @@ describe('PaletteParser', () => {
     });
 
     it('stops at the next reserved token (leaves it for caller)', () => {
-      const cursor = new TokenCursor(tokenize('#000 part'));
+      const cursor = new TokenCursor(lex('#000 part'));
       const cvoxParser = new CvoxParser(new TokenCursor([]));
       const kw: Token = { text: 'palette', line: 1, col: 1 };
       const r = new PaletteParser(cursor, cvoxParser).parse(kw);
@@ -125,7 +131,7 @@ describe('PaletteParser', () => {
     });
 
     it('rejects a duplicate palette declaration (parent CvoxParser state)', () => {
-      const cursor = new TokenCursor(tokenize('#FFF'));
+      const cursor = new TokenCursor(lex('#FFF'));
       const cvoxParser = new CvoxParser(new TokenCursor([]));
       cvoxParser.setPalette([], 5);
       const kw: Token = { text: 'palette', line: 10, col: 1 };

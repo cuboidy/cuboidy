@@ -74,9 +74,10 @@ export class PartParser {
   hasSocketName(name: string): boolean { return this.socketNames.has(name); }
 
   parse(partKw: Token): Result<ParsedPart> {
-    // Header: pull the part name (quoted identifier per SPEC §7.5). The
-    // quote requirement is what disambiguates `part "part"` (a part
-    // literally named `part`) from `part part` (the reserved keyword).
+    // Header: pull the part name (bare identifier per SPEC §7.5). The
+    // §5 identifier rule (strengthened to reject reserved keywords) is
+    // what handles disambiguation — `part part` errors as "invalid
+    // identifier 'part'", not parses as a part named `part`.
     const nameR = expectIdentifier(this.cursor, partKw, 'part name');
     if (!nameR.ok) return nameR;
     const { value: name, token: nameTok } = nameR.value;

@@ -1,4 +1,4 @@
-import { RESERVED_TOKENS } from './cvox/reserved.js';
+import { RESERVED_KEYWORDS } from './cvox/reserved.js';
 
 // SPEC §5: canonical identifier rule, shared by both file formats
 // (cuboidy.json names via manifest.ts Zod schema, cvox part/socket names
@@ -12,10 +12,16 @@ import { RESERVED_TOKENS } from './cvox/reserved.js';
 // `part "head"` for identifier slots: the keyword `part` is rejected by
 // isIdentifier, so `part part` correctly errors as "invalid identifier"
 // rather than parsing as a part named `part`.
+//
+// Punctuation tokens (`{`, `}`, `,`) are not consulted: they fail the
+// regex anyway (non-identifier chars), so the reserved set we need is
+// just the keyword subset, not the full RESERVED_TOKENS.
+
+const RESERVED_KEYWORD_SET = new Set(RESERVED_KEYWORDS);
 
 export const IDENTIFIER_RE = /^[a-zA-Z_][a-zA-Z0-9_-]*$/;
 
 export function isIdentifier(s: string): boolean {
-  if (RESERVED_TOKENS.has(s)) return false;
+  if (RESERVED_KEYWORD_SET.has(s)) return false;
   return IDENTIFIER_RE.test(s);
 }

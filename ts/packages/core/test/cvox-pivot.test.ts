@@ -3,8 +3,14 @@ import { TokenCursor } from '../src/cvox/cursor.js';
 import { PivotParser } from '../src/cvox/pivot.js';
 import { tokenize, type Token } from '../src/cvox/tokenize.js';
 
+function lex(input: string): Token[] {
+  const r = tokenize(input);
+  if (!r.ok) throw new Error(`tokenize failed: ${r.message}`);
+  return r.value;
+}
+
 function parsePivot(input: string) {
-  const cursor = new TokenCursor(tokenize(input));
+  const cursor = new TokenCursor(lex(input));
   const kw: Token = { text: 'pivot', line: 1, col: 1 };
   return new PivotParser(cursor).parse(kw);
 }
@@ -79,7 +85,7 @@ describe('PivotParser', () => {
   });
 
   it("returns pos-only when next token is not 'rot' (leaves it for caller)", () => {
-    const cursor = new TokenCursor(tokenize('1 0 1 socket hat 1 1 1'));
+    const cursor = new TokenCursor(lex('1 0 1 socket hat 1 1 1'));
     const kw: Token = { text: 'pivot', line: 1, col: 1 };
     const r = new PivotParser(cursor).parse(kw);
     expect(r.ok).toBe(true);

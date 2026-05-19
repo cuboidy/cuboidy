@@ -254,7 +254,7 @@ A plain-text file. Lexing uses a two-layer model (§7.1), parsing is recursive-d
 
 ### 7.1 Lexical structure
 
-Cuboidy's lexer emits tokens with one of two **kinds**: `bare` (whitespace-delimited) and `string` (a `"..."` literal). The kind drives §7.5 / §7.8 (identifier slots require `string`) and is consulted by every other slot too — numeric and color slots accept only `bare`. Within the bare-kind subset, the lexer recognises one unified category — **reserved tokens** — split by syntactic shape into two sub-categories. Both stop argument collection (§7.2), neither participates in identifier slots, and together they are the only bare tokens with grammatical significance outside of voxel data. A quoted `"part"` is a string-kind token and is never reserved.
+Cuboidy's lexer emits tokens with one of two **kinds**: `bare` (whitespace-delimited) and `string` (a `"..."` literal). In v0.5 cvox grammar all slots — identifier (§7.5, §7.8), numeric (`size`, `pivot`, `socket` pos/rot), and color (`palette`) — accept only `bare`; any string-kind token surfaces as `invalid-value`. The string kind is preserved at the lexer layer for future extensibility but has no role in current productions. Within the bare-kind subset, the lexer recognises one unified category — **reserved tokens** — split by syntactic shape into two sub-categories. Both stop argument collection (§7.2), neither participates in identifier slots, and together they are the only bare tokens with grammatical significance outside of voxel data.
 
 **Reserved punctuation — universal scope** (always recognized as 1-character tokens, anywhere in the file):
 
@@ -297,11 +297,12 @@ Every token has a **kind**: `bare` (whitespace-delimited; covers all cvox identi
 | **Reserved keyword** | bare | one of `palette`, `part`, `size`, `pivot`, `socket`, `voxels`, `rot` (per §7.1 scope rules) | `voxels` |
 | **Reserved punctuation** | bare | `{` `}` `,` (always 1-character tokens, universal scope) | `{` |
 | **Color literal** | bare | `#` followed by 3, 4, 6, or 8 hex digits | `#8B4513` |
-| **Number** | bare | integer or decimal, optional leading `-` | `3`, `1.5`, `-2` |
+| **Number** | bare | integer or decimal, optional leading `-` (no exponent, no leading `.`) | `3`, `1.5`, `-2` |
 | **Voxel row** | bare | `[.0-9a-zA-Z]+` (only inside `voxels { … }`; length must equal `W`) | `000`, `0.0`, `101` |
-| **String literal** | string | `"` … `"` on a single line, content `[^"\n]*`. Text excludes the surrounding quotes. Used for identifier slots in `part` / `socket`. | `"head"`, `"leg-fl"` |
+| **Identifier** | bare | §5 identifier rule (regex + not a reserved keyword); used for part/socket names | `head`, `leg-fl` |
+| **String literal** | string | `"` … `"` on a single line, content `[^"\n]*`. Text excludes the surrounding quotes. No v0.5 production accepts string-kind — reserved at the lexer layer for future use. | `"reserved"` |
 
-The `"..."` literal must open and close on the same physical line; the lexer does not match a `"` across a newline. An unmatched opening `"` falls through to bare tokenisation (the `"` becomes part of a bare token text), surfacing at parse-time as an `invalid-value` when a string-kind token is required.
+The `"..."` literal must open and close on the same physical line; the lexer does not match a `"` across a newline. An unmatched opening `"` is a **lexical error** — the tokenizer returns `invalid-value` immediately with a location pointing at the unmatched `"`, rather than producing an ambiguous partial token stream.
 
 A token's role is determined by its **scope** (§7.1) and **position** (§7.2 grammar). The same character sequence may be an identifier in one scope and a voxel-row string in another.
 
@@ -322,7 +323,7 @@ file         := (palette-decl | part)+        (palette-decl appears exactly once
 palette-decl := "palette" color+
 color        := "#" (3 | 4 | 6 | 8) hex-digits
 
-part         := "part" string
+part         := "part" identifier
                 (size-decl | pivot-decl | socket-decl | voxels-block)+
                                               (any order; size exactly once;
                                                voxels exactly once;
@@ -331,10 +332,10 @@ part         := "part" string
 
 size-decl    := "size" int int int
 pivot-decl   := "pivot" num num num ("rot" num num num)?
-socket-decl  := "socket" string num num num ("rot" num num num)?
-string       := /"[^"\n]*"/                   (kind='string'; content matches
-                                              the §5 identifier regex in part
-                                              and socket name slots)
+socket-decl  := "socket" identifier num num num ("rot" num num num)?
+identifier   := /[a-zA-Z_][a-zA-Z0-9_-]*/     (kind='bare'; §5 rule —
+                                              MUST NOT match a reserved
+                                              keyword)
 
 voxels-block := "voxels" "{" layer-section ("," layer-section)* "}"
 layer-section := voxel-row*                   (exactly D rows per layer-section;
@@ -354,7 +355,7 @@ Tokens are separated by any whitespace (space, tab, newline) or by the reserved 
 - If the pulled count is more than required, the library returns `wrong-arity` (library entry only).
 - Under the integrated parser, the keyword consumes only its required count; extras stay in the stream and are diagnosed by the main loop at the next iteration (typically `unknown` for a stray identifier, `invalid-value` for a stray number where no statement is expected). This is documented per-keyword in §7.5–§7.9.
 
-Concretely: `part rot` pulls 0 identifier tokens (because `rot` is reserved and stops collection), so the part header surfaces as `wrong-arity`. `size 1 1 1 9` pulls 3 ints, sets the size, and leaves `9` for the main loop to diagnose as `unknown`. This rule is what makes "reserved tokens are not valid identifiers" an automatic consequence of the lexer. The kind-based string slot for `part` / `socket` (§7.5, §7.8) adds a second guard: even if `head` were not reserved, `part head` fails because the slot requires a `string`-kind token, not a `bare`-kind one.
+Concretely: `part rot` pulls 1 token whose text is `rot`, but `rot` is rejected by §5 `isIdentifier` (reserved-keyword guard), so the part header surfaces as `invalid-value`. `size 1 1 1 9` pulls 3 ints, sets the size, and leaves `9` for the main loop to diagnose as `unknown`. The §5 reserved-keyword rule is what makes "reserved tokens are not valid identifiers" enforceable at the identifier slot — no separate lexical guard is needed.
 
 **`palette` mid-part.** The `palette` keyword is file-level (§7.5): it may appear anywhere in the file, including inside the textual span of a `part` section. It does **not** close the surrounding part — the part remains open after the `palette` declaration is consumed. The grammar above shows `part := "part" identifier (size-decl | pivot-decl | socket-decl | voxels-block)+`, but a reader MUST accept a `palette-decl` interleaved into that sequence without closing the part. This special-case applies only to `palette`; all other top-level statement starters (`part`) close the surrounding part.
 
@@ -470,7 +471,7 @@ socket <identifier> <x> <y> <z> rot <rx> <ry> <rz>
 ```
 
 - Zero or more per part
-- Name slot accepts only a `string`-kind token; content must match the §5 identifier regex
+- Name slot accepts only a `bare`-kind token; content must satisfy the §5 identifier rule (regex + not a reserved keyword)
 - Position in part-local space, voxel units (fractional allowed)
 - Optional rotation: Euler degrees, ZXY order, default `[0, 0, 0]`
 - Socket name unique within a part
