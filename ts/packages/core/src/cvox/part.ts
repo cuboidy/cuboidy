@@ -16,10 +16,8 @@ import { VoxelsParser, type RawVoxels } from './voxels.js';
 // public Part type using the resolved palette.
 export interface ParsedPart {
   name: string;
-  headerLineNo: number;
   size: Size;
   pivot: Pivot | null;
-  pivotLineNo: number;
   sockets: readonly Socket[];
   voxels: RawVoxels;
 }
@@ -236,10 +234,8 @@ export class PartParser {
     }
     return ok({
       name,
-      headerLineNo: partKw.line,
       size: this.size,
       pivot: this.pivot,
-      pivotLineNo: this.pivotLineNo,
       sockets: this.sockets,
       voxels: this.voxels,
     });
