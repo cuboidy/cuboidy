@@ -109,15 +109,23 @@ export class PartParser {
   hasSocketName(name: string): boolean { return this.socketNames.has(name); }
 
   parse(partKw: Token): Result<ParsedPart> {
-    // Header: pull the part name (single identifier value-token).
+    // Header: pull the part name. SPEC §7.5 requires a quoted string here
+    // (kind='string') so the lexer disambiguates `part "part"` (a part
+    // literally named `part`) from `part part` (the reserved keyword).
     const nameR = expectValue(this.cursor, partKw, 'part', 1, 0);
     if (!nameR.ok) return nameR;
     const nameTok = nameR.value;
+    if (nameTok.kind !== 'string') {
+      return err(
+        'invalid-value',
+        `line ${nameTok.line}: part expects a quoted identifier name (e.g. "head"), got bare token '${nameTok.text}'`,
+      );
+    }
     const name = nameTok.text;
     if (!isIdentifier(name)) {
       return err(
         'invalid-value',
-        `line ${nameTok.line}: invalid part identifier '${name}'`,
+        `line ${nameTok.line}: invalid part identifier "${name}"`,
       );
     }
     this.partName = name;
@@ -126,21 +134,30 @@ export class PartParser {
     if (this.cvoxParser.hasPartName(name)) {
       return err(
         'duplicate',
-        `line ${nameTok.line}: duplicate part name '${name}'`,
+        `line ${nameTok.line}: duplicate part name "${name}"`,
       );
     }
 
-    // Inner loop: consume part-scoped declarations until the next 'part' or EOF.
+    // Inner loop: consume part-scoped declarations until the next bare
+    // `part` keyword or EOF. A string-kind token with text='part' (i.e.
+    // `"part"`) is NOT a statement starter — it falls through to the
+    // default case which surfaces the misplaced quoted string.
     while (this.cursor.hasMore()) {
       const peek = this.cursor.peek()!;
-      if (peek.text === 'part') break; // yield to CvoxParser for the next part
+      if (peek.kind === 'bare' && peek.text === 'part') break;
       const t = this.cursor.advance()!;
+      if (t.kind !== 'bare') {
+        return err(
+          'unknown',
+          `line ${t.line}: unexpected quoted string "${t.text}" at part scope (no statement starts with a string)`,
+        );
+      }
       switch (t.text) {
         case 'size': {
           if (this.size !== null) {
             return err(
               'duplicate',
-              `line ${t.line}: duplicate size for part '${name}' (first at line ${this.sizeLineNo})`,
+              `line ${t.line}: duplicate size for part "${name}" (first at line ${this.sizeLineNo})`,
             );
           }
           const r = new SizeParser(this.cursor).parse(t);
@@ -153,7 +170,7 @@ export class PartParser {
           if (this.pivot !== null) {
             return err(
               'duplicate',
-              `line ${t.line}: duplicate pivot for part '${name}' (first at line ${this.pivotLineNo})`,
+              `line ${t.line}: duplicate pivot for part "${name}" (first at line ${this.pivotLineNo})`,
             );
           }
           const r = new PivotParser(this.cursor).parse(t);
@@ -176,7 +193,7 @@ export class PartParser {
           if (this.voxels !== null) {
             return err(
               'duplicate',
-              `line ${t.line}: duplicate voxels block for part '${name}' (first at line ${this.voxelsLineNo})`,
+              `line ${t.line}: duplicate voxels block for part "${name}" (first at line ${this.voxelsLineNo})`,
             );
           }
           const r = new VoxelsParser(this.cursor).parse(t);
@@ -224,13 +241,13 @@ export class PartParser {
     if (this.size === null) {
       return err(
         'missing',
-        `line ${partKw.line}: part '${name}' missing size`,
+        `line ${partKw.line}: part "${name}" missing size`,
       );
     }
     if (this.voxels === null) {
       return err(
         'missing',
-        `line ${partKw.line}: part '${name}' missing voxels block`,
+        `line ${partKw.line}: part "${name}" missing voxels block`,
       );
     }
     return ok({

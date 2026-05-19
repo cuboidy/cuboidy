@@ -1,10 +1,11 @@
 // crown — single-part static accessory
 // Designed to attach to wolf via the head:hat socket.
-// Demonstrates Cuboidy v0.3 style: indented metadata, voxels block, comments.
+// Demonstrates Cuboidy v0.4 style: indented metadata, voxels block, comments,
+// quoted identifier names.
 
 palette #FFD700  // gold
 
-part crown
+part "crown"
     size 3 2 3
     pivot 1 0 1
     voxels {

@@ -86,17 +86,27 @@ describe('SizeParser', () => {
 // exercised through parseCvox. The identifier rule itself is tested in
 // isIdentifier.test.ts; here we verify the wiring.
 describe('PartParser header validation (via parseCvox)', () => {
-  it('accepts a valid identifier name', () => {
-    const r = parseCvox('palette #fff\npart head\nsize 1 1 1\nvoxels { . }');
+  it('accepts a quoted identifier name', () => {
+    const r = parseCvox('palette #fff\npart "head"\nsize 1 1 1\nvoxels { . }');
     expect(r.ok).toBe(true);
   });
 
-  it('rejects an invalid identifier (leading digit)', () => {
-    const r = parseCvox('palette #fff\npart 1bad\nsize 1 1 1\nvoxels { . }');
+  it('rejects an invalid identifier (leading digit) inside quotes', () => {
+    const r = parseCvox('palette #fff\npart "1bad"\nsize 1 1 1\nvoxels { . }');
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.code).toBe('invalid-value');
       expect(r.message).toContain('1bad');
+    }
+  });
+
+  it('rejects bare identifier (must be quoted)', () => {
+    const r = parseCvox('palette #fff\npart head\nsize 1 1 1\nvoxels { . }');
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.code).toBe('invalid-value');
+      expect(r.message).toContain('quoted identifier');
+      expect(r.message).toContain('head');
     }
   });
 

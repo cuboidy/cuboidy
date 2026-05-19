@@ -15,7 +15,7 @@ function parseSocket(input: string) {
 
 describe('SocketParser', () => {
   it('parses socket without rotation', () => {
-    const r = parseSocket('hat 1 3 1');
+    const r = parseSocket('"hat" 1 3 1');
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.value.name).toBe('hat');
@@ -25,7 +25,7 @@ describe('SocketParser', () => {
   });
 
   it('parses socket with rotation', () => {
-    const r = parseSocket('mouth 1 1 3 rot 0 90 0');
+    const r = parseSocket('"mouth" 1 1 3 rot 0 90 0');
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.value.name).toBe('mouth');
@@ -35,13 +35,13 @@ describe('SocketParser', () => {
   });
 
   it('accepts kebab-case socket name', () => {
-    const r = parseSocket('ear-l 0.5 2 0.5');
+    const r = parseSocket('"ear-l" 0.5 2 0.5');
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.value.name).toBe('ear-l');
   });
 
   it('accepts fractional coords', () => {
-    const r = parseSocket('anchor 1.5 2.25 0.5');
+    const r = parseSocket('"anchor" 1.5 2.25 0.5');
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.value.pos).toEqual({ x: 1.5, y: 2.25, z: 0.5 });
   });
@@ -58,38 +58,47 @@ describe('SocketParser', () => {
     if (!r.ok) expect(r.code).toBe('wrong-arity');
   });
 
+  it('E06: rejects bare name (must be quoted)', () => {
+    const r = parseSocket('hat 1 3 1');
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.code).toBe('invalid-value');
+      expect(r.message).toContain('quoted identifier');
+    }
+  });
+
   it('E06: rejects too few pos args (EOF)', () => {
-    const r = parseSocket('hat 1 3');
+    const r = parseSocket('"hat" 1 3');
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe('wrong-arity');
   });
 
   it('E06: rejects rot with no triple', () => {
-    const r = parseSocket('hat 1 3 1 rot');
+    const r = parseSocket('"hat" 1 3 1 rot');
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe('wrong-arity');
   });
 
   it('E06: rejects rot with too few triple args', () => {
-    const r = parseSocket('hat 1 3 1 rot 0 90');
+    const r = parseSocket('"hat" 1 3 1 rot 0 90');
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe('wrong-arity');
   });
 
-  it('E06: rejects invalid socket name', () => {
-    const r = parseSocket('1bad 1 3 1');
+  it('E06: rejects invalid socket name (content fails identifier rule)', () => {
+    const r = parseSocket('"1bad" 1 3 1');
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 
   it('E06: rejects non-numeric pos coord', () => {
-    const r = parseSocket('hat abc 3 1');
+    const r = parseSocket('"hat" abc 3 1');
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 
   it("returns pos-only when next token is not 'rot' (leaves it for caller)", () => {
-    const cursor = new TokenCursor(tokenize('hat 1 3 1 size 1 1 1'));
+    const cursor = new TokenCursor(tokenize('"hat" 1 3 1 size 1 1 1'));
     const cvoxParser = new CvoxParser(new TokenCursor([]));
     const partParser = new PartParser(cursor, cvoxParser);
     const kw: Token = { text: 'socket', line: 1, col: 1 };
@@ -106,7 +115,7 @@ describe('SocketParser', () => {
 describe('SocketParser duplicate detection (via parseCvox)', () => {
   it('rejects a second socket with the same name in the same part', () => {
     const r = parseCvox(
-      'palette #fff\npart head\nsize 1 1 1\nsocket hat 0 0 0\nsocket hat 1 0 0\nvoxels { . }',
+      'palette #fff\npart "head"\nsize 1 1 1\nsocket "hat" 0 0 0\nsocket "hat" 1 0 0\nvoxels { . }',
     );
     expect(r.ok).toBe(false);
     if (!r.ok) {
@@ -117,7 +126,7 @@ describe('SocketParser duplicate detection (via parseCvox)', () => {
 
   it('allows the same socket name in different parts', () => {
     const r = parseCvox(
-      'palette #fff\npart head\nsize 1 1 1\nsocket hat 0 0 0\nvoxels { . }\npart body\nsize 1 1 1\nsocket hat 0 0 0\nvoxels { . }',
+      'palette #fff\npart "head"\nsize 1 1 1\nsocket "hat" 0 0 0\nvoxels { . }\npart "body"\nsize 1 1 1\nsocket "hat" 0 0 0\nvoxels { . }',
     );
     expect(r.ok).toBe(true);
   });

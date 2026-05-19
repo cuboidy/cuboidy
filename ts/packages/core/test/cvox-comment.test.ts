@@ -40,8 +40,11 @@ describe('stripComment', () => {
     expect(stripComment('//')).toBe('');
   });
 
-  it('Cuboidy has no string literals, so // always means comment', () => {
-    expect(stripComment('part name //rest')).toBe('part name ');
+  it('// always means comment — even inside what looks like a quoted string', () => {
+    // stripComment runs before tokenization and is quote-unaware. This means
+    // identifier names (which the §5 regex restricts to alphanumeric + `-_`)
+    // cannot contain `//`, which is fine because the rule already forbids `/`.
+    expect(stripComment('part "name" //rest')).toBe('part "name" ');
   });
 
   it('handles multiple // — only first matters', () => {

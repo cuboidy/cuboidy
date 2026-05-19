@@ -85,8 +85,14 @@ export class PaletteParser {
     const colors: Color[] = [];
     while (true) {
       const t = this.cursor.peek();
-      if (t === null || isReserved(t.text)) break;
+      if (t === null || isReserved(t)) break;
       this.cursor.advance();
+      if (t.kind !== 'bare') {
+        return err(
+          'invalid-value',
+          `line ${t.line}: palette expects bare color literal, got quoted string "${t.text}"`,
+        );
+      }
       const color = parseHexColor(t.text);
       if (color === null) {
         return err('invalid-value', `line ${t.line}: invalid color '${t.text}'`);

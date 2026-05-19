@@ -49,27 +49,37 @@ export class VoxelsParser {
     }
     this.cursor.advance();
 
-    // Inner loop: parse body until `}`
+    // Inner loop: parse body until `}`. The block-structural punctuation
+    // (`{` `}` `,`) is bare-only — a string-kind token, even with text
+    // matching one of those characters, is treated as a voxel-row candidate
+    // and rejected since string tokens have no role inside a voxels block.
     const sections: RawSection[] = [];
     let current: RawSection = { rows: [], startLine: kw.line };
     while (this.cursor.hasMore()) {
       const t = this.cursor.advance()!;
-      switch (t.text) {
-        case '}':
-          sections.push(current);
-          return ok({ sections, voxelsLine: kw.line });
-        case ',':
-          sections.push(current);
-          current = { rows: [], startLine: t.line };
-          continue;
-        case '{':
-          return err(
-            'invalid-value',
-            `line ${t.line}: unexpected '{' inside voxels block (no nesting)`,
-          );
-        default:
-          current.rows.push({ text: t.text, line: t.line, col: t.col });
+      if (t.kind === 'bare') {
+        switch (t.text) {
+          case '}':
+            sections.push(current);
+            return ok({ sections, voxelsLine: kw.line });
+          case ',':
+            sections.push(current);
+            current = { rows: [], startLine: t.line };
+            continue;
+          case '{':
+            return err(
+              'invalid-value',
+              `line ${t.line}: unexpected '{' inside voxels block (no nesting)`,
+            );
+          default:
+            current.rows.push({ text: t.text, line: t.line, col: t.col });
+            continue;
+        }
       }
+      return err(
+        'invalid-value',
+        `line ${t.line}: unexpected quoted string "${t.text}" inside voxels block (strings have no role here)`,
+      );
     }
     return err(
       'missing',

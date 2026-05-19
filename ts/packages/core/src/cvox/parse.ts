@@ -57,6 +57,12 @@ export class CvoxParser {
   parse(): Result<Cvox> {
     while (this.cursor.hasMore()) {
       const t = this.cursor.advance()!;
+      if (t.kind !== 'bare') {
+        return err(
+          'unknown',
+          `line ${t.line}: unexpected quoted string "${t.text}" at top level (no statement starts with a string)`,
+        );
+      }
       switch (t.text) {
         case 'palette': {
           const r = new PaletteParser(this.cursor, this).parse(t);

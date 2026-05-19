@@ -31,18 +31,24 @@ export class SocketParser {
     const nameR = expectValue(this.cursor, kw, 'socket', 4, 0);
     if (!nameR.ok) return nameR;
     const nameTok = nameR.value;
+    if (nameTok.kind !== 'string') {
+      return err(
+        'invalid-value',
+        `line ${nameTok.line}: socket expects a quoted identifier name (e.g. "hat"), got bare token '${nameTok.text}'`,
+      );
+    }
     const name = nameTok.text;
     if (!isIdentifier(name)) {
       return err(
         'invalid-value',
-        `line ${nameTok.line}: invalid socket name '${name}'`,
+        `line ${nameTok.line}: invalid socket name "${name}"`,
       );
     }
 
     if (this.partParser.hasSocketName(name)) {
       return err(
         'duplicate',
-        `line ${nameTok.line}: duplicate socket '${name}' in part '${this.partParser.getName()}'`,
+        `line ${nameTok.line}: duplicate socket "${name}" in part "${this.partParser.getName()}"`,
       );
     }
 

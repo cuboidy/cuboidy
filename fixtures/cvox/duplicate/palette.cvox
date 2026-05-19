@@ -1,6 +1,6 @@
 // Two `palette` declarations
 palette #FF0000
-part box
+part "box"
     size 1 1 1
     voxels { 0 }
 palette #00FF00

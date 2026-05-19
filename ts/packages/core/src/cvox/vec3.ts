@@ -30,6 +30,12 @@ export function pullVec3(
     const tR = expectValue(cursor, kw, label, 3, i);
     if (!tR.ok) return tR;
     const t = tR.value;
+    if (t.kind !== 'bare') {
+      return err(
+        'invalid-value',
+        `line ${t.line}: ${label} ${axes[i]} expects a number, got quoted string "${t.text}"`,
+      );
+    }
     const n = parseFloatStrict(t.text);
     if (n === null) {
       return err(

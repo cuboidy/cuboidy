@@ -45,7 +45,7 @@ export function expectValue(
       `line ${kw.line}: ${label} expects ${expected} arg(s), got ${have}`,
     );
   }
-  if (isReserved(t.text)) {
+  if (isReserved(t)) {
     return err(
       'wrong-arity',
       `line ${kw.line}: ${label} expects ${expected} arg(s), got ${have} before reserved '${t.text}' at line ${t.line}`,

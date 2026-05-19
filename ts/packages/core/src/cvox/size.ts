@@ -27,6 +27,12 @@ export class SizeParser {
       const tR = expectValue(this.cursor, kw, 'size', 3, i);
       if (!tR.ok) return tR;
       const t = tR.value;
+      if (t.kind !== 'bare') {
+        return err(
+          'invalid-value',
+          `line ${t.line}: size dimension ${labels[i]} expects a number, got quoted string "${t.text}"`,
+        );
+      }
       const n = parseNonNegInt(t.text);
       if (n === null) {
         return err(
