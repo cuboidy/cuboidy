@@ -1,7 +1,8 @@
 import { z } from 'zod';
+import { IDENTIFIER_RE } from './identifier.js';
 import { err, ok, type CuboidyErrorCode, type Result } from './result.js';
 
-const Identifier = z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_-]*$/);
+const Identifier = z.string().regex(IDENTIFIER_RE);
 
 const Vec3 = z.tuple([z.number(), z.number(), z.number()]);
 
