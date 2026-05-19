@@ -77,7 +77,7 @@ my-model.cuboidy        packed package (ZIP of the folder above)
 - [x] Shared parity fixtures — `fixtures/cvox/<code>/` and `fixtures/json/<code>/`, contract for cross-implementation conformance
 - [x] JSON Schema for `cuboidy.json` — `schema/cuboidy.schema.json` (Draft 2020-12, derived from the Zod ManifestSchema; reference via `"$schema": "https://cuboidy.com/schema/cuboidy.schema.json"` or the GitHub raw URL)
 - [x] Canonical serializer (reader-tolerant / writer-strict) — `serializeCvox(cvox)` produces canonical text; round-trip with `parseCvox` verified. Comment preservation deferred to Phase 2 (no current consumer needs it; will be added alongside the web editor)
-- [x] Voxel definition lint library — `lintCvox(cvox)` returns warnings (W01–W05) and hints (H01–H02); standalone `cuboidy-lint` CLI is the remaining piece
+- [x] Voxel definition linter — `lintCvox(cvox)` library (W01–W05 + H01–H02) and `cuboidy-lint <dir>` CLI (SPEC §11.7 output, `--strict` for warnings-as-errors)
 - [ ] Reference parser (C#)
 - [ ] Web-based editor (`ts/packages/web/`)
 - [ ] Rig vocabulary docs (quadruped / biped / winged / ...)

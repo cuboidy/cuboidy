@@ -12,6 +12,9 @@
       "import": "./dist/index.js"
     }
   },
+  "bin": {
+    "cuboidy-lint": "./dist/cli/cuboidy-lint.js"
+  },
   "files": [
     "dist",
     "src",
@@ -23,6 +26,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "generate:schema": "tsx scripts/generate-schema.ts",
+    "lint": "tsx src/cli/cuboidy-lint.ts",
     "verify": "npm run typecheck && npm run test"
   },
   "dependencies": {
