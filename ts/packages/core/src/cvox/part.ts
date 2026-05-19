@@ -86,7 +86,6 @@ export function assemblePart(
 // reference). Reads parent CvoxParser to detect duplicate part name at
 // header time (preserves SPEC §11.8 forward-pass precedence).
 export class PartParser {
-  private partName = '';
   private size: Size | null = null;
   private sizeLineNo = 0;
   private pivot: Pivot | null = null;
@@ -101,11 +100,10 @@ export class PartParser {
     private readonly cvoxParser: CvoxParser,
   ) {}
 
-  // Accessors used by SocketParser for early duplicate detection (its
-  // duplicate condition depends on the socket name, which is mid-parse —
-  // see socket.ts). Other sub-parsers do their duplicate check inline in
-  // the PartParser switch case and don't need accessors.
-  getName(): string { return this.partName; }
+  // Accessor used by SocketParser for early duplicate detection (the dup
+  // condition depends on the socket name, which is mid-parse — see
+  // socket.ts). Other sub-parsers do their duplicate check inline in the
+  // PartParser switch case and don't need accessors.
   hasSocketName(name: string): boolean { return this.socketNames.has(name); }
 
   parse(partKw: Token): Result<ParsedPart> {
@@ -115,7 +113,6 @@ export class PartParser {
     const nameR = expectIdentifier(this.cursor, partKw, 'part name');
     if (!nameR.ok) return nameR;
     const { value: name, token: nameTok } = nameR.value;
-    this.partName = name;
     // Early duplicate check via parent CvoxParser (SPEC §11.8: header-time
     // detection, before body is parsed).
     if (this.cvoxParser.hasPartName(name)) {

@@ -35,7 +35,7 @@ export class SocketParser {
     if (this.partParser.hasSocketName(name)) {
       return err(
         'duplicate',
-        `line ${nameTok.line}: duplicate socket "${name}" in part "${this.partParser.getName()}"`,
+        `line ${nameTok.line}: duplicate socket "${name}"`,
       );
     }
 
