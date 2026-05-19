@@ -94,9 +94,11 @@ export function assemblePart(
 
 // SPEC §7.5: parses a `part` declaration including its full body. Owns its
 // own inner loop dispatching to sub-parsers. Holds part-scope state in
-// private fields and exposes read-only accessors for sub-parsers to perform
-// early duplicate checks. Reads parent CvoxParser to detect duplicate part
-// name at header time (preserves SPEC §11.8 forward-pass precedence).
+// private fields. All duplicate checks for part-scoped declarations
+// (size/pivot/socket/voxels) are done inline in the switch case before
+// the sub-parser is invoked, so sub-parsers stay pure (no PartParser
+// reference). Reads parent CvoxParser to detect duplicate part name at
+// header time (preserves SPEC §11.8 forward-pass precedence).
 export class PartParser {
   private size: Size | null = null;
   private sizeLineNo = 0;
@@ -106,25 +108,11 @@ export class PartParser {
   private socketNames = new Set<string>();
   private voxels: RawVoxels | null = null;
   private voxelsLineNo = 0;
-  private partName = '';
 
   constructor(
     private readonly cursor: TokenCursor,
     private readonly cvoxParser: CvoxParser,
   ) {}
-
-  // Read-only accessors for sub-parsers (PivotParser, SocketParser,
-  // VoxelsParser, PaletteParser-mid-part). Sub-parsers cannot mutate this
-  // PartParser's state — they only read.
-
-  getName(): string { return this.partName; }
-  hasSize(): boolean { return this.size !== null; }
-  getSizeLineNo(): number { return this.sizeLineNo; }
-  hasPivot(): boolean { return this.pivot !== null; }
-  getPivotLineNo(): number { return this.pivotLineNo; }
-  hasSocketName(name: string): boolean { return this.socketNames.has(name); }
-  hasVoxels(): boolean { return this.voxels !== null; }
-  getVoxelsLineNo(): number { return this.voxelsLineNo; }
 
   parse(partKw: Token): Result<ParsedPart> {
     // Header: read identifier
@@ -132,8 +120,7 @@ export class PartParser {
     const nameR = parsePartHeader(nameArgs);
     if (!nameR.ok) return err(nameR.code, `line ${partKw.line}: ${nameR.message}`);
     const name = nameR.value;
-    this.partName = name;
-    // Early duplicate check via parent accessor (SPEC §11.8: header-time
+    // Early duplicate check via parent CvoxParser (SPEC §11.8: header-time
     // detection, before body is parsed).
     if (this.cvoxParser.hasPartName(name)) {
       return err(
@@ -149,7 +136,6 @@ export class PartParser {
       const t = this.cursor.advance()!;
       switch (t.text) {
         case 'size': {
-          // Duplicate check before parsing (size is pure, has no early check).
           if (this.size !== null) {
             return err(
               'duplicate',
@@ -163,21 +149,40 @@ export class PartParser {
           break;
         }
         case 'pivot': {
-          const r = new PivotParser(this.cursor, this).parse(t);
+          if (this.pivot !== null) {
+            return err(
+              'duplicate',
+              `line ${t.line}: duplicate pivot for part '${name}' (first at line ${this.pivotLineNo})`,
+            );
+          }
+          const r = new PivotParser(this.cursor).parse(t);
           if (!r.ok) return r;
           this.pivot = r.value;
           this.pivotLineNo = t.line;
           break;
         }
         case 'socket': {
-          const r = new SocketParser(this.cursor, this).parse(t);
+          const r = new SocketParser(this.cursor).parse(t);
           if (!r.ok) return r;
-          this.sockets.push(r.value);
+          // Dup check after parse — name isn't known until parsed.
+          if (this.socketNames.has(r.value.name)) {
+            return err(
+              'duplicate',
+              `line ${t.line}: duplicate socket '${r.value.name}' in part '${name}'`,
+            );
+          }
           this.socketNames.add(r.value.name);
+          this.sockets.push(r.value);
           break;
         }
         case 'voxels': {
-          const r = new VoxelsParser(this.cursor, this).parse(t);
+          if (this.voxels !== null) {
+            return err(
+              'duplicate',
+              `line ${t.line}: duplicate voxels block for part '${name}' (first at line ${this.voxelsLineNo})`,
+            );
+          }
+          const r = new VoxelsParser(this.cursor).parse(t);
           if (!r.ok) return r;
           this.voxels = r.value;
           this.voxelsLineNo = t.line;

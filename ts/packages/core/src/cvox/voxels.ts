@@ -1,6 +1,5 @@
 import { err, ok, type Result } from '../result.js';
 import type { TokenCursor } from './cursor.js';
-import type { PartParser } from './part.js';
 import type { Token } from './tokenize.js';
 
 // Raw voxel-row tokens collected during parsing, validated later by
@@ -22,26 +21,18 @@ export interface RawVoxels {
   voxelsLine: number;
 }
 
-// SPEC §7.9: parses a `voxels { ... }` block. Owns its own inner loop —
-// dispatches `}` (block close), `,` (layer-section separator), `{` (nested
-// error), and any other token (voxel-row candidate). Reserved keywords from
-// other scopes are treated as voxel-row strings here (lexical isolation
-// per SPEC §7.3.4). Calls parent PartParser's hasVoxels() accessor to
-// detect duplicate voxels blocks. Returns the parsed RawVoxels.
+// SPEC §7.9: parses a `voxels { ... }` block. Pure (no parent state ref).
+// Owns its own inner loop — dispatches `}` (block close), `,` (layer-
+// section separator), `{` (nested error), and any other token (voxel-row
+// candidate). Reserved keywords from other scopes are treated as voxel-
+// row strings here (lexical isolation per SPEC §7.3.4). The duplicate
+// check (at most one voxels block per part) happens in the caller —
+// PartParser — immediately before this is invoked, so a duplicate voxels
+// keyword doesn't even start the body loop.
 export class VoxelsParser {
-  constructor(
-    private readonly cursor: TokenCursor,
-    private readonly partParser: PartParser,
-  ) {}
+  constructor(private readonly cursor: TokenCursor) {}
 
   parse(kw: Token): Result<RawVoxels> {
-    if (this.partParser.hasVoxels()) {
-      return err(
-        'duplicate',
-        `line ${kw.line}: duplicate voxels block for part '${this.partParser.getName()}' (first at line ${this.partParser.getVoxelsLineNo()})`,
-      );
-    }
-
     // Expect opening `{`
     const open = this.cursor.peek();
     if (open === null) {

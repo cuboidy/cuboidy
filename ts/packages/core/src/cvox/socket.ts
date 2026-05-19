@@ -1,7 +1,6 @@
 import { isIdentifier } from '../identifier.js';
 import { err, ok, type Result } from '../result.js';
 import type { TokenCursor } from './cursor.js';
-import type { PartParser } from './part.js';
 import type { Token } from './tokenize.js';
 import { parseVec3, type Vec3 } from './vec3.js';
 
@@ -41,15 +40,12 @@ export function parseSocket(args: readonly string[]): Result<Socket> {
   return ok({ name, pos: pos.value, rot: rot.value });
 }
 
-// SPEC §7.8: parses a `socket` declaration. Pulls 4 args (name + pos
-// triple), then peeks for the `rot` sub-keyword to optionally pull 3 more.
-// Calls parent PartParser's hasSocketName() accessor to detect duplicate
-// socket names. Returns the parsed Socket; the caller appends it.
+// SPEC §7.8: parses a `socket` declaration. Pure (no parent state ref).
+// Pulls 4 args (name + pos triple), then peeks for the `rot` sub-keyword
+// to optionally pull 3 more. The duplicate check (socket name unique
+// within a part) happens in the caller — PartParser — after this returns.
 export class SocketParser {
-  constructor(
-    private readonly cursor: TokenCursor,
-    private readonly partParser: PartParser,
-  ) {}
+  constructor(private readonly cursor: TokenCursor) {}
 
   parse(kw: Token): Result<Socket> {
     const args = this.cursor.pullArgs(4);
@@ -59,12 +55,6 @@ export class SocketParser {
     }
     const r = parseSocket(args);
     if (!r.ok) return err(r.code, `line ${kw.line}: ${r.message}`);
-    if (this.partParser.hasSocketName(r.value.name)) {
-      return err(
-        'duplicate',
-        `line ${kw.line}: duplicate socket '${r.value.name}' in part '${this.partParser.getName()}'`,
-      );
-    }
     return r;
   }
 }
