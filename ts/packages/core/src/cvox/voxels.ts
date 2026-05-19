@@ -2,6 +2,8 @@ import { err, ok, type Result } from '../result.js';
 import type { TokenCursor } from './cursor.js';
 import { expectPunct } from './expect.js';
 import type { Token } from './tokenize.js';
+import type { Palette, Size } from './types.js';
+import { parseVoxelRow } from './voxel-row.js';
 
 // Raw voxel-row tokens collected during parsing, validated later by
 // CvoxParser.assemble against the part's size and the file's palette.
@@ -74,4 +76,48 @@ export class VoxelsParser {
       `line ${kw.line}: unclosed voxels block (no matching '}')`,
     );
   }
+}
+
+// SPEC §7.9 / §11.8 (end-of-stream assembly): the 2nd-pass resolver for
+// voxels. Takes the RawVoxels collected by VoxelsParser (1st pass) and
+// converts to the public-shape number[][][] using palette and size, both
+// of which may only be known after voxels was parsed (free-order rules).
+// Validates section count, row count per section, row width, and palette
+// index range; per-row text decoding is delegated to parseVoxelRow.
+export function resolveVoxels(
+  raw: RawVoxels,
+  size: Size,
+  palette: Palette,
+  partName: string,
+): Result<number[][][]> {
+  if (raw.sections.length !== size.h) {
+    return err(
+      'wrong-arity',
+      `line ${raw.voxelsLine}: voxels block for part "${partName}" has ${raw.sections.length} layer-section(s), expected ${size.h}`,
+    );
+  }
+
+  const voxels: number[][][] = [];
+  for (let y = 0; y < size.h; y++) {
+    const section = raw.sections[y]!;
+    if (section.rows.length !== size.d) {
+      return err(
+        'wrong-arity',
+        `line ${section.startLine}: voxels block for part "${partName}" layer ${y} has ${section.rows.length} row(s), expected ${size.d}`,
+      );
+    }
+    const layerCells: number[][] = [];
+    for (const row of section.rows) {
+      const rowR = parseVoxelRow(row.text, size.w, palette.length);
+      if (!rowR.ok) {
+        return err(
+          rowR.code,
+          `line ${row.line}: part "${partName}" layer ${y}: ${rowR.message}`,
+        );
+      }
+      layerCells.push(rowR.value);
+    }
+    voxels.push(layerCells);
+  }
+  return ok(voxels);
 }

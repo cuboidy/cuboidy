@@ -8,8 +8,7 @@ import { SizeParser } from './size.js';
 import { SocketParser } from './socket.js';
 import type { Token } from './tokenize.js';
 import type { Palette, Part, Pivot, Size, Socket } from './types.js';
-import { parseVoxelRow } from './voxel-row.js';
-import { VoxelsParser, type RawVoxels } from './voxels.js';
+import { resolveVoxels, VoxelsParser, type RawVoxels } from './voxels.js';
 
 // Internal intermediate type — PartParser's return value. Carries the part's
 // parsed but not-yet-assembled state (voxels are raw text rows, palette
@@ -24,56 +23,25 @@ export interface ParsedPart {
 }
 
 // Resolves a ParsedPart into the final immutable Part using the file's
-// palette (which may have been declared after this part textually). Validates
-// size.h × size.d × size.w against the collected voxel rows and converts
-// palette-index characters into integer indices.
+// palette (which may have been declared after this part textually). Thin
+// orchestrator: delegates voxel structural validation + decode to
+// resolveVoxels, then computes the default pivot if one wasn't declared,
+// and assembles the public Part shape.
 export function assemblePart(
   part: ParsedPart,
   palette: Palette,
 ): Result<Part> {
-  const size = part.size;
-  const voxelsRaw = part.voxels;
-
-  if (voxelsRaw.sections.length !== size.h) {
-    return err(
-      'wrong-arity',
-      `line ${voxelsRaw.voxelsLine}: voxels block for part '${part.name}' has ${voxelsRaw.sections.length} layer-section(s), expected ${size.h}`,
-    );
-  }
-
+  const voxelsR = resolveVoxels(part.voxels, part.size, palette, part.name);
+  if (!voxelsR.ok) return voxelsR;
   const pivot: Pivot = part.pivot ?? {
-    pos: { x: size.w / 2, y: 0, z: size.d / 2 },
+    pos: { x: part.size.w / 2, y: 0, z: part.size.d / 2 },
   };
-
-  const voxels: number[][][] = [];
-  for (let y = 0; y < size.h; y++) {
-    const section = voxelsRaw.sections[y]!;
-    if (section.rows.length !== size.d) {
-      return err(
-        'wrong-arity',
-        `line ${section.startLine}: voxels block for part '${part.name}' layer ${y} has ${section.rows.length} row(s), expected ${size.d}`,
-      );
-    }
-    const layerCells: number[][] = [];
-    for (const row of section.rows) {
-      const rowR = parseVoxelRow(row.text, size.w, palette.length);
-      if (!rowR.ok) {
-        return err(
-          rowR.code,
-          `line ${row.line}: part '${part.name}' layer ${y}: ${rowR.message}`,
-        );
-      }
-      layerCells.push(rowR.value);
-    }
-    voxels.push(layerCells);
-  }
-
   return ok({
     name: part.name,
-    size,
+    size: part.size,
     pivot,
     sockets: part.sockets,
-    voxels,
+    voxels: voxelsR.value,
   });
 }
 
