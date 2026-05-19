@@ -1,5 +1,5 @@
 import type { Diagnostic } from '../diagnostic.js';
-import type { Cvox } from '../cvox/parse.js';
+import type { Cvox } from '../cvox/types.js';
 import type { Manifest } from '../manifest.js';
 
 export function validateCrossFile(

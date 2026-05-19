@@ -1,12 +1,8 @@
 import { ok, type Result } from '../result.js';
 import type { TokenCursor } from './cursor.js';
 import type { Token } from './tokenize.js';
-import { expectVec3, type Vec3 } from './vec3.js';
-
-export interface Pivot {
-  pos: Vec3;
-  rot?: Vec3;
-}
+import type { Pivot } from './types.js';
+import { expectVec3 } from './vec3.js';
 
 // SPEC §7.7: parses a `pivot` declaration. Pulls the pos triple, then peeks
 // for the `rot` sub-keyword to optionally pull the rot triple. Any token

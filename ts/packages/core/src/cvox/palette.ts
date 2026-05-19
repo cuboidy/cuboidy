@@ -2,15 +2,7 @@ import { err, ok, type Result } from '../result.js';
 import type { TokenCursor } from './cursor.js';
 import type { CvoxParser } from './parse.js';
 import type { Token } from './tokenize.js';
-
-export interface Color {
-  r: number;
-  g: number;
-  b: number;
-  a: number;
-}
-
-export type Palette = readonly Color[];
+import type { Color, Palette } from './types.js';
 
 const MAX_PALETTE = 62;
 

@@ -1,26 +1,9 @@
 import { err, ok, type Result } from '../result.js';
 import { TokenCursor } from './cursor.js';
-import { PaletteParser, type Palette } from './palette.js';
+import { PaletteParser } from './palette.js';
 import { assemblePart, PartParser, type ParsedPart } from './part.js';
-import type { Pivot } from './pivot.js';
-import type { Size } from './size.js';
-import type { Socket } from './socket.js';
 import { tokenize } from './tokenize.js';
-
-// Public output types (the shape returned by parseCvox).
-
-export interface Cvox {
-  palette: Palette;
-  parts: Part[];
-}
-
-export interface Part {
-  name: string;
-  size: Size;
-  pivot: Pivot;
-  sockets: readonly Socket[];
-  voxels: readonly (readonly (readonly number[])[])[];
-}
+import type { Cvox, Palette, Part } from './types.js';
 
 // SPEC §7.2: top-level parser. Holds file-scope state in private fields
 // (palette, parts, partNames) and dispatches each file-scope token to its

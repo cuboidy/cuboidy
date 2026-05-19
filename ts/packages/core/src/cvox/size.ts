@@ -2,12 +2,7 @@ import { err, ok, type Result } from '../result.js';
 import type { TokenCursor } from './cursor.js';
 import { expectNonNegInt } from './expect.js';
 import type { Token } from './tokenize.js';
-
-export interface Size {
-  w: number;
-  h: number;
-  d: number;
-}
+import type { Size } from './types.js';
 
 const SIZE_MIN = 1;
 const SIZE_MAX = 1024;

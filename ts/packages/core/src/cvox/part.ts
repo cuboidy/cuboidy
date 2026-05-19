@@ -1,12 +1,13 @@
 import { err, ok, type Result } from '../result.js';
 import type { TokenCursor } from './cursor.js';
 import { expectIdentifier } from './expect.js';
-import type { CvoxParser, Part } from './parse.js';
-import { PaletteParser, type Palette } from './palette.js';
-import { PivotParser, type Pivot } from './pivot.js';
-import { SizeParser, type Size } from './size.js';
-import { SocketParser, type Socket } from './socket.js';
+import type { CvoxParser } from './parse.js';
+import { PaletteParser } from './palette.js';
+import { PivotParser } from './pivot.js';
+import { SizeParser } from './size.js';
+import { SocketParser } from './socket.js';
 import type { Token } from './tokenize.js';
+import type { Palette, Part, Pivot, Size, Socket } from './types.js';
 import { parseVoxelRow } from './voxel-row.js';
 import { VoxelsParser, type RawVoxels } from './voxels.js';
 

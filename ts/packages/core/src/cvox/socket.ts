@@ -3,13 +3,8 @@ import type { TokenCursor } from './cursor.js';
 import { expectIdentifier } from './expect.js';
 import type { PartParser } from './part.js';
 import type { Token } from './tokenize.js';
-import { expectVec3, type Vec3 } from './vec3.js';
-
-export interface Socket {
-  name: string;
-  pos: Vec3;
-  rot?: Vec3;
-}
+import type { Socket } from './types.js';
+import { expectVec3 } from './vec3.js';
 
 // SPEC §7.8: parses a `socket` declaration. Advances per-token:
 // 1. Pull the name (quoted identifier) via expectIdentifier.
