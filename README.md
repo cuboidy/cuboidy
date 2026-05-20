@@ -74,26 +74,32 @@ my-model.cuboidy        packed package (ZIP of the folder above)
 Cuboidy is designed to be cheap to send to an LLM. Measured with real
 tokenizers (tiktoken `o200k_base` / `cl100k_base`) on an 8-model dataset:
 
-Sorted from largest to smallest. Reduction is measured against
-pretty-printed JSON (the verbose baseline).
+Sorted from largest to smallest. The baseline is canonical CVOX (the
+form Cuboidy actually ships); other formats are compared against it.
 
-| Format                                  | Total tokens | Reduction | Human-readable? |
-| --------------------------------------- | -----------: | --------: | :-------------: |
-| JSON, pretty-printed                    |        7,295 |         — |       yes       |
-| JSON with voxel rows as strings, pretty |        4,114 |    −43.6% |       yes       |
-| JSON, minified                          |        2,954 |    −59.5% |        no       |
-| **CVOX, canonical (indented)**          |    **2,318** | **−68.2%** |     **yes**     |
-| JSON str + minified                     |        1,881 |    −74.2% |        no       |
-| **CVOX, unindented**                    |    **1,648** | **−77.4%** |    **mostly**   |
-| **CVOX, single-line**                   |    **1,526** | **−79.1%** |        no       |
+| Format                                  | Total tokens | vs CVOX canonical | Readability |
+| --------------------------------------- | -----------: | ----------------: | :---------: |
+| JSON, pretty-printed                    |        7,295 |          +214.7 % |    ★★★☆☆    |
+| JSON with voxel rows as strings, pretty |        4,114 |           +77.5 % |    ★★★★☆    |
+| JSON, minified                          |        2,954 |           +27.4 % |    ★☆☆☆☆    |
+| **CVOX, canonical (indented)**          |    **2,318** |  **0 % (baseline)** | **★★★★★** |
+| JSON str + minified                     |        1,881 |           −18.9 % |    ★★☆☆☆    |
+| **CVOX, unindented**                    |    **1,648** |       **−28.9 %** | **★★★★☆**   |
+| **CVOX, single-line**                   |    **1,526** |       **−34.2 %** | **★★☆☆☆**   |
 
-Canonical CVOX (still fully human-readable, with indentation and one
-declaration per line) saves **~68 %** versus pretty JSON — and the only
-encodings that beat it are unreadable single-line variants. Because
-SPEC §7 lets any whitespace separate tokens, the *same* `.cvox` file
-can be stored indented (for humans and diffs) and stripped to
-unindented form on the way into an LLM prompt, reaching **~77 %**
-reduction without sacrificing the line-by-line structure.
+Readability rubric (subjective, but applied consistently):
+**★★★★★** indented + multi-line + bare keywords (CVOX-native);
+**★★★★☆** indented or per-row line breaks with semantic chunks visible;
+**★★★☆☆** structured but voxel data buried in nested-int stacks;
+**★★☆☆☆** single-line but voxel rows still visible as tokens or strings;
+**★☆☆☆☆** single-line, all structural punctuation crammed together.
+
+Taking canonical CVOX as the baseline, pretty-printed JSON costs
+**~3.15× more tokens** for the same data while being *less* readable
+(voxel cells one per line). And because SPEC §7 lets any whitespace
+separate tokens, the *same* `.cvox` can be stored canonical for humans
+and diffs, then stripped to unindented form (`★★★★☆`) for LLM prompts —
+**~29 % fewer tokens** without losing the line-by-line structure.
 
 Full methodology, dataset, and per-model numbers in
 [`bench/RESULTS.md`](bench/RESULTS.md).
