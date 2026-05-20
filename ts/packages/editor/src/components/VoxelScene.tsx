@@ -16,7 +16,7 @@ interface Props {
 }
 
 // Renders the model in one of two modes:
-//   - Cbox view: every part sits at world origin [0,0,0], the literal
+//   - Cvox view: every part sits at world origin [0,0,0], the literal
 //     .cvox-local convention. Multi-part files overlap; the sidebar
 //     visibility toggles are the way to peel layers.
 //   - Rig view: parts are positioned per the manifest's parent chain
@@ -80,7 +80,7 @@ export function VoxelScene({ cvox, manifest, viewMode, hiddenParts }: Props) {
   );
 }
 
-// Computes a position offset for each part. Cbox view returns [0,0,0]
+// Computes a position offset for each part. Cvox view returns [0,0,0]
 // for all parts (origin-stacked). Rig view walks the manifest parent
 // chain and accumulates positions.
 //
@@ -94,7 +94,7 @@ function computePartPositions(
   viewMode: ViewMode,
 ): Map<string, [number, number, number]> {
   const out = new Map<string, [number, number, number]>();
-  if (viewMode === 'cbox' || manifest === undefined) {
+  if (viewMode === 'cvox' || manifest === undefined) {
     for (const p of cvox.parts) out.set(p.name, [0, 0, 0]);
     return out;
   }
@@ -144,7 +144,7 @@ function computeSceneSpan(
   manifest: Manifest | undefined,
   viewMode: ViewMode,
 ): Span {
-  if (viewMode === 'cbox' || manifest === undefined) {
+  if (viewMode === 'cvox' || manifest === undefined) {
     return {
       w: Math.max(1, ...cvox.parts.map((p) => p.size.w)),
       h: Math.max(1, ...cvox.parts.map((p) => p.size.h)),
@@ -175,7 +175,7 @@ function computeSceneCenter(
   manifest: Manifest | undefined,
   viewMode: ViewMode,
 ): [number, number, number] {
-  if (viewMode === 'cbox' || manifest === undefined) {
+  if (viewMode === 'cvox' || manifest === undefined) {
     const maxW = Math.max(1, ...cvox.parts.map((p) => p.size.w));
     const maxH = Math.max(1, ...cvox.parts.map((p) => p.size.h));
     const maxD = Math.max(1, ...cvox.parts.map((p) => p.size.d));

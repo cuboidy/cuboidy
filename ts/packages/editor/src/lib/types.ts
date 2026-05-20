@@ -53,4 +53,4 @@ export interface LoadResult {
 
 // View modes for the 3D scene. Rig view requires a manifest; the UI
 // disables the toggle when no manifest is loaded.
-export type ViewMode = 'cbox' | 'rig';
+export type ViewMode = 'cvox' | 'rig';

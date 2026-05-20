@@ -9,26 +9,26 @@ import type { LoadResult, LoadedSource, ViewMode } from './lib/types.js';
 export function App() {
   const [loaded, setLoaded] = useState<LoadResult | null>(null);
   const [hiddenParts, setHiddenParts] = useState<ReadonlySet<string>>(new Set());
-  // View mode persists across loads but is forced back to 'cbox' when
+  // View mode persists across loads but is forced back to 'cvox' when
   // the loaded source has no manifest (Rig view would be meaningless).
-  const [viewMode, setViewMode] = useState<ViewMode>('cbox');
+  const [viewMode, setViewMode] = useState<ViewMode>('cvox');
 
   const handleLoad = useCallback((result: LoadResult) => {
     setLoaded(result);
     setHiddenParts(new Set());
     // Default to rig view when manifest is present (it's the "complete"
-    // picture). Cbox view is reachable via toggle.
+    // picture). Cvox view is reachable via toggle.
     const hasManifest =
       result.source !== undefined &&
       result.source.kind === 'folder' &&
       result.source.manifest !== undefined;
-    setViewMode(hasManifest ? 'rig' : 'cbox');
+    setViewMode(hasManifest ? 'rig' : 'cvox');
   }, []);
 
   const handleReset = useCallback(() => {
     setLoaded(null);
     setHiddenParts(new Set());
-    setViewMode('cbox');
+    setViewMode('cvox');
   }, []);
 
   const handleToggle = useCallback((name: string) => {

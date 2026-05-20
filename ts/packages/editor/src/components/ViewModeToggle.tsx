@@ -6,7 +6,7 @@ interface Props {
   onChange: (mode: ViewMode) => void;
 }
 
-// Two-button segmented toggle for switching between Cbox view (parts at
+// Two-button segmented toggle for switching between Cvox view (parts at
 // origin, .cvox-faithful) and Rig view (parts at manifest positions).
 // Rig view is disabled when no manifest is loaded — clicking the disabled
 // button does nothing; the tooltip explains why.
@@ -17,11 +17,11 @@ export function ViewModeToggle({ mode, rigAvailable, onChange }: Props) {
       <button
         type="button"
         role="tab"
-        aria-selected={mode === 'cbox'}
-        className={mode === 'cbox' ? 'active' : ''}
-        onClick={() => onChange('cbox')}
+        aria-selected={mode === 'cvox'}
+        className={mode === 'cvox' ? 'active' : ''}
+        onClick={() => onChange('cvox')}
       >
-        Cbox view
+        Cvox view
       </button>
       <button
         type="button"

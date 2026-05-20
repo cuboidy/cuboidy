@@ -13,7 +13,7 @@ interface Props {
 // Two-section sidebar: Files (read-only file tree, the project's
 // "Explorer" pane) + Parts (visibility toggles for the loaded cvox).
 // Files is the navigation surface that grows when per-file editor
-// switching lands in A2-rig-3+. Parts is the cbox-specific tool that
+// switching lands in A2-rig-3+. Parts is the cvox-specific tool that
 // stays useful in both view modes (visibility is orthogonal to layout).
 
 export function Sidebar({

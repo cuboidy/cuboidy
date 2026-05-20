@@ -6,7 +6,7 @@ import type { Cvox, Manifest } from '@cuboidy/core';
 //
 // The default places every part at the origin with no parent. This is
 // the most neutral starting point — Rig view immediately works but
-// looks identical to Cbox view (all parts overlap), and the user can
+// looks identical to Cvox view (all parts overlap), and the user can
 // then edit parent/position in the (future) rig editor to compose the
 // model.
 //
