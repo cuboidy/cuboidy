@@ -18,3 +18,7 @@ node_modules/
 dist/
 build/
 *.tsbuildinfo
+
+# bench: generated artifacts (regenerate via scripts in bench/)
+bench/dataset/
+bench/out/

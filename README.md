@@ -69,6 +69,31 @@ my-model.cuboidy        packed package (ZIP of the folder above)
 - `wolf/` — three-part rig (body / head / tail) with idle animation, sockets for `hat` and `mouth`
 - `crown/` — single-part static accessory, designed to attach to wolf's `hat` socket
 
+## Token efficiency
+
+Cuboidy is designed to be cheap to send to an LLM. Measured with real
+tokenizers (tiktoken `o200k_base` / `cl100k_base`) on an 8-model dataset:
+
+| Format                                  | Total tokens | vs canonical CBOX |
+| --------------------------------------- | -----------: | ----------------: |
+| JSON, pretty-printed                    |        7,295 |             3.15× |
+| JSON with voxel rows as strings, pretty |        4,114 |             1.77× |
+| **CBOX, canonical (indented)**          |    **2,318** |          **1.00×** |
+| JSON, minified                          |        2,954 |             1.27× |
+| JSON str + minified                     |        1,881 |             0.81× |
+| **CBOX, unindented**                    |    **1,648** |         **0.71×** |
+| **CBOX, single-line**                   |    **1,526** |         **0.66×** |
+
+Canonical CBOX is already **~68 % smaller** than the equivalent
+pretty-printed JSON, and **~22 % smaller** than minified JSON. Because
+SPEC §7 lets any whitespace separate tokens, the *same* `.cvox` file can
+be stored indented (for humans and diffs) and stripped to unindented
+form on the way into an LLM prompt — beating even the most aggressive
+JSON encoding by ~12 %. No format dialect, no separate parser.
+
+Full methodology, dataset, and per-model numbers in
+[`bench/RESULTS.md`](bench/RESULTS.md).
+
 ## Roadmap
 
 - [x] Spec document (`SPEC.md`) — v0.6 draft
