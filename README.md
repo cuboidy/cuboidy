@@ -74,22 +74,26 @@ my-model.cuboidy        packed package (ZIP of the folder above)
 Cuboidy is designed to be cheap to send to an LLM. Measured with real
 tokenizers (tiktoken `o200k_base` / `cl100k_base`) on an 8-model dataset:
 
-| Format                                  | Total tokens | vs canonical CVOX |
-| --------------------------------------- | -----------: | ----------------: |
-| JSON, pretty-printed                    |        7,295 |             3.15× |
-| JSON with voxel rows as strings, pretty |        4,114 |             1.77× |
-| **CVOX, canonical (indented)**          |    **2,318** |          **1.00×** |
-| JSON, minified                          |        2,954 |             1.27× |
-| JSON str + minified                     |        1,881 |             0.81× |
-| **CVOX, unindented**                    |    **1,648** |         **0.71×** |
-| **CVOX, single-line**                   |    **1,526** |         **0.66×** |
+Sorted from largest to smallest. Reduction is measured against
+pretty-printed JSON (the verbose baseline).
 
-Canonical CVOX is already **~68 % smaller** than the equivalent
-pretty-printed JSON, and **~22 % smaller** than minified JSON. Because
-SPEC §7 lets any whitespace separate tokens, the *same* `.cvox` file can
-be stored indented (for humans and diffs) and stripped to unindented
-form on the way into an LLM prompt — beating even the most aggressive
-JSON encoding by ~12 %. No format dialect, no separate parser.
+| Format                                  | Total tokens | Reduction | Human-readable? |
+| --------------------------------------- | -----------: | --------: | :-------------: |
+| JSON, pretty-printed                    |        7,295 |         — |       yes       |
+| JSON with voxel rows as strings, pretty |        4,114 |    −43.6% |       yes       |
+| JSON, minified                          |        2,954 |    −59.5% |        no       |
+| **CVOX, canonical (indented)**          |    **2,318** | **−68.2%** |     **yes**     |
+| JSON str + minified                     |        1,881 |    −74.2% |        no       |
+| **CVOX, unindented**                    |    **1,648** | **−77.4%** |    **mostly**   |
+| **CVOX, single-line**                   |    **1,526** | **−79.1%** |        no       |
+
+Canonical CVOX (still fully human-readable, with indentation and one
+declaration per line) saves **~68 %** versus pretty JSON — and the only
+encodings that beat it are unreadable single-line variants. Because
+SPEC §7 lets any whitespace separate tokens, the *same* `.cvox` file
+can be stored indented (for humans and diffs) and stripped to
+unindented form on the way into an LLM prompt, reaching **~77 %**
+reduction without sacrificing the line-by-line structure.
 
 Full methodology, dataset, and per-model numbers in
 [`bench/RESULTS.md`](bench/RESULTS.md).
