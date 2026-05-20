@@ -1,5 +1,6 @@
 import { err, ok, type Result } from '../result.js';
 import { TokenCursor } from './cursor.js';
+import { extractHeader } from './header.js';
 import { PaletteParser } from './palette.js';
 import { assemblePart, PartParser, type ParsedPart } from './part.js';
 import { tokenize } from './tokenize.js';
@@ -117,7 +118,15 @@ export class CvoxParser {
 }
 
 export function parseCvox(text: string): Result<Cvox> {
+  // SPEC §7.X: the file header is a pure pre-pass over raw text. It runs
+  // before tokenize/parse and never affects either — comment lines are
+  // already silent-stripped by tokenize, so capturing the header
+  // separately doesn't interfere with token line numbers or parse state.
+  const header = extractHeader(text);
   const tokensR = tokenize(text);
   if (!tokensR.ok) return tokensR;
-  return new CvoxParser(new TokenCursor(tokensR.value)).parse();
+  const r = new CvoxParser(new TokenCursor(tokensR.value)).parse();
+  if (!r.ok) return r;
+  if (header.length === 0) return r;
+  return ok({ ...r.value, header });
 }

@@ -20,6 +20,14 @@ const INDENT = '    '; // 4 spaces, per SPEC §7.1.1 writer rule
 
 export function serializeCvox(cvox: Cvox): string {
   const lines: string[] = [];
+  // SPEC §7.X: file header is emitted verbatim at the top, separated from
+  // the palette by exactly one blank line. The canonical form requires
+  // the single-blank-line separator even if the source had multiple —
+  // `extractHeader` already trims trailing blanks from the captured header.
+  if (cvox.header !== undefined && cvox.header.length > 0) {
+    for (const line of cvox.header) lines.push(line);
+    lines.push('');
+  }
   lines.push(serializePalette(cvox.palette));
   for (const part of cvox.parts) {
     lines.push('');

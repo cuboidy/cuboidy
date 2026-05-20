@@ -47,6 +47,13 @@ export interface Part {
 }
 
 export interface Cvox {
+  // SPEC §7.X file header: comment lines appearing before the first
+  // declaration are captured verbatim (including their leading `//`).
+  // Interspersed blank lines between header comments are preserved;
+  // leading and trailing blank lines (before / between the last header
+  // comment and the first declaration) are trimmed. Absent when the
+  // file has no header comments; never an empty array.
+  header?: readonly string[];
   palette: Palette;
   parts: Part[];
 }
