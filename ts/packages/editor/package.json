@@ -1,0 +1,30 @@
+{
+  "name": "@cuboidy/editor",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Cuboidy web-based editor (viewer-only A1; edit features deferred to later stages)",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cuboidy/core": "*",
+    "@react-three/drei": "^10.0.6",
+    "@react-three/fiber": "^9.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.170.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^6.0.3",
+    "vite": "^6.0.0"
+  }
+}
