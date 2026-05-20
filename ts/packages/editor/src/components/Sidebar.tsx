@@ -1,71 +1,86 @@
-import type { Cvox } from '@cuboidy/core';
+import type { LoadedSource } from '../lib/types.js';
+import { FileTree } from './FileTree.js';
 
 interface Props {
-  cvox: Cvox;
+  source: LoadedSource;
   hiddenParts: ReadonlySet<string>;
   onToggle: (name: string) => void;
   onShowAll: () => void;
   onHideAll: () => void;
+  onCreateManifest: () => void;
 }
 
-// Cbox-view sidebar. Lists parts in declaration order (parser preserves
-// source order). Each part has a visibility checkbox — essential because
-// the scene stacks all parts at origin [0,0,0] (the .cvox-faithful view),
-// so multi-part files would be unreadable without per-part mute. When
-// rig view lands, parts will appear at manifest-defined positions and
-// this same sidebar can stay (visibility is orthogonal to placement).
+// Two-section sidebar: Files (read-only file tree, the project's
+// "Explorer" pane) + Parts (visibility toggles for the loaded cvox).
+// Files is the navigation surface that grows when per-file editor
+// switching lands in A2-rig-3+. Parts is the cbox-specific tool that
+// stays useful in both view modes (visibility is orthogonal to layout).
 
 export function Sidebar({
-  cvox,
+  source,
   hiddenParts,
   onToggle,
   onShowAll,
   onHideAll,
+  onCreateManifest,
 }: Props) {
-  const visibleCount = cvox.parts.length - hiddenParts.size;
+  const visibleCount = source.cvox.parts.length - hiddenParts.size;
   return (
     <aside className="sidebar">
-      <div className="sidebar-header">
-        <h2>Parts</h2>
-        <span className="count">
-          {visibleCount} / {cvox.parts.length}
-        </span>
-      </div>
-      <div className="sidebar-actions">
-        <button type="button" onClick={onShowAll} disabled={hiddenParts.size === 0}>
-          Show all
-        </button>
-        <button
-          type="button"
-          onClick={onHideAll}
-          disabled={visibleCount === 0}
-        >
-          Hide all
-        </button>
-      </div>
-      <ul className="part-list">
-        {cvox.parts.map((part) => {
-          const hidden = hiddenParts.has(part.name);
-          return (
-            <li
-              key={part.name}
-              className={`part-item${hidden ? ' hidden' : ''}`}
-            >
-              <label>
-                <input
-                  type="checkbox"
-                  checked={!hidden}
-                  onChange={() => onToggle(part.name)}
-                />
-                <span className="part-name">{part.name}</span>
-                <span className="part-size">
-                  {part.size.w}×{part.size.h}×{part.size.d}
-                </span>
-              </label>
-            </li>
-          );
-        })}
-      </ul>
+      <section className="sidebar-section">
+        <div className="sidebar-section-header">
+          <h2>Files</h2>
+        </div>
+        <FileTree source={source} onCreateManifest={onCreateManifest} />
+      </section>
+
+      <section className="sidebar-section">
+        <div className="sidebar-section-header">
+          <h2>Parts</h2>
+          <span className="count">
+            {visibleCount} / {source.cvox.parts.length}
+          </span>
+        </div>
+        <div className="sidebar-actions">
+          <button
+            type="button"
+            onClick={onShowAll}
+            disabled={hiddenParts.size === 0}
+          >
+            Show all
+          </button>
+          <button
+            type="button"
+            onClick={onHideAll}
+            disabled={visibleCount === 0}
+          >
+            Hide all
+          </button>
+        </div>
+        <ul className="part-list">
+          {source.cvox.parts.map((part) => {
+            const hidden = hiddenParts.has(part.name);
+            return (
+              <li
+                key={part.name}
+                className={`part-item${hidden ? ' hidden' : ''}`}
+              >
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={!hidden}
+                    onChange={() => onToggle(part.name)}
+                  />
+                  <span className="part-name">{part.name}</span>
+                  <span className="part-size">
+                    {part.size.w}×{part.size.h}×{part.size.d}
+                  </span>
+                </label>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
     </aside>
   );
 }

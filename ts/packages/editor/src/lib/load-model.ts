@@ -1,38 +1,218 @@
-import { parseCvox, type Cvox } from '@cuboidy/core';
+import { parseCvox, parseManifest, type Manifest } from '@cuboidy/core';
+import type { FileEntry, LoadResult, LoadedSource } from './types.js';
 
-// Result of attempting to load a cvox file into the editor. The editor
-// surface treats parse errors and successful loads with diagnostic
-// messages uniformly: every load yields a LoadResult so the UI doesn't
-// need a separate error path. `cvox` is undefined iff parsing failed.
+const CVOX_FILE = 'voxels.cvox';
+const MANIFEST_FILE = 'cuboidy.json';
 
-export interface LoadResult {
-  fileName: string;
-  cvox?: Cvox;
-  error?: string;
-  // Count of `//` comment occurrences that were dropped because they're
-  // not in the file header (SPEC §7.11 advisory rule, v0.6 policy).
-  // Surfaced as a UI warning so users understand the editor doesn't
-  // round-trip them; only the header (§7.11.1) survives save.
-  droppedInlineComments: number;
+// Public entry points. Each callsite knows what kind of source it has
+// (single File, FileList from <input webkitdirectory>, FSA directory
+// handle, or legacy FileSystemEntry from drag-drop on Firefox/Safari)
+// and dispatches to the matching collector. All paths converge on
+// buildResult so parsing / inline-comment counting / state shape are
+// uniform regardless of how the bytes arrived.
+
+export async function loadFromFile(file: File): Promise<LoadResult> {
+  const text = await file.text();
+  return buildResult({ cvoxName: file.name, cvoxText: text });
 }
 
-export function loadModel(text: string, fileName: string): LoadResult {
-  const droppedInlineComments = countInlineComments(text);
-  const r = parseCvox(text);
-  if (!r.ok) {
-    return { fileName, error: r.message, droppedInlineComments };
+export async function loadFromFileList(files: FileList): Promise<LoadResult> {
+  const raw = await collectFromFileList(files);
+  if (raw === null) return { error: `No ${CVOX_FILE} in the selected folder` };
+  return buildResult(raw);
+}
+
+export async function loadFromDirectoryHandle(
+  handle: FileSystemDirectoryHandle,
+): Promise<LoadResult> {
+  const raw = await collectFromDirectoryHandle(handle);
+  if (raw === null) return { error: `No ${CVOX_FILE} in folder '${handle.name}'` };
+  return buildResult(raw, { handle });
+}
+
+export async function loadFromDirectoryEntry(
+  entry: FileSystemDirectoryEntry,
+): Promise<LoadResult> {
+  const raw = await collectFromDirectoryEntry(entry);
+  if (raw === null) return { error: `No ${CVOX_FILE} in folder '${entry.name}'` };
+  return buildResult(raw);
+}
+
+// ── shared assembly ──────────────────────────────────────────────────
+
+interface RawCollected {
+  cvoxName: string;
+  cvoxText: string;
+  manifestName?: string;
+  manifestText?: string;
+  folderName?: string;
+}
+
+function buildResult(
+  raw: RawCollected,
+  opts: { handle?: FileSystemDirectoryHandle } = {},
+): LoadResult {
+  const droppedInlineComments = countInlineComments(raw.cvoxText);
+  const cvoxR = parseCvox(raw.cvoxText);
+  if (!cvoxR.ok) {
+    return { error: cvoxR.message, cvoxFileName: raw.cvoxName };
   }
-  return { fileName, cvox: r.value, droppedInlineComments };
+
+  const cvoxFile: FileEntry = { name: raw.cvoxName, text: raw.cvoxText };
+
+  // Single-file load (no folder context).
+  if (raw.folderName === undefined) {
+    const source: LoadedSource = {
+      kind: 'cvox-only',
+      cvox: cvoxR.value,
+      cvoxFile,
+      droppedInlineComments,
+    };
+    return { source, cvoxFileName: raw.cvoxName };
+  }
+
+  // Folder load — manifest may or may not be present.
+  let manifest: Manifest | undefined;
+  let manifestError: string | undefined;
+  let manifestFile: FileEntry | undefined;
+  if (raw.manifestText !== undefined && raw.manifestName !== undefined) {
+    manifestFile = { name: raw.manifestName, text: raw.manifestText };
+    try {
+      const json: unknown = JSON.parse(raw.manifestText);
+      const mR = parseManifest(json);
+      if (mR.ok) manifest = mR.value;
+      else manifestError = mR.message;
+    } catch (e) {
+      manifestError = `JSON parse: ${(e as Error).message}`;
+    }
+  }
+
+  const source: LoadedSource = {
+    kind: 'folder',
+    folderName: raw.folderName,
+    synthetic: false,
+    ...(opts.handle !== undefined && { handle: opts.handle }),
+    cvox: cvoxR.value,
+    cvoxFile,
+    ...(manifest !== undefined && { manifest }),
+    ...(manifestFile !== undefined && { manifestFile }),
+    ...(manifestError !== undefined && { manifestError }),
+    droppedInlineComments,
+  };
+  return { source, cvoxFileName: raw.cvoxName };
 }
 
-// Counts inline `//` comments — every `//` occurrence that is NOT part
-// of the file header. Header `//` lines are subtracted so the count
-// reflects only the comments that will be lost on round-trip.
-//
-// A robust count would tokenize and distinguish `//` inside string
-// literals, but cvox has no `"..."` slot where `//` could appear as
-// payload (string-kind tokens exist at the lexer level but no v0.6
-// production accepts them), so a naive line-by-line scan is exact.
+// ── collectors per source ────────────────────────────────────────────
+
+async function collectFromFileList(
+  files: FileList,
+): Promise<RawCollected | null> {
+  // <input webkitdirectory> populates File.webkitRelativePath with the
+  // sub-path inside the picked folder, e.g. "wolf/voxels.cvox". We use
+  // the first path segment as the folder name.
+  let cvoxFile: File | null = null;
+  let manifestFile: File | null = null;
+  let folderName = 'folder';
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i]!;
+    const rel =
+      (f as File & { webkitRelativePath?: string }).webkitRelativePath ?? f.name;
+    const parts = rel.split('/');
+    if (parts.length > 1) folderName = parts[0]!;
+    const baseName = parts[parts.length - 1]!;
+    if (baseName === CVOX_FILE && cvoxFile === null) cvoxFile = f;
+    else if (baseName === MANIFEST_FILE && manifestFile === null) manifestFile = f;
+  }
+  if (cvoxFile === null) return null;
+  return {
+    cvoxName: cvoxFile.name,
+    cvoxText: await cvoxFile.text(),
+    folderName,
+    ...(manifestFile !== null && {
+      manifestName: manifestFile.name,
+      manifestText: await manifestFile.text(),
+    }),
+  };
+}
+
+async function collectFromDirectoryHandle(
+  handle: FileSystemDirectoryHandle,
+): Promise<RawCollected | null> {
+  let cvoxFile: File | null = null;
+  let manifestFile: File | null = null;
+  // FileSystemDirectoryHandle.values() is async-iterable. Children are
+  // FileSystemHandle (kind = 'file' | 'directory'). We currently look
+  // only at top-level files; anims/ subdirectory is a future task.
+  for await (const entry of handle.values()) {
+    if (entry.kind !== 'file') continue;
+    if (entry.name === CVOX_FILE) cvoxFile = await entry.getFile();
+    else if (entry.name === MANIFEST_FILE) manifestFile = await entry.getFile();
+  }
+  if (cvoxFile === null) return null;
+  return {
+    cvoxName: cvoxFile.name,
+    cvoxText: await cvoxFile.text(),
+    folderName: handle.name,
+    ...(manifestFile !== null && {
+      manifestName: manifestFile.name,
+      manifestText: await manifestFile.text(),
+    }),
+  };
+}
+
+async function collectFromDirectoryEntry(
+  entry: FileSystemDirectoryEntry,
+): Promise<RawCollected | null> {
+  const reader = entry.createReader();
+  const entries = await readAllEntries(reader);
+  let cvoxFile: File | null = null;
+  let manifestFile: File | null = null;
+  for (const e of entries) {
+    if (!e.isFile) continue;
+    if (e.name === CVOX_FILE) cvoxFile = await fileFromEntry(e as FileSystemFileEntry);
+    else if (e.name === MANIFEST_FILE)
+      manifestFile = await fileFromEntry(e as FileSystemFileEntry);
+  }
+  if (cvoxFile === null) return null;
+  return {
+    cvoxName: cvoxFile.name,
+    cvoxText: await cvoxFile.text(),
+    folderName: entry.name,
+    ...(manifestFile !== null && {
+      manifestName: manifestFile.name,
+      manifestText: await manifestFile.text(),
+    }),
+  };
+}
+
+// FileSystemDirectoryReader returns entries in batches and must be
+// pumped until it returns an empty array. Old API, but Firefox/Safari
+// still use this for drag-drop folders (no FSA equivalent there).
+function readAllEntries(
+  reader: FileSystemDirectoryReader,
+): Promise<FileSystemEntry[]> {
+  return new Promise((resolve, reject) => {
+    const out: FileSystemEntry[] = [];
+    const pump = () => {
+      reader.readEntries((batch) => {
+        if (batch.length === 0) resolve(out);
+        else {
+          out.push(...batch);
+          pump();
+        }
+      }, reject);
+    };
+    pump();
+  });
+}
+
+function fileFromEntry(entry: FileSystemFileEntry): Promise<File> {
+  return new Promise((resolve, reject) => entry.file(resolve, reject));
+}
+
+// Counts inline `//` occurrences (anything after the file header) so the
+// editor can surface a warning that they won't be preserved on save.
+// SPEC v0.6 §7.11.1: only the file header round-trips.
 function countInlineComments(text: string): number {
   const lines = text.split(/\r?\n/);
   let inHeader = true;

@@ -41,37 +41,31 @@ pre {
   height: 100%;
 }
 
+/* ─── Header ──────────────────────────────────────────────────────── */
+
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 1rem;
+  padding: 0.6rem 1rem;
   background: #2a2a2a;
   border-bottom: 1px solid #3a3a3a;
   flex-shrink: 0;
+  gap: 1rem;
 }
 
 .header h1 {
-  font-size: 1.1rem;
+  font-size: 1.05rem;
   font-weight: 600;
 }
 
-.header .status {
+.header-right {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  font-size: 0.9rem;
+  gap: 0.75rem;
 }
 
-.header .status .fname {
-  color: #e0e0e0;
-}
-
-.header .status .muted {
-  color: #888;
-}
-
-.header .reset {
+.reset {
   padding: 0.3rem 0.8rem;
   background: #3a3a3a;
   color: #e0e0e0;
@@ -79,11 +73,55 @@ pre {
   border-radius: 4px;
   cursor: pointer;
   font: inherit;
+  font-size: 0.85rem;
 }
 
-.header .reset:hover {
+.reset:hover {
   background: #4a4a4a;
 }
+
+/* ─── View mode toggle ────────────────────────────────────────────── */
+
+.view-toggle {
+  display: inline-flex;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.view-toggle button {
+  padding: 0.3rem 0.8rem;
+  background: transparent;
+  color: #aaa;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+
+.view-toggle button:not(:last-child) {
+  border-right: 1px solid #3a3a3a;
+}
+
+.view-toggle button:hover:not(:disabled):not(.active) {
+  background: #333;
+  color: #e0e0e0;
+}
+
+.view-toggle button.active {
+  background: #3a4a6a;
+  color: #fff;
+}
+
+.view-toggle button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ─── Main / Sidebar / Scene ──────────────────────────────────────── */
 
 .main {
   flex: 1;
@@ -99,7 +137,7 @@ pre {
 }
 
 .sidebar {
-  width: 240px;
+  width: 260px;
   background: #232323;
   border-right: 1px solid #3a3a3a;
   overflow-y: auto;
@@ -108,29 +146,120 @@ pre {
   flex-direction: column;
 }
 
-.sidebar-header {
+.sidebar-section + .sidebar-section {
+  border-top: 1px solid #3a3a3a;
+  margin-top: 0.25rem;
+}
+
+.sidebar-section-header {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  padding: 0.75rem 1rem 0.5rem;
-  border-bottom: 1px solid #3a3a3a;
+  padding: 0.6rem 1rem 0.4rem;
 }
 
-.sidebar-header h2 {
-  font-size: 0.95rem;
-  font-weight: 600;
-}
-
-.sidebar-header .count {
-  font-size: 0.8rem;
+.sidebar-section-header h2 {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: #888;
 }
+
+.sidebar-section-header .count {
+  font-size: 0.75rem;
+  color: #666;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── File tree ───────────────────────────────────────────────────── */
+
+.file-tree ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.tree-root {
+  padding: 0 0 0.25rem 0;
+}
+
+.tree-children {
+  /* Indent children to show hierarchy without the heavy guide line.
+     The icon column gives a visual rail; further indent is cosmetic. */
+  padding-left: 1rem !important;
+}
+
+.tree-node {
+  font-family:
+    ui-monospace,
+    'SF Mono',
+    Menlo,
+    Consolas,
+    monospace;
+  font-size: 0.85rem;
+}
+
+.tree-node.folder > .folder-row,
+.tree-node.file {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 1rem;
+}
+
+.tree-node .icon {
+  font-size: 0.95rem;
+  flex-shrink: 0;
+}
+
+.tree-node .name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-node.file.missing .name {
+  color: #555;
+  font-style: italic;
+}
+
+.tree-node .badge {
+  font-size: 0.65rem;
+  padding: 0.05rem 0.3rem;
+  background: #4a3a1a;
+  color: #fc8;
+  border-radius: 3px;
+  font-family: inherit;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.create-manifest {
+  width: calc(100% - 1.5rem);
+  margin: 0.25rem 0.75rem 0.75rem;
+  padding: 0.4rem 0.6rem;
+  background: #2a3a4a;
+  color: #cde;
+  border: 1px dashed #3a4a6a;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.create-manifest:hover {
+  background: #2a3a5a;
+  border-color: #4a5a7a;
+}
+
+/* ─── Parts list ──────────────────────────────────────────────────── */
 
 .sidebar-actions {
   display: flex;
   gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  border-bottom: 1px solid #2a2a2a;
+  padding: 0.25rem 1rem 0.5rem;
 }
 
 .sidebar-actions button {
@@ -156,7 +285,7 @@ pre {
 
 .part-list {
   list-style: none;
-  padding: 0.25rem 0;
+  padding: 0 0 0.5rem 0;
   margin: 0;
 }
 
@@ -164,7 +293,7 @@ pre {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.4rem 1rem;
+  padding: 0.3rem 1rem;
   cursor: pointer;
   user-select: none;
 }
@@ -186,11 +315,11 @@ pre {
     Menlo,
     Consolas,
     monospace;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 
 .part-item .part-size {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: #888;
   font-variant-numeric: tabular-nums;
 }
@@ -199,6 +328,8 @@ pre {
 .part-item.hidden .part-size {
   opacity: 0.4;
 }
+
+/* ─── Dropzone ────────────────────────────────────────────────────── */
 
 .dropzone {
   flex: 1;
@@ -209,6 +340,7 @@ pre {
   border: 2px dashed #3a3a3a;
   margin: 1rem;
   border-radius: 8px;
+  padding: 2rem;
   transition:
     border-color 0.15s,
     background 0.15s;
@@ -219,31 +351,66 @@ pre {
   background: #1a2a3a;
 }
 
-.dropzone p {
+.dropzone-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  opacity: 0.8;
+}
+
+.dropzone-headline {
+  color: #cde;
+  font-size: 1.05rem;
+  text-align: center;
+}
+
+.dropzone-headline code {
+  background: #2a2a2a;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  color: #fc8;
+}
+
+.dropzone-sub {
   color: #888;
+  margin: 0.75rem 0;
 }
 
-.dropzone .sep {
-  margin: 0.5rem 0;
+.dropzone-buttons {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
 }
 
-.dropzone .pick {
+.dropzone .open-btn {
   display: inline-block;
   cursor: pointer;
   padding: 0.5rem 1.2rem;
   background: #3a3a3a;
   border-radius: 4px;
   color: #e0e0e0;
+  font: inherit;
+  font-size: 0.9rem;
+  border: none;
   transition: background 0.15s;
 }
 
-.dropzone .pick:hover {
+.dropzone .open-btn:hover {
   background: #4a4a4a;
 }
 
 .dropzone input[type='file'] {
   display: none;
 }
+
+.dropzone-note {
+  margin-top: 1rem;
+  font-size: 0.8rem;
+  color: #888;
+  max-width: 32rem;
+  text-align: center;
+}
+
+/* ─── Notices ─────────────────────────────────────────────────────── */
 
 .notices {
   flex-shrink: 0;
