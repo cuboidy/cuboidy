@@ -29,4 +29,4 @@ if (failed > 0) {
   console.error(`\n${failed} file(s) failed`);
   process.exit(1);
 }
-console.log(`\nAll ${files.length} CBOX files parsed cleanly.`);
+console.log(`\nAll ${files.length} CVOX files parsed cleanly.`);

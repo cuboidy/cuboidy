@@ -1,4 +1,4 @@
-# Token efficiency: CBOX vs JSON
+# Token efficiency: CVOX vs JSON
 
 How many LLM tokens does Cuboidy's `.cvox` format actually save versus an
 equivalent JSON encoding of the same data? This document measures it on a
@@ -13,21 +13,21 @@ Across 8 models (1–9 parts, 1–384 voxels each) tokenized with `o200k_base`:
 | --------------------------------------- | -----------: | :-------------: |
 | JSON, pretty-printed (2-space indent)   |        7,295 |       yes       |
 | JSON with voxel rows as strings, pretty |        4,114 |       yes       |
-| **CBOX, canonical (indented)**          |    **2,318** |     **yes**     |
+| **CVOX, canonical (indented)**          |    **2,318** |     **yes**     |
 | JSON, minified                          |        2,954 |        no       |
 | JSON str + minified                     |        1,881 |        no       |
-| **CBOX, unindented**                    |    **1,648** |    **mostly**   |
-| **CBOX, single-line ("minified")**      |    **1,526** |        no       |
+| **CVOX, unindented**                    |    **1,648** |    **mostly**   |
+| **CVOX, single-line ("minified")**      |    **1,526** |        no       |
 
-Canonical, fully indented CBOX is already smaller than minified JSON.
-And because CBOX's SPEC §7 treats every whitespace run as equivalent,
+Canonical, fully indented CVOX is already smaller than minified JSON.
+And because CVOX's SPEC §7 treats every whitespace run as equivalent,
 the same file can be served either indented (for humans / git diffs)
 or with indentation stripped (for LLM API calls) — no parser change
 required, no JSON re-encode step.
 
 ## Reduction matrix (`o200k_base`, total over the dataset)
 
-Negative numbers mean CBOX wins.
+Negative numbers mean CVOX wins.
 
 |                 |   vs JSON | vs JSON-min | vs str-JSON | vs str-min |
 | --------------- | --------: | ----------: | ----------: | ---------: |
@@ -43,7 +43,7 @@ str-min is −14.2 %; full table at the bottom).
 1. **Common source.** Eight models are defined once as in-memory objects
    in `generate-dataset.mjs`. The same objects drive every emitted form,
    so no representation can "cheat" with extra or missing data.
-2. **Validated CBOX.** Every `.cvox` (including the unindented and
+2. **Validated CVOX.** Every `.cvox` (including the unindented and
    single-line variants) is round-tripped through the reference parser
    `parseCvox` from `@cuboidy/core`. All 24 (8 models × 3 cvox flavors)
    parse cleanly — see `verify-cvox.mjs`.
@@ -56,7 +56,7 @@ str-min is −14.2 %; full table at the bottom).
 
 ## Dataset
 
-| Model         | Parts | Voxels | CBOX tokens | JSON-pretty tokens |
+| Model         | Parts | Voxels | CVOX tokens | JSON-pretty tokens |
 | ------------- | ----: | -----: | ----------: | -----------------: |
 | `tiny`        |     1 |      1 |          37 |                 91 |
 | `crown`       |     1 |     18 |          60 |                183 |
@@ -77,12 +77,12 @@ For each model `<name>` we generate:
 
 | File                    | Content                                              |
 | ----------------------- | ---------------------------------------------------- |
-| `<name>.cvox`           | CBOX, canonical 4-space indent, blank line between parts |
-| `<name>.unindent.cvox`  | CBOX, no leading indent, one token-group per line    |
-| `<name>.min.cvox`       | CBOX, every token on a single line separated by `' '` |
+| `<name>.cvox`           | CVOX, canonical 4-space indent, blank line between parts |
+| `<name>.unindent.cvox`  | CVOX, no leading indent, one token-group per line    |
+| `<name>.min.cvox`       | CVOX, every token on a single line separated by `' '` |
 | `<name>.json`           | Native JSON, voxels as nested `int[][][]` (`-1` = air), 2-space indent |
 | `<name>.min.json`       | Native JSON, minified                                |
-| `<name>.str.json`       | JSON where each voxel row is a CBOX-style string (`"000"`), 2-space indent |
+| `<name>.str.json`       | JSON where each voxel row is a CVOX-style string (`"000"`), 2-space indent |
 | `<name>.str.min.json`   | Same string-row JSON, minified                       |
 
 The JSON variant intentionally mirrors what someone would write if they
@@ -121,20 +121,20 @@ comparison of the same data model.
 ## Observations
 
 - **Indentation is pure overhead at the LLM layer.** Stripping the
-  4-space indent shaves 29 % off the CBOX token count (2,318 → 1,648)
+  4-space indent shaves 29 % off the CVOX token count (2,318 → 1,648)
   without changing a single semantic byte. Same goes for JSON pretty →
   minified (7,295 → 2,954, −60 %).
-- **CBOX's voxel-row encoding is the real win.** Where JSON spends one
-  token per cell plus brackets and commas (`[0,0,0]`), CBOX spends one
+- **CVOX's voxel-row encoding is the real win.** Where JSON spends one
+  token per cell plus brackets and commas (`[0,0,0]`), CVOX spends one
   token for the whole row (`000`). The denser the voxel data, the
   bigger the gap — `castle_tile` (384 voxels in 1 part) drops from
   1,903 to 355 tokens, a **81 %** reduction even compared to pretty
   JSON.
 - **The "JSON-but-with-string-rows" hybrid doesn't catch up.** Even
   the most aggressive variant (`str-min`, 1,881 tokens) loses to
-  unindented CBOX (1,648 tokens, −12.4 %) and to single-line CBOX
+  unindented CVOX (1,648 tokens, −12.4 %) and to single-line CVOX
   (1,526 tokens, −18.9 %). The structural JSON punctuation
-  (`{`, `}`, `"`, `,`, `:`) costs more than CBOX's bare keywords.
+  (`{`, `}`, `"`, `,`, `:`) costs more than CVOX's bare keywords.
 - **Tokenizer-portable.** The picture is virtually identical between
   `o200k_base` and `cl100k_base`. Differences are at most a few
   tokens per model.
@@ -147,7 +147,7 @@ comparison of the same data model.
 | LLM context / API send       | `cvox` (unindented)     |        1,648 |
 | Extreme compression          | `cvox` (single-line)    |        1,526 |
 
-Because the CBOX grammar treats all whitespace as equivalent (SPEC §7),
+Because the CVOX grammar treats all whitespace as equivalent (SPEC §7),
 the same file can be stored in the indented form and stripped on the
 way into an LLM prompt with a one-liner: `text.split('\n').map(l => l.trimStart()).join('\n')`.
 No format dialect, no separate parser path.

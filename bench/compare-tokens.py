@@ -1,11 +1,11 @@
 """
-Token-count comparison between CBOX (.cvox) and the equivalent JSON forms,
+Token-count comparison between CVOX (.cvox) and the equivalent JSON forms,
 using real LLM tokenizers (tiktoken).
 
 For each model `<name>` in bench/dataset/ we compare:
-  <name>.cvox            — CBOX, canonical (indented)
-  <name>.unindent.cvox   — CBOX, no leading indent
-  <name>.min.cvox        — CBOX, all tokens on a single line
+  <name>.cvox            — CVOX, canonical (indented)
+  <name>.unindent.cvox   — CVOX, no leading indent
+  <name>.min.cvox        — CVOX, all tokens on a single line
   <name>.json            — JSON nested-number arrays, pretty (2-space)
   <name>.min.json        — JSON nested-number arrays, minified
   <name>.str.json        — JSON with voxel rows as strings ("000"), pretty

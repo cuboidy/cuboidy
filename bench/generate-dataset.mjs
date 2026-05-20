@@ -1,11 +1,11 @@
-// Generates a dataset of paired (CBOX, JSON) representations for token-count
+// Generates a dataset of paired (CVOX, JSON) representations for token-count
 // comparison. Each model is defined as an in-memory object and emitted in
 // three forms:
-//   - <name>.cvox       — canonical CBOX text per SPEC §7
+//   - <name>.cvox       — canonical CVOX text per SPEC §7
 //   - <name>.json       — pretty JSON (2-space), the "natural" representation
 //   - <name>.min.json   — minified JSON (lower bound)
 //
-// The CBOX serializer here is intentionally simple — it produces the same
+// The CVOX serializer here is intentionally simple — it produces the same
 // shape as the existing fixtures in wolf/ and crown/, including indented
 // metadata and a voxels { ... } block with one row per line.
 
@@ -53,7 +53,7 @@ const hollow = (size, i = 0) => (x, y, z) => {
   return AIR;
 };
 
-// ----- CBOX serializer ---------------------------------------------------
+// ----- CVOX serializer ---------------------------------------------------
 
 function serializeCvox(model) {
   const lines = [];
@@ -139,7 +139,7 @@ function serializeCvoxMinified(model) {
 
 // Convert the in-memory model into a "natural" JSON-shaped object that
 // uses the same data, just as plain JSON. This is the baseline we compare
-// CBOX against.
+// CVOX against.
 function toJsonModel(model) {
   return {
     palette: model.palette,
