@@ -25,24 +25,19 @@ export function FilePreview({ file }: Props) {
 
   const gutterWidth = String(lines.length).length;
 
+  // No header bar — the file name lives in the tab above, which is the
+  // single source of truth for "what am I looking at." Repeating it
+  // inside the pane just adds vertical chrome with no extra signal.
   return (
-    <div className="file-preview">
-      <div className="file-preview-header">
-        <span className="file-preview-name">{file.name}</span>
-        <span className="file-preview-stats">
-          {lines.length} line{lines.length === 1 ? '' : 's'} · {file.text.length} chars
-        </span>
-      </div>
-      <pre className="file-preview-body">
-        {lines.map((line, i) => (
-          <div className="line" key={i}>
-            <span className="line-no" style={{ width: `${gutterWidth}ch` }}>
-              {i + 1}
-            </span>
-            <span className="line-text">{line === '' ? ' ' : line}</span>
-          </div>
-        ))}
-      </pre>
-    </div>
+    <pre className="file-preview-body">
+      {lines.map((line, i) => (
+        <div className="line" key={i}>
+          <span className="line-no" style={{ width: `${gutterWidth}ch` }}>
+            {i + 1}
+          </span>
+          <span className="line-text">{line === '' ? ' ' : line}</span>
+        </div>
+      ))}
+    </pre>
   );
 }
