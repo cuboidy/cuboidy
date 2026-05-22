@@ -1,5 +1,7 @@
 import { useCallback, useState } from 'react';
+import { ExportMenu } from './components/ExportMenu.js';
 import { FileDropZone } from './components/FileDropZone.js';
+import { SaveButton } from './components/SaveButton.js';
 import { Sidebar } from './components/Sidebar.js';
 import { ViewModeToggle } from './components/ViewModeToggle.js';
 import { VoxelScene } from './components/VoxelScene.js';
@@ -109,6 +111,8 @@ export function App() {
               onChange={handleViewModeChange}
             />
           )}
+          {source?.kind === 'folder' && <SaveButton source={source} />}
+          {source !== undefined && <ExportMenu source={source} />}
           {loaded !== null && (
             <button type="button" className="reset" onClick={handleReset}>
               Load another

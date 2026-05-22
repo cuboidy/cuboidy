@@ -3,8 +3,8 @@ import type { LoadResult } from '../lib/types.js';
 import {
   loadFromDirectoryEntry,
   loadFromDirectoryHandle,
-  loadFromFile,
   loadFromFileList,
+  loadSingleFile,
 } from '../lib/load-model.js';
 
 interface Props {
@@ -42,7 +42,7 @@ export function FileDropZone({ onLoad }: Props) {
   const handlePickFile = useCallback(
     async (e: ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
-      if (file !== undefined) onLoad(await loadFromFile(file));
+      if (file !== undefined) onLoad(await loadSingleFile(file));
       // Clear the input so re-picking the same file re-fires onChange.
       e.target.value = '';
     },
@@ -85,7 +85,7 @@ export function FileDropZone({ onLoad }: Props) {
     >
       <div className="dropzone-icon">📁</div>
       <p className="dropzone-headline">
-        Drop a cuboidy model folder or <code>.cvox</code> file
+        Drop a cuboidy folder, <code>.cvox</code>, or <code>.cuboidy</code> file
       </p>
       <p className="dropzone-sub">or</p>
       <div className="dropzone-buttons">
@@ -104,7 +104,11 @@ export function FileDropZone({ onLoad }: Props) {
           </label>
         )}
         <label className="open-btn">
-          <input type="file" accept=".cvox,text/plain" onChange={handlePickFile} />
+          <input
+            type="file"
+            accept=".cvox,.cuboidy,text/plain,application/zip"
+            onChange={handlePickFile}
+          />
           <span>Open file</span>
         </label>
       </div>
@@ -122,7 +126,8 @@ export function FileDropZone({ onLoad }: Props) {
 // on availability of FSA APIs and whether the item is a file or folder.
 async function processDroppedItem(item: DataTransferItem): Promise<LoadResult | null> {
   // Chrome path: getAsFileSystemHandle gives a writable handle for
-  // folders (used for in-place Save in A2-rig-2).
+  // folders (used for in-place Save). File-kind handles are dispatched
+  // via loadSingleFile so .cuboidy ZIPs are unpacked, .cvox loads raw.
   if ('getAsFileSystemHandle' in item) {
     try {
       const handle = await (item as DataTransferItemWithFSA).getAsFileSystemHandle();
@@ -131,7 +136,7 @@ async function processDroppedItem(item: DataTransferItem): Promise<LoadResult | 
           return loadFromDirectoryHandle(handle as FileSystemDirectoryHandle);
         }
         const file = await (handle as FileSystemFileHandle).getFile();
-        return loadFromFile(file);
+        return loadSingleFile(file);
       }
     } catch (e) {
       // eslint-disable-next-line no-console
@@ -149,7 +154,7 @@ async function processDroppedItem(item: DataTransferItem): Promise<LoadResult | 
   const file = await new Promise<File>((resolve, reject) =>
     fileEntry.file(resolve, reject),
   );
-  return loadFromFile(file);
+  return loadSingleFile(file);
 }
 
 // Minimal local type augmentations for APIs not yet in all TS lib.dom

@@ -1,8 +1,10 @@
 import { parseCvox, parseManifest, type Manifest } from '@cuboidy/core';
+import { strFromU8, unzipSync } from 'fflate';
 import type { FileEntry, LoadResult, LoadedSource } from './types.js';
 
 const CVOX_FILE = 'voxels.cvox';
 const MANIFEST_FILE = 'cuboidy.json';
+const CUBOIDY_EXT = /\.cuboidy$/i;
 
 // Public entry points. Each callsite knows what kind of source it has
 // (single File, FileList from <input webkitdirectory>, FSA directory
@@ -14,6 +16,60 @@ const MANIFEST_FILE = 'cuboidy.json';
 export async function loadFromFile(file: File): Promise<LoadResult> {
   const text = await file.text();
   return buildResult({ cvoxName: file.name, cvoxText: text });
+}
+
+// Single-file entrypoint that dispatches on extension. .cuboidy goes to
+// the ZIP unpacker, anything else is treated as a raw .cvox text file.
+// Use this from drop / pick handlers so they don't have to know about
+// extensions themselves.
+export async function loadSingleFile(file: File): Promise<LoadResult> {
+  if (CUBOIDY_EXT.test(file.name)) return loadFromCuboidyZip(file);
+  return loadFromFile(file);
+}
+
+// Unpack a .cuboidy ZIP (the editor's own Export → Download as .cuboidy
+// output, or any equivalent ZIP another tool produces). Looks up the
+// canonical filenames by *basename* so both flat ZIPs (our exports) and
+// folder-wrapped ZIPs (`wolf/voxels.cvox` style) load identically. The
+// .cuboidy file name (sans extension) becomes the folder name in the
+// loaded source — synthetic = false since it came from a real file.
+export async function loadFromCuboidyZip(file: File): Promise<LoadResult> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let entries: Record<string, Uint8Array>;
+  try {
+    entries = unzipSync(bytes);
+  } catch (e) {
+    return {
+      error: `Could not unpack ${file.name}: ${(e as Error).message}`,
+    };
+  }
+  let cvoxText: string | undefined;
+  let manifestText: string | undefined;
+  for (const [path, data] of Object.entries(entries)) {
+    const name = basename(path);
+    if (name === CVOX_FILE && cvoxText === undefined) {
+      cvoxText = strFromU8(data);
+    } else if (name === MANIFEST_FILE && manifestText === undefined) {
+      manifestText = strFromU8(data);
+    }
+  }
+  if (cvoxText === undefined) {
+    return { error: `No ${CVOX_FILE} in ${file.name}` };
+  }
+  return buildResult({
+    cvoxName: CVOX_FILE,
+    cvoxText,
+    folderName: file.name.replace(CUBOIDY_EXT, ''),
+    ...(manifestText !== undefined && {
+      manifestName: MANIFEST_FILE,
+      manifestText,
+    }),
+  });
+}
+
+function basename(path: string): string {
+  const i = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+  return i === -1 ? path : path.slice(i + 1);
 }
 
 export async function loadFromFileList(files: FileList): Promise<LoadResult> {
