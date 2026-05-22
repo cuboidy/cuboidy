@@ -9,21 +9,27 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
       const r = parseCvox(text);
       expect(r.ok).toBe(true);
       if (!r.ok) return;
-      expect(r.value.palette).toHaveLength(2);
-      expect(r.value.parts).toHaveLength(3);
+      expect(r.value.palette).toHaveLength(3);
+      expect(r.value.parts).toHaveLength(7);
       expect(r.value.parts.map((p) => p.name)).toEqual([
         'body',
         'head',
         'tail',
+        'leg-fl',
+        'leg-fr',
+        'leg-bl',
+        'leg-br',
       ]);
 
       const head = r.value.parts.find((p) => p.name === 'head')!;
-      expect(head.size).toEqual({ w: 3, h: 3, d: 3 });
-      expect(head.pivot.pos).toEqual({ x: 1, y: 0, z: 1 });
+      expect(head.size).toEqual({ w: 5, h: 5, d: 5 });
+      expect(head.pivot.pos).toEqual({ x: 2, y: 0, z: 5 });
       expect(head.sockets).toHaveLength(2);
       expect(head.sockets.map((s) => s.name)).toEqual(['hat', 'mouth']);
-      expect(head.voxels).toHaveLength(3);
-      expect(head.voxels[1]?.[2]).toEqual([1, 0, 1]);
+      expect(head.voxels).toHaveLength(5);
+      // Eye row: layer y=2 (eye level), z=2 (front of main head, just behind
+      // snout). `20002` → eyes (palette index 2) at the outer corners.
+      expect(head.voxels[2]?.[2]).toEqual([2, 0, 0, 0, 2]);
     });
 
     it('parses crown/voxels.cvox', async () => {

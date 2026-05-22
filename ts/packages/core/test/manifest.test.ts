@@ -11,11 +11,20 @@ describe('parseManifest', () => {
 
     const m = r.value;
     expect(m.name).toBe('wolf');
-    expect(m.parts).toHaveLength(3);
+    expect(m.parts).toHaveLength(7);
     expect(m.parts[0]?.name).toBe('body');
     expect(m.parts[1]?.name).toBe('head');
     expect(m.parts[1]?.parent).toBe('body');
-    expect(m.parts[1]?.position).toEqual([1, 2, 4]);
+    expect(m.parts[1]?.position).toEqual([0, 3, -5]);
+    expect(m.parts.map((p) => p.name)).toEqual([
+      'body',
+      'head',
+      'tail',
+      'leg-fl',
+      'leg-fr',
+      'leg-bl',
+      'leg-br',
+    ]);
     expect(m.animations?.['idle']).toBeDefined();
   });
 

@@ -1,9 +1,13 @@
 {
   "name": "wolf",
   "parts": [
-    { "name": "body", "position": [0, 0, 0] },
-    { "name": "head", "parent": "body", "position": [1, 2, 4] },
-    { "name": "tail", "parent": "body", "position": [1, 1, 0] }
+    { "name": "body",   "position": [0, 2, 0] },
+    { "name": "head",   "parent": "body", "position": [0, 3, -5] },
+    { "name": "tail",   "parent": "body", "position": [1.5, 1, 6] },
+    { "name": "leg-fl", "parent": "body", "position": [0, -2, 0] },
+    { "name": "leg-fr", "parent": "body", "position": [4, -2, 0] },
+    { "name": "leg-bl", "parent": "body", "position": [0, -2, 5] },
+    { "name": "leg-br", "parent": "body", "position": [4, -2, 5] }
   ],
   "animations": {
     "idle": {
