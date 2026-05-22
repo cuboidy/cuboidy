@@ -1,11 +1,12 @@
-import { useCallback, useState } from 'react';
-import { serializeCvox, type Cvox } from '@cuboidy/core';
-import { CvoxEditor } from './components/CvoxEditor.js';
+import { useCallback, useRef, useState } from 'react';
+import { parseCvox, serializeCvox, type Cvox } from '@cuboidy/core';
 import { ExportMenu } from './components/ExportMenu.js';
 import { FileDropZone } from './components/FileDropZone.js';
 import { FilePreview } from './components/FilePreview.js';
+import { RightPanel } from './components/RightPanel.js';
 import { SaveButton } from './components/SaveButton.js';
 import { Sidebar } from './components/Sidebar.js';
+import { SourceEditor } from './components/SourceEditor.js';
 import { TabBar } from './components/TabBar.js';
 import { ViewModeToggle } from './components/ViewModeToggle.js';
 import { VoxelScene } from './components/VoxelScene.js';
@@ -17,59 +18,59 @@ import type {
   ViewMode,
 } from './lib/types.js';
 
+// Debounce window for live re-parse of the cvox source view. Long
+// enough that mid-keystroke typing doesn't constantly fire (and
+// flicker palette/3D between transient invalid states); short enough
+// that a deliberate pause feels live.
+const REPARSE_DEBOUNCE_MS = 300;
+
 export function App() {
   const [loaded, setLoaded] = useState<LoadResult | null>(null);
   const [hiddenParts, setHiddenParts] = useState<ReadonlySet<string>>(new Set());
-  // View mode persists across loads but is forced back to 'cvox' when
-  // the loaded source has no manifest (Rig view would be meaningless).
   const [viewMode, setViewMode] = useState<ViewMode>('cvox');
-  // Which surface is in the main pane. Resets to 'preview' on every
-  // load — users start by seeing the 3D model and can drill into raw
-  // text via the file tree or tab bar.
   const [selectedTab, setSelectedTab] = useState<SelectedTab>('preview');
+  // Live parse error on the cvox source text. Non-null only while the
+  // user's currently-typed text doesn't parse. Palette panel disables
+  // itself in this state so its re-serialize doesn't clobber the
+  // in-progress text.
+  const [cvoxParseError, setCvoxParseError] = useState<string | null>(null);
 
-  const handleLoad = useCallback((result: LoadResult) => {
-    setLoaded(result);
-    setHiddenParts(new Set());
-    // Default to rig view when manifest is present (it's the "complete"
-    // picture). Cvox view is reachable via toggle.
-    const hasManifest =
-      result.source !== undefined &&
-      result.source.kind === 'folder' &&
-      result.source.manifest !== undefined;
-    setViewMode(hasManifest ? 'rig' : 'cvox');
-    setSelectedTab('preview');
+  // Holds the timeout ID of the pending debounced reparse so we can
+  // cancel it whenever new authoritative state arrives (further typing
+  // resets the timer; palette edit pre-empts it entirely).
+  const reparseTimer = useRef<number | null>(null);
+
+  const cancelPendingReparse = useCallback(() => {
+    if (reparseTimer.current !== null) {
+      window.clearTimeout(reparseTimer.current);
+      reparseTimer.current = null;
+    }
   }, []);
+
+  const handleLoad = useCallback(
+    (result: LoadResult) => {
+      cancelPendingReparse();
+      setLoaded(result);
+      setHiddenParts(new Set());
+      setCvoxParseError(null);
+      const hasManifest =
+        result.source !== undefined &&
+        result.source.kind === 'folder' &&
+        result.source.manifest !== undefined;
+      setViewMode(hasManifest ? 'rig' : 'cvox');
+      setSelectedTab('preview');
+    },
+    [cancelPendingReparse],
+  );
 
   const handleReset = useCallback(() => {
+    cancelPendingReparse();
     setLoaded(null);
     setHiddenParts(new Set());
+    setCvoxParseError(null);
     setViewMode('cvox');
     setSelectedTab('preview');
-  }, []);
-
-  const handleSelectTab = useCallback((tab: SelectedTab) => {
-    setSelectedTab(tab);
-  }, []);
-
-  // Single mutation entrypoint for cvox-tab edits. Updates both the AST
-  // (so 3D scene re-renders) and the cvox file text (so Save / Export
-  // write the new contents). The serialize step canonicalizes — inline
-  // comments and custom whitespace are lost here, per SPEC v0.6 §7.11
-  // (advisory comments). The load-time notice already warned about it.
-  const handleUpdateCvox = useCallback((nextCvox: Cvox) => {
-    setLoaded((current) => {
-      if (current?.source === undefined) return current;
-      const src = current.source;
-      const nextText = serializeCvox(nextCvox);
-      const nextFile = { ...src.cvoxFile, text: nextText };
-      const nextSource: LoadedSource =
-        src.kind === 'cvox-only'
-          ? { ...src, cvox: nextCvox, cvoxFile: nextFile }
-          : { ...src, cvox: nextCvox, cvoxFile: nextFile };
-      return { ...current, source: nextSource };
-    });
-  }, []);
+  }, [cancelPendingReparse]);
 
   const handleToggle = useCallback((name: string) => {
     setHiddenParts((prev) => {
@@ -91,10 +92,70 @@ export function App() {
     });
   }, []);
 
-  // Create manifest: upgrades a cvox-only source into a synthetic folder,
-  // or fills in a manifest for a folder that didn't have one. The
-  // synthesized manifest places every part at the origin with no parent;
-  // user edits parent/position later via the rig editor (A2-rig-5+).
+  const handleSelectTab = useCallback((tab: SelectedTab) => {
+    setSelectedTab(tab);
+  }, []);
+
+  // Source-text edit (textarea typing). Updates the text immediately so
+  // every keystroke persists; schedules a debounced reparse that
+  // updates the AST when it succeeds. The text remains primary even
+  // while temporarily unparseable — Save / Export still write what the
+  // user typed.
+  const handleEditSourceText = useCallback(
+    (nextText: string) => {
+      setLoaded((current) => {
+        if (current?.source === undefined) return current;
+        const src = current.source;
+        const nextSource: LoadedSource = {
+          ...src,
+          cvoxFile: { ...src.cvoxFile, text: nextText },
+        };
+        return { ...current, source: nextSource };
+      });
+      cancelPendingReparse();
+      reparseTimer.current = window.setTimeout(() => {
+        reparseTimer.current = null;
+        const result = parseCvox(nextText);
+        if (result.ok) {
+          setCvoxParseError(null);
+          setLoaded((current) => {
+            if (current?.source === undefined) return current;
+            return {
+              ...current,
+              source: { ...current.source, cvox: result.value },
+            };
+          });
+        } else {
+          setCvoxParseError(result.message);
+        }
+      }, REPARSE_DEBOUNCE_MS);
+    },
+    [cancelPendingReparse],
+  );
+
+  // Palette / future structural edit on the AST. Re-serializes to
+  // canonical text immediately and pre-empts any pending reparse
+  // (the new text is by-construction parseable, so we know the
+  // error state is cleared too).
+  const handleEditCvox = useCallback(
+    (nextCvox: Cvox) => {
+      cancelPendingReparse();
+      setCvoxParseError(null);
+      setLoaded((current) => {
+        if (current?.source === undefined) return current;
+        const src = current.source;
+        const nextText = serializeCvox(nextCvox);
+        const nextSource: LoadedSource = {
+          ...src,
+          cvox: nextCvox,
+          cvoxFile: { ...src.cvoxFile, text: nextText },
+        };
+        return { ...current, source: nextSource };
+      });
+    },
+    [cancelPendingReparse],
+  );
+
   const handleCreateManifest = useCallback(() => {
     setLoaded((current) => {
       if (current?.source === undefined) return current;
@@ -115,13 +176,7 @@ export function App() {
           droppedInlineComments: src.droppedInlineComments,
         };
       } else {
-        next = {
-          ...src,
-          synthetic: true,
-          manifest,
-          manifestFile,
-        };
-        // Strip any prior parse error since we now have a valid manifest.
+        next = { ...src, synthetic: true, manifest, manifestFile };
         delete (next as { manifestError?: string }).manifestError;
       }
       setViewMode('rig');
@@ -190,7 +245,11 @@ export function App() {
                   />
                 )}
                 {selectedTab === 'cvox' && (
-                  <CvoxEditor cvox={source.cvox} onChange={handleUpdateCvox} />
+                  <SourceEditor
+                    text={source.cvoxFile.text}
+                    {...(cvoxParseError !== null && { parseError: cvoxParseError })}
+                    onChange={handleEditSourceText}
+                  />
                 )}
                 {selectedTab === 'manifest' &&
                   source.kind === 'folder' &&
@@ -199,6 +258,11 @@ export function App() {
                   )}
               </div>
             </div>
+            <RightPanel
+              cvox={source.cvox}
+              cvoxEditsDisabled={cvoxParseError !== null}
+              onCvoxChange={handleEditCvox}
+            />
           </>
         ) : (
           <FileDropZone onLoad={handleLoad} />
