@@ -1,12 +1,19 @@
 import { useCallback, useState } from 'react';
 import { ExportMenu } from './components/ExportMenu.js';
 import { FileDropZone } from './components/FileDropZone.js';
+import { FilePreview } from './components/FilePreview.js';
 import { SaveButton } from './components/SaveButton.js';
 import { Sidebar } from './components/Sidebar.js';
+import { TabBar } from './components/TabBar.js';
 import { ViewModeToggle } from './components/ViewModeToggle.js';
 import { VoxelScene } from './components/VoxelScene.js';
 import { synthesizeManifest } from './lib/synthesize-manifest.js';
-import type { LoadResult, LoadedSource, ViewMode } from './lib/types.js';
+import type {
+  LoadResult,
+  LoadedSource,
+  SelectedTab,
+  ViewMode,
+} from './lib/types.js';
 
 export function App() {
   const [loaded, setLoaded] = useState<LoadResult | null>(null);
@@ -14,6 +21,10 @@ export function App() {
   // View mode persists across loads but is forced back to 'cvox' when
   // the loaded source has no manifest (Rig view would be meaningless).
   const [viewMode, setViewMode] = useState<ViewMode>('cvox');
+  // Which surface is in the main pane. Resets to 'preview' on every
+  // load — users start by seeing the 3D model and can drill into raw
+  // text via the file tree or tab bar.
+  const [selectedTab, setSelectedTab] = useState<SelectedTab>('preview');
 
   const handleLoad = useCallback((result: LoadResult) => {
     setLoaded(result);
@@ -25,12 +36,18 @@ export function App() {
       result.source.kind === 'folder' &&
       result.source.manifest !== undefined;
     setViewMode(hasManifest ? 'rig' : 'cvox');
+    setSelectedTab('preview');
   }, []);
 
   const handleReset = useCallback(() => {
     setLoaded(null);
     setHiddenParts(new Set());
     setViewMode('cvox');
+    setSelectedTab('preview');
+  }, []);
+
+  const handleSelectTab = useCallback((tab: SelectedTab) => {
+    setSelectedTab(tab);
   }, []);
 
   const handleToggle = useCallback((name: string) => {
@@ -87,6 +104,7 @@ export function App() {
         delete (next as { manifestError?: string }).manifestError;
       }
       setViewMode('rig');
+      setSelectedTab('preview');
       return { ...current, source: next };
     });
   }, []);
@@ -104,7 +122,7 @@ export function App() {
       <header className="header">
         <h1>Cuboidy Editor</h1>
         <div className="header-right">
-          {source !== undefined && (
+          {source !== undefined && selectedTab === 'preview' && (
             <ViewModeToggle
               mode={viewMode}
               rigAvailable={rigAvailable}
@@ -125,21 +143,40 @@ export function App() {
           <>
             <Sidebar
               source={source}
+              selectedTab={selectedTab}
               hiddenParts={hiddenParts}
+              onSelectTab={handleSelectTab}
               onToggle={handleToggle}
               onShowAll={handleShowAll}
               onHideAll={handleHideAll}
               onCreateManifest={handleCreateManifest}
             />
-            <div className="scene-container">
-              <VoxelScene
-                cvox={source.cvox}
-                manifest={
-                  source.kind === 'folder' ? source.manifest : undefined
-                }
-                viewMode={viewMode}
-                hiddenParts={hiddenParts}
+            <div className="main-pane">
+              <TabBar
+                source={source}
+                selected={selectedTab}
+                onSelect={handleSelectTab}
               />
+              <div className="main-pane-body">
+                {selectedTab === 'preview' && (
+                  <VoxelScene
+                    cvox={source.cvox}
+                    manifest={
+                      source.kind === 'folder' ? source.manifest : undefined
+                    }
+                    viewMode={viewMode}
+                    hiddenParts={hiddenParts}
+                  />
+                )}
+                {selectedTab === 'cvox' && (
+                  <FilePreview file={source.cvoxFile} />
+                )}
+                {selectedTab === 'manifest' &&
+                  source.kind === 'folder' &&
+                  source.manifestFile !== undefined && (
+                    <FilePreview file={source.manifestFile} />
+                  )}
+              </div>
             </div>
           </>
         ) : (

@@ -54,3 +54,12 @@ export interface LoadResult {
 // View modes for the 3D scene. Rig view requires a manifest; the UI
 // disables the toggle when no manifest is loaded.
 export type ViewMode = 'cvox' | 'rig';
+
+// Which surface is currently shown in the main pane.
+//   - 'preview': 3D scene (the model viewer)
+//   - 'cvox':    raw text of voxels.cvox
+//   - 'manifest': raw text of cuboidy.json (only meaningful when loaded
+//                 source has a manifest)
+// Per-file editing UIs will replace the raw text views one tab at a
+// time (palette editor on the 'cvox' tab in a future stage, etc.).
+export type SelectedTab = 'preview' | 'cvox' | 'manifest';

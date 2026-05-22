@@ -1,7 +1,9 @@
-import type { LoadedSource } from '../lib/types.js';
+import type { LoadedSource, SelectedTab } from '../lib/types.js';
 
 interface Props {
   source: LoadedSource;
+  selectedTab: SelectedTab;
+  onSelectTab: (tab: SelectedTab) => void;
   onCreateManifest: () => void;
 }
 
@@ -10,22 +12,32 @@ interface Props {
 // files indented one level under it; cvox-only loads show a single
 // file at the root (no synthetic folder wrap).
 //
-// Future stages will add per-file selection (click → open a dedicated
-// editor surface, A2-rig-3+); this stage just surfaces what's loaded.
-// Create manifest sits below the tree so the upcoming file appears
-// "right next to" where it'll be inserted.
+// Clicking a file activates its tab in the main pane (the file tree
+// and the tab bar share `selectedTab` state via App). The active file
+// gets a highlighted background so the tree is a constant indicator
+// of "what am I viewing right now."
 
-export function FileTree({ source, onCreateManifest }: Props) {
+export function FileTree({
+  source,
+  selectedTab,
+  onSelectTab,
+  onCreateManifest,
+}: Props) {
   return (
     <div className="file-tree">
       {source.kind === 'folder' ? (
-        <FolderTree source={source} />
+        <FolderTree
+          source={source}
+          selectedTab={selectedTab}
+          onSelectTab={onSelectTab}
+        />
       ) : (
         <ul className="tree-root">
-          <li className="tree-node file" title="Voxel definition">
-            <span className="icon">📄</span>
-            <span className="name">{source.cvoxFile.name}</span>
-          </li>
+          <CvoxFileNode
+            name={source.cvoxFile.name}
+            active={selectedTab === 'cvox'}
+            onClick={() => onSelectTab('cvox')}
+          />
         </ul>
       )}
       {canCreateManifest(source) && (
@@ -41,7 +53,13 @@ export function FileTree({ source, onCreateManifest }: Props) {
   );
 }
 
-function FolderTree({ source }: { source: Extract<LoadedSource, { kind: 'folder' }> }) {
+interface FolderTreeProps {
+  source: Extract<LoadedSource, { kind: 'folder' }>;
+  selectedTab: SelectedTab;
+  onSelectTab: (tab: SelectedTab) => void;
+}
+
+function FolderTree({ source, selectedTab, onSelectTab }: FolderTreeProps) {
   return (
     <ul className="tree-root">
       <li className="tree-node folder">
@@ -51,22 +69,29 @@ function FolderTree({ source }: { source: Extract<LoadedSource, { kind: 'folder'
           {source.synthetic && <span className="badge">unsaved</span>}
         </div>
         <ul className="tree-children">
-          <li className="tree-node file" title="Voxel definition">
-            <span className="icon">📄</span>
-            <span className="name">{source.cvoxFile.name}</span>
-          </li>
+          <CvoxFileNode
+            name={source.cvoxFile.name}
+            active={selectedTab === 'cvox'}
+            onClick={() => onSelectTab('cvox')}
+          />
           {source.manifestFile !== undefined ? (
             <li
-              className="tree-node file"
+              className={`tree-node file${selectedTab === 'manifest' ? ' active' : ''}`}
               title={
                 source.manifestError !== undefined
                   ? `Manifest parse error: ${source.manifestError}`
                   : 'Rig manifest'
               }
             >
-              <span className="icon">📄</span>
-              <span className="name">{source.manifestFile.name}</span>
-              {source.synthetic && <span className="badge">new</span>}
+              <button
+                type="button"
+                className="tree-node-button"
+                onClick={() => onSelectTab('manifest')}
+              >
+                <span className="icon">📄</span>
+                <span className="name">{source.manifestFile.name}</span>
+                {source.synthetic && <span className="badge">new</span>}
+              </button>
             </li>
           ) : (
             <li
@@ -80,6 +105,28 @@ function FolderTree({ source }: { source: Extract<LoadedSource, { kind: 'folder'
         </ul>
       </li>
     </ul>
+  );
+}
+
+function CvoxFileNode({
+  name,
+  active,
+  onClick,
+}: {
+  name: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <li
+      className={`tree-node file${active ? ' active' : ''}`}
+      title="Voxel definition"
+    >
+      <button type="button" className="tree-node-button" onClick={onClick}>
+        <span className="icon">📄</span>
+        <span className="name">{name}</span>
+      </button>
+    </li>
   );
 }
 

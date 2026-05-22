@@ -1,9 +1,11 @@
-import type { LoadedSource } from '../lib/types.js';
+import type { LoadedSource, SelectedTab } from '../lib/types.js';
 import { FileTree } from './FileTree.js';
 
 interface Props {
   source: LoadedSource;
+  selectedTab: SelectedTab;
   hiddenParts: ReadonlySet<string>;
+  onSelectTab: (tab: SelectedTab) => void;
   onToggle: (name: string) => void;
   onShowAll: () => void;
   onHideAll: () => void;
@@ -18,7 +20,9 @@ interface Props {
 
 export function Sidebar({
   source,
+  selectedTab,
   hiddenParts,
+  onSelectTab,
   onToggle,
   onShowAll,
   onHideAll,
@@ -31,7 +35,12 @@ export function Sidebar({
         <div className="sidebar-section-header">
           <h2>Files</h2>
         </div>
-        <FileTree source={source} onCreateManifest={onCreateManifest} />
+        <FileTree
+          source={source}
+          selectedTab={selectedTab}
+          onSelectTab={onSelectTab}
+          onCreateManifest={onCreateManifest}
+        />
       </section>
 
       <section className="sidebar-section">

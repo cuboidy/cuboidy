@@ -188,6 +188,151 @@ pre {
   min-width: 0;
 }
 
+.main-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.main-pane-body {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Tab bar ─────────────────────────────────────────────────────── */
+
+.tab-bar {
+  display: flex;
+  align-items: stretch;
+  background: #232323;
+  border-bottom: 1px solid #3a3a3a;
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.9rem;
+  background: transparent;
+  color: #aaa;
+  border: none;
+  border-right: 1px solid #2a2a2a;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  transition:
+    color 0.12s,
+    background 0.12s;
+  white-space: nowrap;
+}
+
+.tab:hover:not(.active) {
+  background: #2a2a2a;
+  color: #e0e0e0;
+}
+
+.tab.active {
+  background: #1a1a1a;
+  color: #fff;
+  border-bottom-color: #5af;
+}
+
+.tab .tab-icon {
+  font-size: 0.95rem;
+}
+
+.tab .tab-label {
+  font-family:
+    ui-monospace,
+    'SF Mono',
+    Menlo,
+    Consolas,
+    monospace;
+}
+
+/* ─── File preview ────────────────────────────────────────────────── */
+
+.file-preview {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: #1a1a1a;
+}
+
+.file-preview-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  background: #232323;
+  border-bottom: 1px solid #2a2a2a;
+  flex-shrink: 0;
+  font-size: 0.8rem;
+}
+
+.file-preview-name {
+  font-family:
+    ui-monospace,
+    'SF Mono',
+    Menlo,
+    Consolas,
+    monospace;
+  color: #cde;
+}
+
+.file-preview-stats {
+  color: #666;
+  font-variant-numeric: tabular-nums;
+}
+
+.file-preview-body {
+  flex: 1;
+  overflow: auto;
+  margin: 0;
+  padding: 0.5rem 0;
+  font-family:
+    ui-monospace,
+    'SF Mono',
+    Menlo,
+    Consolas,
+    monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: #e0e0e0;
+  background: #1a1a1a;
+}
+
+.file-preview-body .line {
+  display: flex;
+  padding: 0 1rem;
+}
+
+.file-preview-body .line:hover {
+  background: #222;
+}
+
+.file-preview-body .line-no {
+  color: #555;
+  margin-right: 1rem;
+  text-align: right;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.file-preview-body .line-text {
+  white-space: pre;
+}
+
 .sidebar {
   width: 260px;
   background: #232323;
@@ -252,12 +397,42 @@ pre {
   font-size: 0.85rem;
 }
 
-.tree-node.folder > .folder-row,
-.tree-node.file {
+.tree-node.folder > .folder-row {
   display: flex;
   align-items: center;
   gap: 0.4rem;
   padding: 0.25rem 1rem;
+}
+
+.tree-node.file .tree-node-button {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 1rem;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.tree-node.file .tree-node-button:hover {
+  background: #2c2c2c;
+}
+
+.tree-node.file.active .tree-node-button {
+  background: #2a3a5a;
+  color: #fff;
+}
+
+.tree-node.file.missing {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 1rem;
+  color: #555;
 }
 
 .tree-node .icon {
