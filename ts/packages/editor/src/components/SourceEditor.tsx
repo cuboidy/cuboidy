@@ -42,25 +42,27 @@ export function SourceEditor({ text, parseError, onChange }: Props) {
         </div>
       )}
       <div className="source-editor-body">
-        <div className="line-gutter" aria-hidden="true">
-          {lines.map((_, i) => (
-            <div
-              key={i}
-              className="line-no"
-              style={{ width: `${gutterChars}ch` }}
-            >
-              {i + 1}
-            </div>
-          ))}
+        <div className="source-editor-content">
+          <div className="line-gutter" aria-hidden="true">
+            {lines.map((_, i) => (
+              <div
+                key={i}
+                className="line-no"
+                style={{ width: `${gutterChars}ch` }}
+              >
+                {i + 1}
+              </div>
+            ))}
+          </div>
+          <textarea
+            className="source-textarea"
+            value={text}
+            rows={Math.max(1, lines.length)}
+            spellCheck={false}
+            wrap="off"
+            onChange={handleChange}
+          />
         </div>
-        <textarea
-          className="source-textarea"
-          value={text}
-          rows={Math.max(20, lines.length)}
-          spellCheck={false}
-          wrap="off"
-          onChange={handleChange}
-        />
       </div>
     </div>
   );

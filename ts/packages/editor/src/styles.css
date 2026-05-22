@@ -339,8 +339,21 @@ pre {
 
 .source-editor-body {
   flex: 1;
-  display: flex;
   overflow: auto;
+  min-height: 0;
+  background: #1a1a1a;
+}
+
+/* `min-height: 100%` makes the content area fill the body even when the
+   file has few lines (so the gutter bg and textarea cover the full
+   editing area, no #1a1a1a void). Long files grow this past 100%, and
+   the body's overflow:auto handles the scroll. Both children sit in
+   `align-items: stretch` (flex default) so they always have the same
+   height — fixes the bug where the gutter ended before the textarea. */
+.source-editor-content {
+  display: flex;
+  align-items: stretch;
+  min-height: 100%;
   font-family:
     ui-monospace,
     'SF Mono',
@@ -349,7 +362,6 @@ pre {
     monospace;
   font-size: 0.85rem;
   line-height: 1.5;
-  background: #1a1a1a;
 }
 
 .line-gutter {
