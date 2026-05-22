@@ -1,4 +1,6 @@
 import { useCallback, useState } from 'react';
+import { serializeCvox, type Cvox } from '@cuboidy/core';
+import { CvoxEditor } from './components/CvoxEditor.js';
 import { ExportMenu } from './components/ExportMenu.js';
 import { FileDropZone } from './components/FileDropZone.js';
 import { FilePreview } from './components/FilePreview.js';
@@ -48,6 +50,25 @@ export function App() {
 
   const handleSelectTab = useCallback((tab: SelectedTab) => {
     setSelectedTab(tab);
+  }, []);
+
+  // Single mutation entrypoint for cvox-tab edits. Updates both the AST
+  // (so 3D scene re-renders) and the cvox file text (so Save / Export
+  // write the new contents). The serialize step canonicalizes — inline
+  // comments and custom whitespace are lost here, per SPEC v0.6 §7.11
+  // (advisory comments). The load-time notice already warned about it.
+  const handleUpdateCvox = useCallback((nextCvox: Cvox) => {
+    setLoaded((current) => {
+      if (current?.source === undefined) return current;
+      const src = current.source;
+      const nextText = serializeCvox(nextCvox);
+      const nextFile = { ...src.cvoxFile, text: nextText };
+      const nextSource: LoadedSource =
+        src.kind === 'cvox-only'
+          ? { ...src, cvox: nextCvox, cvoxFile: nextFile }
+          : { ...src, cvox: nextCvox, cvoxFile: nextFile };
+      return { ...current, source: nextSource };
+    });
   }, []);
 
   const handleToggle = useCallback((name: string) => {
@@ -169,7 +190,7 @@ export function App() {
                   />
                 )}
                 {selectedTab === 'cvox' && (
-                  <FilePreview file={source.cvoxFile} />
+                  <CvoxEditor cvox={source.cvox} onChange={handleUpdateCvox} />
                 )}
                 {selectedTab === 'manifest' &&
                   source.kind === 'folder' &&

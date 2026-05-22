@@ -258,6 +258,149 @@ pre {
     monospace;
 }
 
+/* ─── Cvox editor (palette + future per-part tools) ───────────────── */
+
+.cvox-editor {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem 1.25rem;
+  background: #1a1a1a;
+}
+
+.cvox-editor .section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.cvox-editor .section-header h3 {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #aaa;
+}
+
+.cvox-editor .section-meta {
+  font-size: 0.75rem;
+  color: #666;
+  font-variant-numeric: tabular-nums;
+}
+
+.palette-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  gap: 0.5rem;
+  max-width: 640px;
+}
+
+.palette-swatch {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.swatch-picker {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+}
+
+.swatch-label {
+  position: absolute;
+  top: 0.2rem;
+  left: 0.35rem;
+  font-family:
+    ui-monospace,
+    'SF Mono',
+    Menlo,
+    Consolas,
+    monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+}
+
+.swatch-usage {
+  position: absolute;
+  bottom: 0.2rem;
+  left: 0.35rem;
+  font-size: 0.7rem;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.swatch-delete {
+  position: absolute;
+  top: 0.2rem;
+  right: 0.2rem;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.palette-swatch:hover .swatch-delete:not(:disabled) {
+  opacity: 1;
+}
+
+.swatch-delete:hover:not(:disabled) {
+  background: #a33;
+}
+
+.swatch-delete:disabled {
+  /* In-use swatches: hide the button rather than show a useless x.
+     The persistent usage badge in the corner already explains why. */
+  display: none;
+}
+
+.palette-add {
+  width: 100%;
+  aspect-ratio: 1;
+  background: transparent;
+  border: 1px dashed #3a3a3a;
+  border-radius: 4px;
+  color: #888;
+  cursor: pointer;
+  font: inherit;
+  font-size: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.palette-add:hover {
+  background: #232323;
+  color: #ccc;
+  border-color: #4a4a4a;
+}
+
 /* ─── File preview ────────────────────────────────────────────────── */
 
 .file-preview-body {
