@@ -1,8 +1,13 @@
 import { useCallback, useRef, useState } from 'react';
-import { parseCvox, serializeCvox, type Cvox } from '@cuboidy/core';
+import {
+  parseCvox,
+  parseManifest,
+  serializeCvox,
+  type Cvox,
+  type Manifest,
+} from '@cuboidy/core';
 import { ExportMenu } from './components/ExportMenu.js';
 import { FileDropZone } from './components/FileDropZone.js';
-import { FilePreview } from './components/FilePreview.js';
 import { RightPanel } from './components/RightPanel.js';
 import { SaveButton } from './components/SaveButton.js';
 import { Sidebar } from './components/Sidebar.js';
@@ -34,25 +39,39 @@ export function App() {
   // itself in this state so its re-serialize doesn't clobber the
   // in-progress text.
   const [cvoxParseError, setCvoxParseError] = useState<string | null>(null);
+  // Same role for the manifest source view. Independent timer and
+  // error state, so a broken cvox doesn't block manifest editing
+  // and vice versa.
+  const [manifestParseError, setManifestParseError] = useState<string | null>(null);
 
   // Holds the timeout ID of the pending debounced reparse so we can
   // cancel it whenever new authoritative state arrives (further typing
-  // resets the timer; palette edit pre-empts it entirely).
-  const reparseTimer = useRef<number | null>(null);
+  // resets the timer; structural edit pre-empts it entirely).
+  const reparseCvoxTimer = useRef<number | null>(null);
+  const reparseManifestTimer = useRef<number | null>(null);
 
-  const cancelPendingReparse = useCallback(() => {
-    if (reparseTimer.current !== null) {
-      window.clearTimeout(reparseTimer.current);
-      reparseTimer.current = null;
+  const cancelPendingCvoxReparse = useCallback(() => {
+    if (reparseCvoxTimer.current !== null) {
+      window.clearTimeout(reparseCvoxTimer.current);
+      reparseCvoxTimer.current = null;
+    }
+  }, []);
+
+  const cancelPendingManifestReparse = useCallback(() => {
+    if (reparseManifestTimer.current !== null) {
+      window.clearTimeout(reparseManifestTimer.current);
+      reparseManifestTimer.current = null;
     }
   }, []);
 
   const handleLoad = useCallback(
     (result: LoadResult) => {
-      cancelPendingReparse();
+      cancelPendingCvoxReparse();
+      cancelPendingManifestReparse();
       setLoaded(result);
       setHiddenParts(new Set());
       setCvoxParseError(null);
+      setManifestParseError(null);
       const hasManifest =
         result.source !== undefined &&
         result.source.kind === 'folder' &&
@@ -60,17 +79,19 @@ export function App() {
       setViewMode(hasManifest ? 'rig' : 'cvox');
       setSelectedTab('preview');
     },
-    [cancelPendingReparse],
+    [cancelPendingCvoxReparse, cancelPendingManifestReparse],
   );
 
   const handleReset = useCallback(() => {
-    cancelPendingReparse();
+    cancelPendingCvoxReparse();
+    cancelPendingManifestReparse();
     setLoaded(null);
     setHiddenParts(new Set());
     setCvoxParseError(null);
+    setManifestParseError(null);
     setViewMode('cvox');
     setSelectedTab('preview');
-  }, [cancelPendingReparse]);
+  }, [cancelPendingCvoxReparse, cancelPendingManifestReparse]);
 
   const handleToggle = useCallback((name: string) => {
     setHiddenParts((prev) => {
@@ -96,25 +117,24 @@ export function App() {
     setSelectedTab(tab);
   }, []);
 
-  // Source-text edit (textarea typing). Updates the text immediately so
-  // every keystroke persists; schedules a debounced reparse that
-  // updates the AST when it succeeds. The text remains primary even
-  // while temporarily unparseable — Save / Export still write what the
-  // user typed.
-  const handleEditSourceText = useCallback(
+  // Cvox source-text edit (cvox tab textarea typing). Updates the text
+  // immediately so every keystroke persists; schedules a debounced
+  // reparse that updates the AST when it succeeds. The text remains
+  // primary even while temporarily unparseable — Save / Export still
+  // write what the user typed.
+  const handleEditCvoxText = useCallback(
     (nextText: string) => {
       setLoaded((current) => {
         if (current?.source === undefined) return current;
         const src = current.source;
-        const nextSource: LoadedSource = {
-          ...src,
-          cvoxFile: { ...src.cvoxFile, text: nextText },
+        return {
+          ...current,
+          source: { ...src, cvoxFile: { ...src.cvoxFile, text: nextText } },
         };
-        return { ...current, source: nextSource };
       });
-      cancelPendingReparse();
-      reparseTimer.current = window.setTimeout(() => {
-        reparseTimer.current = null;
+      cancelPendingCvoxReparse();
+      reparseCvoxTimer.current = window.setTimeout(() => {
+        reparseCvoxTimer.current = null;
         const result = parseCvox(nextText);
         if (result.ok) {
           setCvoxParseError(null);
@@ -130,33 +150,103 @@ export function App() {
         }
       }, REPARSE_DEBOUNCE_MS);
     },
-    [cancelPendingReparse],
+    [cancelPendingCvoxReparse],
   );
 
-  // Palette / future structural edit on the AST. Re-serializes to
-  // canonical text immediately and pre-empts any pending reparse
-  // (the new text is by-construction parseable, so we know the
-  // error state is cleared too).
+  // Palette / future structural edit on the cvox AST. Re-serializes to
+  // canonical text immediately and pre-empts any pending reparse (the
+  // new text is by-construction parseable, so we know the error state
+  // is cleared too).
   const handleEditCvox = useCallback(
     (nextCvox: Cvox) => {
-      cancelPendingReparse();
+      cancelPendingCvoxReparse();
       setCvoxParseError(null);
       setLoaded((current) => {
         if (current?.source === undefined) return current;
         const src = current.source;
         const nextText = serializeCvox(nextCvox);
-        const nextSource: LoadedSource = {
-          ...src,
-          cvox: nextCvox,
-          cvoxFile: { ...src.cvoxFile, text: nextText },
+        return {
+          ...current,
+          source: {
+            ...src,
+            cvox: nextCvox,
+            cvoxFile: { ...src.cvoxFile, text: nextText },
+          },
         };
-        return { ...current, source: nextSource };
       });
     },
-    [cancelPendingReparse],
+    [cancelPendingCvoxReparse],
+  );
+
+  // Manifest source-text edit (manifest tab textarea typing). Same
+  // shape as the cvox counterpart but uses JSON.parse + parseManifest.
+  // Folder-only: cvox-only sources have no manifest file to edit.
+  const handleEditManifestText = useCallback(
+    (nextText: string) => {
+      setLoaded((current) => {
+        if (current?.source?.kind !== 'folder') return current;
+        const src = current.source;
+        const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
+        return {
+          ...current,
+          source: { ...src, manifestFile: { ...baseFile, text: nextText } },
+        };
+      });
+      cancelPendingManifestReparse();
+      reparseManifestTimer.current = window.setTimeout(() => {
+        reparseManifestTimer.current = null;
+        let json: unknown;
+        try {
+          json = JSON.parse(nextText);
+        } catch (e) {
+          setManifestParseError(`JSON parse: ${(e as Error).message}`);
+          return;
+        }
+        const result = parseManifest(json);
+        if (result.ok) {
+          setManifestParseError(null);
+          setLoaded((current) => {
+            if (current?.source?.kind !== 'folder') return current;
+            return {
+              ...current,
+              source: { ...current.source, manifest: result.value },
+            };
+          });
+        } else {
+          setManifestParseError(result.message);
+        }
+      }, REPARSE_DEBOUNCE_MS);
+    },
+    [cancelPendingManifestReparse],
+  );
+
+  // Rig section structural edit on the manifest AST. Re-serializes
+  // canonical JSON and pre-empts any pending reparse.
+  const handleEditManifest = useCallback(
+    (nextManifest: Manifest) => {
+      cancelPendingManifestReparse();
+      setManifestParseError(null);
+      setLoaded((current) => {
+        if (current?.source?.kind !== 'folder') return current;
+        const src = current.source;
+        const nextText = JSON.stringify(nextManifest, null, 2) + '\n';
+        const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
+        return {
+          ...current,
+          source: {
+            ...src,
+            manifest: nextManifest,
+            manifestFile: { ...baseFile, text: nextText },
+          },
+        };
+      });
+    },
+    [cancelPendingManifestReparse],
   );
 
   const handleCreateManifest = useCallback(() => {
+    cancelPendingManifestReparse();
+    setManifestParseError(null);
     setLoaded((current) => {
       if (current?.source === undefined) return current;
       const src = current.source;
@@ -183,7 +273,7 @@ export function App() {
       setSelectedTab('preview');
       return { ...current, source: next };
     });
-  }, []);
+  }, [cancelPendingManifestReparse]);
 
   const handleViewModeChange = useCallback((mode: ViewMode) => {
     setViewMode(mode);
@@ -248,13 +338,19 @@ export function App() {
                   <SourceEditor
                     text={source.cvoxFile.text}
                     {...(cvoxParseError !== null && { parseError: cvoxParseError })}
-                    onChange={handleEditSourceText}
+                    onChange={handleEditCvoxText}
                   />
                 )}
                 {selectedTab === 'manifest' &&
                   source.kind === 'folder' &&
                   source.manifestFile !== undefined && (
-                    <FilePreview file={source.manifestFile} />
+                    <SourceEditor
+                      text={source.manifestFile.text}
+                      {...(manifestParseError !== null && {
+                        parseError: manifestParseError,
+                      })}
+                      onChange={handleEditManifestText}
+                    />
                   )}
               </div>
             </div>
@@ -262,6 +358,12 @@ export function App() {
               cvox={source.cvox}
               cvoxEditsDisabled={cvoxParseError !== null}
               onCvoxChange={handleEditCvox}
+              {...(source.kind === 'folder' &&
+                source.manifest !== undefined && {
+                  manifest: source.manifest,
+                  manifestEditsDisabled: manifestParseError !== null,
+                  onManifestChange: handleEditManifest,
+                })}
             />
           </>
         ) : (

@@ -307,6 +307,165 @@ pre {
   line-height: 1.4;
 }
 
+/* ─── Rig section (manifest part editor in right panel) ───────────── */
+
+.rig-section {
+  padding: 0.75rem 1rem 1rem;
+  border-top: 1px solid #3a3a3a;
+}
+
+.rig-section.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.rig-section .panel-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.rig-section .panel-header h3 {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #aaa;
+}
+
+.rig-section .panel-meta {
+  font-size: 0.75rem;
+  color: #666;
+  font-variant-numeric: tabular-nums;
+}
+
+.rig-section .panel-note {
+  font-size: 0.75rem;
+  color: #fc8;
+  margin-bottom: 0.5rem;
+  line-height: 1.4;
+}
+
+.rig-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.rig-row {
+  padding: 0.4rem 0.5rem;
+  background: #1f1f1f;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.rig-row-name {
+  font-family:
+    ui-monospace,
+    'SF Mono',
+    Menlo,
+    Consolas,
+    monospace;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #cde;
+}
+
+.rig-field {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+}
+
+.rig-field-label {
+  color: #888;
+  flex-shrink: 0;
+}
+
+.rig-field select {
+  flex: 1;
+  background: #2a2a2a;
+  color: #e0e0e0;
+  border: 1px solid #3a3a3a;
+  border-radius: 3px;
+  padding: 0.15rem 0.3rem;
+  font: inherit;
+  font-family:
+    ui-monospace,
+    'SF Mono',
+    Menlo,
+    Consolas,
+    monospace;
+}
+
+.rig-field select:disabled {
+  cursor: not-allowed;
+}
+
+.rig-position {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.rig-pos-input {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.75rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.rig-pos-axis {
+  color: #888;
+  font-family:
+    ui-monospace,
+    'SF Mono',
+    Menlo,
+    Consolas,
+    monospace;
+  flex-shrink: 0;
+}
+
+.rig-pos-input input {
+  flex: 1;
+  min-width: 0;
+  background: #2a2a2a;
+  color: #e0e0e0;
+  border: 1px solid #3a3a3a;
+  border-radius: 3px;
+  padding: 0.15rem 0.3rem;
+  font: inherit;
+  font-family:
+    ui-monospace,
+    'SF Mono',
+    Menlo,
+    Consolas,
+    monospace;
+  font-variant-numeric: tabular-nums;
+  /* Hide native spinner buttons — they steal width and look bad in
+     a dense panel. Users can still type or scroll-wheel-adjust. */
+  -moz-appearance: textfield;
+}
+
+.rig-pos-input input::-webkit-outer-spin-button,
+.rig-pos-input input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.rig-pos-input input:disabled {
+  cursor: not-allowed;
+}
+
 /* ─── Source editor (cvox tab textarea) ───────────────────────────── */
 
 .source-editor {
