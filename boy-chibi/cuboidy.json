@@ -1,0 +1,34 @@
+{
+  "name": "boy-chibi",
+  "parts": [
+    { "name": "body",  "position": [0, 3, 0] },
+    { "name": "head",  "parent": "body", "position": [0, 3, 0] },
+    { "name": "arm-l", "parent": "body", "position": [-2, 3, 0] },
+    { "name": "arm-r", "parent": "body", "position": [2, 3, 0] },
+    { "name": "leg-l", "parent": "body", "position": [0, 0, 0] },
+    { "name": "leg-r", "parent": "body", "position": [0, 0, 0] }
+  ],
+  "animations": {
+    "idle": {
+      "duration": 1.6,
+      "loop": true,
+      "parts": {
+        "head": {
+          "0.0": { "rot": [0, 0, 0] },
+          "0.8": { "rot": [6, 0, 0] },
+          "1.6": { "rot": [0, 0, 0] }
+        },
+        "arm-l": {
+          "0.0": { "rot": [0, 0, 0] },
+          "0.8": { "rot": [8, 0, 0] },
+          "1.6": { "rot": [0, 0, 0] }
+        },
+        "arm-r": {
+          "0.0": { "rot": [0, 0, 0] },
+          "0.8": { "rot": [-8, 0, 0] },
+          "1.6": { "rot": [0, 0, 0] }
+        }
+      }
+    }
+  }
+}
