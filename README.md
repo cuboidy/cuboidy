@@ -69,6 +69,7 @@ my-model.cuboidy        packed package (ZIP of the folder above)
 Models live under `models/`:
 
 - `models/wolf/` — multi-part rig (body / head / tail / four legs) with idle animation, sockets for `hat` and `mouth`
+- `models/cat/` — quadruped with pointy ears, vertical tail, and belly markings; idle tail-twitch animation
 - `models/crown/` — single-part static accessory, designed to attach to wolf's `hat` socket
 - `models/boy/`, `models/girl/` — humanoid rigs (head / body / arms / legs) in standard, `-chibi`, and `-mini` proportions
 

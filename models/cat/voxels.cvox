@@ -1,0 +1,111 @@
+// cat — quadruped with pointy ears, vertical tail, white belly
+// palette: 0=fur (dark gray) 1=belly (cream) 2=eyes (yellow)
+palette #5C5448 #E8DECB #F5C842
+
+part body
+    size 5 3 5
+    pivot 2 0 3
+    voxels {
+        11111
+        11111
+        11111
+        11111
+        11111
+        ,
+        00000
+        00000
+        00000
+        00000
+        00000
+        ,
+        00000
+        00000
+        00000
+        00000
+        00000
+    }
+
+part head
+    size 5 5 5
+    pivot 2 0 5
+    socket hat 2 5 2
+    voxels {
+        00000
+        00000
+        00000
+        00000
+        00000
+        ,
+        02020
+        00000
+        00000
+        00000
+        00000
+        ,
+        00000
+        00000
+        00000
+        00000
+        00000
+        ,
+        00000
+        00000
+        00000
+        00000
+        00000
+        ,
+        .....
+        0...0
+        0...0
+        .....
+        .....
+    }
+
+part tail
+    size 1 4 1
+    pivot 0 0 0
+    voxels {
+        0
+        ,
+        0
+        ,
+        0
+        ,
+        0
+    }
+
+part leg-fl
+    size 1 2 1
+    pivot 0 2 0
+    voxels {
+        0
+        ,
+        0
+    }
+
+part leg-fr
+    size 1 2 1
+    pivot 0 2 0
+    voxels {
+        0
+        ,
+        0
+    }
+
+part leg-bl
+    size 1 2 1
+    pivot 0 2 0
+    voxels {
+        0
+        ,
+        0
+    }
+
+part leg-br
+    size 1 2 1
+    pivot 0 2 0
+    voxels {
+        0
+        ,
+        0
+    }
