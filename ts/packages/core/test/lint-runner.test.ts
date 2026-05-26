@@ -24,13 +24,13 @@ async function makeModel(files: Record<string, string>): Promise<string> {
 
 describe('runLint — fixture parity (exit 0)', () => {
   it('wolf model lints clean', async () => {
-    const r = await runLint(resolve(REPO_ROOT, 'wolf'));
+    const r = await runLint(resolve(REPO_ROOT, 'models/wolf'));
     expect(r.diagnostics).toEqual([]);
     expect(r.exitCode).toBe(0);
   });
 
   it('crown model lints clean', async () => {
-    const r = await runLint(resolve(REPO_ROOT, 'crown'));
+    const r = await runLint(resolve(REPO_ROOT, 'models/crown'));
     expect(r.diagnostics).toEqual([]);
     expect(r.exitCode).toBe(0);
   });

@@ -3,8 +3,8 @@ import { parseManifest } from '../src/manifest.js';
 import { readFixtureJson } from './helpers/fixtures.js';
 
 describe('parseManifest', () => {
-  it('parses wolf/cuboidy.json', async () => {
-    const json = await readFixtureJson('wolf/cuboidy.json');
+  it('parses models/wolf/cuboidy.json', async () => {
+    const json = await readFixtureJson('models/wolf/cuboidy.json');
     const r = parseManifest(json);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
@@ -15,7 +15,7 @@ describe('parseManifest', () => {
     expect(m.parts[0]?.name).toBe('body');
     expect(m.parts[1]?.name).toBe('head');
     expect(m.parts[1]?.parent).toBe('body');
-    expect(m.parts[1]?.position).toEqual([0, 3, -5]);
+    expect(m.parts[1]?.position).toEqual([0, 3, -3]);
     expect(m.parts.map((p) => p.name)).toEqual([
       'body',
       'head',
@@ -28,8 +28,8 @@ describe('parseManifest', () => {
     expect(m.animations?.['idle']).toBeDefined();
   });
 
-  it('parses crown/cuboidy.json', async () => {
-    const json = await readFixtureJson('crown/cuboidy.json');
+  it('parses models/crown/cuboidy.json', async () => {
+    const json = await readFixtureJson('models/crown/cuboidy.json');
     const r = parseManifest(json);
     expect(r.ok).toBe(true);
     if (!r.ok) return;

@@ -22,17 +22,17 @@ function manifestOrThrow(json: unknown) {
 
 describe('validateCrossFile', () => {
   it('reports no diagnostics for wolf', async () => {
-    const { manifest, voxelDef } = await loadModel('wolf');
+    const { manifest, voxelDef } = await loadModel('models/wolf');
     expect(validateCrossFile(manifest, voxelDef)).toEqual([]);
   });
 
   it('reports no diagnostics for crown', async () => {
-    const { manifest, voxelDef } = await loadModel('crown');
+    const { manifest, voxelDef } = await loadModel('models/crown');
     expect(validateCrossFile(manifest, voxelDef)).toEqual([]);
   });
 
   it('X01: error when manifest references a part missing from voxels', async () => {
-    const { voxelDef } = await loadModel('wolf');
+    const { voxelDef } = await loadModel('models/wolf');
     // Include every wolf part so the only cross-file delta is the extra
     // `tongue` — keeps this test focused on the X01 code path.
     const manifest = manifestOrThrow({
@@ -56,7 +56,7 @@ describe('validateCrossFile', () => {
   });
 
   it('X02: warning when voxels define a part not in manifest', async () => {
-    const { voxelDef } = await loadModel('wolf');
+    const { voxelDef } = await loadModel('models/wolf');
     // Manifest omits only `tail`; every other wolf part is present so the
     // diagnostic set narrows to the single X02 we want to assert on.
     const manifest = manifestOrThrow({
@@ -78,7 +78,7 @@ describe('validateCrossFile', () => {
   });
 
   it('reports both X01 and X02 when present', async () => {
-    const { voxelDef } = await loadModel('wolf');
+    const { voxelDef } = await loadModel('models/wolf');
     // Manifest is missing two wolf parts (head, tail) AND introduces an
     // unknown `wing` — so we expect 1 X01 (`missing`) + 2 X02 (`unknown`).
     const manifest = manifestOrThrow({

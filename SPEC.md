@@ -664,13 +664,13 @@ Rules:
 - URLs (`http://`, `https://`, `file://`) are forbidden
 - `namespace:key` URIs are forbidden (the format has no registry)
 
-Examples (assuming reference is from `wolf/cuboidy.json`):
+Examples (assuming reference is from `models/wolf/cuboidy.json`):
 
 | Path | Resolves to |
 |---|---|
-| `anims/walk.json` | `wolf/anims/walk.json` |
-| `./anims/walk.json` | `wolf/anims/walk.json` |
-| `../shared/walk.json` | `shared/walk.json` |
+| `anims/walk.json` | `models/wolf/anims/walk.json` |
+| `./anims/walk.json` | `models/wolf/anims/walk.json` |
+| `../shared/walk.json` | `models/shared/walk.json` |
 
 Reference cycles (a → b → a) are an error.
 
@@ -815,8 +815,9 @@ A conformant implementation that reports a different code than this precedence i
 
 The reference repository includes:
 
-- `wolf/` — three-part rigged model (body / head / tail) with idle animation and sockets (`hat`, `mouth`)
-- `crown/` — single-part static accessory designed to attach to `wolf` via the `head:hat` socket
+- `models/wolf/` — multi-part rigged model (body / head / tail / four legs) with idle animation and sockets (`hat`, `mouth`)
+- `models/crown/` — single-part static accessory designed to attach to `wolf` via the `head:hat` socket
+- `models/boy/`, `models/girl/` (plus `-chibi`, `-mini` variants) — humanoid rigs
 
 Both pass all v0.3 lint rules at error level.
 

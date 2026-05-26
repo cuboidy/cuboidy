@@ -5,7 +5,7 @@ import { readFixtureText } from './helpers/fixtures.js';
 describe('parseCvox (v0.3 voxels block grammar)', () => {
   describe('positive', () => {
     it('parses wolf/voxels.cvox', async () => {
-      const text = await readFixtureText('wolf/voxels.cvox');
+      const text = await readFixtureText('models/wolf/voxels.cvox');
       const r = parseCvox(text);
       expect(r.ok).toBe(true);
       if (!r.ok) return;
@@ -33,7 +33,7 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
     });
 
     it('parses crown/voxels.cvox', async () => {
-      const text = await readFixtureText('crown/voxels.cvox');
+      const text = await readFixtureText('models/crown/voxels.cvox');
       const r = parseCvox(text);
       expect(r.ok).toBe(true);
       if (!r.ok) return;

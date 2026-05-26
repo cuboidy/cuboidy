@@ -56,11 +56,11 @@ describe('cuboidy.schema.json — validation parity with parseManifest', () => {
   }
 
   it('accepts wolf/cuboidy.json', async () => {
-    await expectParity('wolf', 'wolf/cuboidy.json');
+    await expectParity('wolf', 'models/wolf/cuboidy.json');
   });
 
   it('accepts crown/cuboidy.json', async () => {
-    await expectParity('crown', 'crown/cuboidy.json');
+    await expectParity('crown', 'models/crown/cuboidy.json');
   });
 
   it('rejects fixtures/json/missing/name.json', async () => {

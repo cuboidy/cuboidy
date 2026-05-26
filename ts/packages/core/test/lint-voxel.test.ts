@@ -176,13 +176,13 @@ describe('lintCvox — H02 fractional pivot', () => {
 
 describe('lintCvox — fixture parity', () => {
   it('wolf model produces no lint diagnostics', async () => {
-    const text = await readFixtureText('wolf/voxels.cvox');
+    const text = await readFixtureText('models/wolf/voxels.cvox');
     const cvox = unwrap(text);
     expect(lintCvox(cvox)).toEqual([]);
   });
 
   it('crown model produces no lint diagnostics', async () => {
-    const text = await readFixtureText('crown/voxels.cvox');
+    const text = await readFixtureText('models/crown/voxels.cvox');
     const cvox = unwrap(text);
     expect(lintCvox(cvox)).toEqual([]);
   });

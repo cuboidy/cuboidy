@@ -130,7 +130,7 @@ describe('serializeCvox — round-trip', () => {
   it('round-trips the wolf model', async () => {
     const fs = await import('node:fs/promises');
     const text = await fs.readFile(
-      new URL('../../../../wolf/voxels.cvox', import.meta.url),
+      new URL('../../../../models/wolf/voxels.cvox', import.meta.url),
       'utf-8',
     );
     roundTrip(text);
@@ -139,7 +139,7 @@ describe('serializeCvox — round-trip', () => {
   it('round-trips the crown model', async () => {
     const fs = await import('node:fs/promises');
     const text = await fs.readFile(
-      new URL('../../../../crown/voxels.cvox', import.meta.url),
+      new URL('../../../../models/crown/voxels.cvox', import.meta.url),
       'utf-8',
     );
     roundTrip(text);
@@ -189,7 +189,7 @@ describe('serializeCvox — idempotence (canonical fixed point)', () => {
   it('is idempotent for the wolf model', async () => {
     const fs = await import('node:fs/promises');
     const text = await fs.readFile(
-      new URL('../../../../wolf/voxels.cvox', import.meta.url),
+      new URL('../../../../models/wolf/voxels.cvox', import.meta.url),
       'utf-8',
     );
     expectIdempotent(text);

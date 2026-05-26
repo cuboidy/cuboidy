@@ -66,8 +66,11 @@ my-model.cuboidy        packed package (ZIP of the folder above)
 
 ## Examples
 
-- `wolf/` — three-part rig (body / head / tail) with idle animation, sockets for `hat` and `mouth`
-- `crown/` — single-part static accessory, designed to attach to wolf's `hat` socket
+Models live under `models/`:
+
+- `models/wolf/` — multi-part rig (body / head / tail / four legs) with idle animation, sockets for `hat` and `mouth`
+- `models/crown/` — single-part static accessory, designed to attach to wolf's `hat` socket
+- `models/boy/`, `models/girl/` — humanoid rigs (head / body / arms / legs) in standard, `-chibi`, and `-mini` proportions
 
 ## Token efficiency
 

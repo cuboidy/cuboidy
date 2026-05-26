@@ -6,8 +6,8 @@
 //   - <name>.min.json   — minified JSON (lower bound)
 //
 // The CVOX serializer here is intentionally simple — it produces the same
-// shape as the existing fixtures in wolf/ and crown/, including indented
-// metadata and a voxels { ... } block with one row per line.
+// shape as the existing fixtures in models/wolf/ and models/crown/, including
+// indented metadata and a voxels { ... } block with one row per line.
 
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
