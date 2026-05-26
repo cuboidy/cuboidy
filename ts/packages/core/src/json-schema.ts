@@ -47,7 +47,7 @@ export function buildManifestJsonSchema(): Record<string, unknown> {
     $id: 'https://cuboidy.com/schema/cuboidy.schema.json',
     title: 'Cuboidy Manifest',
     description:
-      'Schema for cuboidy.json — the manifest file of a Cuboidy v0.5 model package (rig hierarchy + animation references). Generated from the Zod ManifestSchema in @cuboidy/core.',
+      'Schema for cuboidy.json — the manifest file of a Cuboidy v0.6 model package (rig hierarchy + animation references). Generated from the Zod ManifestSchema in @cuboidy/core.',
     ...constrained,
   };
 }

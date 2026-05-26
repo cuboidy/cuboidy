@@ -46,7 +46,7 @@ Cuboidy is **not** a triangle-mesh format. It does not specify skin weights, UV 
 | **Cuboidy model** (or **package**) | A single asset, stored as a folder |
 | **Manifest** | `cuboidy.json` — rig hierarchy and animations |
 | **Voxel definition** | `voxels.cvox` — shape, palette, pivot, sockets |
-| **Packed Cuboidy** | `<name>.cuboidy` — ZIP archive of the package (reserved; not specified in v0.3) |
+| **Packed Cuboidy** | `<name>.cuboidy` — ZIP archive of the package (reserved; not specified in v0.6) |
 | **Part** | A rigid voxel sub-object, optionally parented in the hierarchy |
 | **Socket** | A named attachment point on a part |
 | **Keyframe** | A time-indexed pose snapshot for an animated part |
@@ -81,7 +81,7 @@ Cuboidy uses a **right-handed coordinate system**:
 
 This matches glTF, USD, Blender, and Three.js. Unity-based consumers negate the Z axis on load.
 
-Rotations are **Euler angles in degrees**, applied in **ZXY intrinsic order** (the convention used by Unity's Inspector).
+Rotations are **Euler angles in degrees**, applied in **ZXY intrinsic order**. Positive rotation follows the right-hand rule around each positive axis: looking along the positive axis toward the origin, positive angles rotate counter-clockwise. The Unity Inspector uses the same ZXY intrinsic order, but Unity consumers MUST still convert handedness by negating Z-space as noted above.
 
 All coordinates are in **voxel units**. Fractional values are allowed everywhere (positions, pivots, rotations, scale, time). Voxels are not required to align on integer boundaries.
 
@@ -122,7 +122,7 @@ The manifest is a standard JSON document (no comments, no trailing commas).
 ```json
 {
   "name": "<identifier>",
-  "version": "0.3",
+  "version": "0.6",
   "parts": [ ... ],
   "animations": { ... }
 }
@@ -131,7 +131,7 @@ The manifest is a standard JSON document (no comments, no trailing commas).
 | Field | Required | Type | Notes |
 |---|---|---|---|
 | `name` | **yes** | string (identifier) | Model identifier |
-| `version` | no | string | Spec version this model targets. Absent → `"0.3"` |
+| `version` | no | string | Spec version this model targets. Absent → the current spec version (`"0.6"` in this draft) |
 | `parts` | **yes** | array (non-empty) | At least one part |
 | `animations` | no | object | Map from animation name to definition. Absent → no animations |
 
@@ -156,6 +156,7 @@ Rules:
 - Multiple root parts (parts with no `parent`) are permitted.
 - The `parts` array may be in any order; the parser resolves the hierarchy in a second pass.
 - `parent` must refer to another part in the same model.
+- A part MUST NOT name itself as its parent; this is a one-node cycle.
 - Cycles in the parent chain are an error.
 
 Per-part shape, pivot, and sockets live in `voxels.cvox`, not here. See §7.
@@ -193,7 +194,7 @@ Per-part shape, pivot, and sockets live in `voxels.cvox`, not here. See §7.
 | Field | Required | Type | Notes |
 |---|---|---|---|
 | `duration` | **yes** | number | Animation length in seconds. Must be ≥ the largest time key |
-| `loop` | **yes** | bool | If `true`, animation restarts seamlessly after `duration` |
+| `loop` | **yes** | bool | If `true`, sampling wraps after `duration`; see §6.7 |
 | `parts` | **yes** | object | Map from part name to keyframe sequence. May be empty (no part animates) |
 
 ### 6.5 Keyframe values
@@ -202,7 +203,7 @@ Per-part shape, pivot, and sockets live in `voxels.cvox`, not here. See §7.
 |---|---|---|---|
 | `rot` | `[rx, ry, rz]` Euler degrees | **Relative** to rest pose rotation (the part's `pivot.rot` if present, else identity). Composed with `pivot.rot` as described in §7.7 | `[0, 0, 0]` |
 | `pos` | `[dx, dy, dz]` voxel units | **Delta** added to `part.position` | `[0, 0, 0]` |
-| `scale` | `[sx, sy, sz]` multipliers | **Multiplier** from rest scale (`[1,1,1]`). Per-axis, non-uniform allowed | `[1, 1, 1]` |
+| `scale` | `[sx, sy, sz]` multipliers | **Multiplier** from rest scale (`[1,1,1]`). Per-axis, non-uniform allowed. Applied around the same pivot point as `rot` | `[1, 1, 1]` |
 | `visible` | bool | Visibility toggle | `true` |
 
 #### Carryover
@@ -236,6 +237,13 @@ Between consecutive keyframes:
 - `rot`, `pos`, `scale` are **linearly interpolated**
 - `visible` uses **step** interpolation: the value at the later keyframe takes effect at that keyframe's time
 
+Sampling outside the explicitly keyed intervals is defined as follows:
+
+- For `loop: false`, values after the last keyframe are held until `duration`; sampling after `duration` clamps to `duration`
+- For `loop: true`, sampling time wraps modulo `duration`
+- If `loop: true` and a part's last keyframe time is less than `duration`, the interval from that last keyframe to `duration` interpolates toward the `"0.0"` keyframe
+- If `loop: true` and a part has a keyframe exactly at `duration`, that keyframe is the end value of the final interval before wrap; authors SHOULD make it equal to `"0.0"` for a continuous loop. Sampling exactly at `duration` is equivalent to sampling at `"0.0"`
+
 Custom easing curves are reserved for future spec versions.
 
 ### 6.8 Missing parts
@@ -256,7 +264,7 @@ A plain-text file. Lexing uses a two-layer model (§7.1), parsing is recursive-d
 
 ### 7.1 Lexical structure
 
-Cuboidy's lexer emits tokens with one of two **kinds**: `bare` (whitespace-delimited) and `string` (a `"..."` literal). In v0.5 cvox grammar all slots — identifier (§7.5, §7.8), numeric (`size`, `pivot`, `socket` pos/rot), and color (`palette`) — accept only `bare`; any string-kind token surfaces as `invalid-value`. The string kind is preserved at the lexer layer for future extensibility but has no role in current productions. Within the bare-kind subset, the lexer recognises one unified category — **reserved tokens** — split by syntactic shape into two sub-categories. Both stop argument collection (§7.2), neither participates in identifier slots, and together they are the only bare tokens with grammatical significance outside of voxel data.
+Cuboidy's lexer emits tokens with one of two **kinds**: `bare` (whitespace-delimited) and `string` (a `"..."` literal). In v0.6 cvox grammar all slots — identifier (§7.5, §7.8), numeric (`size`, `pivot`, `socket` pos/rot), and color (`palette`) — accept only `bare`; any string-kind token surfaces as `invalid-value`. The string kind is preserved at the lexer layer for future extensibility but has no role in current productions. Within the bare-kind subset, the lexer recognises one unified category — **reserved tokens** — split by syntactic shape into two sub-categories. Both stop argument collection (§7.2), neither participates in identifier slots, and together they are the only bare tokens with grammatical significance outside of voxel data.
 
 **Reserved punctuation — universal scope** (always recognized as 1-character tokens, anywhere in the file):
 
@@ -292,7 +300,7 @@ The framework generalizes naturally: each block-introducing keyword (currently `
 
 ### 7.1.1 Token table
 
-Every token has a **kind**: `bare` (whitespace-delimited; covers all cvox identifier slots and value slots) or `string` (a `"..."` literal). The string-kind is preserved at the lexer level for future extensibility, but no v0.5 production accepts it — every identifier, number, and color slot expects bare. Encountering a string-kind token in any slot surfaces as `invalid-value`. The patterns below describe the *text* of a token after kind-classification.
+Every token has a **kind**: `bare` (whitespace-delimited; covers all cvox identifier slots and value slots) or `string` (a `"..."` literal). The string-kind is preserved at the lexer level for future extensibility, but no v0.6 production accepts it — every identifier, number, and color slot expects bare. Encountering a string-kind token in any slot surfaces as `invalid-value`. The patterns below describe the *text* of a token after kind-classification.
 
 | Token | Kind | Pattern | Example |
 |---|---|---|---|
@@ -302,7 +310,7 @@ Every token has a **kind**: `bare` (whitespace-delimited; covers all cvox identi
 | **Number** | bare | integer or decimal, optional leading `-` (no exponent, no leading `.`) | `3`, `1.5`, `-2` |
 | **Voxel row** | bare | `[.0-9a-zA-Z]+` (only inside `voxels { … }`; length must equal `W`) | `000`, `0.0`, `101` |
 | **Identifier** | bare | §5 identifier rule (regex + not a reserved keyword); used for part/socket names | `head`, `leg-fl` |
-| **String literal** | string | `"` … `"` on a single line, content `[^"\n]*`. Text excludes the surrounding quotes. No v0.5 production accepts string-kind — reserved at the lexer layer for future use. | `"reserved"` |
+| **String literal** | string | `"` … `"` on a single line, content `[^"\n]*`. Text excludes the surrounding quotes. No v0.6 production accepts string-kind — reserved at the lexer layer for future use. | `"reserved"` |
 
 The `"..."` literal must open and close on the same physical line; the lexer does not match a `"` across a newline. An unmatched opening `"` is a **lexical error** — the tokenizer returns `invalid-value` immediately with a location pointing at the unmatched `"`, rather than producing an ambiguous partial token stream.
 
@@ -326,11 +334,12 @@ palette-decl := "palette" color+
 color        := "#" (3 | 4 | 6 | 8) hex-digits
 
 part         := "part" identifier
-                (size-decl | pivot-decl | socket-decl | voxels-block)+
+                (palette-decl | size-decl | pivot-decl | socket-decl | voxels-block)+
                                               (any order; size exactly once;
                                                voxels exactly once;
                                                pivot at most once;
-                                               sockets any count)
+                                               sockets any count;
+                                               palette remains file-level)
 
 size-decl    := "size" int int int
 pivot-decl   := "pivot" num num num ("rot" num num num)?
@@ -359,9 +368,9 @@ Tokens are separated by any whitespace (space, tab, newline) or by the reserved 
 
 Concretely: `part rot` pulls 1 token whose text is `rot`, but `rot` is rejected by §5 `isIdentifier` (reserved-keyword guard), so the part header surfaces as `invalid-value`. `size 1 1 1 9` pulls 3 ints, sets the size, and leaves `9` for the main loop to diagnose as `unknown`. The §5 reserved-keyword rule is what makes "reserved tokens are not valid identifiers" enforceable at the identifier slot — no separate lexical guard is needed.
 
-**`palette` mid-part.** The `palette` keyword is file-level (§7.5): it may appear anywhere in the file, including inside the textual span of a `part` section. It does **not** close the surrounding part — the part remains open after the `palette` declaration is consumed. The grammar above shows `part := "part" identifier (size-decl | pivot-decl | socket-decl | voxels-block)+`, but a reader MUST accept a `palette-decl` interleaved into that sequence without closing the part. This special-case applies only to `palette`; all other top-level statement starters (`part`) close the surrounding part.
+**`palette` mid-part.** The `palette` keyword is file-level (§7.5): it may appear anywhere in the file, including inside the textual span of a `part` section. It does **not** close the surrounding part — the part remains open after the `palette` declaration is consumed. The grammar above includes `palette-decl` in the part-content alternatives only to express this textual interleaving rule; semantically the palette still belongs to the file, not to the surrounding part. This special-case applies only to `palette`; all other top-level statement starters (`part`) close the surrounding part.
 
-### 7.3 Reserved tokens (v0.3)
+### 7.3 Reserved tokens
 
 The reserved-token set is **flat** — there is no concept of "sub-keyword". It has two sub-categories distinguished only by syntactic shape; both share the property "stops argument collection (§7.2) and never appears in an identifier slot".
 
@@ -461,7 +470,7 @@ pivot <x> <y> <z> rot <rx> <ry> <rz>
 - Optional. Default: position bottom-center, `[W/2, 0, D/2]`; rotation absent (identity)
 - Position coordinates in **part-local space**, voxel units; may be fractional; may lie outside the grid bounds (W01 lint warning, not error)
 - Optional rotation: 3 Euler angles in degrees, ZXY intrinsic order (§4), introduced by the reserved word `rot` (structurally valid here and in `socket` declarations per §7.3)
-- **Semantic** (interpretation A — Rest pose rotation): when an animation is not active, the part is rendered with this rotation applied around its pivot position. When an animation is active, the animated rotation is composed with the pivot rotation. Using matrix-vector convention with column vectors, a part-local point `v_local` lands at `v_parent = part.position + pivot.pos + M_pivot · M_anim · (v_local − pivot.pos)`, where `M_pivot` and `M_anim` are the rotation matrices for `pivot.rot` and the animated keyframe rotation. Equivalently in quaternion form: `q_total = q_pivot · q_anim` (the animation rotation is applied first, in the rest-pose-local frame, then the pivot rotation brings it to the rest orientation)
+- **Semantic** (rest pose transform): `part.position` is the parent-space position of this part's pivot (§6.2), while `pivot.pos` is the same pivot point in part-local space. With matrix-vector convention and column vectors, a part-local point `v_local` lands at `v_parent = part.position + anim.pos + M_pivot · M_anim · S_anim · (v_local − pivot.pos)`, where `anim.pos` is the current keyframe `pos` delta, `M_pivot` is the rotation matrix for `pivot.rot` (identity when absent), `M_anim` is the animated rotation matrix, and `S_anim` is the animated scale matrix. Rotation and scale are both applied around `pivot.pos`; no `+ pivot.pos` term is added after the transform because `part.position` already names the pivot's destination in parent space. Equivalently in quaternion form for rotation: `q_total = q_pivot · q_anim` (the animation rotation is applied first, in the rest-pose-local frame, then the pivot rotation brings it to the rest orientation)
 - Two arities are valid at the library-level `parsePivot(args)` API: 3 args (position only) or 7 args (position + `rot` + rotation). 4–6 or 8+ args is `wrong-arity`; 7 args without the `rot` marker as the 4th token is `invalid-value`
 - Under integrated `parseCvox()` parsing of the token stream, the parser consumes exactly 3 tokens (then 3 more iff the next token is `rot`). Tokens beyond that boundary are not stolen by the pivot declaration — they fall through to the main token loop and are diagnosed by §11.8 (typically `invalid-value` if numeric, `unknown` if a non-keyword identifier). A user writing `pivot 1 0 1 5` will therefore see `invalid-value` or `unknown`, not `wrong-arity`; the library-level `parsePivot()` is the entry point that enforces strict arity
 
@@ -475,8 +484,9 @@ socket <identifier> <x> <y> <z> rot <rx> <ry> <rz>
 - Zero or more per part
 - Name slot accepts only a `bare`-kind token; content must satisfy the §5 identifier rule (regex + not a reserved keyword)
 - Position in part-local space, voxel units (fractional allowed)
-- Optional rotation: Euler degrees, ZXY order, default `[0, 0, 0]`
+- Optional rotation: Euler degrees, ZXY intrinsic order and right-hand sign convention (§4), default `[0, 0, 0]`
 - Socket name unique within a part
+- A socket defines an attachment frame on the host part. Its origin is `socket.pos` in the host part's local space after the host part's own pivot transform has been applied. Its orientation is the host part's current orientation composed with `socket.rot`. An attached child asset is placed so the child's root pivot coincides with the socket origin; per-attachment offsets and scale overrides are reserved for future versions.
 
 ### 7.9 `voxels` block
 
@@ -492,7 +502,7 @@ voxels {
 
 - **Exactly one** `voxels` block per part (missing → `missing`; duplicate → `duplicate`)
 - The block contains H comma-separated **layer-sections**, one per Y-layer index in order
-- The i-th section (0-based) becomes layer `i`. Layer indices are **positional** — there is no `layer N` keyword in v0.3
+- The i-th section (0-based) becomes layer `i`. Layer indices are **positional** — there is no `layer N` keyword in the current grammar
 - Each layer-section contains exactly D voxel-row tokens (less or more → `wrong-arity`)
 - Whitespace inside the block is purely cosmetic — rows can be inline, multi-line, or mixed; the entire block can be on one line (`voxels { 000 000 000 , .0. 000 .0. }`)
 - **Leading and trailing `,` and consecutive `,,` create empty layer-sections.** `voxels { , 0 }` produces 2 sections (the first with 0 rows); `voxels { 0 , }` produces 2 sections (the second with 0 rows); `voxels { , }` produces 2 empty sections. These are syntactically well-formed but fail at assembly with `wrong-arity` unless `D = 0` (which the spec disallows: `size` dimensions are in `[1, 1024]` per §7.6, so empty sections always fail). The writer's canonical form omits leading/trailing/consecutive commas
@@ -540,7 +550,7 @@ voxels {
 }
 ```
 
-- A `//` sequence anywhere on a line starts a comment; the comment extends to the end of that line
+- A `//` sequence anywhere on a line starts a comment; the comment extends to the end of that line. This rule is applied before string-kind token recognition, so `"foo // bar"` is treated as an unterminated string after comment stripping in v0.6. Future versions that assign semantics to strings MUST define string-aware comment handling before enabling such strings in grammar productions
 - **Universal scope** (§7.1 Layer 1): comments work in every scope, including inside `voxels { … }` blocks. They are stripped by the tokenizer before any scope-aware parsing
 - No whitespace context is required around `//`; the `/` character does not appear in any valid Cuboidy token, so `//` cannot collide with data
 - Note: color literals (`#FFFFFF`) use `#`, not `//`, and are unrelated to comments
@@ -647,7 +657,7 @@ part demo
     }
 ```
 
-All four are valid Cuboidy v0.5 input. (Note: a part literally named after a reserved keyword like `part part` is not expressible — v0.4 allowed this via quoting, but v0.5's strengthened identifier rule rejects reserved keywords in identifier slots. Pick a non-reserved name.)
+All four are valid Cuboidy v0.6 input. (Note: a part literally named after a reserved keyword like `part part` is not expressible — v0.4 allowed this via quoting, but v0.5's strengthened identifier rule rejects reserved keywords in identifier slots. Pick a non-reserved name.)
 
 ---
 
@@ -691,7 +701,7 @@ Reference cycles (a → b → a) are an error.
 | `cuboidy.json` | part `position` | `[0, 0, 0]` |
 | `cuboidy.json` | part `parent` | absent → root |
 | `cuboidy.json` | `animations` | absent → no animations |
-| `cuboidy.json` | `version` | absent → `"0.3"` |
+| `cuboidy.json` | `version` | absent → current spec version (`"0.6"` in this draft) |
 | Keyframe (first) | `rot` | `[0, 0, 0]` |
 | Keyframe (first) | `pos` | `[0, 0, 0]` |
 | Keyframe (first) | `scale` | `[1, 1, 1]` |
@@ -716,7 +726,7 @@ A Cuboidy package is **well-formed** if it passes all error-level rules.
 
 ### 11.2 Diagnostic codes (structural)
 
-v0.3 uses **five structural codes** to describe errors. The code names what *kind* of structural violation occurred; the message text names *what specifically* — which keyword, which field, which line. Implementations MUST use these exact code strings so that cross-language parity tests can compare outputs by code alone.
+Cuboidy uses **five structural codes** to describe errors. The code names what *kind* of structural violation occurred; the message text names *what specifically* — which keyword, which field, which line. Implementations MUST use these exact code strings so that cross-language parity tests can compare outputs by code alone.
 
 | Code | Meaning | Voxel-definition examples |
 |---|---|---|
@@ -819,11 +829,11 @@ The reference repository includes:
 - `models/crown/` — single-part static accessory designed to attach to `wolf` via the `head:hat` socket
 - `models/boy/`, `models/girl/` (plus `-chibi`, `-mini` variants) — humanoid rigs
 
-Both pass all v0.3 lint rules at error level.
+All reference examples pass the current lint rules at error level.
 
 ---
 
-## 13. Future extensions (out of scope for v0.3)
+## 13. Future extensions (out of scope for v0.6)
 
 - **Packed format**: `<name>.cuboidy` (ZIP archive of the package)
 - **External palette references**: share palettes across models, avoiding per-model duplication

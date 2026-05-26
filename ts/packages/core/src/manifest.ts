@@ -104,7 +104,7 @@ function mapIssueToCode(
   if (issue.code === 'unrecognized_keys') return 'unknown';
 
   // Fallback: anything else (wrong type, bad identifier, etc.) is treated
-  // as a value error. SPEC v0.3 may split this further as manifest
+  // as a value error. The SPEC may split this further as manifest
   // validation grows (parent cycle, animation refs, etc.).
   return 'invalid-value';
 }

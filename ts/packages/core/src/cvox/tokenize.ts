@@ -6,7 +6,7 @@ import { stripComment } from './comment.js';
 //                §7.3), reserved punctuation (`{` `}` `,`), color literals,
 //                numbers, voxel rows, and identifiers.
 //   - `string` : a quoted string literal `"..."`. The `text` field carries
-//                the content without the surrounding quotes. No v0.5
+//                the content without the surrounding quotes. No v0.6
 //                cvox production accepts string-kind in a slot — they
 //                surface as `invalid-value`. The kind is preserved at
 //                the lexer level for future use.
