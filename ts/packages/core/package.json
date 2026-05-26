@@ -13,7 +13,8 @@
     }
   },
   "bin": {
-    "cuboidy-lint": "./dist/cli/cuboidy-lint.js"
+    "cuboidy-lint": "./dist/cli/cuboidy-lint.js",
+    "cuboidy-view": "./dist/cli/cuboidy-view.js"
   },
   "files": [
     "dist",
