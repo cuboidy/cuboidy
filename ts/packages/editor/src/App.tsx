@@ -1,10 +1,11 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   parseCvox,
   parseManifest,
   serializeCvox,
   type Cvox,
   type Manifest,
+  type ManifestPart,
 } from '@cuboidy/core';
 import { ExportMenu } from './components/ExportMenu.js';
 import { FileDropZone } from './components/FileDropZone.js';
@@ -34,6 +35,11 @@ export function App() {
   const [hiddenParts, setHiddenParts] = useState<ReadonlySet<string>>(new Set());
   const [viewMode, setViewMode] = useState<ViewMode>('cvox');
   const [selectedTab, setSelectedTab] = useState<SelectedTab>('preview');
+  // Selected part for the right-panel inspector. Null = nothing
+  // selected (right panel hides the properties section). Pruned at
+  // render time if the name no longer exists in cvox.parts so stale
+  // selections after source edits don't leak through.
+  const [selectedPartName, setSelectedPartName] = useState<string | null>(null);
   // Live parse error on the cvox source text. Non-null only while the
   // user's currently-typed text doesn't parse. Palette panel disables
   // itself in this state so its re-serialize doesn't clobber the
@@ -70,6 +76,7 @@ export function App() {
       cancelPendingManifestReparse();
       setLoaded(result);
       setHiddenParts(new Set());
+      setSelectedPartName(null);
       setCvoxParseError(null);
       setManifestParseError(null);
       const hasManifest =
@@ -87,6 +94,7 @@ export function App() {
     cancelPendingManifestReparse();
     setLoaded(null);
     setHiddenParts(new Set());
+    setSelectedPartName(null);
     setCvoxParseError(null);
     setManifestParseError(null);
     setViewMode('cvox');
@@ -220,15 +228,28 @@ export function App() {
     [cancelPendingManifestReparse],
   );
 
-  // Rig section structural edit on the manifest AST. Re-serializes
-  // canonical JSON and pre-empts any pending reparse.
-  const handleEditManifest = useCallback(
-    (nextManifest: Manifest) => {
-      cancelPendingManifestReparse();
-      setManifestParseError(null);
+  // Single-part edits coming from PartTree (D&D parent change) and
+  // PartProperties (parent dropdown, position inputs). Both funnel
+  // into a small manifest mutation that ensures an entry exists for
+  // the affected part, re-serializes the manifest text, and clears
+  // any stale parse-error state.
+  //
+  // No-ops when no manifest is loaded — the UI disables both entry
+  // points in that case, but the defensive guard keeps a runtime
+  // error from racing source-tab edits that drop the manifest.
+  const mutateManifestPart = useCallback(
+    (partName: string, build: (entry: ManifestPart) => ManifestPart) => {
       setLoaded((current) => {
         if (current?.source?.kind !== 'folder') return current;
         const src = current.source;
+        if (src.manifest === undefined) return current;
+        const parts = src.manifest.parts.slice();
+        const i = parts.findIndex((p) => p.name === partName);
+        const base: ManifestPart = i >= 0 ? parts[i]! : { name: partName };
+        const next = build(base);
+        if (i >= 0) parts[i] = next;
+        else parts.push(next);
+        const nextManifest: Manifest = { ...src.manifest, parts };
         const nextText = JSON.stringify(nextManifest, null, 2) + '\n';
         const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
         return {
@@ -240,8 +261,35 @@ export function App() {
           },
         };
       });
+      cancelPendingManifestReparse();
+      setManifestParseError(null);
     },
     [cancelPendingManifestReparse],
+  );
+
+  const handleChangePartParent = useCallback(
+    (partName: string, parent: string | null) => {
+      mutateManifestPart(partName, (entry) => {
+        if (parent === null) {
+          const { parent: _drop, ...rest } = entry;
+          return rest;
+        }
+        return { ...entry, parent };
+      });
+    },
+    [mutateManifestPart],
+  );
+
+  const handleChangePartPosition = useCallback(
+    (partName: string, axis: 0 | 1 | 2, value: number) => {
+      mutateManifestPart(partName, (entry) => {
+        const cur = entry.position ?? [0, 0, 0];
+        const next: [number, number, number] = [cur[0], cur[1], cur[2]];
+        next[axis] = value;
+        return { ...entry, position: next };
+      });
+    },
+    [mutateManifestPart],
   );
 
   const handleCreateManifest = useCallback(() => {
@@ -283,6 +331,17 @@ export function App() {
   const rigAvailable =
     source !== undefined && source.kind === 'folder' && source.manifest !== undefined;
 
+  // Prune a selection that points at a part the cvox no longer
+  // contains (e.g., user edited the source view to remove it). Done
+  // at render time rather than via effect so downstream components
+  // never see the dangling name even for one frame.
+  const effectiveSelectedPart = useMemo(() => {
+    if (selectedPartName === null || source === undefined) return null;
+    return source.cvox.parts.some((p) => p.name === selectedPartName)
+      ? selectedPartName
+      : null;
+  }, [selectedPartName, source]);
+
   return (
     <div className="app">
       <header className="header">
@@ -311,10 +370,13 @@ export function App() {
               source={source}
               selectedTab={selectedTab}
               hiddenParts={hiddenParts}
+              selectedPart={effectiveSelectedPart}
               onSelectTab={handleSelectTab}
+              onSelectPart={setSelectedPartName}
               onToggle={handleToggle}
               onShowAll={handleShowAll}
               onHideAll={handleHideAll}
+              onChangePartParent={handleChangePartParent}
               onCreateManifest={handleCreateManifest}
             />
             <div className="main-pane">
@@ -358,11 +420,14 @@ export function App() {
               cvox={source.cvox}
               cvoxEditsDisabled={cvoxParseError !== null}
               onCvoxChange={handleEditCvox}
+              selectedPart={effectiveSelectedPart}
+              manifestEditsDisabled={manifestParseError !== null}
+              onChangePartParent={handleChangePartParent}
+              onChangePartPosition={handleChangePartPosition}
+              onCreateManifest={handleCreateManifest}
               {...(source.kind === 'folder' &&
                 source.manifest !== undefined && {
                   manifest: source.manifest,
-                  manifestEditsDisabled: manifestParseError !== null,
-                  onManifestChange: handleEditManifest,
                 })}
             />
           </>
