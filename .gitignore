@@ -11,6 +11,9 @@ desktop.ini
 *.swo
 *~
 
+# Per-user AI assistant config
+CLAUDE.md
+
 # Build / dependency outputs (reserved for future tooling)
 bin/
 obj/
