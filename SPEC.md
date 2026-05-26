@@ -149,7 +149,7 @@ The manifest is a standard JSON document (no comments, no trailing commas).
 |---|---|---|---|
 | `name` | **yes** | string (identifier) | Unique within model |
 | `parent` | no | string (identifier) | Another part's name. Absent → this part is a root |
-| `position` | no | `[number, number, number]` | Where this part's pivot sits in parent space (voxel units). Default `[0, 0, 0]` |
+| `position` | no | `[number, number, number]` | Where this part's pivot sits in **parent space** — voxel-unit offset from the parent's pivot (root parts: offset from world origin). Default `[0, 0, 0]` (this part's pivot coincides with the parent's pivot). See §7.7 for the full transform semantics |
 
 Rules:
 
@@ -158,6 +158,8 @@ Rules:
 - `parent` must refer to another part in the same model.
 - A part MUST NOT name itself as its parent; this is a one-node cycle.
 - Cycles in the parent chain are an error.
+
+**Parent space is pivot-centered, not voxel-grid-centered.** A child's `position` is interpreted relative to the parent's *pivot*, not the corner of the parent's voxel grid. Moving a parent's pivot (e.g. by editing `pivot` in `voxels.cvox`) does **not** shift the children — the parent's voxels translate relative to the pivot, and the children stay attached at their pivot-relative offsets. This is the standard rig convention shared with glTF, Mixamo, and Minecraft Bedrock geometry.
 
 Per-part shape, pivot, and sockets live in `voxels.cvox`, not here. See §7.
 
@@ -470,7 +472,16 @@ pivot <x> <y> <z> rot <rx> <ry> <rz>
 - Optional. Default: position bottom-center, `[W/2, 0, D/2]`; rotation absent (identity)
 - Position coordinates in **part-local space**, voxel units; may be fractional; may lie outside the grid bounds (W01 lint warning, not error)
 - Optional rotation: 3 Euler angles in degrees, ZXY intrinsic order (§4), introduced by the reserved word `rot` (structurally valid here and in `socket` declarations per §7.3)
-- **Semantic** (rest pose transform): `part.position` is the parent-space position of this part's pivot (§6.2), while `pivot.pos` is the same pivot point in part-local space. With matrix-vector convention and column vectors, a part-local point `v_local` lands at `v_parent = part.position + anim.pos + M_pivot · M_anim · S_anim · (v_local − pivot.pos)`, where `anim.pos` is the current keyframe `pos` delta, `M_pivot` is the rotation matrix for `pivot.rot` (identity when absent), `M_anim` is the animated rotation matrix, and `S_anim` is the animated scale matrix. Rotation and scale are both applied around `pivot.pos`; no `+ pivot.pos` term is added after the transform because `part.position` already names the pivot's destination in parent space. Equivalently in quaternion form for rotation: `q_total = q_pivot · q_anim` (the animation rotation is applied first, in the rest-pose-local frame, then the pivot rotation brings it to the rest orientation)
+- **Semantic** (rest pose transform): `part.position` is the parent-space position of this part's pivot (§6.2), while `pivot.pos` is the same pivot point in part-local space. **Parent space is the coordinate frame whose origin coincides with the parent's pivot** (for a root part, parent space is world space). This is the standard rig convention — children attach to the parent's pivot, not to the corner of the parent's voxel grid. With matrix-vector convention and column vectors, a part-local point `v_local` lands at `v_parent = part.position + anim.pos + M_pivot · M_anim · S_anim · (v_local − pivot.pos)`, where `anim.pos` is the current keyframe `pos` delta, `M_pivot` is the rotation matrix for `pivot.rot` (identity when absent), `M_anim` is the animated rotation matrix, and `S_anim` is the animated scale matrix. Rotation and scale are both applied around `pivot.pos`; no `+ pivot.pos` term is added after the transform because `part.position` already names the pivot's destination in parent space — and crucially, no `− parent.pivot.pos` term appears either, because parent space is *already* parent-pivot-centered (see hierarchy composition below). Equivalently in quaternion form for rotation: `q_total = q_pivot · q_anim` (the animation rotation is applied first, in the rest-pose-local frame, then the pivot rotation brings it to the rest orientation)
+- **Hierarchy composition** (rest pose, no rotation/scale): because `v_parent` is already in parent-pivot-centered coordinates, composing through the parent chain is a plain sum of `position` values; the part's own pivot is subtracted exactly once at the leaf, and no ancestor's pivot ever appears:
+
+  ```
+  v_world = Σ ancestor.position  +  (v_local − part.pivot.pos)
+            └ root → … → part ┘
+  ```
+
+  Concretely, for a head parented to a body (no grandparent), a head voxel `v_local` lands at `body.position + head.position + (v_local − head.pivot.pos)`. The `body.pivot.pos` value does **not** appear — it controlled where body's *voxels* sit relative to body's origin, but the head's `position` is already specified relative to that same origin.
+- **Worked example**: body declares `size 5 4 8` with default `pivot 2.5 0 4` (bottom-center) and manifest `"position": [0, 4, 0]`. Head declares `size 5 5 5` with `pivot 2.5 0 5` (back-bottom-center, so the pivot is the connection point at the back of the head), parented to body with `"position": [0, 4, -4]`. Then: body's pivot sits at world `(0, 4, 0)`; head's pivot sits at world `(0, 4, 0) + (0, 4, -4) = (0, 8, -4)` — directly above body's pivot and 4 units forward (−Z). The head's back-bottom-center voxel `(2.5, 0, 5)` lands at world `(0, 8, -4) + ((2.5, 0, 5) − (2.5, 0, 5)) = (0, 8, -4)` ✓ (the pivot lands where `position` names). The head's front-left-bottom voxel `(0, 0, 0)` lands at world `(0, 8, -4) + ((0, 0, 0) − (2.5, 0, 5)) = (−2.5, 8, −9)`. Body's `pivot.pos = (2.5, 0, 4)` never enters either calculation
 - Two arities are valid at the library-level `parsePivot(args)` API: 3 args (position only) or 7 args (position + `rot` + rotation). 4–6 or 8+ args is `wrong-arity`; 7 args without the `rot` marker as the 4th token is `invalid-value`
 - Under integrated `parseCvox()` parsing of the token stream, the parser consumes exactly 3 tokens (then 3 more iff the next token is `rot`). Tokens beyond that boundary are not stolen by the pivot declaration — they fall through to the main token loop and are diagnosed by §11.8 (typically `invalid-value` if numeric, `unknown` if a non-keyword identifier). A user writing `pivot 1 0 1 5` will therefore see `invalid-value` or `unknown`, not `wrong-arity`; the library-level `parsePivot()` is the entry point that enforces strict arity
 
