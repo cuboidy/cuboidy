@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
-import type { Cvox, Manifest, ManifestPart } from '@cuboidy/core';
+import type { Cvox, Manifest, ManifestPart, Part } from '@cuboidy/core';
 import type { ViewMode } from '../lib/types.js';
 import { PartMesh } from './PartMesh.js';
 
@@ -80,14 +80,20 @@ export function VoxelScene({ cvox, manifest, viewMode, hiddenParts }: Props) {
   );
 }
 
-// Computes a position offset for each part. Cvox view returns [0,0,0]
-// for all parts (origin-stacked). Rig view walks the manifest parent
-// chain and accumulates positions.
+// Computes the rendering offset for each part (the world-space position
+// that goes into <group position={...}>). Cvox view returns [0,0,0] for
+// all parts (origin-stacked). Rig view walks the manifest parent chain.
 //
-// Manifest position semantics (SPEC §3.3, §4): a part's `position` is
-// its placement RELATIVE TO ITS PARENT'S ORIGIN. Walking parent→child
-// and summing positions gives the world-space placement. Parts without
-// a parent (root parts) place their position directly in world space.
+// SPEC §6.2: a part's `position` is where its **pivot** sits in the
+// parent's local space. The pivot is a point in the part's voxel-grid
+// coordinates (SPEC §7.7) — not always at the voxel-grid origin. So
+// world pivot for this part = parent world pivot + part.position, and
+// the rendering origin (the corner where voxel [0,0,0] sits in world)
+// is `world pivot − part.pivot`.
+//
+// Parts missing from the manifest fall back to origin (cross-file lint
+// warns separately). Memoize world pivots so shared ancestors are
+// resolved once per render.
 function computePartPositions(
   cvox: Cvox,
   manifest: Manifest | undefined,
@@ -98,38 +104,38 @@ function computePartPositions(
     for (const p of cvox.parts) out.set(p.name, [0, 0, 0]);
     return out;
   }
-  // Build name → manifest part index.
   const mpByName = new Map<string, ManifestPart>();
   for (const mp of manifest.parts) mpByName.set(mp.name, mp);
+  const partByName = new Map<string, Part>();
+  for (const p of cvox.parts) partByName.set(p.name, p);
 
-  // Resolve each part's world position via parent-chain accumulation.
-  // Memoize to avoid recomputing shared ancestors. Parts missing from
-  // the manifest fall back to origin (cross-file lint warns separately).
-  const resolved = new Map<string, [number, number, number]>();
-  const resolve = (name: string): [number, number, number] => {
-    const cached = resolved.get(name);
+  const worldPivots = new Map<string, [number, number, number]>();
+  const resolveWorldPivot = (name: string): [number, number, number] => {
+    const cached = worldPivots.get(name);
     if (cached !== undefined) return cached;
     const mp = mpByName.get(name);
     if (mp === undefined) {
       const zero: [number, number, number] = [0, 0, 0];
-      resolved.set(name, zero);
+      worldPivots.set(name, zero);
       return zero;
     }
     const local = mp.position ?? [0, 0, 0];
+    let wp: [number, number, number];
     if (mp.parent === undefined) {
-      resolved.set(name, [local[0], local[1], local[2]]);
-      return [local[0], local[1], local[2]];
+      wp = [local[0], local[1], local[2]];
+    } else {
+      const parent = resolveWorldPivot(mp.parent);
+      wp = [parent[0] + local[0], parent[1] + local[1], parent[2] + local[2]];
     }
-    const parentPos = resolve(mp.parent);
-    const world: [number, number, number] = [
-      parentPos[0] + local[0],
-      parentPos[1] + local[1],
-      parentPos[2] + local[2],
-    ];
-    resolved.set(name, world);
-    return world;
+    worldPivots.set(name, wp);
+    return wp;
   };
-  for (const p of cvox.parts) out.set(p.name, resolve(p.name));
+
+  for (const p of cvox.parts) {
+    const wp = resolveWorldPivot(p.name);
+    const piv = p.pivot.pos;
+    out.set(p.name, [wp[0] - piv.x, wp[1] - piv.y, wp[2] - piv.z]);
+  }
   return out;
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "crown",
   "parts": [
-    { "name": "crown", "position": [0, 0, 0] }
+    { "name": "crown", "position": [1, 0, 1] }
   ]
 }
