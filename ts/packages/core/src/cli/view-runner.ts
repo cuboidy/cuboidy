@@ -1,10 +1,11 @@
-import { readFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
-import { parseCvox } from '../cvox/parse.js';
-import { parseManifest } from '../manifest.js';
-import type { Manifest, ManifestPart } from '../manifest.js';
-import type { Cvox, Part, Palette, Vec3 } from '../cvox/types.js';
+import type { Palette } from '../cvox/types.js';
 import { AIR, indexToChar } from '../cvox/voxel-row.js';
+import {
+  loadAndAssemble,
+  parseCoordKey,
+  type Assembly,
+  type BBox,
+} from './assemble.js';
 
 // cuboidy-view: assemble a model in rest pose, project to 2D from one or
 // more cardinal view directions, and emit each view as a grid of palette
@@ -25,9 +26,13 @@ import { AIR, indexToChar } from '../cvox/voxel-row.js';
 // applied — this tool renders the assembled rest pose with translation
 // only. A part declaring `pivot ... rot ...` emits a warning and the
 // rotation is ignored.
-
-const VOXELS_FILE = 'voxels.cvox';
-const MANIFEST_FILE = 'cuboidy.json';
+//
+// Fractional world coordinates (which arise when a part's pivot or
+// position contains 0.5-style offsets) are **snapped to the integer
+// grid at projection time** via Math.round. Two voxels that round to
+// the same screen cell collide; the front-most wins by depth. When
+// this happens, the header carries a `half-voxel detected` notice so
+// the LLM consumer can switch to cuboidy-query for exact lookups.
 
 export const VIEW_NAMES = ['front', 'back', 'left', 'right', 'top', 'bottom'] as const;
 export type ViewName = (typeof VIEW_NAMES)[number];
@@ -45,32 +50,11 @@ export async function runView(
   dir: string,
   opts: ViewOptions,
 ): Promise<RunResult> {
-  const root = resolve(dir);
-  const voxelsPath = join(root, VOXELS_FILE);
-  const manifestPath = join(root, MANIFEST_FILE);
-
-  const voxelsText = await tryReadText(voxelsPath);
-  if (voxelsText === null) {
-    return fail(`cannot read ${voxelsPath}`, 2);
+  const loaded = await loadAndAssemble(dir);
+  if (!loaded.ok) {
+    return fail(loaded.message, loaded.exitCode);
   }
-  const manifestText = await tryReadText(manifestPath);
-  if (manifestText === null) {
-    return fail(`cannot read ${manifestPath}`, 2);
-  }
-
-  let manifestJson: unknown;
-  try {
-    manifestJson = JSON.parse(manifestText);
-  } catch (e) {
-    return fail(`${manifestPath}: JSON parse: ${(e as Error).message}`, 1);
-  }
-  const mR = parseManifest(manifestJson);
-  if (!mR.ok) return fail(`${manifestPath}: ${mR.message}`, 1);
-
-  const cR = parseCvox(voxelsText);
-  if (!cR.ok) return fail(`${voxelsPath}: ${cR.message}`, 1);
-
-  return renderModel(mR.value, cR.value, opts);
+  return renderModel(loaded.assembly, opts);
 }
 
 function fail(message: string, exitCode: 1 | 2): RunResult {
@@ -85,70 +69,36 @@ interface WorldCell {
   Z: number;
 }
 
-interface BBox {
-  minX: number;
-  maxX: number;
-  minY: number;
-  maxY: number;
-  minZ: number;
-  maxZ: number;
-}
-
-interface Assembly {
-  grid: Map<string, number>; // "X,Y,Z" → palette index
-  bbox: BBox;
-  warnings: string[];
-}
-
-function renderModel(
-  manifest: Manifest,
-  cvox: Cvox,
-  opts: ViewOptions,
-): RunResult {
-  const orderResult = topoSortParts(manifest);
-  if ('error' in orderResult) {
-    return fail(`${MANIFEST_FILE}: ${orderResult.error}`, 1);
-  }
-
-  const cvoxByName = new Map<string, Part>();
-  for (const p of cvox.parts) cvoxByName.set(p.name, p);
-
-  const warnings: string[] = [];
-  const worldPositions = new Map<string, Vec3>();
-  for (const mp of orderResult.order) {
-    const local = mp.position ?? [0, 0, 0];
-    let base: Vec3 = { x: 0, y: 0, z: 0 };
-    if (mp.parent !== undefined) {
-      const parent = worldPositions.get(mp.parent);
-      if (parent === undefined) {
-        // topoSort already validated parent existence; this is unreachable.
-        return fail(`internal: parent "${mp.parent}" missing in world-position map`, 1);
-      }
-      base = parent;
-    }
-    worldPositions.set(mp.name, {
-      x: base.x + local[0],
-      y: base.y + local[1],
-      z: base.z + local[2],
-    });
-  }
-
-  const assembly = assembleWorld(orderResult.order, cvoxByName, worldPositions, warnings);
-  if (assembly.grid.size === 0) {
+function renderModel(asm: Assembly, opts: ViewOptions): RunResult {
+  if (asm.grid.size === 0) {
     return fail('model has no visible voxels (all AIR or no parts assembled)', 1);
   }
 
+  // Snap the fractional bbox to the integer grid the projection works
+  // on. minX/Y/Z floor, maxX/Y/Z ceil — this guarantees every voxel
+  // after rounding lands inside the screen extent.
+  const intBBox: BBox = {
+    minX: Math.floor(asm.bbox.minX), maxX: Math.ceil(asm.bbox.maxX),
+    minY: Math.floor(asm.bbox.minY), maxY: Math.ceil(asm.bbox.maxY),
+    minZ: Math.floor(asm.bbox.minZ), maxZ: Math.ceil(asm.bbox.maxZ),
+  };
+
   const out: string[] = [];
-  out.push(`model: ${manifest.name}`);
-  out.push(`parts: ${orderResult.order.map((p) => p.name).join(' ')}`);
-  out.push(formatBBox(assembly.bbox));
+  out.push(`model: ${asm.manifest.name}`);
+  out.push(`parts: ${asm.order.map((p) => p.name).join(' ')}`);
+  out.push(formatBBox(intBBox));
+  if (asm.hasFractional) {
+    out.push(
+      'note: half-voxel offsets present; this projection snaps to the integer grid (use cuboidy-query for exact lookups)',
+    );
+  }
   out.push('');
-  if (cvox.header) {
+  if (asm.cvox.header) {
     out.push('header (from voxels.cvox):');
-    for (const line of cvox.header) out.push('  ' + line);
+    for (const line of asm.cvox.header) out.push('  ' + line);
     out.push('');
   }
-  out.push(formatPalette(cvox.palette));
+  out.push(formatPalette(asm.cvox.palette));
   out.push('');
   out.push('voxel cell legend: each character is the palette index of the front-most voxel along the view direction; `.` = empty');
   out.push('');
@@ -156,70 +106,14 @@ function renderModel(
   for (const view of opts.views) {
     out.push(`--- ${view} ---`);
     out.push(viewDescription(view));
-    const grid2d = projectView(assembly, view);
+    const grid2d = projectView(asm, intBBox, view);
     for (const row of grid2d) out.push(row);
     out.push('');
   }
 
-  for (const w of warnings) out.push(`warning: ${w}`);
+  for (const w of asm.warnings) out.push(`warning: ${w}`);
 
   return { text: out.join('\n'), exitCode: 0 };
-}
-
-function assembleWorld(
-  order: readonly ManifestPart[],
-  cvoxByName: ReadonlyMap<string, Part>,
-  worldPositions: ReadonlyMap<string, Vec3>,
-  warnings: string[],
-): Assembly {
-  const grid = new Map<string, number>();
-  const bbox: BBox = {
-    minX: Infinity, maxX: -Infinity,
-    minY: Infinity, maxY: -Infinity,
-    minZ: Infinity, maxZ: -Infinity,
-  };
-
-  for (const mp of order) {
-    const part = cvoxByName.get(mp.name);
-    if (part === undefined) {
-      warnings.push(`part "${mp.name}" in manifest has no matching cvox part — skipping`);
-      continue;
-    }
-    if (part.pivot.rot !== undefined) {
-      warnings.push(`part "${mp.name}" has pivot rotation; rotation is ignored in this tool`);
-    }
-    const wp = worldPositions.get(mp.name)!;
-    const px = part.pivot.pos.x;
-    const py = part.pivot.pos.y;
-    const pz = part.pivot.pos.z;
-    const { w, h, d } = part.size;
-    for (let y = 0; y < h; y++) {
-      const layer = part.voxels[y]!;
-      for (let z = 0; z < d; z++) {
-        const row = layer[z]!;
-        for (let x = 0; x < w; x++) {
-          const idx = row[x]!;
-          if (idx === AIR) continue;
-          // Snap fractional pivots/positions to the integer world grid.
-          // Math.round rounds .5 toward +∞ (JS spec), which is fine for
-          // visualization — the resulting image may be off by a cell on
-          // half-voxel pivots but stays deterministic.
-          const wx = Math.round(wp.x + x - px);
-          const wy = Math.round(wp.y + y - py);
-          const wz = Math.round(wp.z + z - pz);
-          grid.set(`${wx},${wy},${wz}`, idx);
-          if (wx < bbox.minX) bbox.minX = wx;
-          if (wx > bbox.maxX) bbox.maxX = wx;
-          if (wy < bbox.minY) bbox.minY = wy;
-          if (wy > bbox.maxY) bbox.maxY = wy;
-          if (wz < bbox.minZ) bbox.minZ = wz;
-          if (wz > bbox.maxZ) bbox.maxZ = wz;
-        }
-      }
-    }
-  }
-
-  return { grid, bbox, warnings };
 }
 
 // --- view projection -------------------------------------------------------
@@ -288,18 +182,18 @@ function viewDescription(view: ViewName): string {
   }
 }
 
-function projectView(asm: Assembly, view: ViewName): string[] {
+function projectView(asm: Assembly, intBBox: BBox, view: ViewName): string[] {
   const proj = PROJECTIONS[view];
-  const { bbox, grid } = asm;
 
   // Screen bbox: project each of the 8 world bbox corners. The screen
   // bbox is rectangular, so corners suffice to find min/max in each
-  // screen axis.
+  // screen axis. We use the *integer* bbox so the screen extent is an
+  // integer cell count even when assembly bbox is fractional.
   let minSx = Infinity, maxSx = -Infinity;
   let minSy = Infinity, maxSy = -Infinity;
-  for (const X of [bbox.minX, bbox.maxX]) {
-    for (const Y of [bbox.minY, bbox.maxY]) {
-      for (const Z of [bbox.minZ, bbox.maxZ]) {
+  for (const X of [intBBox.minX, intBBox.maxX]) {
+    for (const Y of [intBBox.minY, intBBox.maxY]) {
+      for (const Z of [intBBox.minZ, intBBox.maxZ]) {
         const c = { X, Y, Z };
         const sx = proj.sx(c);
         const sy = proj.sy(c);
@@ -317,9 +211,17 @@ function projectView(asm: Assembly, view: ViewName): string[] {
   const winners: number[] = new Array(width * height).fill(AIR);
   const depths: number[] = new Array(width * height).fill(Infinity);
 
-  for (const [key, idx] of grid) {
-    const [Xs, Ys, Zs] = key.split(',');
-    const c: WorldCell = { X: Number(Xs), Y: Number(Ys), Z: Number(Zs) };
+  for (const [key, idx] of asm.grid) {
+    const frac = parseCoordKey(key);
+    // Snap fractional world coords to the integer grid. Math.round
+    // rounds .5 toward +∞ (JS spec); deterministic and adequate for
+    // visualization. The cost is collisions at half-voxel offsets,
+    // which is exactly why cuboidy-query exists.
+    const c: WorldCell = {
+      X: Math.round(frac.x),
+      Y: Math.round(frac.y),
+      Z: Math.round(frac.z),
+    };
     const sx = proj.sx(c) - minSx;
     const sy = proj.sy(c) - minSy;
     const d = proj.d(c);
@@ -343,46 +245,6 @@ function projectView(asm: Assembly, view: ViewName): string[] {
 }
 
 // --- helpers ---------------------------------------------------------------
-
-interface TopoResult {
-  order: ManifestPart[];
-}
-
-function topoSortParts(manifest: Manifest): TopoResult | { error: string } {
-  const byName = new Map<string, ManifestPart>();
-  for (const p of manifest.parts) {
-    if (byName.has(p.name)) {
-      return { error: `duplicate part name "${p.name}"` };
-    }
-    byName.set(p.name, p);
-  }
-
-  const visited = new Set<string>();
-  const visiting = new Set<string>();
-  const order: ManifestPart[] = [];
-
-  function visit(name: string): string | null {
-    if (visited.has(name)) return null;
-    if (visiting.has(name)) return `cycle detected involving part "${name}"`;
-    const p = byName.get(name);
-    if (!p) return `unknown part "${name}" referenced as parent`;
-    visiting.add(name);
-    if (p.parent !== undefined) {
-      const e = visit(p.parent);
-      if (e) return e;
-    }
-    visiting.delete(name);
-    visited.add(name);
-    order.push(p);
-    return null;
-  }
-
-  for (const p of manifest.parts) {
-    const e = visit(p.name);
-    if (e) return { error: e };
-  }
-  return { order };
-}
 
 function formatBBox(b: BBox): string {
   return (
@@ -410,12 +272,4 @@ function formatPalette(palette: Palette): string {
 
 function toHex(n: number): string {
   return n.toString(16).padStart(2, '0').toUpperCase();
-}
-
-async function tryReadText(path: string): Promise<string | null> {
-  try {
-    return await readFile(path, 'utf-8');
-  } catch {
-    return null;
-  }
 }
