@@ -61,8 +61,8 @@ export function VoxelScene({ cvox, manifest, viewMode, hiddenParts }: Props) {
       camera={{ position: [radius, radius, radius], fov: 50 }}
       shadows={false}
     >
-      <ambientLight intensity={0.5} />
-      <directionalLight position={[10, 20, 10]} intensity={0.8} />
+      <ambientLight intensity={0.8} />
+      <directionalLight position={[10, 20, 10]} intensity={1.0} />
       <gridHelper
         args={[gridSize, gridSize]}
         position={[gridSize / 2, 0, gridSize / 2]}
