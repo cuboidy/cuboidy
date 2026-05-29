@@ -16,6 +16,9 @@ export type {
   Vec3,
 } from './cvox/types.js';
 
+export { buildMesh } from './mesh.js';
+export type { MeshData } from './mesh.js';
+
 export { validateCrossFile } from './lint/cross-file.js';
 export { lintCvox } from './lint/voxel-rules.js';
 export type { Diagnostic, LintRuleId, Severity } from './diagnostic.js';
