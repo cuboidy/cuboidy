@@ -1,0 +1,141 @@
+import { describe, expect, it } from 'vitest';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+import { mkdtemp, writeFile, mkdir, readdir, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import {
+  DEFAULT_ANGLES,
+  DEFAULTS,
+  renderSnapshots,
+  runSnap,
+  type SnapOptions,
+} from '../src/cli/snap-runner.js';
+import { loadAndAssemble } from '../src/cli/assemble.js';
+
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
+const CROWN = resolve(REPO_ROOT, 'models/crown');
+
+const PNG_SIG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+function isPng(buf: Buffer): boolean {
+  return PNG_SIG.every((b, i) => buf[i] === b);
+}
+
+function pngDims(buf: Buffer): { width: number; height: number } {
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+}
+
+function opts(over: Partial<SnapOptions> = {}): SnapOptions {
+  return {
+    angles: DEFAULT_ANGLES,
+    tileSize: 64,
+    ss: 1,
+    bg: DEFAULTS.bg,
+    cols: 4,
+    sheet: true,
+    individual: true,
+    outDir: '(unused)',
+    ...over,
+  };
+}
+
+async function makeModel(files: Record<string, string>): Promise<string> {
+  const dir = await mkdtemp(resolve(tmpdir(), 'cuboidy-snap-test-'));
+  for (const [name, content] of Object.entries(files)) {
+    const path = resolve(dir, name);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, content, 'utf-8');
+  }
+  return dir;
+}
+
+describe('renderSnapshots — crown model', () => {
+  it('renders one valid PNG per angle plus a contact sheet', async () => {
+    const loaded = await loadAndAssemble(CROWN);
+    expect(loaded.ok).toBe(true);
+    if (!loaded.ok) return;
+
+    const out = renderSnapshots(loaded.assembly, opts());
+    expect(out.tiles).toHaveLength(DEFAULT_ANGLES.length);
+    for (const tile of out.tiles) {
+      expect(isPng(tile.png)).toBe(true);
+      expect(pngDims(tile.png)).toEqual({ width: 64, height: 64 });
+    }
+    expect(out.sheet).not.toBeNull();
+    expect(isPng(out.sheet!)).toBe(true);
+    // The sheet is larger than a single tile in both dimensions.
+    const d = pngDims(out.sheet!);
+    expect(d.width).toBeGreaterThan(64);
+    expect(d.height).toBeGreaterThan(64);
+  });
+
+  it('honors the tile size and supersample factor', async () => {
+    const loaded = await loadAndAssemble(CROWN);
+    if (!loaded.ok) return;
+    const out = renderSnapshots(loaded.assembly, opts({ tileSize: 96, ss: 2 }));
+    expect(pngDims(out.tiles[0]!.png)).toEqual({ width: 96, height: 96 });
+  });
+
+  it('omits the contact sheet when sheet=false', async () => {
+    const loaded = await loadAndAssemble(CROWN);
+    if (!loaded.ok) return;
+    const out = renderSnapshots(loaded.assembly, opts({ sheet: false }));
+    expect(out.sheet).toBeNull();
+    expect(out.tiles).toHaveLength(DEFAULT_ANGLES.length);
+  });
+
+  it('renders only the requested angles', async () => {
+    const loaded = await loadAndAssemble(CROWN);
+    if (!loaded.ok) return;
+    const front = DEFAULT_ANGLES.find((a) => a.id === 'front')!;
+    const out = renderSnapshots(loaded.assembly, opts({ angles: [front] }));
+    expect(out.tiles.map((t) => t.id)).toEqual(['front']);
+  });
+
+  it('is deterministic', async () => {
+    const loaded = await loadAndAssemble(CROWN);
+    if (!loaded.ok) return;
+    const a = renderSnapshots(loaded.assembly, opts());
+    const b = renderSnapshots(loaded.assembly, opts());
+    expect(a.tiles[0]!.png.equals(b.tiles[0]!.png)).toBe(true);
+    expect(a.sheet!.equals(b.sheet!)).toBe(true);
+  });
+});
+
+describe('runSnap — filesystem', () => {
+  it('writes per-angle PNGs and the contact sheet, exit 0', async () => {
+    const outDir = await mkdtemp(resolve(tmpdir(), 'cuboidy-snap-out-'));
+    const r = await runSnap(CROWN, opts({ outDir }));
+    expect(r.exitCode).toBe(0);
+    const files = (await readdir(outDir)).sort();
+    expect(files).toContain('contact.png');
+    expect(files).toContain('front.png');
+    expect(files.filter((f) => f.endsWith('.png'))).toHaveLength(
+      DEFAULT_ANGLES.length + 1,
+    );
+    expect(isPng(await readFile(resolve(outDir, 'contact.png')))).toBe(true);
+  });
+
+  it('skips per-angle PNGs when individual=false', async () => {
+    const outDir = await mkdtemp(resolve(tmpdir(), 'cuboidy-snap-out-'));
+    await runSnap(CROWN, opts({ outDir, individual: false }));
+    const files = await readdir(outDir);
+    expect(files).toEqual(['contact.png']);
+  });
+
+  it('returns exit 1 for a model with no visible voxels', async () => {
+    const dir = await makeModel({
+      'voxels.cvox': 'palette #F00\npart p\nsize 1 1 1\npivot 0 0 0\nvoxels { . }',
+      'cuboidy.json': JSON.stringify({ name: 'empty', parts: [{ name: 'p' }] }),
+    });
+    const r = await runSnap(dir, opts({ outDir: dir }));
+    expect(r.exitCode).toBe(1);
+    expect(r.text).toMatch(/no visible voxels/);
+  });
+
+  it('returns exit 2 when voxels.cvox is missing', async () => {
+    const dir = await makeModel({});
+    const r = await runSnap(dir, opts({ outDir: dir }));
+    expect(r.exitCode).toBe(2);
+  });
+});

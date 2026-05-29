@@ -25,3 +25,7 @@ build/
 # bench: generated artifacts (regenerate via scripts in bench/)
 bench/dataset/
 bench/out/
+
+# cuboidy-snap default output (regenerate via `cuboidy-snap <model-dir>`)
+snapshots/
+tmp-snap/

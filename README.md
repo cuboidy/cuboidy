@@ -73,6 +73,23 @@ Models live under `models/`:
 - `models/crown/` — single-part static accessory, designed to attach to wolf's `hat` socket
 - `models/boy/`, `models/girl/` — humanoid rigs (head / body / arms / legs) in standard, `-chibi`, and `-mini` proportions
 
+## Inspecting models
+
+Four CLIs assemble a model (rest pose — translation only, pivot/animation rotations are not applied) for inspection:
+
+- **`cuboidy-snap <dir>`** — renders the model to **PNG images from several angles** (a contact sheet plus one PNG per angle), with the angle name and an XYZ axis gnomon baked into each. It is the image counterpart of `cuboidy-view`; the intended workflow is to render a model, look at the pictures, and refine the voxels. Dependency-free — a small software rasterizer + pure-Node (`zlib`) PNG encoder, no browser or native bindings.
+
+  ```
+  cuboidy-snap models/cat                       # → models/cat/snapshots/{contact,front,…}.png
+  cuboidy-snap models/cat --angles=cardinal --size=512
+  ```
+
+  The default is the seven-view **standard** set: four three-quarter corners from above plus front / right-side / top. Other groups: `cardinal` (six faces), `corners` (four), `all`; or list ids directly (`front back side left top bottom fr-up fl-up br-up bl-up`).
+
+- **`cuboidy-view <dir>`** — orthographic projections as **ASCII grids** of palette-index characters (the `voxels.cvox` alphabet), for a token-cheap textual read.
+- **`cuboidy-query <dir> --at=x,y,z`** — exact voxel lookup at world coordinates (fractional-safe; the precise tool when half-voxel offsets are present).
+- **`cuboidy-lint <dir>`** — voxel-definition + cross-file lint.
+
 ## Token efficiency
 
 Cuboidy is designed to be cheap to send to an LLM. Measured with real
@@ -111,12 +128,14 @@ Full methodology, dataset, and per-model numbers in
 ## Roadmap
 
 - [x] Spec document (`SPEC.md`) — v0.6 draft
-- [x] Reference parser (TypeScript) — `ts/packages/core/`, full v0.6 grammar (263 tests)
+- [x] Reference parser (TypeScript) — `ts/packages/core/`, full v0.6 grammar (321 tests)
 - [x] Cross-file lint — `missing` error / `unknown` warning between manifest and voxels
 - [x] Shared parity fixtures — `fixtures/cvox/<code>/` and `fixtures/json/<code>/`, contract for cross-implementation conformance
 - [x] JSON Schema for `cuboidy.json` — `schema/cuboidy.schema.json` (Draft 2020-12, derived from the Zod ManifestSchema; reference via `"$schema": "https://cuboidy.com/schema/cuboidy.schema.json"` or the GitHub raw URL)
 - [x] Canonical serializer (reader-tolerant / writer-strict) — `serializeCvox(cvox)` produces canonical text; round-trip with `parseCvox` verified. **File header preserved** (SPEC §7.11.1); inline comments are advisory and intentionally not preserved (v0.6 policy)
 - [x] Voxel definition linter — `lintCvox(cvox)` library (W01–W05 + H01–H02) and `cuboidy-lint <dir>` CLI (SPEC §11.7 output, `--strict` for warnings-as-errors)
+- [x] Model inspection CLIs — `cuboidy-view` (ASCII projection), `cuboidy-query` (exact coordinate lookup), and `cuboidy-snap` (multi-angle PNG renders; contact sheet + per-angle, dependency-free) for human / multimodal review
+- [x] Image snapshots — `cuboidy-snap <dir>` renders a model to PNG from several angles, the raster counterpart to `cuboidy-view`, for visual review and AI-assisted editing
 - [ ] Reference parser (C#)
 - [~] Web-based editor (`ts/packages/editor/`) — Stage A1 viewer scaffolded (Vite + React + react-three-fiber); drop a `.cvox` file, see voxels in 3D with orbit camera. Edit features deferred to Stage A2+. Run locally with `cd ts/packages/editor && npm run dev`
 - [ ] Rig vocabulary docs (quadruped / biped / winged / ...)
