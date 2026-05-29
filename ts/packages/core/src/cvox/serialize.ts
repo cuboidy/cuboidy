@@ -53,6 +53,20 @@ function hex2(n: number): string {
 }
 
 function appendPart(lines: string[], part: Part): void {
+  // SPEC §7.5.1: a reuse part emits only its one-line reuse-clause; its
+  // geometry is derived from the referent and is NOT expanded. The default
+  // mirror axis (x) is omitted, matching the writer's canonical-default rule.
+  if (part.from !== undefined) {
+    const { part: ref, mirror } = part.from;
+    if (mirror === undefined) {
+      lines.push(`part ${part.name} clone ${ref}`);
+    } else {
+      const axis = mirror === 'x' ? '' : ` ${mirror}`;
+      lines.push(`part ${part.name} mirror ${ref}${axis}`);
+    }
+    return;
+  }
+
   lines.push(`part ${part.name}`);
   lines.push(`${INDENT}${serializeSize(part.size)}`);
 

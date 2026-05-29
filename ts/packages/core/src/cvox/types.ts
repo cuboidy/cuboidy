@@ -38,8 +38,25 @@ export interface Socket {
   rot?: Vec3;
 }
 
+// SPEC §7.5.1: a part-reuse reference. `clone` reuses another part's
+// geometry verbatim; `mirror` reuses it reflected across the named local
+// axis. It is a declarative reference (like SVG <use>), NOT a function:
+// no chaining (the referent must be a concrete part), no composition, a
+// closed transform set, and one-pass resolution to plain voxel data.
+export interface PartRef {
+  // Name of the concrete part whose geometry is reused.
+  part: string;
+  // Mirror axis (local grid axis). Absent → `clone` (verbatim reuse);
+  // present → `mirror` reflected across the plane perpendicular to this axis.
+  mirror?: 'x' | 'y' | 'z';
+}
+
 export interface Part {
   name: string;
+  // When present, size/pivot/sockets/voxels are DERIVED from `from.part`
+  // (optionally reflected). Assembly fills the derived geometry; the
+  // serializer re-emits the `clone`/`mirror` form rather than expanding.
+  from?: PartRef;
   size: Size;
   pivot: Pivot;
   sockets: readonly Socket[];

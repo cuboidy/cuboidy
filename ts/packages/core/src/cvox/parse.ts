@@ -2,7 +2,7 @@ import { err, ok, type Result } from '../result.js';
 import { TokenCursor } from './cursor.js';
 import { extractHeader } from './header.js';
 import { PaletteParser } from './palette.js';
-import { assemblePart, PartParser, type ParsedPart } from './part.js';
+import { assemblePart, PartParser, reusePart, type ParsedPart } from './part.js';
 import { tokenize } from './tokenize.js';
 import type { Cvox, Palette, Part } from './types.js';
 
@@ -92,6 +92,14 @@ export class CvoxParser {
             'missing',
             `line ${t.line}: unexpected ',' (only valid inside a voxels block as a layer-section separator)`,
           );
+        // SPEC §7.5.1: reuse keywords are only valid in a part header, right
+        // after a part name — never at file scope.
+        case 'clone':
+        case 'mirror':
+          return err(
+            'missing',
+            `line ${t.line}: '${t.text}' is only valid in a part header (after a part name), not at file scope`,
+          );
         default:
           return err('unknown', `line ${t.line}: unknown token '${t.text}'`);
       }
@@ -107,11 +115,47 @@ export class CvoxParser {
       return err('missing', 'file contains palette but no parts');
     }
     const palette = this.palette;
-    const finalParts: Part[] = [];
+
+    // Phase 1: assemble all concrete (non-reuse) parts into a lookup map.
+    // Reuse parts (clone/mirror, SPEC §7.5.1) resolve against this map in
+    // phase 2, so the referent may be declared in any order (free-order).
+    const concrete = new Map<string, Part>();
     for (const parsed of this.parts) {
+      if (parsed.from !== undefined) continue;
       const r = assemblePart(parsed, palette);
       if (!r.ok) return r;
-      finalParts.push(r.value);
+      concrete.set(parsed.name, r.value);
+    }
+
+    // Phase 2: produce final parts in source order, resolving reuse refs.
+    const finalParts: Part[] = [];
+    for (const parsed of this.parts) {
+      const from = parsed.from;
+      if (from === undefined) {
+        finalParts.push(concrete.get(parsed.name)!);
+        continue;
+      }
+      const ref = concrete.get(from.part);
+      const verb = from.mirror !== undefined ? 'mirror' : 'clone';
+      if (ref === undefined) {
+        // Referent is not a concrete part: either it doesn't exist, or it is
+        // itself a reuse part (chains are forbidden — resolution stays a
+        // single leaf reference per SPEC §7.5.1).
+        const isReuse = this.parts.some(
+          (p) => p.name === from.part && p.from !== undefined,
+        );
+        if (isReuse) {
+          return err(
+            'invalid-value',
+            `part "${parsed.name}" ${verb}s "${from.part}", which is itself a clone/mirror (reuse chains are not allowed)`,
+          );
+        }
+        return err(
+          'missing',
+          `part "${parsed.name}" ${verb}s unknown part "${from.part}"`,
+        );
+      }
+      finalParts.push(reusePart(parsed.name, from, ref));
     }
     return ok({ palette, parts: finalParts });
   }

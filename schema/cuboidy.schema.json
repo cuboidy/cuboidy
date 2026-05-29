@@ -16,7 +16,9 @@
           "pivot",
           "socket",
           "voxels",
-          "rot"
+          "rot",
+          "clone",
+          "mirror"
         ]
       }
     },
@@ -40,7 +42,9 @@
                 "pivot",
                 "socket",
                 "voxels",
-                "rot"
+                "rot",
+                "clone",
+                "mirror"
               ]
             }
           },
@@ -55,7 +59,9 @@
                 "pivot",
                 "socket",
                 "voxels",
-                "rot"
+                "rot",
+                "clone",
+                "mirror"
               ]
             }
           },

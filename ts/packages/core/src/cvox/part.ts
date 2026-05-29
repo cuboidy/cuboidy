@@ -7,19 +7,23 @@ import { PivotParser } from './pivot.js';
 import { SizeParser } from './size.js';
 import { SocketParser } from './socket.js';
 import type { Token } from './tokenize.js';
-import type { Palette, Part, Pivot, Size, Socket } from './types.js';
+import type { Palette, Part, PartRef, Pivot, Size, Socket, Vec3 } from './types.js';
 import { resolveVoxels, VoxelsParser, type RawVoxels } from './voxels.js';
 
 // Internal intermediate type — PartParser's return value. Carries the part's
 // parsed but not-yet-assembled state (voxels are raw text rows, palette
 // indices not yet resolved). CvoxParser.assemble() converts this into the
 // public Part type using the resolved palette.
+//
+// A reuse part (SPEC §7.5.1: `clone`/`mirror`) carries `from` and leaves
+// size/voxels null — its geometry is derived from the referent at assembly.
 export interface ParsedPart {
   name: string;
-  size: Size;
+  from?: PartRef;
+  size: Size | null;
   pivot: Pivot | null;
   sockets: readonly Socket[];
-  voxels: RawVoxels;
+  voxels: RawVoxels | null;
 }
 
 // Resolves a ParsedPart into the final immutable Part using the file's
@@ -31,6 +35,12 @@ export function assemblePart(
   part: ParsedPart,
   palette: Palette,
 ): Result<Part> {
+  // Reuse parts (from set) are resolved separately by reusePart(); a concrete
+  // part always has size + voxels (the finalize step below enforces it). This
+  // guard is defensive and narrows the nullable fields.
+  if (part.size === null || part.voxels === null) {
+    return err('missing', `part "${part.name}" missing size or voxels`);
+  }
   const voxelsR = resolveVoxels(part.voxels, part.size, palette, part.name);
   if (!voxelsR.ok) return voxelsR;
   const pivot: Pivot = part.pivot ?? {
@@ -88,6 +98,20 @@ export class PartParser {
         'duplicate',
         `line ${nameTok.line}: duplicate part name "${name}"`,
       );
+    }
+
+    // SPEC §7.5.1: an optional reuse-clause immediately after the name —
+    // `clone <ref>` (verbatim) or `mirror <ref> [x|y|z]` (reflected). A
+    // reuse part has no body; its geometry is derived from the referent at
+    // assembly. Anything other than clone/mirror falls through to the normal
+    // body loop below.
+    const peek0 = this.cursor.peek();
+    if (
+      peek0 !== null &&
+      peek0.kind === 'bare' &&
+      (peek0.text === 'clone' || peek0.text === 'mirror')
+    ) {
+      return this.parseReuse(name, this.cursor.advance()!);
     }
 
     // Inner loop: consume part-scoped declarations until the next bare
@@ -184,6 +208,14 @@ export class PartParser {
             'missing',
             `line ${t.line}: unexpected ',' (only valid inside a voxels block as a layer-section separator)`,
           );
+        // SPEC §7.5.1: a reuse-clause is only valid in the header, right
+        // after the part name — never mixed into a body.
+        case 'clone':
+        case 'mirror':
+          return err(
+            'invalid-value',
+            `line ${t.line}: '${t.text}' must immediately follow the part name (reuse-clause), not appear in the part body`,
+          );
         default:
           return err('unknown', `line ${t.line}: unknown token '${t.text}'`);
       }
@@ -210,4 +242,132 @@ export class PartParser {
       voxels: this.voxels,
     });
   }
+
+  // SPEC §7.5.1: parse the reuse-clause body. `kw` is the already-consumed
+  // `clone`/`mirror` token; pulls the referent identifier and (for `mirror`)
+  // an optional axis (x|y|z, default x), then asserts no body follows.
+  private parseReuse(name: string, kw: Token): Result<ParsedPart> {
+    const refR = expectIdentifier(this.cursor, kw, `${kw.text} referent`);
+    if (!refR.ok) return refR;
+    const refName = refR.value.value;
+    if (refName === name) {
+      return err(
+        'invalid-value',
+        `line ${kw.line}: part "${name}" cannot ${kw.text} itself`,
+      );
+    }
+    let from: PartRef;
+    if (kw.text === 'mirror') {
+      let axis: 'x' | 'y' | 'z' = 'x';
+      const ax = this.cursor.peek();
+      if (
+        ax !== null &&
+        ax.kind === 'bare' &&
+        (ax.text === 'x' || ax.text === 'y' || ax.text === 'z')
+      ) {
+        this.cursor.advance();
+        axis = ax.text as 'x' | 'y' | 'z';
+      }
+      from = { part: refName, mirror: axis };
+    } else {
+      from = { part: refName };
+    }
+    // A reuse part has no body: the next token must start the next part
+    // (bare `part`) or be EOF.
+    const after = this.cursor.peek();
+    if (after !== null && !(after.kind === 'bare' && after.text === 'part')) {
+      const got =
+        after.kind === 'string' ? `"${after.text}"` : `'${after.text}'`;
+      return err(
+        'invalid-value',
+        `line ${after.line}: part "${name}" uses ${kw.text} and must not declare a body (got ${got})`,
+      );
+    }
+    return ok({ name, from, size: null, pivot: null, sockets: [], voxels: null });
+  }
+}
+
+// SPEC §7.5.1: resolve a reuse part into a concrete Part by cloning (and
+// optionally reflecting) an already-assembled referent. Pure; the caller
+// (CvoxParser.assemble) guarantees `ref` is a concrete (non-reuse) part.
+export function reusePart(name: string, from: PartRef, ref: Part): Part {
+  if (from.mirror === undefined) {
+    return {
+      name,
+      from,
+      size: ref.size,
+      pivot: ref.pivot,
+      sockets: ref.sockets,
+      voxels: ref.voxels,
+    };
+  }
+  const axis = from.mirror;
+  return {
+    name,
+    from,
+    size: ref.size,
+    pivot: mirrorPivot(ref.pivot, ref.size, axis),
+    sockets: ref.sockets.map((s) => mirrorSocket(s, ref.size, axis)),
+    voxels: mirrorVoxels(ref.voxels, ref.size, axis),
+  };
+}
+
+type Axis = 'x' | 'y' | 'z';
+
+// Reflect a position (continuous, range [0, dim]) across the axis midplane:
+// the chosen-axis component becomes dim - value; the others are unchanged.
+function mirrorPos(v: Vec3, size: Size, axis: Axis): Vec3 {
+  return {
+    x: axis === 'x' ? size.w - v.x : v.x,
+    y: axis === 'y' ? size.h - v.y : v.y,
+    z: axis === 'z' ? size.d - v.z : v.z,
+  };
+}
+
+// Reflect an Euler rotation: a mirror flips handedness, so the two angle
+// components NOT around the mirror axis are negated (the around-axis one is
+// kept). Matches the standard rig-mirror convention (e.g. Blender X-mirror).
+function mirrorRot(rot: Vec3, axis: Axis): Vec3 {
+  return {
+    x: axis === 'x' ? rot.x : -rot.x,
+    y: axis === 'y' ? rot.y : -rot.y,
+    z: axis === 'z' ? rot.z : -rot.z,
+  };
+}
+
+function mirrorPivot(p: Pivot, size: Size, axis: Axis): Pivot {
+  const pos = mirrorPos(p.pos, size, axis);
+  return p.rot !== undefined ? { pos, rot: mirrorRot(p.rot, axis) } : { pos };
+}
+
+function mirrorSocket(s: Socket, size: Size, axis: Axis): Socket {
+  const pos = mirrorPos(s.pos, size, axis);
+  return s.rot !== undefined
+    ? { name: s.name, pos, rot: mirrorRot(s.rot, axis) }
+    : { name: s.name, pos };
+}
+
+// Reflect the voxel grid (indexed voxels[y][z][x]) across the chosen axis.
+function mirrorVoxels(
+  voxels: Part['voxels'],
+  size: Size,
+  axis: Axis,
+): number[][][] {
+  const out: number[][][] = [];
+  for (let y = 0; y < size.h; y++) {
+    const sy = axis === 'y' ? size.h - 1 - y : y;
+    const layer: number[][] = [];
+    for (let z = 0; z < size.d; z++) {
+      const sz = axis === 'z' ? size.d - 1 - z : z;
+      const srcRow = voxels[sy]![sz]!;
+      const row: number[] = [];
+      for (let x = 0; x < size.w; x++) {
+        const sx = axis === 'x' ? size.w - 1 - x : x;
+        row.push(srcRow[sx]!);
+      }
+      layer.push(row);
+    }
+    out.push(layer);
+  }
+  return out;
 }
