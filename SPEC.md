@@ -270,7 +270,12 @@ A plain-text file. Lexing uses a two-layer model (§7.1), parsing is recursive-d
 
 Cuboidy's lexer emits tokens with one of two **kinds**: `bare` (whitespace-delimited) and `string` (a `"..."` literal). In v0.6 cvox grammar all slots — identifier (§7.5, §7.8), numeric (`size`, `pivot`, `socket` pos/rot), and color (`palette`) — accept only `bare`; any string-kind token surfaces as `invalid-value`. The string kind is preserved at the lexer layer for future extensibility but has no role in current productions. Within the bare-kind subset, the lexer recognises one unified category — **reserved tokens** — split by syntactic shape into two sub-categories. Both stop argument collection (§7.2), neither participates in identifier slots, and together they are the only bare tokens with grammatical significance outside of voxel data.
 
-**Reserved punctuation — universal scope** (always recognized as 1-character tokens, anywhere in the file):
+**The two lexical layers.** Lexing is organized as two layers, and the rest of the spec refers to them by number:
+
+- **Layer 1 — universal.** Applies everywhere regardless of scope: the reserved punctuation `{` `}` `,`, `//` comments, and whitespace are recognized identically inside and outside every block. References to "§7.1 Layer 1" (e.g. §7.11) mean this universal layer.
+- **Layer 2 — context-scoped.** The alphabetic reserved keywords, each recognized as a statement-starter only within a specific scope — and reserving nothing inside `voxels { … }`, so any character sequence there is voxel data. References to "§7.1 Layer 2" (e.g. §7.9) mean this context-scoped keyword layer.
+
+**Reserved punctuation — universal scope (Layer 1)** (always recognized as 1-character tokens, anywhere in the file):
 
 | Token | Role | Need surrounding whitespace? |
 |---|---|---|
@@ -280,7 +285,7 @@ Cuboidy's lexer emits tokens with one of two **kinds**: `bare` (whitespace-delim
 
 These three tokens are **always significant**, including inside a `voxels { … }` block. They never appear inside another token (none of them is in the voxel-cell character set `[.0-9a-zA-Z]`), so they cannot collide with voxel data.
 
-**Reserved keywords — context-scoped** (the full set is flat — 9 words — but each is only recognized as a *statement-starting keyword* in a specific scope; full structural validity table in §7.3):
+**Reserved keywords — context-scoped (Layer 2)** (the full set is flat — 9 words — but each is only recognized as a *statement-starting keyword* in a specific scope; full structural validity table in §7.3):
 
 | Scope | Statement-starting keywords recognized here | Other lexical features |
 |---|---|---|
@@ -290,7 +295,7 @@ These three tokens are **always significant**, including inside a `voxels { … 
 | **`pivot` / `socket` declaration** (after the position triple) | `rot` (optional, introduces a rotation triple) | — |
 | **`voxels { … }` block** | **(none)** — alphabetic reserved keywords have no lexical privilege here; every token except the reserved punctuation `,` `}` is interpreted as a voxel-row string | — |
 
-**Non-tokenized lexical primitives** (also universal, but never produce tokens):
+**Non-tokenized lexical primitives** (also universal — Layer 1 — but never produce tokens):
 
 | Element | Behavior |
 |---|---|
@@ -370,11 +375,10 @@ voxel-row    := /[.0-9a-zA-Z]+/               (length must equal W;
 
 Tokens are separated by any whitespace (space, tab, newline) or by the reserved punctuation `{` `}` `,` (which need no surrounding whitespace).
 
-**Argument collection rule (Postel reader semantics).** When the integrated parser is reading arguments to a keyword (`palette` colors, `part` identifier, `size` ints, `pivot` / `socket` nums, `voxels` opening `{`), it pulls tokens from the stream **until the next reserved token** — keyword or punctuation, whichever comes first. The library-level entry points (`parsePart(args)`, `parseSize(args)`, etc.) receive whatever slice was pulled and validate strict arity:
+**Argument collection rule (Postel reader semantics).** When the integrated parser (`parseCvox`, the format's single parsing entry point) is reading arguments to a keyword (`palette` colors, `part` identifier, `size` ints, `pivot` / `socket` nums, `voxels` opening `{`), it pulls tokens from the stream **until the next reserved token** — keyword or punctuation, whichever comes first — then takes exactly the count the keyword requires:
 
-- If the pulled count is less than required, the library returns `wrong-arity`.
-- If the pulled count is more than required, the library returns `wrong-arity` (library entry only).
-- Under the integrated parser, the keyword consumes only its required count; extras stay in the stream and are diagnosed by the main loop at the next iteration (typically `unknown` for a stray identifier, `invalid-value` for a stray number where no statement is expected). This is documented per-keyword in §7.5–§7.9.
+- If fewer tokens are available than required (the stream reaches the next reserved token or EOF before the slot is filled), the keyword reports `wrong-arity`.
+- If more are available than required, the keyword consumes only its required count; the extras stay in the stream and are diagnosed by the main loop at the next iteration (typically `unknown` for a stray identifier, `invalid-value` for a stray number where no statement is expected). This is documented per-keyword in §7.5–§7.9.
 
 Concretely: `part rot` pulls 1 token whose text is `rot`, but `rot` is rejected by §5 `isIdentifier` (reserved-keyword guard), so the part header surfaces as `invalid-value`. `size 1 1 1 9` pulls 3 ints, sets the size, and leaves `9` for the main loop to diagnose as `unknown`. The §5 reserved-keyword rule is what makes "reserved tokens are not valid identifiers" enforceable at the identifier slot — no separate lexical guard is needed.
 
@@ -533,8 +537,7 @@ pivot <x> <y> <z> rot <rx> <ry> <rz>
 
   Concretely, for a head parented to a body (no grandparent), a head voxel `v_local` lands at `body.position + head.position + (v_local − head.pivot.pos)`. The `body.pivot.pos` value does **not** appear — it controlled where body's *voxels* sit relative to body's origin, but the head's `position` is already specified relative to that same origin.
 - **Worked example**: body declares `size 5 4 8` with default `pivot 2.5 0 4` (bottom-center) and manifest `"position": [0, 4, 0]`. Head declares `size 5 5 5` with `pivot 2.5 0 5` (back-bottom-center, so the pivot is the connection point at the back of the head), parented to body with `"position": [0, 4, -4]`. Then: body's pivot sits at world `(0, 4, 0)`; head's pivot sits at world `(0, 4, 0) + (0, 4, -4) = (0, 8, -4)` — directly above body's pivot and 4 units forward (−Z). The head's back-bottom-center voxel `(2.5, 0, 5)` lands at world `(0, 8, -4) + ((2.5, 0, 5) − (2.5, 0, 5)) = (0, 8, -4)` ✓ (the pivot lands where `position` names). The head's front-left-bottom voxel `(0, 0, 0)` lands at world `(0, 8, -4) + ((0, 0, 0) − (2.5, 0, 5)) = (−2.5, 8, −9)`. Body's `pivot.pos = (2.5, 0, 4)` never enters either calculation
-- Two arities are valid at the library-level `parsePivot(args)` API: 3 args (position only) or 7 args (position + `rot` + rotation). 4–6 or 8+ args is `wrong-arity`; 7 args without the `rot` marker as the 4th token is `invalid-value`
-- Under integrated `parseCvox()` parsing of the token stream, the parser consumes exactly 3 tokens (then 3 more iff the next token is `rot`). Tokens beyond that boundary are not stolen by the pivot declaration — they fall through to the main token loop and are diagnosed by §11.8 (typically `invalid-value` if numeric, `unknown` if a non-keyword identifier). A user writing `pivot 1 0 1 5` will therefore see `invalid-value` or `unknown`, not `wrong-arity`; the library-level `parsePivot()` is the entry point that enforces strict arity
+- Arity (under `parseCvox`): the parser consumes exactly 3 number tokens for the position, then — only if the next token is the reserved word `rot` — 3 more for the rotation. Fewer than 3 position tokens before the next reserved token or EOF is `wrong-arity`. Tokens beyond the consumed position (and optional rotation) are **not** stolen by the pivot declaration — they fall through to the main token loop and are diagnosed by §11.8 (typically `unknown` for a stray number/identifier). So `pivot 1 0 1 5` consumes `1 0 1` and leaves the stray `5` for the main loop, which reports `unknown`, not `wrong-arity`
 
 ### 7.8 `socket`
 
@@ -546,7 +549,7 @@ socket <identifier> <x> <y> <z> rot <rx> <ry> <rz>
 - Zero or more per part
 - Name slot accepts only a `bare`-kind token; content must satisfy the §5 identifier rule (regex + not a reserved keyword)
 - Position in part-local space, voxel units (fractional allowed)
-- Optional rotation: Euler degrees, ZXY intrinsic order and right-hand sign convention (§4), default `[0, 0, 0]`
+- Optional rotation: Euler degrees, ZXY intrinsic order and right-hand sign convention (§4); absent → identity (`[0, 0, 0]`), matching `pivot.rot` (§7.7). The AST omits the field when no `rot` is declared
 - Socket name unique within a part
 - A socket defines an attachment frame on the host part. Its origin is `socket.pos` in the host part's local space after the host part's own pivot transform has been applied. Its orientation is the host part's current orientation composed with `socket.rot`. An attached child asset is placed so the child's root pivot coincides with the socket origin; per-attachment offsets and scale overrides are reserved for future versions.
 
@@ -782,7 +785,7 @@ A Cuboidy package is **well-formed** if it passes all error-level rules.
 
 | Level | Meaning | Implementation behavior |
 |---|---|---|
-| **Error** (`E`/`C`/`X`) | Spec violation | Refuse to load (or recover only on explicit request) |
+| **Error** (structural codes — §11.2) | Spec violation | Refuse to load (or recover only on explicit request) |
 | **Warning** (`W`) | Spec-valid but suspicious | Load with warning emitted |
 | **Hint** (`H`) | Style or convention | Load with hint emitted |
 
@@ -878,7 +881,7 @@ Concrete precedence:
    - **`invalid-value`** — voxel cell character outside `[.0-9a-zA-Z]`; voxel cell references a palette index outside the declared palette
    - **`wrong-arity`** — layer-section count differs from `H`; a layer-section row count differs from `D`; voxel row width does not match `W`
 
-**Library-entry-point arity vs integrated arity** (informational): the library-level entry points `parsePart(args)`, `parseSize(args)`, `parsePivot(args)`, `parseSocket(args)`, `parsePalette(args)` enforce strict `wrong-arity` for both too-few and too-many arguments — they see the args slice the caller hands them. The integrated parser (`parseCvox`) however *cannot* return `wrong-arity` for too-many args of a keyword, because per §7.2 it consumes only the required count and lets extras fall through. Implementations MUST be consistent within each entry point.
+**Too-many-args is never `wrong-arity`** (informational): the integrated parser (`parseCvox`, the sole parsing entry point) *cannot* return `wrong-arity` for too-many arguments to a keyword, because per §7.2 it consumes only the required count and lets the extras fall through to the main loop (diagnosed there as `unknown` for a stray identifier/number, or `invalid-value`). An argument-count `wrong-arity` therefore always means **too few** — the stream reached the next reserved token or EOF before the slot was filled. (Palette overflow — more than 62 colors — and voxel-grid dimension mismatches are the other `wrong-arity` cases; those are genuine count violations detected at consumption or at assembly.)
 
 A conformant implementation that reports a different code than this precedence implies is non-conforming for cross-implementation parity testing, but its output is still useful to the user.
 
