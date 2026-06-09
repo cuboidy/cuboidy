@@ -1248,8 +1248,340 @@ pre {
 .anim-empty {
   flex: 1;
   display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
   align-items: center;
   justify-content: center;
   color: #888;
   font-size: 0.9rem;
+}
+
+.anim-create {
+  padding: 0.4rem 0.9rem;
+  background: #2a3a4a;
+  color: #cde;
+  border: 1px dashed #3a4a6a;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.anim-create:hover:not(:disabled) {
+  background: #2a3a5a;
+  border-color: #4a5a7a;
+}
+
+.anim-create:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ─── Animation edit panel (keyframe timeline) ────────────────────── */
+
+.anim-edit-toggle {
+  flex-shrink: 0;
+  padding: 0.3rem 0.7rem;
+  background: #3a3a3a;
+  color: #e0e0e0;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.anim-edit-toggle:hover {
+  background: #4a4a4a;
+}
+
+.anim-edit-toggle.active {
+  background: #3a4a6a;
+  color: #fff;
+}
+
+.anim-edit {
+  flex: 0 0 46%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #202020;
+  border-top: 1px solid #3a3a3a;
+}
+
+.anim-edit-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.4rem 0.8rem;
+  border-bottom: 1px solid #3a3a3a;
+}
+
+.anim-edit-field {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  color: #aaa;
+}
+
+.anim-edit-field .property-position-input {
+  width: 5rem;
+  flex: none;
+}
+
+.anim-edit-loop {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: #aaa;
+}
+
+.anim-create-inline {
+  margin-left: auto;
+  padding: 0.25rem 0.6rem;
+  background: #2a3a4a;
+  color: #cde;
+  border: 1px dashed #3a4a6a;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+}
+
+.anim-create-inline:hover:not(:disabled) {
+  background: #2a3a5a;
+  border-color: #4a5a7a;
+}
+
+.anim-edit-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+/* ─── Timeline ────────────────────────────────────────────────────── */
+
+.timeline {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.timeline-ruler-row {
+  display: flex;
+  flex-shrink: 0;
+  height: 18px;
+  border-bottom: 1px solid #333;
+}
+
+.timeline-gutter {
+  flex-shrink: 0;
+  background: #232323;
+}
+
+.timeline-ruler {
+  flex: 1;
+  min-width: 0;
+  background: #1c1c1c;
+  cursor: pointer;
+}
+
+.timeline-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.timeline-part {
+  border-bottom: 1px solid #2a2a2a;
+  padding-bottom: 2px;
+}
+
+.timeline-part-label {
+  padding: 2px 0.5rem 1px;
+  font-family:
+    ui-monospace,
+    'SF Mono',
+    Menlo,
+    Consolas,
+    monospace;
+  font-size: 0.72rem;
+  color: #cde;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-attr-row {
+  display: flex;
+  align-items: center;
+  height: 16px;
+}
+
+.timeline-attr-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+  padding-left: 0.9rem;
+  padding-right: 0.3rem;
+}
+
+.timeline-attr-label {
+  font-family:
+    ui-monospace,
+    'SF Mono',
+    Menlo,
+    Consolas,
+    monospace;
+  font-size: 0.68rem;
+  color: #888;
+}
+
+.timeline-add {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  background: #2f2f2f;
+  color: #cde;
+  border: 1px solid #3a3a3a;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.timeline-add:hover:not(:disabled) {
+  background: #3a4a6a;
+}
+
+.timeline-add:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.timeline-lane {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  background: #1a1a1a;
+}
+
+.timeline-marker {
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  padding: 0;
+  background: #5af;
+  border: 1px solid #1a1a1a;
+  cursor: pointer;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.timeline-marker:hover:not(:disabled) {
+  background: #8cf;
+}
+
+.timeline-marker.selected {
+  background: #fff;
+  box-shadow: 0 0 0 1px #5af;
+}
+
+.timeline-marker:disabled {
+  cursor: not-allowed;
+}
+
+.timeline-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: #f55;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ─── Keyframe inspector ──────────────────────────────────────────── */
+
+.anim-inspector {
+  width: 200px;
+  flex-shrink: 0;
+  border-left: 1px solid #3a3a3a;
+  padding: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow-y: auto;
+  background: #232323;
+}
+
+.anim-inspector-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.anim-inspector-title {
+  font-family:
+    ui-monospace,
+    'SF Mono',
+    Menlo,
+    Consolas,
+    monospace;
+  font-size: 0.78rem;
+  color: #e8e8f0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.anim-inspector-time {
+  font-size: 0.72rem;
+  color: #888;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.anim-inspector-visible {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: #cde;
+}
+
+.anim-inspector-delete {
+  margin-top: 0.25rem;
+  align-self: flex-start;
+  padding: 0.25rem 0.6rem;
+  background: #3a2020;
+  color: #faa;
+  border: 1px solid #5a2a2a;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+}
+
+.anim-inspector-delete:hover:not(:disabled) {
+  background: #4a2424;
+}
+
+.anim-inspector-delete:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

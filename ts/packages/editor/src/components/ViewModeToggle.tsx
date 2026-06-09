@@ -10,7 +10,7 @@ interface Props {
 // Segmented toggle for the 3D pane:
 //   - Cvox view: parts at origin (.cvox-faithful)
 //   - Rig view:  parts at manifest positions (requires a cuboidy.json)
-//   - Anim view: animation playback (requires an inline animation)
+//   - Anim view: animation playback + keyframe editing (requires a manifest)
 // A view is disabled when its requirement is unmet; the tooltip explains why.
 
 export function ViewModeToggle({
@@ -53,8 +53,8 @@ export function ViewModeToggle({
         disabled={!animAvailable}
         title={
           animAvailable
-            ? 'Play the model’s animations'
-            : 'Requires a cuboidy.json with at least one inline animation'
+            ? 'Play and edit the model’s animations'
+            : 'Requires a cuboidy.json (load a folder or click Create manifest)'
         }
         onClick={() => animAvailable && onChange('anim')}
       >

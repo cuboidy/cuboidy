@@ -1,10 +1,7 @@
-import {
-  useEffect,
-  useState,
-  type ChangeEvent,
-} from 'react';
+import { type ChangeEvent } from 'react';
 import type { Cvox, Manifest, ManifestPart } from '@cuboidy/core';
 import { findManifestPart } from '../lib/part-tree.js';
+import { NumberInput } from './NumberInput.js';
 
 interface Props {
   selectedPart: string;
@@ -140,20 +137,20 @@ function RigFields({
         </select>
       </label>
       <div className="property-position">
-        <PositionInput
-          axis="x"
+        <NumberInput
+          label="x"
           value={position[0]}
           disabled={disabled}
           onChange={(v) => onChangePosition(selectedPart, 0, v)}
         />
-        <PositionInput
-          axis="y"
+        <NumberInput
+          label="y"
           value={position[1]}
           disabled={disabled}
           onChange={(v) => onChangePosition(selectedPart, 1, v)}
         />
-        <PositionInput
-          axis="z"
+        <NumberInput
+          label="z"
           value={position[2]}
           disabled={disabled}
           onChange={(v) => onChangePosition(selectedPart, 2, v)}
@@ -163,50 +160,3 @@ function RigFields({
   );
 }
 
-interface PositionInputProps {
-  axis: 'x' | 'y' | 'z';
-  value: number;
-  disabled: boolean;
-  onChange: (next: number) => void;
-}
-
-// Local text state so users can type intermediate values like `-`,
-// `.`, `1.` without React snapping back to the parsed numeric value.
-// Without the local buffer, typing `-` would parse to NaN, the
-// committed numeric state would stay at its previous value, and
-// React would re-render with the old string — eating the `-`.
-function PositionInput({ axis, value, disabled, onChange }: PositionInputProps) {
-  const [text, setText] = useState<string>(() => String(value));
-
-  useEffect(() => {
-    const parsed = Number(text);
-    if (!Number.isFinite(parsed) || parsed !== value) {
-      setText(String(value));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value]);
-
-  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value;
-    setText(raw);
-    if (raw === '' || raw === '-') {
-      onChange(0);
-      return;
-    }
-    const n = Number(raw);
-    if (Number.isFinite(n)) onChange(n);
-  };
-
-  return (
-    <label className="property-position-input">
-      <span className="property-position-axis">{axis}</span>
-      <input
-        type="number"
-        value={text}
-        step="any"
-        disabled={disabled}
-        onChange={handleChange}
-      />
-    </label>
-  );
-}

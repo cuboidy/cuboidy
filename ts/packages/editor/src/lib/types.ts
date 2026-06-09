@@ -1,4 +1,4 @@
-import type { Cvox, Manifest } from '@cuboidy/core';
+import type { Cvox, KeyAttr, Manifest } from '@cuboidy/core';
 
 // What the editor currently has loaded. Two discriminated kinds keep the
 // possible states explicit; the absence of `handle` in the folder kind
@@ -64,3 +64,12 @@ export type ViewMode = 'cvox' | 'rig' | 'anim';
 // Per-file editing UIs will replace the raw text views one tab at a
 // time (palette editor on the 'cvox' tab in a future stage, etc.).
 export type SelectedTab = 'preview' | 'cvox' | 'manifest';
+
+// A keyframe selected in the animation timeline: one attribute (rot/pos/
+// scale/visible) of one part at one time-key. The per-attribute model means
+// selection is an (attribute, time) pair, not a whole-keyframe marker.
+export interface SelectedKey {
+  part: string;
+  attr: KeyAttr;
+  timeKey: string;
+}

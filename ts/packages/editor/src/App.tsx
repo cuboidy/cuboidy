@@ -1,10 +1,15 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
-  isInlineAnimation,
+  addAttrAtTime,
+  deleteAttrAtKey,
   parseCvox,
   parseManifest,
   serializeCvox,
+  setAttrAtKey,
+  type AttrValue,
   type Cvox,
+  type InlineAnimation,
+  type KeyAttr,
   type Manifest,
   type ManifestPart,
 } from '@cuboidy/core';
@@ -325,6 +330,138 @@ export function App() {
     });
   }, [cancelPendingManifestReparse]);
 
+  // ─── Animation (keyframe editor) edits ──────────────────────────────
+  //
+  // The `animations` analog of mutateManifestPart: immutably updates one
+  // inline animation, keeps the serialized manifest text in sync, and clears
+  // stale parse-error state. No-ops on a string-ref animation (external file,
+  // not editable in-app yet) or when no manifest is loaded.
+  const mutateManifestAnimation = useCallback(
+    (animName: string, build: (anim: InlineAnimation) => InlineAnimation) => {
+      setLoaded((current) => {
+        if (current?.source?.kind !== 'folder') return current;
+        const src = current.source;
+        if (src.manifest === undefined) return current;
+        const prev = src.manifest.animations?.[animName];
+        if (prev === undefined || typeof prev === 'string') return current;
+        const animations = { ...src.manifest.animations, [animName]: build(prev) };
+        const nextManifest: Manifest = { ...src.manifest, animations };
+        const nextText = JSON.stringify(nextManifest, null, 2) + '\n';
+        const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
+        return {
+          ...current,
+          source: {
+            ...src,
+            manifest: nextManifest,
+            manifestFile: { ...baseFile, text: nextText },
+          },
+        };
+      });
+      cancelPendingManifestReparse();
+      setManifestParseError(null);
+    },
+    [cancelPendingManifestReparse],
+  );
+
+  // Overwrite an existing key's attribute value.
+  const handleSetAnimField = useCallback(
+    (
+      animName: string,
+      part: string,
+      timeKey: string,
+      attr: KeyAttr,
+      value: AttrValue,
+    ) => {
+      mutateManifestAnimation(animName, (anim) => {
+        const track = anim.parts[part];
+        if (track === undefined || track[timeKey] === undefined) return anim;
+        return {
+          ...anim,
+          parts: { ...anim.parts, [part]: setAttrAtKey(track, timeKey, attr, value) },
+        };
+      });
+    },
+    [mutateManifestAnimation],
+  );
+
+  // Add (or merge) a key for `attr` at `time`; the helper seeds the §6.6 0.0
+  // key and creates the part's track if absent.
+  const handleAddAnimKey = useCallback(
+    (animName: string, part: string, time: number, attr: KeyAttr, value: AttrValue) => {
+      mutateManifestAnimation(animName, (anim) => {
+        const track = anim.parts[part] ?? {};
+        const { track: nextTrack } = addAttrAtTime(track, time, attr, value);
+        return { ...anim, parts: { ...anim.parts, [part]: nextTrack } };
+      });
+    },
+    [mutateManifestAnimation],
+  );
+
+  // Remove one attribute key; prune the part's track if it becomes empty.
+  const handleDeleteAnimKey = useCallback(
+    (animName: string, part: string, timeKey: string, attr: KeyAttr) => {
+      mutateManifestAnimation(animName, (anim) => {
+        const track = anim.parts[part];
+        if (track === undefined) return anim;
+        const nextTrack = deleteAttrAtKey(track, timeKey, attr);
+        const parts = { ...anim.parts };
+        if (Object.keys(nextTrack).length === 0) delete parts[part];
+        else parts[part] = nextTrack;
+        return { ...anim, parts };
+      });
+    },
+    [mutateManifestAnimation],
+  );
+
+  const handleSetClipDuration = useCallback(
+    (animName: string, duration: number) => {
+      mutateManifestAnimation(animName, (anim) => ({ ...anim, duration }));
+    },
+    [mutateManifestAnimation],
+  );
+
+  const handleSetClipLoop = useCallback(
+    (animName: string, loop: boolean) => {
+      mutateManifestAnimation(animName, (anim) => ({ ...anim, loop }));
+    },
+    [mutateManifestAnimation],
+  );
+
+  // Seed a new empty inline clip (unique identifier-safe name) and switch to
+  // the anim view. Can't go through mutateManifestAnimation since the entry
+  // doesn't exist yet.
+  const handleCreateAnimationClip = useCallback(() => {
+    cancelPendingManifestReparse();
+    setManifestParseError(null);
+    setLoaded((current) => {
+      if (current?.source?.kind !== 'folder') return current;
+      const src = current.source;
+      if (src.manifest === undefined) return current;
+      const existing = src.manifest.animations ?? {};
+      let n = 1;
+      let name = `clip${n}`;
+      while (existing[name] !== undefined) {
+        n += 1;
+        name = `clip${n}`;
+      }
+      const newClip: InlineAnimation = { duration: 1, loop: true, parts: {} };
+      const animations = { ...existing, [name]: newClip };
+      const nextManifest: Manifest = { ...src.manifest, animations };
+      const nextText = JSON.stringify(nextManifest, null, 2) + '\n';
+      const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
+      setViewMode('anim');
+      setSelectedTab('preview');
+      return {
+        ...current,
+        source: {
+          ...src,
+          manifest: nextManifest,
+          manifestFile: { ...baseFile, text: nextText },
+        },
+      };
+    });
+  }, [cancelPendingManifestReparse]);
+
   const handleViewModeChange = useCallback((mode: ViewMode) => {
     setViewMode(mode);
   }, []);
@@ -332,15 +469,10 @@ export function App() {
   const source = loaded?.source;
   const rigAvailable =
     source !== undefined && source.kind === 'folder' && source.manifest !== undefined;
-  // Anim view needs the manifest to define at least one *inline* animation
-  // (string-ref animations aren't loaded by the viewer yet).
-  const animAvailable =
-    source !== undefined &&
-    source.kind === 'folder' &&
-    source.manifest !== undefined &&
-    Object.values(source.manifest.animations ?? {}).some((a) =>
-      isInlineAnimation(a),
-    );
+  // The anim view doubles as the animation editor, so it's reachable for any
+  // rigged model (a manifest with no animations shows an empty state with a
+  // "Create animation" action). Same requirement as rig view: a manifest.
+  const animAvailable = rigAvailable;
   // Guard against a stale selection: if the user switched to anim/rig and
   // then edited the source so the requirement no longer holds, fall back to
   // the most specific still-valid view rather than rendering a broken pane.
@@ -417,6 +549,13 @@ export function App() {
                       cvox={source.cvox}
                       manifest={source.manifest}
                       hiddenParts={hiddenParts}
+                      manifestEditsDisabled={manifestParseError !== null}
+                      onSetAnimField={handleSetAnimField}
+                      onAddAnimKey={handleAddAnimKey}
+                      onDeleteAnimKey={handleDeleteAnimKey}
+                      onSetClipDuration={handleSetClipDuration}
+                      onSetClipLoop={handleSetClipLoop}
+                      onCreateClip={handleCreateAnimationClip}
                     />
                   ) : (
                     <VoxelScene
