@@ -19,6 +19,17 @@ export type {
   Pose,
 } from './animation.js';
 
+export {
+  formatTimeKey,
+  nearestExistingKey,
+  sortTrackKeys,
+  setAttrAtKey,
+  addAttrAtTime,
+  deleteAttrAtKey,
+  restValue,
+} from './animation-edit.js';
+export type { KeyAttr, AttrValue } from './animation-edit.js';
+
 export { parseCvox } from './cvox/parse.js';
 export { serializeCvox } from './cvox/serialize.js';
 
