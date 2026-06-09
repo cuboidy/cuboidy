@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
+  isInlineAnimation,
   parseCvox,
   parseManifest,
   serializeCvox,
@@ -7,6 +8,7 @@ import {
   type Manifest,
   type ManifestPart,
 } from '@cuboidy/core';
+import { AnimationView } from './components/AnimationView.js';
 import { ExportMenu } from './components/ExportMenu.js';
 import { FileDropZone } from './components/FileDropZone.js';
 import { RightPanel } from './components/RightPanel.js';
@@ -330,6 +332,26 @@ export function App() {
   const source = loaded?.source;
   const rigAvailable =
     source !== undefined && source.kind === 'folder' && source.manifest !== undefined;
+  // Anim view needs the manifest to define at least one *inline* animation
+  // (string-ref animations aren't loaded by the viewer yet).
+  const animAvailable =
+    source !== undefined &&
+    source.kind === 'folder' &&
+    source.manifest !== undefined &&
+    Object.values(source.manifest.animations ?? {}).some((a) =>
+      isInlineAnimation(a),
+    );
+  // Guard against a stale selection: if the user switched to anim/rig and
+  // then edited the source so the requirement no longer holds, fall back to
+  // the most specific still-valid view rather than rendering a broken pane.
+  const effectiveViewMode: ViewMode =
+    viewMode === 'anim' && !animAvailable
+      ? rigAvailable
+        ? 'rig'
+        : 'cvox'
+      : viewMode === 'rig' && !rigAvailable
+        ? 'cvox'
+        : viewMode;
 
   // Prune a selection that points at a part the cvox no longer
   // contains (e.g., user edited the source view to remove it). Done
@@ -349,8 +371,9 @@ export function App() {
         <div className="header-right">
           {source !== undefined && selectedTab === 'preview' && (
             <ViewModeToggle
-              mode={viewMode}
+              mode={effectiveViewMode}
               rigAvailable={rigAvailable}
+              animAvailable={animAvailable}
               onChange={handleViewModeChange}
             />
           )}
@@ -386,16 +409,25 @@ export function App() {
                 onSelect={handleSelectTab}
               />
               <div className="main-pane-body">
-                {selectedTab === 'preview' && (
-                  <VoxelScene
-                    cvox={source.cvox}
-                    manifest={
-                      source.kind === 'folder' ? source.manifest : undefined
-                    }
-                    viewMode={viewMode}
-                    hiddenParts={hiddenParts}
-                  />
-                )}
+                {selectedTab === 'preview' &&
+                  (effectiveViewMode === 'anim' &&
+                  source.kind === 'folder' &&
+                  source.manifest !== undefined ? (
+                    <AnimationView
+                      cvox={source.cvox}
+                      manifest={source.manifest}
+                      hiddenParts={hiddenParts}
+                    />
+                  ) : (
+                    <VoxelScene
+                      cvox={source.cvox}
+                      manifest={
+                        source.kind === 'folder' ? source.manifest : undefined
+                      }
+                      viewMode={effectiveViewMode}
+                      hiddenParts={hiddenParts}
+                    />
+                  ))}
                 {selectedTab === 'cvox' && (
                   <SourceEditor
                     text={source.cvoxFile.text}

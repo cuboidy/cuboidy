@@ -3,15 +3,22 @@ import type { ViewMode } from '../lib/types.js';
 interface Props {
   mode: ViewMode;
   rigAvailable: boolean;
+  animAvailable: boolean;
   onChange: (mode: ViewMode) => void;
 }
 
-// Two-button segmented toggle for switching between Cvox view (parts at
-// origin, .cvox-faithful) and Rig view (parts at manifest positions).
-// Rig view is disabled when no manifest is loaded — clicking the disabled
-// button does nothing; the tooltip explains why.
+// Segmented toggle for the 3D pane:
+//   - Cvox view: parts at origin (.cvox-faithful)
+//   - Rig view:  parts at manifest positions (requires a cuboidy.json)
+//   - Anim view: animation playback (requires an inline animation)
+// A view is disabled when its requirement is unmet; the tooltip explains why.
 
-export function ViewModeToggle({ mode, rigAvailable, onChange }: Props) {
+export function ViewModeToggle({
+  mode,
+  rigAvailable,
+  animAvailable,
+  onChange,
+}: Props) {
   return (
     <div className="view-toggle" role="tablist" aria-label="View mode">
       <button
@@ -37,6 +44,21 @@ export function ViewModeToggle({ mode, rigAvailable, onChange }: Props) {
         onClick={() => rigAvailable && onChange('rig')}
       >
         Rig view
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={mode === 'anim'}
+        className={mode === 'anim' ? 'active' : ''}
+        disabled={!animAvailable}
+        title={
+          animAvailable
+            ? 'Play the model’s animations'
+            : 'Requires a cuboidy.json with at least one inline animation'
+        }
+        onClick={() => animAvailable && onChange('anim')}
+      >
+        Anim view
       </button>
     </div>
   );

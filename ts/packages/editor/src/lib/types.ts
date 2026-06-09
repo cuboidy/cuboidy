@@ -51,9 +51,10 @@ export interface LoadResult {
   cvoxFileName?: string;
 }
 
-// View modes for the 3D scene. Rig view requires a manifest; the UI
-// disables the toggle when no manifest is loaded.
-export type ViewMode = 'cvox' | 'rig';
+// View modes for the 3D scene. Rig view requires a manifest; anim view
+// additionally requires the manifest to define at least one inline
+// animation. The UI disables each toggle when its requirement is unmet.
+export type ViewMode = 'cvox' | 'rig' | 'anim';
 
 // Which surface is currently shown in the main pane.
 //   - 'preview': 3D scene (the model viewer)
