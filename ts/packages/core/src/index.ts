@@ -1,6 +1,24 @@
 export { ManifestSchema, ManifestPartSchema, parseManifest } from './manifest.js';
 export type { Manifest, ManifestPart } from './manifest.js';
 
+export {
+  AnimationsSchema,
+  AnimationSchema,
+  InlineAnimationSchema,
+  AnimationTrackSchema,
+  KeyframeSchema,
+  isInlineAnimation,
+  samplePart,
+  sampleAnimation,
+} from './animation.js';
+export type {
+  Animation,
+  InlineAnimation,
+  AnimationTrack,
+  Keyframe,
+  Pose,
+} from './animation.js';
+
 export { parseCvox } from './cvox/parse.js';
 export { serializeCvox } from './cvox/serialize.js';
 

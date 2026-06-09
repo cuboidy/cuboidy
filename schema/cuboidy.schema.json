@@ -89,9 +89,109 @@
     "animations": {
       "type": "object",
       "propertyNames": {
-        "type": "string"
+        "type": "string",
+        "pattern": "^[a-zA-Z_][a-zA-Z0-9_-]*$",
+        "not": {
+          "enum": [
+            "palette",
+            "part",
+            "size",
+            "pivot",
+            "socket",
+            "voxels",
+            "rot",
+            "clone",
+            "mirror"
+          ]
+        }
       },
-      "additionalProperties": {}
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "duration": {
+                "type": "number"
+              },
+              "loop": {
+                "type": "boolean"
+              },
+              "parts": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "rot": {
+                        "type": "array",
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ]
+                      },
+                      "pos": {
+                        "type": "array",
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ]
+                      },
+                      "scale": {
+                        "type": "array",
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ]
+                      },
+                      "visible": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              }
+            },
+            "required": [
+              "duration",
+              "loop",
+              "parts"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "string"
+          }
+        ]
+      }
     }
   },
   "required": [
