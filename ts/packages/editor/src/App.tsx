@@ -2,10 +2,12 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   addAttrAtTime,
   deleteAttrAtKey,
+  moveAttrKey,
   parseCvox,
   parseManifest,
   serializeCvox,
   setAttrAtKey,
+  trimTrackKeys,
   type AttrValue,
   type Cvox,
   type InlineAnimation,
@@ -413,6 +415,43 @@ export function App() {
     [mutateManifestAnimation],
   );
 
+  // Retime one attribute key (timeline marker drag). The helper is a pure
+  // rename; same-attr collisions are blocked by the drag clamp in the UI.
+  const handleMoveAnimKey = useCallback(
+    (
+      animName: string,
+      part: string,
+      fromTimeKey: string,
+      toTime: number,
+      attr: KeyAttr,
+    ) => {
+      mutateManifestAnimation(animName, (anim) => {
+        const track = anim.parts[part];
+        if (track === undefined) return anim;
+        const { track: nextTrack } = moveAttrKey(track, fromTimeKey, toTime, attr);
+        if (nextTrack === track) return anim;
+        return { ...anim, parts: { ...anim.parts, [part]: nextTrack } };
+      });
+    },
+    [mutateManifestAnimation],
+  );
+
+  // Drop every key beyond the clip's duration (the lint badge's Trim action).
+  // Parts whose track empties out are removed entirely.
+  const handleTrimClip = useCallback(
+    (animName: string) => {
+      mutateManifestAnimation(animName, (anim) => {
+        const parts: InlineAnimation['parts'] = {};
+        for (const [name, track] of Object.entries(anim.parts)) {
+          const trimmed = trimTrackKeys(track, anim.duration);
+          if (Object.keys(trimmed).length > 0) parts[name] = trimmed;
+        }
+        return { ...anim, parts };
+      });
+    },
+    [mutateManifestAnimation],
+  );
+
   const handleSetClipDuration = useCallback(
     (animName: string, duration: number) => {
       mutateManifestAnimation(animName, (anim) => ({ ...anim, duration }));
@@ -553,6 +592,8 @@ export function App() {
                       onSetAnimField={handleSetAnimField}
                       onAddAnimKey={handleAddAnimKey}
                       onDeleteAnimKey={handleDeleteAnimKey}
+                      onMoveAnimKey={handleMoveAnimKey}
+                      onTrimClip={handleTrimClip}
                       onSetClipDuration={handleSetClipDuration}
                       onSetClipLoop={handleSetClipLoop}
                       onCreateClip={handleCreateAnimationClip}

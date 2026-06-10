@@ -51,6 +51,14 @@ interface Props {
     timeKey: string,
     attr: KeyAttr,
   ) => void;
+  onMoveAnimKey: (
+    animName: string,
+    part: string,
+    fromTimeKey: string,
+    toTime: number,
+    attr: KeyAttr,
+  ) => void;
+  onTrimClip: (animName: string) => void;
   onSetClipDuration: (animName: string, duration: number) => void;
   onSetClipLoop: (animName: string, loop: boolean) => void;
   onCreateClip: () => void;
@@ -69,6 +77,8 @@ export function AnimationView({
   onSetAnimField,
   onAddAnimKey,
   onDeleteAnimKey,
+  onMoveAnimKey,
+  onTrimClip,
   onSetClipDuration,
   onSetClipLoop,
   onCreateClip,
@@ -150,6 +160,21 @@ export function AnimationView({
 
   const partNames = useMemo(() => cvox.parts.map((p) => p.name), [cvox]);
 
+  // SPEC §6.6 lint: count whole time-key entries beyond the clip duration
+  // (left behind when the user shortened it). Same predicate as
+  // trimTrackKeys, so the Trim action provably zeroes this. Depends only on
+  // the clip data — never recomputed by playback frames.
+  const overrunCount = useMemo(() => {
+    if (inline === undefined) return 0;
+    let n = 0;
+    for (const track of Object.values(inline.parts)) {
+      for (const k of Object.keys(track)) {
+        if (Number(k) > inline.duration) n += 1;
+      }
+    }
+    return n;
+  }, [inline]);
+
   const roots = useMemo(() => buildRigTree(cvox, manifest), [cvox, manifest]);
   const center = useMemo<[number, number, number]>(
     () => computeSceneCenter(cvox, manifest, 'rig'),
@@ -206,6 +231,22 @@ export function AnimationView({
       setPlaying(false);
     },
     [onAddAnimKey],
+  );
+
+  // Commit a marker drag (retiming). Resolves the resulting time-key
+  // optimistically — same pattern as handleAddKey — so the moved key stays
+  // selected, and parks the playhead at the new time.
+  const handleMoveKey = useCallback(
+    (part: string, attr: KeyAttr, fromTimeKey: string, toTime: number) => {
+      onMoveAnimKey(activeNameRef.current, part, fromTimeKey, toTime, attr);
+      const track = inlineRef.current?.parts[part] ?? {};
+      const timeKey = nearestExistingKey(track, toTime) ?? formatTimeKey(toTime);
+      setSelectedKey({ part, attr, timeKey });
+      const dur = inlineRef.current?.duration ?? 0;
+      setTime(dur > 0 ? Math.max(0, Math.min(toTime, dur)) : 0);
+      setPlaying(false);
+    },
+    [onMoveAnimKey],
   );
 
   // Prune a stale selection (the key may have been deleted/edited away or the
@@ -280,6 +321,23 @@ export function AnimationView({
               />
               <span>loop</span>
             </label>
+            {overrunCount > 0 && (
+              <span
+                className="anim-lint-badge"
+                role="status"
+                title={`SPEC §6.6: maximum time key must be ≤ duration (${duration}s)`}
+              >
+                {overrunCount} key{overrunCount > 1 ? 's' : ''} beyond duration
+                <button
+                  type="button"
+                  className="anim-lint-trim"
+                  disabled={manifestEditsDisabled}
+                  onClick={() => onTrimClip(activeName)}
+                >
+                  Trim
+                </button>
+              </span>
+            )}
             <button
               type="button"
               className="anim-create-inline"
@@ -299,6 +357,7 @@ export function AnimationView({
               onScrub={handleScrub}
               onSelectKey={handleSelectKey}
               onAddKey={handleAddKey}
+              onMoveKey={handleMoveKey}
             />
             {effectiveSelectedKey !== null && selectedKeyframe !== undefined && (
               <KeyInspector

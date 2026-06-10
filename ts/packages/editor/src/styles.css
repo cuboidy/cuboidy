@@ -1487,8 +1487,11 @@ pre {
   padding: 0;
   background: #5af;
   border: 1px solid #1a1a1a;
-  cursor: pointer;
+  cursor: grab;
   transform: translate(-50%, -50%) rotate(45deg);
+  /* Required for pointer-capture dragging on touch devices: without it the
+     browser claims horizontal pan gestures before pointermove fires. */
+  touch-action: none;
 }
 
 .timeline-marker:hover:not(:disabled) {
@@ -1501,6 +1504,72 @@ pre {
 }
 
 .timeline-marker:disabled {
+  cursor: not-allowed;
+}
+
+/* The "0.0" start key: SPEC §6.6 — selectable, never draggable. Square
+   (no 45° rotation) so the lock reads at a glance. */
+.timeline-marker.locked {
+  transform: translate(-50%, -50%);
+  background: #47617f;
+  cursor: pointer;
+}
+
+.timeline-marker.dragging {
+  background: #fff;
+  box-shadow: 0 0 0 2px #5af;
+  cursor: grabbing;
+  z-index: 1;
+}
+
+/* A key whose time exceeds the clip duration (clamped to the lane's right
+   edge by the percentage layout). The lint badge offers Trim. */
+.timeline-marker.out-of-range {
+  background: #d66;
+}
+
+/* Faded origin shown while its marker is being dragged. */
+.timeline-marker-ghost {
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  background: #5af;
+  opacity: 0.3;
+  transform: translate(-50%, -50%) rotate(45deg);
+  pointer-events: none;
+}
+
+/* ─── Duration-overrun lint badge (anim edit toolbar) ─────────────── */
+
+.anim-lint-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.15rem 0.5rem;
+  background: #3a2a1a;
+  color: #fc8;
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+.anim-lint-trim {
+  padding: 0.1rem 0.45rem;
+  background: #4a3a1a;
+  color: #fc8;
+  border: 1px solid #6a5a2a;
+  border-radius: 3px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+}
+
+.anim-lint-trim:hover:not(:disabled) {
+  background: #5a4a2a;
+}
+
+.anim-lint-trim:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
