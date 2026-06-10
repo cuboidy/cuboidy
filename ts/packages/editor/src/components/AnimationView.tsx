@@ -249,6 +249,37 @@ export function AnimationView({
     [onMoveAnimKey],
   );
 
+  // Retime via the inspector's numeric time field. Applies the same rules
+  // as a marker drag: snap to the 1e-3 grid, stay one grid step clear of
+  // same-attribute neighbors (no silent merge/crossing), clamp to the clip
+  // range — then delegates to handleMoveKey.
+  const handleRetimeKey = useCallback(
+    (part: string, attr: KeyAttr, fromTimeKey: string, toTime: number) => {
+      const track = inlineRef.current?.parts[part];
+      const dur = inlineRef.current?.duration ?? 0;
+      if (track === undefined || dur <= 0) return;
+      const fromT = Number(fromTimeKey);
+      const times = Object.keys(track)
+        .filter((k) => attr in track[k]!)
+        .map(Number)
+        .filter(Number.isFinite)
+        .sort((a, b) => a - b);
+      const i = times.indexOf(fromT);
+      const prev = i > 0 ? times[i - 1]! : null;
+      const next = i >= 0 && i < times.length - 1 ? times[i + 1]! : null;
+      const durGrid = Math.floor(dur * 1000) / 1000;
+      const min = prev !== null ? Math.round((prev + 0.001) * 1000) / 1000 : 0;
+      const max = Math.min(
+        next !== null ? Math.round((next - 0.001) * 1000) / 1000 : durGrid,
+        durGrid,
+      );
+      if (min > max) return;
+      const snapped = Math.round(toTime * 1000) / 1000;
+      handleMoveKey(part, attr, fromTimeKey, Math.min(Math.max(snapped, min), max));
+    },
+    [handleMoveKey],
+  );
+
   // Prune a stale selection (the key may have been deleted/edited away or the
   // clip swapped). Done at render so the inspector never sees a dangling key.
   const effectiveSelectedKey = useMemo<SelectedKey | null>(() => {
@@ -364,6 +395,14 @@ export function AnimationView({
                 selectedKey={effectiveSelectedKey}
                 keyframe={selectedKeyframe}
                 disabled={manifestEditsDisabled}
+                onSetTime={(t) =>
+                  handleRetimeKey(
+                    effectiveSelectedKey.part,
+                    effectiveSelectedKey.attr,
+                    effectiveSelectedKey.timeKey,
+                    t,
+                  )
+                }
                 onSetField={(value) =>
                   onSetAnimField(
                     activeName,

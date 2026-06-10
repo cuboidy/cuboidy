@@ -1,4 +1,9 @@
-import { useEffect, useState, type ChangeEvent } from 'react';
+import {
+  useEffect,
+  useState,
+  type ChangeEvent,
+  type KeyboardEvent,
+} from 'react';
 
 interface Props {
   // Short label shown left of the field (e.g. an axis "x"/"y"/"z"). Omit for
@@ -7,6 +12,12 @@ interface Props {
   value: number;
   disabled?: boolean;
   step?: string;
+  // When true, the typed value is committed on blur / Enter instead of per
+  // keystroke. Use when the parent clamps or rewrites committed values
+  // (e.g. a keyframe time clamped between its neighbors): live commits
+  // would clamp a half-typed number and the [value] resync would then eat
+  // the rest of the typing.
+  commitOnBlur?: boolean;
   onChange: (next: number) => void;
 }
 
@@ -18,7 +29,14 @@ interface Props {
 //
 // Extracted from PartProperties' PositionInput so the keyframe inspector and
 // the rig inspector share one implementation of this subtle behavior.
-export function NumberInput({ label, value, disabled = false, step = 'any', onChange }: Props) {
+export function NumberInput({
+  label,
+  value,
+  disabled = false,
+  step = 'any',
+  commitOnBlur = false,
+  onChange,
+}: Props) {
   const [text, setText] = useState<string>(() => String(value));
 
   useEffect(() => {
@@ -32,6 +50,7 @@ export function NumberInput({ label, value, disabled = false, step = 'any', onCh
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value;
     setText(raw);
+    if (commitOnBlur) return;
     // Commit only a complete, finite number. Intermediate input — '', '-',
     // '.', '-.' — is buffered WITHOUT committing, so a partial negative or
     // decimal isn't snapped back to the old value (and doesn't churn the
@@ -39,6 +58,25 @@ export function NumberInput({ label, value, disabled = false, step = 'any', onCh
     // the [value] effect would then reset the buffer, eating the '-'.
     const n = Number(raw);
     if (raw.trim() !== '' && Number.isFinite(n)) onChange(n);
+  };
+
+  const commit = () => {
+    const n = Number(text);
+    if (text.trim() !== '' && Number.isFinite(n) && n !== value) onChange(n);
+    // Snap the buffer back to the prop; if the commit changes the value the
+    // [value] resync immediately rewrites it to the (possibly clamped)
+    // result, otherwise this restores the original.
+    setText(String(value));
+  };
+
+  const handleBlur = () => {
+    if (commitOnBlur) commit();
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (!commitOnBlur) return;
+    if (e.key === 'Enter') commit();
+    else if (e.key === 'Escape') setText(String(value));
   };
 
   return (
@@ -50,6 +88,8 @@ export function NumberInput({ label, value, disabled = false, step = 'any', onCh
         step={step}
         disabled={disabled}
         onChange={handleChange}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
       />
     </label>
   );

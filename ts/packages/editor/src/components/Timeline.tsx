@@ -19,6 +19,13 @@ import type { SelectedKey } from '../lib/types.js';
 // lines up with the lanes without measuring the DOM.
 const LABEL_W = 96;
 
+// Right inset (px) shared by the ruler, every lane, and the playhead math.
+// Two jobs: keeps a marker at frac=1 (a key exactly at duration) fully
+// visible instead of half-clipped by overflow-x, and keeps it clear of
+// Windows 11's overlay scrollbar, which paints on top of the content's
+// right edge.
+const RIGHT_PAD = 14;
+
 // One step of the canonical time grid (formatTimeKey rounds to 1e-3).
 // Neighbor clamps keep a full grid step of clearance, which strictly exceeds
 // nearestExistingKey's eps (5e-4), so a clamped drag can never silently merge
@@ -77,6 +84,14 @@ interface Props {
 // depends on `time`, so the marker grid (TimelineLanes) is memoized and
 // skips re-render during playback; a marker drag re-renders only that one
 // marker (local state) plus the playhead.
+//
+// Layout: the ruler (sticky), the lanes, and the playhead ALL live inside
+// the vertical scroll container's content, so they share one coordinate
+// space whose width already excludes the scrollbar — the playhead lines up
+// with the markers regardless of whether the scrollbar is present. (The
+// previous layout positioned the playhead against the full panel width and
+// kept the ruler outside the scroller, so everything drifted right of the
+// lanes once the scrollbar appeared.)
 export function Timeline({
   partNames,
   inline,
@@ -89,48 +104,57 @@ export function Timeline({
   onMoveKey,
 }: Props) {
   const duration = inline.duration;
-  const rulerRef = useRef<HTMLDivElement>(null);
 
-  const scrubTo = (clientX: number): void => {
-    const el = rulerRef.current;
-    if (el === null || duration <= 0) return;
-    const r = el.getBoundingClientRect();
-    onScrub(clamp01((clientX - r.left) / r.width) * duration);
+  const scrubFromEvent = (e: PointerEvent<HTMLDivElement>): void => {
+    if (duration <= 0) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    onScrub(clamp01((e.clientX - r.left) / r.width) * duration);
   };
+  // Pointer capture makes the ruler scrub by drag, not just click — the
+  // playhead follows the pointer until release even if it leaves the strip.
   const handleRulerDown = (e: PointerEvent<HTMLDivElement>): void => {
-    scrubTo(e.clientX);
+    e.currentTarget.setPointerCapture(e.pointerId);
+    scrubFromEvent(e);
+  };
+  const handleRulerMove = (e: PointerEvent<HTMLDivElement>): void => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) scrubFromEvent(e);
   };
 
   const headFrac = duration > 0 ? clamp01(time / duration) : 0;
 
   return (
     <div className="timeline">
-      <div className="timeline-ruler-row">
-        <div className="timeline-gutter" style={{ width: LABEL_W }} />
-        <div
-          className="timeline-ruler"
-          ref={rulerRef}
-          onPointerDown={handleRulerDown}
-        />
-      </div>
       <div className="timeline-scroll">
-        <TimelineLanes
-          partNames={partNames}
-          inline={inline}
-          selectedKey={selectedKey}
-          disabled={disabled}
-          onSelectKey={onSelectKey}
-          onAddKey={onAddKey}
-          onMoveKey={onMoveKey}
-          onScrub={onScrub}
-        />
+        <div className="timeline-inner">
+          <div className="timeline-ruler-row">
+            <div className="timeline-gutter" style={{ width: LABEL_W }} />
+            <div
+              className="timeline-ruler"
+              style={{ marginRight: RIGHT_PAD }}
+              onPointerDown={handleRulerDown}
+              onPointerMove={handleRulerMove}
+            />
+          </div>
+          <TimelineLanes
+            partNames={partNames}
+            inline={inline}
+            selectedKey={selectedKey}
+            disabled={disabled}
+            onSelectKey={onSelectKey}
+            onAddKey={onAddKey}
+            onMoveKey={onMoveKey}
+            onScrub={onScrub}
+          />
+          {/* Offset LABEL_W + a fraction of the lane width (container minus
+              gutter minus right inset) so the playhead tracks the markers. */}
+          <div
+            className="timeline-playhead"
+            style={{
+              left: `calc(${LABEL_W}px + (100% - ${LABEL_W + RIGHT_PAD}px) * ${headFrac})`,
+            }}
+          />
+        </div>
       </div>
-      {/* Playhead spans the whole timeline; offset LABEL_W + a fraction of the
-          remaining (lane) width so it lines up with the markers. */}
-      <div
-        className="timeline-playhead"
-        style={{ left: `calc(${LABEL_W}px + (100% - ${LABEL_W}px) * ${headFrac})` }}
-      />
     </div>
   );
 }
@@ -205,7 +229,7 @@ const TimelineLanes = memo(function TimelineLanes({
                       +
                     </button>
                   </div>
-                  <div className="timeline-lane">
+                  <div className="timeline-lane" style={{ marginRight: RIGHT_PAD }}>
                     {arr.map(({ t, timeKey }, i) => (
                       <TimelineMarker
                         key={timeKey}

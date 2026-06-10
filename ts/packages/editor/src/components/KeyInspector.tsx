@@ -1,4 +1,4 @@
-import type { AttrValue, Keyframe } from '@cuboidy/core';
+import { formatTimeKey, type AttrValue, type Keyframe } from '@cuboidy/core';
 import type { SelectedKey } from '../lib/types.js';
 import { NumberInput } from './NumberInput.js';
 
@@ -7,6 +7,10 @@ interface Props {
   // The keyframe entry at selectedKey.timeKey (carries the attribute value).
   keyframe: Keyframe;
   disabled: boolean;
+  // Retime the selected key. The handler clamps like a marker drag (grid,
+  // same-attr neighbors, clip range); the field commits on blur/Enter so
+  // mid-typing values are never clamped out from under the user.
+  onSetTime: (t: number) => void;
   onSetField: (value: AttrValue) => void;
   onDelete: () => void;
 }
@@ -24,16 +28,19 @@ function restVec(attr: SelectedKey['attr']): Vec3 {
 }
 
 // Inspector for the selected keyframe attribute. rot/pos/scale edit as three
-// axis fields; visible as a checkbox. The time-key is read-only (retiming is
-// a later milestone). Edits flow straight back to the manifest via onSetField.
+// axis fields; visible as a checkbox; the time field retimes the key (the
+// "0.0" start key is locked per SPEC §6.6, like dragging). Edits flow
+// straight back to the manifest.
 export function KeyInspector({
   selectedKey,
   keyframe,
   disabled,
+  onSetTime,
   onSetField,
   onDelete,
 }: Props) {
   const { part, attr, timeKey } = selectedKey;
+  const timeLocked = timeKey === formatTimeKey(0);
 
   return (
     <div className="anim-inspector">
@@ -41,8 +48,25 @@ export function KeyInspector({
         <span className="anim-inspector-title">
           {part} · {attr}
         </span>
-        <span className="anim-inspector-time">@ {timeKey}s</span>
       </div>
+
+      <label
+        className="anim-inspector-time-field"
+        title={
+          timeLocked
+            ? 'Start key — its time is locked (SPEC §6.6)'
+            : 'Time in seconds. Commits on Enter / focus out; clamped between neighboring keys.'
+        }
+      >
+        <span className="anim-inspector-time-label">time</span>
+        <NumberInput
+          value={Number(timeKey)}
+          disabled={disabled || timeLocked}
+          commitOnBlur
+          onChange={onSetTime}
+        />
+        <span className="anim-inspector-time-unit">s</span>
+      </label>
 
       {attr === 'visible' ? (
         <label className="anim-inspector-visible">

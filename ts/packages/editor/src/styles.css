@@ -1365,7 +1365,6 @@ pre {
 /* ─── Timeline ────────────────────────────────────────────────────── */
 
 .timeline {
-  position: relative;
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -1373,11 +1372,18 @@ pre {
   flex-direction: column;
 }
 
+/* Sticky inside the scroll content so it shares the lanes' coordinate
+   space (width excludes the scrollbar) while staying visible during
+   vertical scroll. Opaque background hides lanes passing underneath. */
 .timeline-ruler-row {
   display: flex;
   flex-shrink: 0;
   height: 18px;
   border-bottom: 1px solid #333;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #202020;
 }
 
 .timeline-gutter {
@@ -1390,12 +1396,24 @@ pre {
   min-width: 0;
   background: #1c1c1c;
   cursor: pointer;
+  /* Pointer-capture drag-scrubbing on touch: stop the browser from
+     claiming horizontal pan gestures. */
+  touch-action: none;
 }
 
 .timeline-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* overflow-y: auto would force overflow-x to auto too; markers centered
+     on a lane edge protrude half a diamond and would mint a horizontal
+     scrollbar. The RIGHT_PAD lane inset keeps them visible instead. */
+  overflow-x: hidden;
+}
+
+.timeline-inner {
+  position: relative;
+  min-height: 100%;
 }
 
 .timeline-part {
@@ -1580,7 +1598,8 @@ pre {
   width: 1px;
   background: #f55;
   pointer-events: none;
-  z-index: 2;
+  /* Above the sticky ruler so the red line reads across it. */
+  z-index: 4;
 }
 
 /* ─── Keyframe inspector ──────────────────────────────────────────── */
@@ -1618,11 +1637,22 @@ pre {
   white-space: nowrap;
 }
 
-.anim-inspector-time {
-  font-size: 0.72rem;
+.anim-inspector-time-field {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
   color: #888;
+}
+
+.anim-inspector-time-field .property-position-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.anim-inspector-time-label,
+.anim-inspector-time-unit {
   flex-shrink: 0;
-  font-variant-numeric: tabular-nums;
 }
 
 .anim-inspector-visible {
