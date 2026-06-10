@@ -26,6 +26,8 @@ export {
   setAttrAtKey,
   addAttrAtTime,
   deleteAttrAtKey,
+  moveAttrKey,
+  trimTrackKeys,
   restValue,
 } from './animation-edit.js';
 export type { KeyAttr, AttrValue } from './animation-edit.js';

@@ -163,3 +163,58 @@ export function deleteAttrAtKey(
   }
   return sortTrackKeys(out);
 }
+
+// Move one attribute's field from `fromTimeKey` to the key resolved from
+// `toTime` (retiming a key by drag). A pure rename: the output's time-keys
+// are exactly the input's with from→to renamed — no §6.6 "0.0" re-seed side
+// effect (which is why the removal is inlined rather than composed from
+// deleteAttrAtKey; on a malformed track lacking "0.0" a move must not mint
+// one). The editor never drags the "0.0" key (SPEC §6.6 lock); the guard
+// here is defensive.
+//
+// Target resolution matches addAttrAtTime: a `toTime` within eps of an
+// existing key merges into that entry (legitimate for cross-attribute
+// landings). Landing on a key that already carries `attr` overwrites that
+// field — the UI blocks same-attribute collisions; this helper stays
+// mechanical like setAttrAtKey.
+//
+// Returns the (possibly unchanged) track plus the resolved time-key so the
+// caller can keep the moved key selected.
+export function moveAttrKey(
+  track: AnimationTrack,
+  fromTimeKey: string,
+  toTime: number,
+  attr: KeyAttr,
+): { track: AnimationTrack; timeKey: string } {
+  const entry = track[fromTimeKey];
+  if (entry === undefined || !(attr in entry) || fromTimeKey === ZERO_KEY) {
+    return { track, timeKey: fromTimeKey };
+  }
+  const toKey = nearestExistingKey(track, toTime) ?? formatTimeKey(toTime);
+  if (toKey === fromTimeKey) return { track, timeKey: fromTimeKey };
+
+  const value = entry[attr] as AttrValue;
+  const { [attr]: _drop, ...rest } = entry;
+  const out: AnimationTrack = { ...track };
+  if (Object.keys(rest).length === 0) delete out[fromTimeKey];
+  else out[fromTimeKey] = rest;
+  out[toKey] = withAttr(out[toKey] ?? {}, attr, value);
+  return { track: sortTrackKeys(out), timeKey: toKey };
+}
+
+// Drop every time-key entry beyond `duration` (cleanup after the user
+// shortened a clip). Strict `>`: a key exactly at duration is legal per SPEC
+// §6.6 (and is the loop's wrap end value), so it survives. "0.0" is
+// structurally safe (0 > duration is false for any non-negative duration).
+// Returns the INPUT REFERENCE unchanged when nothing is out of range, so
+// callers can cheaply detect a no-op.
+export function trimTrackKeys(
+  track: AnimationTrack,
+  duration: number,
+): AnimationTrack {
+  const over = Object.keys(track).filter((k) => Number(k) > duration);
+  if (over.length === 0) return track;
+  const out: AnimationTrack = { ...track };
+  for (const k of over) delete out[k];
+  return out;
+}

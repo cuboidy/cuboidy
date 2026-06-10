@@ -3,9 +3,11 @@ import {
   addAttrAtTime,
   deleteAttrAtKey,
   formatTimeKey,
+  moveAttrKey,
   nearestExistingKey,
   setAttrAtKey,
   sortTrackKeys,
+  trimTrackKeys,
 } from '../src/animation-edit.js';
 import { samplePart, type AnimationTrack } from '../src/animation.js';
 
@@ -114,6 +116,162 @@ describe('deleteAttrAtKey', () => {
     const track: AnimationTrack = { '0.0': { rot: [0, 0, 0] } };
     const next = deleteAttrAtKey(track, '0.0', 'rot');
     expect(Object.keys(next)).toEqual([]);
+  });
+});
+
+describe('moveAttrKey', () => {
+  it('moves a key to a new time, preserving the value and sorting', () => {
+    const track: AnimationTrack = { '0.0': { rot: [0, 0, 0] }, '0.5': { rot: [0, 25, 0] } };
+    const { track: next, timeKey } = moveAttrKey(track, '0.5', 1.25, 'rot');
+    expect(timeKey).toBe('1.25');
+    expect(Object.keys(next)).toEqual(['0.0', '1.25']);
+    expect(next['1.25']).toEqual({ rot: [0, 25, 0] });
+    // input untouched
+    expect(Object.keys(track)).toEqual(['0.0', '0.5']);
+  });
+
+  it('is a no-op when toTime resolves to the same key (same reference)', () => {
+    const track: AnimationTrack = { '0.0': {}, '0.5': { rot: [0, 1, 0] } };
+    const { track: next, timeKey } = moveAttrKey(track, '0.5', 0.5004, 'rot');
+    expect(next).toBe(track);
+    expect(timeKey).toBe('0.5');
+  });
+
+  it('moves only the targeted attr, leaving siblings at the source key', () => {
+    const track: AnimationTrack = {
+      '0.0': { rot: [0, 0, 0] },
+      '0.5': { rot: [0, 9, 0], pos: [1, 0, 0] },
+    };
+    const { track: next } = moveAttrKey(track, '0.5', 0.8, 'rot');
+    expect(next['0.5']).toEqual({ pos: [1, 0, 0] });
+    expect(next['0.8']).toEqual({ rot: [0, 9, 0] });
+  });
+
+  it('prunes the source entry when it becomes empty', () => {
+    const track: AnimationTrack = { '0.0': { rot: [0, 0, 0] }, '0.5': { rot: [0, 9, 0] } };
+    const { track: next } = moveAttrKey(track, '0.5', 0.8, 'rot');
+    expect('0.5' in next).toBe(false);
+  });
+
+  it('does not seed rot at 0.0 when 0.0 exists without that attr (pure rename)', () => {
+    const zero = { pos: [0, 0, 0] as [number, number, number] };
+    const track: AnimationTrack = { '0.0': zero, '0.5': { rot: [0, 9, 0] } };
+    const { track: next } = moveAttrKey(track, '0.5', 0.8, 'rot');
+    expect(next['0.0']).toBe(zero); // byte-identical entry, no rot injected
+  });
+
+  it('does not repair a malformed track lacking 0.0 (no re-seed side effect)', () => {
+    const track: AnimationTrack = { '0.5': { rot: [0, 9, 0] } };
+    const { track: next } = moveAttrKey(track, '0.5', 0.8, 'rot');
+    expect(Object.keys(next)).toEqual(['0.8']);
+  });
+
+  it('no-ops when the source key or attr is absent', () => {
+    const track: AnimationTrack = { '0.0': { rot: [0, 0, 0] } };
+    expect(moveAttrKey(track, '0.5', 0.8, 'rot').track).toBe(track);
+    expect(moveAttrKey(track, '0.0', 0.8, 'pos').track).toBe(track);
+  });
+
+  it('refuses to move the 0.0 key (defensive SPEC 6.6 lock)', () => {
+    const track: AnimationTrack = { '0.0': { rot: [0, 0, 0] }, '1.0': { rot: [0, 9, 0] } };
+    const { track: next, timeKey } = moveAttrKey(track, '0.0', 0.5, 'rot');
+    expect(next).toBe(track);
+    expect(timeKey).toBe('0.0');
+  });
+
+  it('merges into an existing cross-attr entry at the target', () => {
+    const track: AnimationTrack = {
+      '0.0': {},
+      '0.5': { rot: [0, 9, 0] },
+      '1.0': { pos: [0, 2, 0] },
+    };
+    const { track: next, timeKey } = moveAttrKey(track, '0.5', 1.0, 'rot');
+    expect(timeKey).toBe('1.0');
+    expect(next['1.0']).toEqual({ pos: [0, 2, 0], rot: [0, 9, 0] });
+    expect('0.5' in next).toBe(false);
+  });
+
+  it('overwrites the attr when landing on a same-attr key (caller-blocked, defined)', () => {
+    const track: AnimationTrack = {
+      '0.0': {},
+      '0.5': { rot: [0, 9, 0] },
+      '1.0': { rot: [0, 30, 0] },
+    };
+    const { track: next } = moveAttrKey(track, '0.5', 1.0, 'rot');
+    expect(next['1.0']).toEqual({ rot: [0, 9, 0] });
+  });
+
+  it('resolves an eps-coincident target to the existing key (no near-duplicate)', () => {
+    const track: AnimationTrack = {
+      '0.0': {},
+      '0.25': { rot: [0, 9, 0] },
+      '0.5': { pos: [0, 1, 0] },
+    };
+    const { track: next, timeKey } = moveAttrKey(track, '0.25', 0.4998, 'rot');
+    expect(timeKey).toBe('0.5');
+    expect(Object.keys(next)).toEqual(['0.0', '0.5']);
+  });
+
+  it('keeps keys sorted after a backwards move', () => {
+    const track: AnimationTrack = {
+      '0.0': {},
+      '1.0': { pos: [0, 1, 0] },
+      '1.5': { rot: [0, 9, 0] },
+    };
+    const { track: next } = moveAttrKey(track, '1.5', 0.25, 'rot');
+    expect(Object.keys(next)).toEqual(['0.0', '0.25', '1.0']);
+  });
+
+  it('snaps the target to the 1e-3 grid', () => {
+    const track: AnimationTrack = { '0.0': {}, '0.5': { rot: [0, 9, 0] } };
+    const { timeKey } = moveAttrKey(track, '0.5', 0.30000000000000004, 'rot');
+    expect(timeKey).toBe('0.3');
+  });
+
+  it('round-trips through samplePart at the new time', () => {
+    const track: AnimationTrack = { '0.0': { rot: [0, 0, 0] }, '0.5': { rot: [0, 40, 0] } };
+    const { track: next, timeKey } = moveAttrKey(track, '0.5', 0.75, 'rot');
+    const pose = samplePart(next, Number(timeKey), 1.0, false);
+    expect(pose.rot).toEqual([0, 40, 0]);
+  });
+});
+
+describe('trimTrackKeys', () => {
+  it('drops only keys strictly beyond duration (== duration survives)', () => {
+    const track: AnimationTrack = {
+      '0.0': {},
+      '1.0': { rot: [0, 1, 0] },
+      '1.5': { rot: [0, 2, 0] },
+      '2.0': { rot: [0, 3, 0] },
+    };
+    const next = trimTrackKeys(track, 1.5);
+    expect(Object.keys(next)).toEqual(['0.0', '1.0', '1.5']);
+  });
+
+  it('never drops the 0.0 key', () => {
+    const track: AnimationTrack = { '0.0': { rot: [0, 0, 0] }, '0.5': { rot: [0, 9, 0] } };
+    const next = trimTrackKeys(track, 0.2);
+    expect(Object.keys(next)).toEqual(['0.0']);
+  });
+
+  it('returns the same reference when nothing is out of range', () => {
+    const track: AnimationTrack = { '0.0': {}, '1.0': { rot: [0, 1, 0] } };
+    expect(trimTrackKeys(track, 2.0)).toBe(track);
+  });
+
+  it('does not mutate the input when dropping', () => {
+    const track: AnimationTrack = { '0.0': {}, '3.0': { rot: [0, 1, 0] } };
+    trimTrackKeys(track, 1.0);
+    expect(Object.keys(track)).toEqual(['0.0', '3.0']);
+  });
+
+  it('drops a mixed-attr entry beyond duration whole', () => {
+    const track: AnimationTrack = {
+      '0.0': {},
+      '2.0': { rot: [0, 1, 0], pos: [1, 0, 0], visible: false },
+    };
+    const next = trimTrackKeys(track, 1.0);
+    expect(Object.keys(next)).toEqual(['0.0']);
   });
 });
 
