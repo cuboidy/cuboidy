@@ -5,7 +5,8 @@ import { PartProperties } from './PartProperties.js';
 interface Props {
   cvox: Cvox;
   cvoxEditsDisabled?: boolean;
-  onCvoxChange: (next: Cvox) => void;
+  // Tag = optional undo-coalescing identity, forwarded from PalettePanel.
+  onCvoxChange: (next: Cvox, tag?: string) => void;
   // The right panel inspector shows properties for the currently
   // selected part. Null hides it entirely (Palette stays on top, no
   // empty placeholder underneath).

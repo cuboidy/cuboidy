@@ -7,7 +7,11 @@ interface Props {
   // palette mutations from re-serializing and clobbering the user's
   // unsaved text. UX: source must be fixed first.
   disabled?: boolean;
-  onChange: (next: Cvox) => void;
+  // Optional undo-coalescing tag: edits with the same tag in quick
+  // succession merge into one history entry. Color edits pass one because
+  // <input type="color"> fires onChange continuously while the user drags
+  // inside the OS picker.
+  onChange: (next: Cvox, tag?: string) => void;
 }
 
 // Palette editing as a panel — lives in the right sidebar so it's
@@ -37,7 +41,7 @@ export function PalettePanel({ cvox, disabled = false, onChange }: Props) {
     const newPalette = cvox.palette.map((c, i) =>
       i === index ? { ...c, ...rgb } : c,
     );
-    onChange({ ...cvox, palette: newPalette });
+    onChange({ ...cvox, palette: newPalette }, `palette:color:${index}`);
   };
 
   const handleAddColor = () => {

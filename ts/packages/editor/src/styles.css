@@ -67,7 +67,8 @@ pre {
 
 .reset,
 .save-btn,
-.export-btn {
+.export-btn,
+.history-btn {
   padding: 0.3rem 0.8rem;
   background: #3a3a3a;
   color: #e0e0e0;
@@ -80,8 +81,14 @@ pre {
 
 .reset:hover,
 .export-btn:hover,
+.history-btn:hover:not(:disabled),
 .save-btn:hover:not(:disabled) {
   background: #4a4a4a;
+}
+
+.history-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .save-btn {

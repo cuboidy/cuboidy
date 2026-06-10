@@ -1,4 +1,11 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from 'react';
 import {
   addAttrAtTime,
   deleteAttrAtKey,
@@ -25,6 +32,7 @@ import { SourceEditor } from './components/SourceEditor.js';
 import { TabBar } from './components/TabBar.js';
 import { ViewModeToggle } from './components/ViewModeToggle.js';
 import { VoxelScene } from './components/VoxelScene.js';
+import { historyReducer, makeHistory } from './lib/history.js';
 import { synthesizeManifest } from './lib/synthesize-manifest.js';
 import type {
   LoadResult,
@@ -40,7 +48,22 @@ import type {
 const REPARSE_DEBOUNCE_MS = 300;
 
 export function App() {
-  const [loaded, setLoaded] = useState<LoadResult | null>(null);
+  // The loaded document plus its undo/redo history, in one pure reducer.
+  // Every structural mutation goes through `dispatchEdit` (recorded, with
+  // optional coalescing tag); reparse successes `amend` (AST half of an
+  // already-recorded text edit); load/reset `replace` (history cleared).
+  const [history, dispatch] = useReducer(
+    historyReducer<LoadResult | null>,
+    null,
+    makeHistory<LoadResult | null>,
+  );
+  const loaded = history.present;
+  const dispatchEdit = useCallback(
+    (tag: string | null, apply: (c: LoadResult | null) => LoadResult | null) => {
+      dispatch({ type: 'edit', tag, at: Date.now(), apply });
+    },
+    [],
+  );
   const [hiddenParts, setHiddenParts] = useState<ReadonlySet<string>>(new Set());
   const [viewMode, setViewMode] = useState<ViewMode>('cvox');
   const [selectedTab, setSelectedTab] = useState<SelectedTab>('preview');
@@ -83,7 +106,7 @@ export function App() {
     (result: LoadResult) => {
       cancelPendingCvoxReparse();
       cancelPendingManifestReparse();
-      setLoaded(result);
+      dispatch({ type: 'replace', next: result });
       setHiddenParts(new Set());
       setSelectedPartName(null);
       setCvoxParseError(null);
@@ -101,7 +124,7 @@ export function App() {
   const handleReset = useCallback(() => {
     cancelPendingCvoxReparse();
     cancelPendingManifestReparse();
-    setLoaded(null);
+    dispatch({ type: 'replace', next: null });
     setHiddenParts(new Set());
     setSelectedPartName(null);
     setCvoxParseError(null);
@@ -122,13 +145,10 @@ export function App() {
   const handleShowAll = useCallback(() => setHiddenParts(new Set()), []);
 
   const handleHideAll = useCallback(() => {
-    setLoaded((current) => {
-      if (current?.source !== undefined) {
-        setHiddenParts(new Set(current.source.cvox.parts.map((p) => p.name)));
-      }
-      return current;
-    });
-  }, []);
+    if (loaded?.source !== undefined) {
+      setHiddenParts(new Set(loaded.source.cvox.parts.map((p) => p.name)));
+    }
+  }, [loaded]);
 
   const handleSelectTab = useCallback((tab: SelectedTab) => {
     setSelectedTab(tab);
@@ -141,7 +161,10 @@ export function App() {
   // write what the user typed.
   const handleEditCvoxText = useCallback(
     (nextText: string) => {
-      setLoaded((current) => {
+      // Recorded with a per-file tag: a typing burst (keystrokes < 800ms
+      // apart) is one undo entry whose pre-state is the text before the
+      // burst started.
+      dispatchEdit('text:cvox', (current) => {
         if (current?.source === undefined) return current;
         const src = current.source;
         return {
@@ -155,19 +178,25 @@ export function App() {
         const result = parseCvox(nextText);
         if (result.ok) {
           setCvoxParseError(null);
-          setLoaded((current) => {
-            if (current?.source === undefined) return current;
-            return {
-              ...current,
-              source: { ...current.source, cvox: result.value },
-            };
+          // The AST half of the already-recorded text edit — amend, don't
+          // push (an entry whose undo changed only the invisible AST would
+          // be a dead Ctrl+Z step).
+          dispatch({
+            type: 'amend',
+            apply: (current) => {
+              if (current?.source === undefined) return current;
+              return {
+                ...current,
+                source: { ...current.source, cvox: result.value },
+              };
+            },
           });
         } else {
           setCvoxParseError(result.message);
         }
       }, REPARSE_DEBOUNCE_MS);
     },
-    [cancelPendingCvoxReparse],
+    [dispatchEdit, cancelPendingCvoxReparse],
   );
 
   // Palette / future structural edit on the cvox AST. Re-serializes to
@@ -175,10 +204,12 @@ export function App() {
   // new text is by-construction parseable, so we know the error state
   // is cleared too).
   const handleEditCvox = useCallback(
-    (nextCvox: Cvox) => {
+    (nextCvox: Cvox, tag?: string) => {
       cancelPendingCvoxReparse();
       setCvoxParseError(null);
-      setLoaded((current) => {
+      // Optional coalescing tag from the caller (the color picker fires
+      // continuously while dragging inside the OS dialog).
+      dispatchEdit(tag ?? null, (current) => {
         if (current?.source === undefined) return current;
         const src = current.source;
         const nextText = serializeCvox(nextCvox);
@@ -192,7 +223,7 @@ export function App() {
         };
       });
     },
-    [cancelPendingCvoxReparse],
+    [dispatchEdit, cancelPendingCvoxReparse],
   );
 
   // Manifest source-text edit (manifest tab textarea typing). Same
@@ -200,7 +231,7 @@ export function App() {
   // Folder-only: cvox-only sources have no manifest file to edit.
   const handleEditManifestText = useCallback(
     (nextText: string) => {
-      setLoaded((current) => {
+      dispatchEdit('text:manifest', (current) => {
         if (current?.source?.kind !== 'folder') return current;
         const src = current.source;
         const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
@@ -222,19 +253,22 @@ export function App() {
         const result = parseManifest(json);
         if (result.ok) {
           setManifestParseError(null);
-          setLoaded((current) => {
-            if (current?.source?.kind !== 'folder') return current;
-            return {
-              ...current,
-              source: { ...current.source, manifest: result.value },
-            };
+          dispatch({
+            type: 'amend',
+            apply: (current) => {
+              if (current?.source?.kind !== 'folder') return current;
+              return {
+                ...current,
+                source: { ...current.source, manifest: result.value },
+              };
+            },
           });
         } else {
           setManifestParseError(result.message);
         }
       }, REPARSE_DEBOUNCE_MS);
     },
-    [cancelPendingManifestReparse],
+    [dispatchEdit, cancelPendingManifestReparse],
   );
 
   // Single-part edits coming from PartTree (D&D parent change) and
@@ -247,8 +281,12 @@ export function App() {
   // points in that case, but the defensive guard keeps a runtime
   // error from racing source-tab edits that drop the manifest.
   const mutateManifestPart = useCallback(
-    (partName: string, build: (entry: ManifestPart) => ManifestPart) => {
-      setLoaded((current) => {
+    (
+      tag: string | null,
+      partName: string,
+      build: (entry: ManifestPart) => ManifestPart,
+    ) => {
+      dispatchEdit(tag, (current) => {
         if (current?.source?.kind !== 'folder') return current;
         const src = current.source;
         if (src.manifest === undefined) return current;
@@ -273,12 +311,13 @@ export function App() {
       cancelPendingManifestReparse();
       setManifestParseError(null);
     },
-    [cancelPendingManifestReparse],
+    [dispatchEdit, cancelPendingManifestReparse],
   );
 
   const handleChangePartParent = useCallback(
     (partName: string, parent: string | null) => {
-      mutateManifestPart(partName, (entry) => {
+      // Discrete select — always its own undo entry.
+      mutateManifestPart(null, partName, (entry) => {
         if (parent === null) {
           const { parent: _drop, ...rest } = entry;
           return rest;
@@ -291,7 +330,9 @@ export function App() {
 
   const handleChangePartPosition = useCallback(
     (partName: string, axis: 0 | 1 | 2, value: number) => {
-      mutateManifestPart(partName, (entry) => {
+      // Live number input commits per keystroke — coalesce a burst on one
+      // axis into one entry.
+      mutateManifestPart(`part:pos:${partName}:${axis}`, partName, (entry) => {
         const cur = entry.position ?? [0, 0, 0];
         const next: [number, number, number] = [cur[0], cur[1], cur[2]];
         next[axis] = value;
@@ -304,7 +345,7 @@ export function App() {
   const handleCreateManifest = useCallback(() => {
     cancelPendingManifestReparse();
     setManifestParseError(null);
-    setLoaded((current) => {
+    dispatchEdit(null, (current) => {
       if (current?.source === undefined) return current;
       const src = current.source;
       const manifest = synthesizeManifest(src.cvox, src.cvoxFile.name);
@@ -326,11 +367,15 @@ export function App() {
         next = { ...src, synthetic: true, manifest, manifestFile };
         delete (next as { manifestError?: string }).manifestError;
       }
-      setViewMode('rig');
-      setSelectedTab('preview');
       return { ...current, source: next };
     });
-  }, [cancelPendingManifestReparse]);
+    // View switches live OUTSIDE the apply closure — reducer appliers must
+    // stay pure (StrictMode double-invokes them). The button is only
+    // reachable when a source is loaded, so switching unconditionally is
+    // safe even if the edit no-opped.
+    setViewMode('rig');
+    setSelectedTab('preview');
+  }, [dispatchEdit, cancelPendingManifestReparse]);
 
   // ─── Animation (keyframe editor) edits ──────────────────────────────
   //
@@ -339,8 +384,12 @@ export function App() {
   // stale parse-error state. No-ops on a string-ref animation (external file,
   // not editable in-app yet) or when no manifest is loaded.
   const mutateManifestAnimation = useCallback(
-    (animName: string, build: (anim: InlineAnimation) => InlineAnimation) => {
-      setLoaded((current) => {
+    (
+      tag: string | null,
+      animName: string,
+      build: (anim: InlineAnimation) => InlineAnimation,
+    ) => {
+      dispatchEdit(tag, (current) => {
         if (current?.source?.kind !== 'folder') return current;
         const src = current.source;
         if (src.manifest === undefined) return current;
@@ -362,10 +411,12 @@ export function App() {
       cancelPendingManifestReparse();
       setManifestParseError(null);
     },
-    [cancelPendingManifestReparse],
+    [dispatchEdit, cancelPendingManifestReparse],
   );
 
-  // Overwrite an existing key's attribute value.
+  // Overwrite an existing key's attribute value. Vec3 fields commit per
+  // keystroke (live NumberInput) — coalesce per key+attr; the visible
+  // checkbox is discrete and always pushes.
   const handleSetAnimField = useCallback(
     (
       animName: string,
@@ -374,7 +425,11 @@ export function App() {
       attr: KeyAttr,
       value: AttrValue,
     ) => {
-      mutateManifestAnimation(animName, (anim) => {
+      const tag =
+        attr === 'visible'
+          ? null
+          : `anim:set:${animName}:${part}:${timeKey}:${attr}`;
+      mutateManifestAnimation(tag, animName, (anim) => {
         const track = anim.parts[part];
         if (track === undefined || track[timeKey] === undefined) return anim;
         return {
@@ -390,7 +445,7 @@ export function App() {
   // key and creates the part's track if absent.
   const handleAddAnimKey = useCallback(
     (animName: string, part: string, time: number, attr: KeyAttr, value: AttrValue) => {
-      mutateManifestAnimation(animName, (anim) => {
+      mutateManifestAnimation(null, animName, (anim) => {
         const track = anim.parts[part] ?? {};
         const { track: nextTrack } = addAttrAtTime(track, time, attr, value);
         return { ...anim, parts: { ...anim.parts, [part]: nextTrack } };
@@ -402,7 +457,7 @@ export function App() {
   // Remove one attribute key; prune the part's track if it becomes empty.
   const handleDeleteAnimKey = useCallback(
     (animName: string, part: string, timeKey: string, attr: KeyAttr) => {
-      mutateManifestAnimation(animName, (anim) => {
+      mutateManifestAnimation(null, animName, (anim) => {
         const track = anim.parts[part];
         if (track === undefined) return anim;
         const nextTrack = deleteAttrAtKey(track, timeKey, attr);
@@ -425,7 +480,7 @@ export function App() {
       toTime: number,
       attr: KeyAttr,
     ) => {
-      mutateManifestAnimation(animName, (anim) => {
+      mutateManifestAnimation(null, animName, (anim) => {
         const track = anim.parts[part];
         if (track === undefined) return anim;
         const { track: nextTrack } = moveAttrKey(track, fromTimeKey, toTime, attr);
@@ -440,7 +495,7 @@ export function App() {
   // Parts whose track empties out are removed entirely.
   const handleTrimClip = useCallback(
     (animName: string) => {
-      mutateManifestAnimation(animName, (anim) => {
+      mutateManifestAnimation(null, animName, (anim) => {
         const parts: InlineAnimation['parts'] = {};
         for (const [name, track] of Object.entries(anim.parts)) {
           const trimmed = trimTrackKeys(track, anim.duration);
@@ -454,14 +509,18 @@ export function App() {
 
   const handleSetClipDuration = useCallback(
     (animName: string, duration: number) => {
-      mutateManifestAnimation(animName, (anim) => ({ ...anim, duration }));
+      // Live number input — coalesce a typing burst into one entry.
+      mutateManifestAnimation(`anim:duration:${animName}`, animName, (anim) => ({
+        ...anim,
+        duration,
+      }));
     },
     [mutateManifestAnimation],
   );
 
   const handleSetClipLoop = useCallback(
     (animName: string, loop: boolean) => {
-      mutateManifestAnimation(animName, (anim) => ({ ...anim, loop }));
+      mutateManifestAnimation(null, animName, (anim) => ({ ...anim, loop }));
     },
     [mutateManifestAnimation],
   );
@@ -472,7 +531,7 @@ export function App() {
   const handleCreateAnimationClip = useCallback(() => {
     cancelPendingManifestReparse();
     setManifestParseError(null);
-    setLoaded((current) => {
+    dispatchEdit(null, (current) => {
       if (current?.source?.kind !== 'folder') return current;
       const src = current.source;
       if (src.manifest === undefined) return current;
@@ -488,8 +547,6 @@ export function App() {
       const nextManifest: Manifest = { ...src.manifest, animations };
       const nextText = JSON.stringify(nextManifest, null, 2) + '\n';
       const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
-      setViewMode('anim');
-      setSelectedTab('preview');
       return {
         ...current,
         source: {
@@ -499,11 +556,103 @@ export function App() {
         },
       };
     });
-  }, [cancelPendingManifestReparse]);
+    // Outside the apply closure for reducer purity (see handleCreateManifest).
+    setViewMode('anim');
+    setSelectedTab('preview');
+  }, [dispatchEdit, cancelPendingManifestReparse]);
 
   const handleViewModeChange = useCallback((mode: ViewMode) => {
     setViewMode(mode);
   }, []);
+
+  // ─── Undo / Redo ─────────────────────────────────────────────────────
+
+  // Re-derive the parse-error gates from a restored snapshot's text. A
+  // restored state can be a mid-error typing burst's pre-state, so blindly
+  // clearing the errors would re-enable structural edits that re-serialize
+  // from a stale AST and clobber the text. A synchronous parse on a
+  // user-initiated undo is cheap.
+  const revalidateRestored = useCallback((restored: LoadResult | null) => {
+    const src = restored?.source;
+    if (src === undefined) {
+      setCvoxParseError(null);
+      setManifestParseError(null);
+      return;
+    }
+    const cvoxR = parseCvox(src.cvoxFile.text);
+    setCvoxParseError(cvoxR.ok ? null : cvoxR.message);
+    if (src.kind === 'folder' && src.manifestFile !== undefined) {
+      let err: string | null = null;
+      try {
+        const r = parseManifest(JSON.parse(src.manifestFile.text));
+        if (!r.ok) err = r.message;
+      } catch (e) {
+        err = `JSON parse: ${(e as Error).message}`;
+      }
+      setManifestParseError(err);
+    } else {
+      setManifestParseError(null);
+    }
+  }, []);
+
+  // React flushes discrete events synchronously, so consecutive Ctrl+Z
+  // presses each see fresh history state through this closure.
+  const performUndo = useCallback(() => {
+    if (history.past.length === 0) return;
+    const target = history.past[history.past.length - 1]!;
+    cancelPendingCvoxReparse();
+    cancelPendingManifestReparse();
+    dispatch({ type: 'undo' });
+    revalidateRestored(target);
+  }, [
+    history,
+    cancelPendingCvoxReparse,
+    cancelPendingManifestReparse,
+    revalidateRestored,
+  ]);
+
+  const performRedo = useCallback(() => {
+    if (history.future.length === 0) return;
+    const target = history.future[0]!;
+    cancelPendingCvoxReparse();
+    cancelPendingManifestReparse();
+    dispatch({ type: 'redo' });
+    revalidateRestored(target);
+  }, [
+    history,
+    cancelPendingCvoxReparse,
+    cancelPendingManifestReparse,
+    revalidateRestored,
+  ]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const key = e.key.toLowerCase();
+      const isUndo = key === 'z' && !e.shiftKey;
+      const isRedo = (key === 'z' && e.shiftKey) || key === 'y';
+      if (!isUndo && !isRedo) return;
+      // Mid-IME-composition keystrokes are the IME's business.
+      if (e.isComposing || e.keyCode === 229) return;
+      // Inside a text field, the browser's native undo applies (source
+      // textareas, number inputs); only intercept document-level undo
+      // elsewhere.
+      const t = e.target;
+      if (
+        t instanceof Element &&
+        t.closest(
+          'textarea, input, select, [contenteditable=""], [contenteditable="true"]',
+        ) !== null
+      ) {
+        return;
+      }
+      e.preventDefault();
+      if (isUndo) performUndo();
+      else performRedo();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [performUndo, performRedo]);
 
   const source = loaded?.source;
   const rigAvailable =
@@ -547,6 +696,28 @@ export function App() {
               animAvailable={animAvailable}
               onChange={handleViewModeChange}
             />
+          )}
+          {source !== undefined && (
+            <>
+              <button
+                type="button"
+                className="history-btn"
+                disabled={history.past.length === 0}
+                title="Undo (Ctrl+Z)"
+                onClick={performUndo}
+              >
+                Undo
+              </button>
+              <button
+                type="button"
+                className="history-btn"
+                disabled={history.future.length === 0}
+                title="Redo (Ctrl+Shift+Z)"
+                onClick={performRedo}
+              >
+                Redo
+              </button>
+            </>
           )}
           {source?.kind === 'folder' && <SaveButton source={source} />}
           {source !== undefined && <ExportMenu source={source} />}
