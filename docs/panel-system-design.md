@@ -1,6 +1,6 @@
 # ドック可能パネルシステム — 設計 & ロードマップ
 
-エディタ UI を、**再帰分割(split tree)で配置するドック可能パネル**に作り替える設計。
+エディタ UI を、**binary(2分割)の split tree で配置するドック可能パネル**に作り替える設計。
 Blender / VS Code / react-mosaic と同系統。**画面に“特別な中央本体”は無く、すべてがパネル**で、
 ユーザーが分割・移動・タブ化・リサイズ・閉じる・追加できる(永続化はしない=セッション内のみ)。
 
@@ -22,13 +22,17 @@ Blender / VS Code / react-mosaic と同系統。**画面に“特別な中央本
 
 ---
 
-## 2. モデル:再帰 split ツリー
+## 2. モデル:binary(2分割)split ツリー
 
-レイアウトは **分割ノードと葉(パネル)からなる木**。`left/right/bottom/center` のような固定ゾーンは
-**存在しない** — それらは木の特殊形にすぎない。
+レイアウトは **分割ノードと葉(パネル)からなる木**(VS Code / react-mosaic 系)。`left/right/bottom/center`
+のような固定ゾーンは**存在しない**。**分割は必ず2分割**(n分割はしない):
 
-- **SplitNode** … 方向(`row`=横並び / `col`=縦並び)＋ 子(2つ以上)＋ 各子の比率。子の境界に**スプリッタ**
+- **SplitNode** … 方向(`row`=左右 / `col`=上下)＋ **子2つ(`a` | `b`)** ＋ `ratio`(a の割合、b は 1−ratio)。
+  境界に**スプリッタ1本**。3分割は「2分割の入れ子」で表現
 - **LeafNode** … パネルの**タブグループ**(1枚以上、1枚がアクティブ)
+
+**なぜ binary**: 片側を閉じると**split が相方に畳まれて 100% に広がる**(空白が残らない)、D&D 時に
+**ドロップした縁で分割方向が一意に決まる**(n分割だと割り込み位置/方向が曖昧)。
 
 ```
 ルート: row 分割 [ 左 | 中央 | 右 ]
@@ -93,7 +97,7 @@ Blender / VS Code / react-mosaic と同系統。**画面に“特別な中央本
 ### 操作 = ツリーの組み替え
 - **分割** … 葉を `SplitNode` に置換(その方向に2つの葉)
 - **移動/タブ化** … 葉間でパネルを移す/合流(⋯メニュー、後段で D&D)
-- **リサイズ** … スプリッタをドラッグ(`SplitNode.sizes` 更新)
+- **リサイズ** … スプリッタをドラッグ(`SplitNode.ratio` 更新)
 - **閉じる** … パネルをツリーから外す。**折りたたみ(中身だけ隠す)は廃止** — ヘッダだけ残る空状態がかえって混乱の元、という判断
 - **パネル追加** … 閉じた(未配置の)パネルを呼び戻す。各葉のタブ末尾の **+** か **View ▾** メニューでレジストリから選んで追加
 
@@ -109,14 +113,16 @@ Blender / VS Code / react-mosaic と同系統。**画面に“特別な中央本
 ## 3. データモデル
 
 ```ts
-type SplitDir = 'row' | 'col';        // row=横並び, col=縦並び
+type SplitDir = 'row' | 'col';        // row=左右, col=上下
+type Side = 'a' | 'b';                 // パスは Side の列(ルート=[])
 type LayoutNode = SplitNode | LeafNode;
 
 interface SplitNode {
   kind: 'split';
   dir: SplitDir;
-  children: LayoutNode[]; // 2つ以上
-  sizes: number[];        // 各子の比率(スプリッタでリサイズ)
+  a: LayoutNode;
+  b: LayoutNode;
+  ratio: number;          // a の割合(0..1)、b は 1 - ratio(スプリッタでリサイズ)
 }
 interface LeafNode {
   kind: 'leaf';
@@ -156,29 +162,24 @@ interface AnimationSession {
 }
 ```
 
-### 初期配置(= 練り直した推奨 IA をツリーで表現)
+### 初期配置(推奨 IA を binary 入れ子で表現)
 ```ts
-const initialLayout: Layout = {
-  kind: 'split', dir: 'row', sizes: [0.2, 0.6, 0.2], children: [
-    // 左: Files / Parts / Properties+KeyInspector を縦3分割
-    { kind: 'split', dir: 'col', sizes: [0.3, 0.4, 0.3], children: [
-      { kind: 'leaf', panels: ['files'], active: 'files' },
-      { kind: 'leaf', panels: ['parts'], active: 'parts' },
-      { kind: 'leaf', panels: ['properties', 'keyInspector'], active: 'properties' },
-    ]},
-    // 中央: 上=ビューポート(3D/ソースをタブ), 下=タイムライン
-    { kind: 'split', dir: 'col', sizes: [0.7, 0.3], children: [
-      { kind: 'leaf', panels: ['preview', 'cvoxSource', 'manifestSource'], active: 'preview' },
-      { kind: 'leaf', panels: ['timeline'], active: 'timeline' },
-    ]},
-    // 右: Palette 単独(rig から分離 → #6)
-    { kind: 'leaf', panels: ['palette'], active: 'palette' },
-  ],
-};
+const leaf = (id) => ({ kind: 'leaf', panels: [id], active: id });
+const split = (dir, a, b, ratio) => ({ kind: 'split', dir, a, b, ratio });
+
+const initialLayout = split('row',
+  // 左: Files の下に (Parts の下に Properties) — 縦の入れ子 binary
+  split('col', leaf('files'), split('col', leaf('parts'), leaf('properties'), 0.4), 0.25),
+  // 右側: center の横に Palette
+  split('row', leaf('__center__'), leaf('palette'), 0.78),
+  0.2,
+);
+// Phase D 以降: __center__ を split('col', viewport-leaf, leaf('timeline'), …) に置換し、
+// viewport-leaf を ['preview','cvoxSource','manifestSource'] のタブ葉にする。
 ```
 - 左: Parts(選択)と Properties が縦に近い → **選択→編集が近い**(#5)
 - 右: Palette 単独 → **rig と物理分離**(#6)
-- 中央下: Timeline(= 旧「bottom」の正体は中央の col 分割)
+- 「3分割」に見える左カラムは **2分割の入れ子**(col(files, col(parts, properties)))
 
 ---
 
@@ -213,7 +214,7 @@ const initialLayout: Layout = {
 | 段階 | 内容 | 主な対象 | 規模 |
 |---|---|---|---|
 | **A. 共通パネル枠 + 固有ツールバー** | `Panel` コンポーネント(統一ヘッダ:タイトル + メタ + 固有ツールバー枠 + 本体。**折りたたみ無し**)を作り、既存ツールパネル(Files/Parts/Properties/Palette)を載せ替え。**cvox/rig/anim を Preview 右上のフローティングへ**移設。CSS 統一(P4-1 と相性良)。**配置は現状のまま** | 新規 `Panel.tsx`、各パネル、`App.tsx`、`styles.css` | M |
-| **B. 再帰 split エンジン + リサイズ** | `LayoutNode` ツリーを描画する `Dock`(split の入れ子)。**B1**: ツール系パネルを初期配置で描画(中央は当面 TabBar 流用、**サイズ固定**)。**B2**: スプリッタで `SplitNode.sizes` をリサイズ(状態は React 内)。**永続化はしない**(セッション内のみ) | 新規 `Dock.tsx`/`lib/layout.ts`、`App.tsx` | M |
+| **B. 再帰 split エンジン + リサイズ** | `LayoutNode` ツリーを描画する `Dock`(split の入れ子)。**B1**: ツール系パネルを初期配置で描画(中央は当面 TabBar 流用、**サイズ固定**)。**B2**: スプリッタで `SplitNode.ratio` をリサイズ(状態は React 内)。**永続化はしない**(セッション内のみ)。**binary 化**もここで(n分割→2分割の入れ子) | 新規 `Dock.tsx`/`lib/layout.ts`、`App.tsx` | M |
 | **C. タブ行 + 移動/分割/閉じる/追加** | 複数パネルの葉に**専用タブ行**(各タブ `タイトル ×`、**タブ行内 D&D 並べ替え**、オーバーフロー)。⋯メニューで「移動 / 分割 / タブ化」、**+/View メニューで閉じたパネルを追加** = ツリー組み替え。「レイアウトをリセット」(初期配置へ、セッション内)。**永続化なし** | `Dock`、`lib/layout.ts` | M |
 | **D. 中央もパネル化 + アニメセッション分離** | Preview / cvoxSource / manifestSource / Timeline / KeyInspector を**パネル化**し、中央も split ツリーに統合(= 全部パネル)。`AnimationSession` を App へ持ち上げ、Preview と Timeline で共有(§4) | `App.tsx`、`AnimationView` 解体、新パネル群 | **L(最大)** |
 | **E. ドラッグ&ドロップ(任意)** | **葉/ゾーンをまたぐ**ドラッグドッキング(タブを別の場所へドラッグ、分割線へドロップ)。手組みが辛ければ **dockview** 等に置換も検討 | — | L |
