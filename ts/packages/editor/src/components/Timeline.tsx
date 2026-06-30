@@ -52,7 +52,7 @@ const snap = (t: number): number => Math.round(t * 1000) / 1000;
 // Coarse snap grid for dragging keyframes — markers land on 0.05s steps so a
 // drag reads as deliberate "clicks" instead of free-floating. Holding Alt
 // bypasses to the fine 1e-3 grid (formatTimeKey's storage resolution).
-const SNAP_STEP = 0.05;
+export const SNAP_STEP = 0.05;
 const snapTo = (t: number, step: number): number => Math.round(t / step) * step;
 
 // Ruler tick / lane gridline spacing: a "nice" step (1/2/2.5/5 ×10ⁿ) chosen so
@@ -296,6 +296,23 @@ const TimelineLanes = memo(function TimelineLanes({
     });
   };
 
+  // Click/drag on empty lane space scrubs the playhead (mirrors the ruler).
+  // Presses that land on a marker are a select/drag instead — identified by
+  // target !== the lane itself — so they're ignored here.
+  const laneScrub = (e: PointerEvent<HTMLDivElement>): void => {
+    if (duration <= 0) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    onScrub(clamp01((e.clientX - r.left) / r.width) * duration);
+  };
+  const handleLaneDown = (e: PointerEvent<HTMLDivElement>): void => {
+    if (e.target !== e.currentTarget) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    laneScrub(e);
+  };
+  const handleLaneMove = (e: PointerEvent<HTMLDivElement>): void => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) laneScrub(e);
+  };
+
   // Markers depend only on the animation data, not on `time`. Recomputed
   // when a key is added/edited/deleted/moved (inline changes), never on
   // playback. `all` is the union across attributes — the collapsed summary.
@@ -385,7 +402,12 @@ const TimelineLanes = memo(function TimelineLanes({
                         +
                       </button>
                     </div>
-                    <div className="timeline-lane" style={{ marginRight: RIGHT_PAD }}>
+                    <div
+                      className="timeline-lane"
+                      style={{ marginRight: RIGHT_PAD }}
+                      onPointerDown={handleLaneDown}
+                      onPointerMove={handleLaneMove}
+                    >
                       {arr.map(({ t, timeKey }, i) => (
                         <TimelineMarker
                           key={timeKey}

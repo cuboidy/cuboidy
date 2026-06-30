@@ -24,7 +24,7 @@ import { KeyInspector } from './KeyInspector.js';
 import { NumberInput } from './NumberInput.js';
 import { RiggedParts } from './RiggedParts.js';
 import { TextInput } from './TextInput.js';
-import { Timeline } from './Timeline.js';
+import { SNAP_STEP, Timeline } from './Timeline.js';
 
 interface Props {
   cvox: Cvox;
@@ -303,6 +303,69 @@ export function AnimationView({
     if (kf === undefined || !(selectedKey.attr in kf)) return null;
     return selectedKey;
   }, [selectedKey, inline]);
+
+  // Mirror the pruned selection into a ref so the keyboard handler reads the
+  // live value without re-installing the listener on every selection change.
+  const selectedKeyRef = useRef(effectiveSelectedKey);
+  selectedKeyRef.current = effectiveSelectedKey;
+
+  // Timeline keyboard shortcuts (active while the anim view is mounted):
+  //   Space             play / pause
+  //   Delete/Backspace  remove the selected key
+  //   ← / →             nudge the selected key one snap step (Alt = fine 1e-3)
+  // Guarded for IME and text fields like App's undo/redo handler; Ctrl/Meta
+  // combos are left alone. Space is skipped when a button is focused so it
+  // doesn't double-fire with that button's own activation.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.isComposing || e.keyCode === 229) return;
+      if (e.ctrlKey || e.metaKey) return;
+      const target = e.target;
+      if (
+        target instanceof Element &&
+        target.closest(
+          'textarea, input, select, [contenteditable=""], [contenteditable="true"]',
+        ) !== null
+      ) {
+        return;
+      }
+
+      if (e.key === ' ' || e.code === 'Space') {
+        if (target instanceof Element && target.closest('button') !== null) return;
+        if (!hasTimeline) return;
+        e.preventDefault();
+        setPlaying((p) => !p);
+        return;
+      }
+
+      // Key delete / nudge act on the selected marker — edit mode only (a
+      // selection can linger in state after leaving edit mode, but there's no
+      // marker on screen, so acting on it would be invisible/surprising).
+      if (!editMode) return;
+      const sel = selectedKeyRef.current;
+      if (sel === null) return;
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        onDeleteAnimKey(activeNameRef.current, sel.part, sel.timeKey, sel.attr);
+        setSelectedKey(null);
+        setPlaying(false);
+        return;
+      }
+
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        if (sel.timeKey === formatTimeKey(0)) return; // start key is locked
+        const fromT = Number(sel.timeKey);
+        if (!Number.isFinite(fromT)) return;
+        e.preventDefault();
+        const step = e.altKey ? 0.001 : SNAP_STEP;
+        const dir = e.key === 'ArrowLeft' ? -1 : 1;
+        handleRetimeKey(sel.part, sel.attr, sel.timeKey, fromT + dir * step);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [editMode, hasTimeline, onDeleteAnimKey, handleRetimeKey]);
 
   if (inline === undefined) {
     return (

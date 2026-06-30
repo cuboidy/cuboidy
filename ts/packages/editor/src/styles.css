@@ -1685,6 +1685,9 @@ pre {
   flex: 1;
   min-width: 0;
   height: 100%;
+  /* Empty lane space click/drag-scrubs the playhead. */
+  cursor: pointer;
+  touch-action: none;
   /* Gridlines aligned to the ruler ticks + the snap grid. --grid-frac and
      --snap-frac (fractions of the lane width) are set on .timeline-body; the
      major layer is drawn over the minor where they coincide. */
