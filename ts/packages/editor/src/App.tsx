@@ -25,12 +25,11 @@ import {
   type ManifestPart,
 } from '@cuboidy/core';
 import { AnimationView } from './components/AnimationView.js';
-import { Dock } from './components/Dock.js';
+import { Dock, type PanelContent } from './components/Dock.js';
 import { ExportMenu } from './components/ExportMenu.js';
 import { FileDropZone } from './components/FileDropZone.js';
 import { FileTree } from './components/FileTree.js';
-import { Panel } from './components/Panel.js';
-import { MAX_PALETTE, PalettePanel } from './components/PalettePanel.js';
+import { PalettePanel } from './components/PalettePanel.js';
 import { PartProperties } from './components/PartProperties.js';
 import { PartTree } from './components/PartTree.js';
 import { SaveButton } from './components/SaveButton.js';
@@ -40,10 +39,12 @@ import { ViewModeToggle } from './components/ViewModeToggle.js';
 import { VoxelScene } from './components/VoxelScene.js';
 import { historyReducer, makeHistory } from './lib/history.js';
 import {
+  closePanelAt,
   initialLayout,
+  withActiveAt,
   withSizesAt,
   type LayoutNode,
-  type LeafNode,
+  type LeafId,
 } from './lib/layout.js';
 import { synthesizeManifest } from './lib/synthesize-manifest.js';
 import type {
@@ -800,6 +801,13 @@ export function App() {
   const handleResize = useCallback((path: number[], sizes: number[]) => {
     setLayout((current) => withSizesAt(current, path, sizes));
   }, []);
+  const handleActivatePanel = useCallback((path: number[], id: LeafId) => {
+    setLayout((current) => withActiveAt(current, path, id));
+  }, []);
+  const handleClosePanel = useCallback((path: number[], id: LeafId) => {
+    setLayout((current) => closePanelAt(current, path, id));
+  }, []);
+  const handleResetLayout = useCallback(() => setLayout(initialLayout), []);
 
   // The center pane (tab bar + preview/source) — rendered as the dock's
   // '__center__' leaf. Becomes real panels (preview/source/timeline) in
@@ -881,17 +889,19 @@ export function App() {
     );
   };
 
-  // Render a dock leaf's content. Tool panels get the uniform Panel frame;
-  // '__center__' renders the raw main pane.
-  const renderLeaf = (leafNode: LeafNode): ReactNode => {
+  // Per-panel content for the dock's tab rows. The leaf owns the header now,
+  // so panels supply only { title, meta?, toolbar?, body }; '__center__' is
+  // null (rendered raw by renderCenter).
+  const getPanel = (id: LeafId): PanelContent | null => {
     if (source === undefined) return null;
     const manifest = source.kind === 'folder' ? source.manifest : undefined;
-    switch (leafNode.active) {
+    switch (id) {
       case '__center__':
-        return renderCenter();
+        return null;
       case 'files':
-        return (
-          <Panel title="Files">
+        return {
+          title: 'Files',
+          body: (
             <FileTree
               source={source}
               selectedTab={selectedTab}
@@ -903,48 +913,49 @@ export function App() {
               onSelectTab={handleSelectTab}
               onCreateManifest={handleCreateManifest}
             />
-          </Panel>
-        );
+          ),
+        };
       case 'parts': {
         const visibleCount = source.cvox.parts.length - hiddenParts.size;
-        return (
-          <Panel
-            title="Parts"
-            meta={`${visibleCount} / ${source.cvox.parts.length}`}
-          >
-            <div className="sidebar-actions">
-              <button
-                type="button"
-                onClick={handleShowAll}
-                disabled={hiddenParts.size === 0}
-              >
-                Show all
-              </button>
-              <button
-                type="button"
-                onClick={handleHideAll}
-                disabled={visibleCount === 0}
-              >
-                Hide all
-              </button>
-            </div>
-            <PartTree
-              parts={source.cvox.parts}
-              manifest={manifest}
-              hiddenParts={hiddenParts}
-              selectedPart={effectiveSelectedPart}
-              dndEnabled={manifest !== undefined}
-              onToggleVisibility={handleToggle}
-              onSelectPart={setSelectedPartName}
-              onChangeParent={handleChangePartParent}
-            />
-          </Panel>
-        );
+        return {
+          title: 'Parts',
+          body: (
+            <>
+              <div className="sidebar-actions">
+                <button
+                  type="button"
+                  onClick={handleShowAll}
+                  disabled={hiddenParts.size === 0}
+                >
+                  Show all
+                </button>
+                <button
+                  type="button"
+                  onClick={handleHideAll}
+                  disabled={visibleCount === 0}
+                >
+                  Hide all
+                </button>
+              </div>
+              <PartTree
+                parts={source.cvox.parts}
+                manifest={manifest}
+                hiddenParts={hiddenParts}
+                selectedPart={effectiveSelectedPart}
+                dndEnabled={manifest !== undefined}
+                onToggleVisibility={handleToggle}
+                onSelectPart={setSelectedPartName}
+                onChangeParent={handleChangePartParent}
+              />
+            </>
+          ),
+        };
       }
       case 'properties':
-        return (
-          <Panel title="Properties">
-            {effectiveSelectedPart !== null ? (
+        return {
+          title: 'Properties',
+          body:
+            effectiveSelectedPart !== null ? (
               <PartProperties
                 selectedPart={effectiveSelectedPart}
                 cvox={source.cvox}
@@ -958,22 +969,19 @@ export function App() {
               <p className="panel-empty">
                 Select a part to edit its properties.
               </p>
-            )}
-          </Panel>
-        );
+            ),
+        };
       case 'palette':
-        return (
-          <Panel
-            title="Palette"
-            meta={`${source.cvox.palette.length} / ${MAX_PALETTE}`}
-          >
+        return {
+          title: 'Palette',
+          body: (
             <PalettePanel
               cvox={source.cvox}
               disabled={cvoxParseError !== null}
               onChange={handleEditCvox}
             />
-          </Panel>
-        );
+          ),
+        };
     }
   };
 
@@ -1006,6 +1014,16 @@ export function App() {
           )}
           {source?.kind === 'folder' && <SaveButton source={source} />}
           {source !== undefined && <ExportMenu source={source} />}
+          {source !== undefined && (
+            <button
+              type="button"
+              className="history-btn"
+              title="Reset the panel layout to the default"
+              onClick={handleResetLayout}
+            >
+              Reset layout
+            </button>
+          )}
           {loaded !== null && (
             <button type="button" className="reset" onClick={handleReset}>
               Load another
@@ -1015,7 +1033,14 @@ export function App() {
       </header>
       <main className="main">
         {source !== undefined ? (
-          <Dock node={layout} renderLeaf={renderLeaf} onResize={handleResize} />
+          <Dock
+            node={layout}
+            getPanel={getPanel}
+            renderCenter={renderCenter}
+            onResize={handleResize}
+            onActivate={handleActivatePanel}
+            onClose={handleClosePanel}
+          />
         ) : (
           <FileDropZone onLoad={handleLoad} />
         )}

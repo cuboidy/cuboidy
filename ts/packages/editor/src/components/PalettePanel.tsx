@@ -75,6 +75,9 @@ export function PalettePanel({ cvox, disabled = false, onChange }: Props) {
 
   return (
     <section className={`palette-panel${disabled ? ' disabled' : ''}`}>
+      <div className="palette-count">
+        {cvox.palette.length} / {MAX_PALETTE}
+      </div>
       {disabled && (
         <p className="panel-note">
           Source has syntax errors — fix to enable palette editing.

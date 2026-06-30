@@ -1,40 +1,92 @@
 import { Fragment, useRef, type PointerEvent, type ReactNode } from 'react';
-import type { LayoutNode, LeafNode, SplitNode } from '../lib/layout.js';
+import type { LayoutNode, LeafId, LeafNode, SplitNode } from '../lib/layout.js';
+
+export interface PanelContent {
+  title: string;
+  body: ReactNode;
+}
 
 interface Props {
   node: LayoutNode;
-  // Renders a leaf's content (the owner decides Panel-wrapping vs the raw
-  // center pane). Kept out of the Dock so the Dock is pure layout structure.
-  renderLeaf: (leaf: LeafNode) => ReactNode;
-  // A splitter drag reports new child sizes for the split at `path` (child
-  // indices from the root; [] = root). The owner updates the layout tree.
-  onResize: (path: number[], sizes: number[]) => void;
   path?: number[];
+  // Content for a tool panel (title/meta/toolbar/body); null for the special
+  // '__center__' panel, which renders raw via renderCenter.
+  getPanel: (id: LeafId) => PanelContent | null;
+  renderCenter: () => ReactNode;
+  // A splitter drag reports new child sizes for the split at `path`.
+  onResize: (path: number[], sizes: number[]) => void;
+  onActivate: (path: number[], id: LeafId) => void;
+  onClose: (path: number[], id: LeafId) => void;
 }
 
 // Each cell keeps at least this fraction of its split's space.
 const MIN_RATIO = 0.06;
 
-// Renders a split-tree layout: SplitNodes become flex row/col containers whose
-// cells flex-grow by their `sizes` ratio, with draggable splitters between
-// them; LeafNodes delegate to renderLeaf. Resize state lives in the owner
-// (App) — no persistence yet (Phase C).
-export function Dock({ node, renderLeaf, onResize, path = [] }: Props) {
-  if (node.kind === 'leaf') return <>{renderLeaf(node)}</>;
+const isCenter = (leaf: LeafNode): boolean =>
+  leaf.panels.length === 1 && leaf.panels[0] === '__center__';
+
+// Renders a split-tree layout: SplitNodes become flex row/col containers with
+// draggable splitters; LeafNodes own a dedicated tab row (title tabs + × to
+// close) above the active panel's body. The '__center__' leaf renders raw.
+export function Dock(props: Props) {
+  const { node, path = [], renderCenter } = props;
+  if (node.kind === 'leaf') {
+    if (isCenter(node)) return <>{renderCenter()}</>;
+    return <DockLeaf {...props} leaf={node} path={path} />;
+  }
+  return <DockSplit {...props} node={node} path={path} />;
+}
+
+function DockLeaf({
+  leaf,
+  path,
+  getPanel,
+  onActivate,
+  onClose,
+}: Props & { leaf: LeafNode; path: number[] }) {
+  // The tab row holds only tabs (and, later, + / ⋯) — no panel content like
+  // counts. Anything panel-specific lives in the body.
   return (
-    <DockSplit node={node} renderLeaf={renderLeaf} onResize={onResize} path={path} />
+    <section className="dock-leaf">
+      <div className="dock-tabrow">
+        <div className="dock-tabs">
+          {leaf.panels.map((id) => (
+            <div
+              key={id}
+              className={`dock-tab${id === leaf.active ? ' active' : ''}`}
+            >
+              <button
+                type="button"
+                className="dock-tab-label"
+                onClick={() => onActivate(path, id)}
+              >
+                {getPanel(id)?.title ?? id}
+              </button>
+              <button
+                type="button"
+                className="dock-tab-close"
+                aria-label={`Close ${getPanel(id)?.title ?? id}`}
+                title="Close panel"
+                onClick={() => onClose(path, id)}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="dock-leaf-body">{getPanel(leaf.active)?.body}</div>
+    </section>
   );
 }
 
 function DockSplit({
   node,
-  renderLeaf,
-  onResize,
   path,
+  onResize,
+  ...rest
 }: Props & { node: SplitNode; path: number[] }) {
   const ref = useRef<HTMLDivElement | null>(null);
-  // Live drag state: which boundary, where it started, the split's pixel size
-  // on that axis, and the sizes at grab time.
   const drag = useRef<{
     i: number;
     startPos: number;
@@ -66,7 +118,6 @@ function DockSplit({
     const min = MIN_RATIO * total;
     const lo = d.startSizes[d.i]!;
     const hi = d.startSizes[d.i + 1]!;
-    // Pixel delta → ratio delta, clamped so both neighbors stay >= min.
     const raw = ((pos - d.startPos) / d.avail) * total;
     const delta = Math.max(-(lo - min), Math.min(hi - min, raw));
     const sizes = d.startSizes.slice();
@@ -85,8 +136,6 @@ function DockSplit({
   return (
     <div className={`dock-split dock-${node.dir}`} ref={ref}>
       {node.children.map((child, i) => (
-        // Static tree (no reordering yet) → index key is stable.
-        // eslint-disable-next-line react/no-array-index-key
         <Fragment key={i}>
           {i > 0 && (
             <div
@@ -101,12 +150,7 @@ function DockSplit({
             className="dock-cell"
             style={{ flexGrow: node.sizes[i] ?? 1, flexBasis: 0 }}
           >
-            <Dock
-              node={child}
-              renderLeaf={renderLeaf}
-              onResize={onResize}
-              path={[...path, i]}
-            />
+            <Dock {...rest} node={child} path={[...path, i]} onResize={onResize} />
           </div>
         </Fragment>
       ))}
