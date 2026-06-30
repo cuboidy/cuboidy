@@ -39,7 +39,12 @@ import { TabBar } from './components/TabBar.js';
 import { ViewModeToggle } from './components/ViewModeToggle.js';
 import { VoxelScene } from './components/VoxelScene.js';
 import { historyReducer, makeHistory } from './lib/history.js';
-import { initialLayout, type LeafNode } from './lib/layout.js';
+import {
+  initialLayout,
+  withSizesAt,
+  type LayoutNode,
+  type LeafNode,
+} from './lib/layout.js';
 import { synthesizeManifest } from './lib/synthesize-manifest.js';
 import type {
   LoadResult,
@@ -789,6 +794,13 @@ export function App() {
       : null;
   }, [selectedPartName, source]);
 
+  // Dock layout tree (resizable). In-memory only for now — persistence lands
+  // in Phase C once the layout is also user-rearrangeable.
+  const [layout, setLayout] = useState<LayoutNode>(initialLayout);
+  const handleResize = useCallback((path: number[], sizes: number[]) => {
+    setLayout((current) => withSizesAt(current, path, sizes));
+  }, []);
+
   // The center pane (tab bar + preview/source) — rendered as the dock's
   // '__center__' leaf. Becomes real panels (preview/source/timeline) in
   // Phase D; for now it stays the existing main pane.
@@ -1003,7 +1015,7 @@ export function App() {
       </header>
       <main className="main">
         {source !== undefined ? (
-          <Dock node={initialLayout} renderLeaf={renderLeaf} />
+          <Dock node={layout} renderLeaf={renderLeaf} onResize={handleResize} />
         ) : (
           <FileDropZone onLoad={handleLoad} />
         )}

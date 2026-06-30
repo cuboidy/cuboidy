@@ -370,12 +370,24 @@ pre {
   min-height: 0;
 }
 
-.dock-row > .dock-cell + .dock-cell {
-  border-left: 1px solid #3a3a3a;
+/* Draggable divider between two cells of a split. */
+.dock-splitter {
+  flex: 0 0 5px;
+  background: #1c1c1c;
+  touch-action: none;
+  transition: background 0.12s;
 }
 
-.dock-col > .dock-cell + .dock-cell {
-  border-top: 1px solid #3a3a3a;
+.dock-splitter:hover {
+  background: #3a4a6a;
+}
+
+.dock-splitter-row {
+  cursor: col-resize;
+}
+
+.dock-splitter-col {
+  cursor: row-resize;
 }
 
 /* ─── Right panel (palette + future tools) ────────────────────────── */

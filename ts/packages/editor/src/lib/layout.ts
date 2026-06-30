@@ -28,6 +28,27 @@ export type LayoutNode = SplitNode | LeafNode;
 
 const leaf = (id: LeafId): LeafNode => ({ kind: 'leaf', panels: [id], active: id });
 
+// Return a copy of the tree with the SplitNode at `path` given new child
+// `sizes` (path = child indices from the root; [] = the root split). Used by
+// the resize splitters; everything off the path is shared by reference.
+export function withSizesAt(
+  root: LayoutNode,
+  path: readonly number[],
+  sizes: number[],
+): LayoutNode {
+  if (path.length === 0) {
+    return root.kind === 'split' ? { ...root, sizes } : root;
+  }
+  if (root.kind !== 'split') return root;
+  const [i, ...rest] = path;
+  return {
+    ...root,
+    children: root.children.map((child, idx) =>
+      idx === i ? withSizesAt(child, rest, sizes) : child,
+    ),
+  };
+}
+
 // Default layout = the recommended IA: left column stacks Files / Parts /
 // Properties (select→edit adjacency, #5); right holds Palette alone (cvox
 // separated from rig, #6); the center is the existing main pane.
