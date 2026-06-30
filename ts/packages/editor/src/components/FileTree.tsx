@@ -3,6 +3,10 @@ import type { LoadedSource, SelectedTab } from '../lib/types.js';
 interface Props {
   source: LoadedSource;
   selectedTab: SelectedTab;
+  // Current syntax error per file (undefined = none). Drives a VS Code-style
+  // red filename so a broken file is visible without hovering for the tooltip.
+  cvoxError?: string | undefined;
+  manifestError?: string | undefined;
   onSelectTab: (tab: SelectedTab) => void;
   onCreateManifest: () => void;
 }
@@ -20,6 +24,8 @@ interface Props {
 export function FileTree({
   source,
   selectedTab,
+  cvoxError,
+  manifestError,
   onSelectTab,
   onCreateManifest,
 }: Props) {
@@ -29,6 +35,8 @@ export function FileTree({
         <FolderTree
           source={source}
           selectedTab={selectedTab}
+          cvoxError={cvoxError}
+          manifestError={manifestError}
           onSelectTab={onSelectTab}
         />
       ) : (
@@ -36,6 +44,7 @@ export function FileTree({
           <CvoxFileNode
             name={source.cvoxFile.name}
             active={selectedTab === 'cvox'}
+            error={cvoxError}
             onClick={() => onSelectTab('cvox')}
           />
         </ul>
@@ -56,10 +65,18 @@ export function FileTree({
 interface FolderTreeProps {
   source: Extract<LoadedSource, { kind: 'folder' }>;
   selectedTab: SelectedTab;
+  cvoxError?: string | undefined;
+  manifestError?: string | undefined;
   onSelectTab: (tab: SelectedTab) => void;
 }
 
-function FolderTree({ source, selectedTab, onSelectTab }: FolderTreeProps) {
+function FolderTree({
+  source,
+  selectedTab,
+  cvoxError,
+  manifestError,
+  onSelectTab,
+}: FolderTreeProps) {
   return (
     <ul className="tree-root">
       <li className="tree-node folder">
@@ -72,14 +89,15 @@ function FolderTree({ source, selectedTab, onSelectTab }: FolderTreeProps) {
           <CvoxFileNode
             name={source.cvoxFile.name}
             active={selectedTab === 'cvox'}
+            error={cvoxError}
             onClick={() => onSelectTab('cvox')}
           />
           {source.manifestFile !== undefined ? (
             <li
-              className={`tree-node file${selectedTab === 'manifest' ? ' active' : ''}`}
+              className={`tree-node file${selectedTab === 'manifest' ? ' active' : ''}${manifestError !== undefined ? ' error' : ''}`}
               title={
-                source.manifestError !== undefined
-                  ? `Manifest parse error: ${source.manifestError}`
+                manifestError !== undefined
+                  ? `Manifest syntax error: ${manifestError}`
                   : 'Rig manifest'
               }
             >
@@ -111,16 +129,18 @@ function FolderTree({ source, selectedTab, onSelectTab }: FolderTreeProps) {
 function CvoxFileNode({
   name,
   active,
+  error,
   onClick,
 }: {
   name: string;
   active: boolean;
+  error?: string | undefined;
   onClick: () => void;
 }) {
   return (
     <li
-      className={`tree-node file${active ? ' active' : ''}`}
-      title="Voxel definition"
+      className={`tree-node file${active ? ' active' : ''}${error !== undefined ? ' error' : ''}`}
+      title={error !== undefined ? `Syntax error: ${error}` : 'Voxel definition'}
     >
       <button type="button" className="tree-node-button" onClick={onClick}>
         <span className="icon">📄</span>

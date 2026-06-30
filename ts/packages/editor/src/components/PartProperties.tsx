@@ -72,7 +72,7 @@ export function PartProperties({
         )}
         {hasManifest && manifestEditsDisabled && (
           <p className="property-group-note">
-            Manifest source has parse errors — fix to enable rig editing.
+            Manifest source has syntax errors — fix to enable rig editing.
           </p>
         )}
         {hasManifest && (

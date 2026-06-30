@@ -349,6 +349,11 @@ export function AnimationView({
 
       {editMode && (
         <div className="anim-edit">
+          {manifestEditsDisabled && (
+            <p className="property-group-note anim-edit-note">
+              Manifest source has syntax errors — fix to enable animation editing.
+            </p>
+          )}
           <div className="anim-edit-toolbar">
             <label className="anim-edit-field">
               <span>name</span>

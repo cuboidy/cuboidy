@@ -7,6 +7,10 @@ interface Props {
   selectedTab: SelectedTab;
   hiddenParts: ReadonlySet<string>;
   selectedPart: string | null;
+  // Current parse/syntax error per source file (undefined = none), used to
+  // flag the file tree node. Live edits or a load-time failure both feed in.
+  cvoxError?: string | undefined;
+  manifestError?: string | undefined;
   onSelectTab: (tab: SelectedTab) => void;
   onSelectPart: (name: string | null) => void;
   onToggle: (name: string) => void;
@@ -27,6 +31,8 @@ export function Sidebar({
   selectedTab,
   hiddenParts,
   selectedPart,
+  cvoxError,
+  manifestError,
   onSelectTab,
   onSelectPart,
   onToggle,
@@ -47,6 +53,8 @@ export function Sidebar({
         <FileTree
           source={source}
           selectedTab={selectedTab}
+          cvoxError={cvoxError}
+          manifestError={manifestError}
           onSelectTab={onSelectTab}
           onCreateManifest={onCreateManifest}
         />

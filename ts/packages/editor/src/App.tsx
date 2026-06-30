@@ -258,10 +258,14 @@ export function App() {
             type: 'amend',
             apply: (current) => {
               if (current?.source?.kind !== 'folder') return current;
-              return {
-                ...current,
-                source: { ...current.source, manifest: result.value },
+              const nextSource = {
+                ...current.source,
+                manifest: result.value,
               };
+              // A successful reparse clears any stale load-time manifest
+              // error, so the file tree's error state tracks the live text.
+              delete (nextSource as { manifestError?: string }).manifestError;
+              return { ...current, source: nextSource };
             },
           });
         } else {
@@ -831,6 +835,11 @@ export function App() {
               selectedTab={selectedTab}
               hiddenParts={hiddenParts}
               selectedPart={effectiveSelectedPart}
+              cvoxError={cvoxParseError ?? undefined}
+              manifestError={
+                manifestParseError ??
+                (source.kind === 'folder' ? source.manifestError : undefined)
+              }
               onSelectTab={handleSelectTab}
               onSelectPart={setSelectedPartName}
               onToggle={handleToggle}
@@ -926,22 +935,18 @@ function Notices({ loaded }: { loaded: LoadResult }) {
     <aside className="notices">
       {loaded.error !== undefined && (
         <div className="notice error">
-          <strong>Parse error:</strong> {loaded.error}
+          <strong>Syntax error:</strong> {loaded.error}
         </div>
       )}
       {loaded.source?.kind === 'folder' &&
         loaded.source.manifestError !== undefined && (
           <div className="notice error">
-            <strong>Manifest error ({loaded.source.manifestFile?.name}):</strong>{' '}
+            <strong>
+              Manifest syntax error ({loaded.source.manifestFile?.name}):
+            </strong>{' '}
             {loaded.source.manifestError}
           </div>
         )}
-      {loaded.source?.cvox?.header !== undefined && (
-        <div className="notice info">
-          <strong>File header (preserved on save):</strong>
-          <pre>{loaded.source.cvox.header.join('\n')}</pre>
-        </div>
-      )}
       {loaded.source !== undefined && loaded.source.droppedInlineComments > 0 && (
         <div className="notice warning">
           <strong>

@@ -410,6 +410,13 @@ pre {
   margin: 0;
 }
 
+/* Disabled-reason note above the animation edit toolbar. Reuses
+   .property-group-note's muted-amber type; adds padding to align with
+   the toolbar that follows. */
+.anim-edit-note {
+  padding: 0.4rem 0.6rem 0;
+}
+
 .property-field {
   display: flex;
   align-items: center;
@@ -514,7 +521,7 @@ pre {
   color: #faa;
   padding: 0.4rem 0.8rem;
   font-size: 0.8rem;
-  border-bottom: 1px solid #5a1a1a;
+  border-top: 1px solid #5a1a1a;
   flex-shrink: 0;
   font-family:
     ui-monospace,
@@ -873,6 +880,13 @@ pre {
   font-style: italic;
 }
 
+/* A file whose current text has a syntax error — VS Code-style red name so
+   it's visible at a glance (the tooltip carries the detail). Targets .name
+   directly so it overrides the active node's white text too. */
+.tree-node.file.error .name {
+  color: #f47171;
+}
+
 .tree-node .badge {
   font-size: 0.65rem;
   padding: 0.05rem 0.3rem;
@@ -1150,17 +1164,6 @@ pre {
 .notice.warning {
   background: #3a2a1a;
   color: #fc8;
-}
-
-.notice.info {
-  background: #1a2a3a;
-  color: #cde;
-}
-
-.notice pre {
-  margin-top: 0.3rem;
-  white-space: pre-wrap;
-  color: #cde;
 }
 
 /* ─── Animation view ──────────────────────────────────────────────── */

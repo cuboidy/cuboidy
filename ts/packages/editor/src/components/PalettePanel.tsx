@@ -83,7 +83,7 @@ export function PalettePanel({ cvox, disabled = false, onChange }: Props) {
       </div>
       {disabled && (
         <p className="panel-note">
-          Source has parse errors — fix to enable palette editing.
+          Source has syntax errors — fix to enable palette editing.
         </p>
       )}
       <div className="palette-grid">

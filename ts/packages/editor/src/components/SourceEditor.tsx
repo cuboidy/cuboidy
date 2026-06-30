@@ -36,11 +36,6 @@ export function SourceEditor({ text, parseError, onChange }: Props) {
 
   return (
     <div className="source-editor">
-      {parseError !== undefined && (
-        <div className="parse-error-banner" role="alert">
-          <strong>Parse error:</strong> {parseError}
-        </div>
-      )}
       <div className="source-editor-body">
         <div className="source-editor-content">
           <div className="line-gutter" aria-hidden="true">
@@ -64,6 +59,11 @@ export function SourceEditor({ text, parseError, onChange }: Props) {
           />
         </div>
       </div>
+      {parseError !== undefined && (
+        <div className="parse-error-banner" role="alert">
+          <strong>Syntax error:</strong> {parseError}
+        </div>
+      )}
     </div>
   );
 }
