@@ -285,11 +285,9 @@ pre {
 .panel {
   display: flex;
   flex-direction: column;
+  flex: 1;
   min-height: 0;
-}
-
-.panel + .panel {
-  border-top: 1px solid #3a3a3a;
+  background: #232323;
 }
 
 .panel-head {
@@ -328,20 +326,59 @@ pre {
 }
 
 .panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.panel-empty {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  font-size: 0.75rem;
+  color: #777;
+  line-height: 1.4;
+}
+
+/* ─── Dock (split-tree layout) ────────────────────────────────────── */
+
+.dock-split {
+  display: flex;
+  flex: 1;
+  min-width: 0;
   min-height: 0;
 }
 
-/* ─── Right panel (palette + future tools) ────────────────────────── */
+.dock-row {
+  flex-direction: row;
+}
 
-.right-panel {
-  width: 260px;
-  background: #232323;
-  border-left: 1px solid #3a3a3a;
-  overflow-y: auto;
-  flex-shrink: 0;
-  display: flex;
+.dock-col {
   flex-direction: column;
 }
+
+.dock-cell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dock-cell > * {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.dock-row > .dock-cell + .dock-cell {
+  border-left: 1px solid #3a3a3a;
+}
+
+.dock-col > .dock-cell + .dock-cell {
+  border-top: 1px solid #3a3a3a;
+}
+
+/* ─── Right panel (palette + future tools) ────────────────────────── */
 
 .palette-panel {
   padding: 0.75rem 1rem 1rem;
@@ -804,16 +841,6 @@ pre {
 
 .file-preview-body .line-text {
   white-space: pre;
-}
-
-.sidebar {
-  width: 260px;
-  background: #232323;
-  border-right: 1px solid #3a3a3a;
-  overflow-y: auto;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
 }
 
 /* ─── File tree ───────────────────────────────────────────────────── */

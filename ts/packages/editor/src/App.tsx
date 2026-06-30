@@ -5,6 +5,7 @@ import {
   useReducer,
   useRef,
   useState,
+  type ReactNode,
 } from 'react';
 import {
   addAttrAtTime,
@@ -24,16 +25,21 @@ import {
   type ManifestPart,
 } from '@cuboidy/core';
 import { AnimationView } from './components/AnimationView.js';
+import { Dock } from './components/Dock.js';
 import { ExportMenu } from './components/ExportMenu.js';
 import { FileDropZone } from './components/FileDropZone.js';
-import { RightPanel } from './components/RightPanel.js';
+import { FileTree } from './components/FileTree.js';
+import { Panel } from './components/Panel.js';
+import { MAX_PALETTE, PalettePanel } from './components/PalettePanel.js';
+import { PartProperties } from './components/PartProperties.js';
+import { PartTree } from './components/PartTree.js';
 import { SaveButton } from './components/SaveButton.js';
-import { Sidebar } from './components/Sidebar.js';
 import { SourceEditor } from './components/SourceEditor.js';
 import { TabBar } from './components/TabBar.js';
 import { ViewModeToggle } from './components/ViewModeToggle.js';
 import { VoxelScene } from './components/VoxelScene.js';
 import { historyReducer, makeHistory } from './lib/history.js';
+import { initialLayout, type LeafNode } from './lib/layout.js';
 import { synthesizeManifest } from './lib/synthesize-manifest.js';
 import type {
   LoadResult,
@@ -783,6 +789,182 @@ export function App() {
       : null;
   }, [selectedPartName, source]);
 
+  // The center pane (tab bar + preview/source) — rendered as the dock's
+  // '__center__' leaf. Becomes real panels (preview/source/timeline) in
+  // Phase D; for now it stays the existing main pane.
+  const renderCenter = (): ReactNode => {
+    if (source === undefined) return null;
+    return (
+      <div className="main-pane">
+        <TabBar
+          source={source}
+          selected={selectedTab}
+          onSelect={handleSelectTab}
+        />
+        <div className="main-pane-body">
+          {selectedTab === 'preview' && (
+            // Panel-local toolbar: the view-mode switch belongs to the
+            // Preview pane, so it floats over the 3D's top-right rather than
+            // living in the global header (panel-system design A2).
+            <div className="view-mode-overlay">
+              <ViewModeToggle
+                mode={effectiveViewMode}
+                rigAvailable={rigAvailable}
+                animAvailable={animAvailable}
+                onChange={handleViewModeChange}
+              />
+            </div>
+          )}
+          {selectedTab === 'preview' &&
+            (effectiveViewMode === 'anim' &&
+            source.kind === 'folder' &&
+            source.manifest !== undefined ? (
+              <AnimationView
+                cvox={source.cvox}
+                manifest={source.manifest}
+                hiddenParts={hiddenParts}
+                manifestEditsDisabled={manifestParseError !== null}
+                onSetAnimField={handleSetAnimField}
+                onAddAnimKey={handleAddAnimKey}
+                onDeleteAnimKey={handleDeleteAnimKey}
+                onMoveAnimKey={handleMoveAnimKey}
+                onTrimClip={handleTrimClip}
+                onSetClipDuration={handleSetClipDuration}
+                onSetClipLoop={handleSetClipLoop}
+                onCreateClip={handleCreateAnimationClip}
+                onRenameClip={handleRenameClip}
+                onDeleteClip={handleDeleteClip}
+                onClearPartTrack={handleClearPartTrack}
+              />
+            ) : (
+              <VoxelScene
+                cvox={source.cvox}
+                manifest={
+                  source.kind === 'folder' ? source.manifest : undefined
+                }
+                viewMode={effectiveViewMode}
+                hiddenParts={hiddenParts}
+              />
+            ))}
+          {selectedTab === 'cvox' && (
+            <SourceEditor
+              text={source.cvoxFile.text}
+              {...(cvoxParseError !== null && { parseError: cvoxParseError })}
+              onChange={handleEditCvoxText}
+            />
+          )}
+          {selectedTab === 'manifest' &&
+            source.kind === 'folder' &&
+            source.manifestFile !== undefined && (
+              <SourceEditor
+                text={source.manifestFile.text}
+                {...(manifestParseError !== null && {
+                  parseError: manifestParseError,
+                })}
+                onChange={handleEditManifestText}
+              />
+            )}
+        </div>
+      </div>
+    );
+  };
+
+  // Render a dock leaf's content. Tool panels get the uniform Panel frame;
+  // '__center__' renders the raw main pane.
+  const renderLeaf = (leafNode: LeafNode): ReactNode => {
+    if (source === undefined) return null;
+    const manifest = source.kind === 'folder' ? source.manifest : undefined;
+    switch (leafNode.active) {
+      case '__center__':
+        return renderCenter();
+      case 'files':
+        return (
+          <Panel title="Files">
+            <FileTree
+              source={source}
+              selectedTab={selectedTab}
+              cvoxError={cvoxParseError ?? undefined}
+              manifestError={
+                manifestParseError ??
+                (source.kind === 'folder' ? source.manifestError : undefined)
+              }
+              onSelectTab={handleSelectTab}
+              onCreateManifest={handleCreateManifest}
+            />
+          </Panel>
+        );
+      case 'parts': {
+        const visibleCount = source.cvox.parts.length - hiddenParts.size;
+        return (
+          <Panel
+            title="Parts"
+            meta={`${visibleCount} / ${source.cvox.parts.length}`}
+          >
+            <div className="sidebar-actions">
+              <button
+                type="button"
+                onClick={handleShowAll}
+                disabled={hiddenParts.size === 0}
+              >
+                Show all
+              </button>
+              <button
+                type="button"
+                onClick={handleHideAll}
+                disabled={visibleCount === 0}
+              >
+                Hide all
+              </button>
+            </div>
+            <PartTree
+              parts={source.cvox.parts}
+              manifest={manifest}
+              hiddenParts={hiddenParts}
+              selectedPart={effectiveSelectedPart}
+              dndEnabled={manifest !== undefined}
+              onToggleVisibility={handleToggle}
+              onSelectPart={setSelectedPartName}
+              onChangeParent={handleChangePartParent}
+            />
+          </Panel>
+        );
+      }
+      case 'properties':
+        return (
+          <Panel title="Properties">
+            {effectiveSelectedPart !== null ? (
+              <PartProperties
+                selectedPart={effectiveSelectedPart}
+                cvox={source.cvox}
+                manifest={manifest}
+                manifestEditsDisabled={manifestParseError !== null}
+                onChangeParent={handleChangePartParent}
+                onChangePosition={handleChangePartPosition}
+                onCreateManifest={handleCreateManifest}
+              />
+            ) : (
+              <p className="panel-empty">
+                Select a part to edit its properties.
+              </p>
+            )}
+          </Panel>
+        );
+      case 'palette':
+        return (
+          <Panel
+            title="Palette"
+            meta={`${source.cvox.palette.length} / ${MAX_PALETTE}`}
+          >
+            <PalettePanel
+              cvox={source.cvox}
+              disabled={cvoxParseError !== null}
+              onChange={handleEditCvox}
+            />
+          </Panel>
+        );
+    }
+  };
+
   return (
     <div className="app">
       <header className="header">
@@ -821,111 +1003,7 @@ export function App() {
       </header>
       <main className="main">
         {source !== undefined ? (
-          <>
-            <Sidebar
-              source={source}
-              selectedTab={selectedTab}
-              hiddenParts={hiddenParts}
-              selectedPart={effectiveSelectedPart}
-              cvoxError={cvoxParseError ?? undefined}
-              manifestError={
-                manifestParseError ??
-                (source.kind === 'folder' ? source.manifestError : undefined)
-              }
-              onSelectTab={handleSelectTab}
-              onSelectPart={setSelectedPartName}
-              onToggle={handleToggle}
-              onShowAll={handleShowAll}
-              onHideAll={handleHideAll}
-              onChangePartParent={handleChangePartParent}
-              onCreateManifest={handleCreateManifest}
-            />
-            <div className="main-pane">
-              <TabBar
-                source={source}
-                selected={selectedTab}
-                onSelect={handleSelectTab}
-              />
-              <div className="main-pane-body">
-                {selectedTab === 'preview' && (
-                  // Panel-local toolbar: the view-mode switch belongs to the
-                  // Preview pane, so it floats over the 3D's top-right rather
-                  // than living in the global header (panel-system design A2).
-                  <div className="view-mode-overlay">
-                    <ViewModeToggle
-                      mode={effectiveViewMode}
-                      rigAvailable={rigAvailable}
-                      animAvailable={animAvailable}
-                      onChange={handleViewModeChange}
-                    />
-                  </div>
-                )}
-                {selectedTab === 'preview' &&
-                  (effectiveViewMode === 'anim' &&
-                  source.kind === 'folder' &&
-                  source.manifest !== undefined ? (
-                    <AnimationView
-                      cvox={source.cvox}
-                      manifest={source.manifest}
-                      hiddenParts={hiddenParts}
-                      manifestEditsDisabled={manifestParseError !== null}
-                      onSetAnimField={handleSetAnimField}
-                      onAddAnimKey={handleAddAnimKey}
-                      onDeleteAnimKey={handleDeleteAnimKey}
-                      onMoveAnimKey={handleMoveAnimKey}
-                      onTrimClip={handleTrimClip}
-                      onSetClipDuration={handleSetClipDuration}
-                      onSetClipLoop={handleSetClipLoop}
-                      onCreateClip={handleCreateAnimationClip}
-                      onRenameClip={handleRenameClip}
-                      onDeleteClip={handleDeleteClip}
-                      onClearPartTrack={handleClearPartTrack}
-                    />
-                  ) : (
-                    <VoxelScene
-                      cvox={source.cvox}
-                      manifest={
-                        source.kind === 'folder' ? source.manifest : undefined
-                      }
-                      viewMode={effectiveViewMode}
-                      hiddenParts={hiddenParts}
-                    />
-                  ))}
-                {selectedTab === 'cvox' && (
-                  <SourceEditor
-                    text={source.cvoxFile.text}
-                    {...(cvoxParseError !== null && { parseError: cvoxParseError })}
-                    onChange={handleEditCvoxText}
-                  />
-                )}
-                {selectedTab === 'manifest' &&
-                  source.kind === 'folder' &&
-                  source.manifestFile !== undefined && (
-                    <SourceEditor
-                      text={source.manifestFile.text}
-                      {...(manifestParseError !== null && {
-                        parseError: manifestParseError,
-                      })}
-                      onChange={handleEditManifestText}
-                    />
-                  )}
-              </div>
-            </div>
-            <RightPanel
-              cvox={source.cvox}
-              cvoxEditsDisabled={cvoxParseError !== null}
-              onCvoxChange={handleEditCvox}
-              selectedPart={effectiveSelectedPart}
-              manifestEditsDisabled={manifestParseError !== null}
-              onChangePartParent={handleChangePartParent}
-              onChangePartPosition={handleChangePartPosition}
-              onCreateManifest={handleCreateManifest}
-              {...(source.kind === 'folder' &&
-                source.manifest !== undefined && {
-                  manifest: source.manifest,
-                })}
-            />
-          </>
+          <Dock node={initialLayout} renderLeaf={renderLeaf} />
         ) : (
           <FileDropZone onLoad={handleLoad} />
         )}
