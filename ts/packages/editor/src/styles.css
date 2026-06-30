@@ -180,6 +180,21 @@ pre {
   cursor: not-allowed;
 }
 
+/* Preview pane's panel-local toolbar: the view-mode switch floats over the
+   3D's top-right. A solid backdrop keeps it readable against the scene. */
+.view-mode-overlay {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 5;
+}
+
+.view-mode-overlay .view-toggle {
+  background: rgba(26, 26, 26, 0.85);
+  backdrop-filter: blur(2px);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
 /* ─── Main / Sidebar / Scene ──────────────────────────────────────── */
 
 .main {

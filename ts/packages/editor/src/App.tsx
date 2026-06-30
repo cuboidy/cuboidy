@@ -788,14 +788,6 @@ export function App() {
       <header className="header">
         <h1>Cuboidy Editor</h1>
         <div className="header-right">
-          {source !== undefined && selectedTab === 'preview' && (
-            <ViewModeToggle
-              mode={effectiveViewMode}
-              rigAvailable={rigAvailable}
-              animAvailable={animAvailable}
-              onChange={handleViewModeChange}
-            />
-          )}
           {source !== undefined && (
             <>
               <button
@@ -855,6 +847,19 @@ export function App() {
                 onSelect={handleSelectTab}
               />
               <div className="main-pane-body">
+                {selectedTab === 'preview' && (
+                  // Panel-local toolbar: the view-mode switch belongs to the
+                  // Preview pane, so it floats over the 3D's top-right rather
+                  // than living in the global header (panel-system design A2).
+                  <div className="view-mode-overlay">
+                    <ViewModeToggle
+                      mode={effectiveViewMode}
+                      rigAvailable={rigAvailable}
+                      animAvailable={animAvailable}
+                      onChange={handleViewModeChange}
+                    />
+                  </div>
+                )}
                 {selectedTab === 'preview' &&
                   (effectiveViewMode === 'anim' &&
                   source.kind === 'folder' &&
