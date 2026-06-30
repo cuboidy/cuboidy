@@ -7,12 +7,30 @@ import {
   type ReactNode,
 } from 'react';
 import type {
+  Edge,
   LayoutNode,
   LeafId,
   LeafNode,
   Side,
   SplitNode,
 } from '../lib/layout.js';
+
+type DropZone = Edge | 'center';
+
+// How close to an edge (fraction of the leaf) counts as an edge drop.
+const EDGE_FRAC = 0.25;
+
+function dropZoneFor(rect: DOMRect, x: number, y: number): DropZone {
+  const fx = (x - rect.left) / rect.width;
+  const fy = (y - rect.top) / rect.height;
+  const d = { left: fx, right: 1 - fx, top: fy, bottom: 1 - fy };
+  const min = Math.min(d.left, d.right, d.top, d.bottom);
+  if (min >= EDGE_FRAC) return 'center';
+  if (min === d.left) return 'left';
+  if (min === d.right) return 'right';
+  if (min === d.top) return 'top';
+  return 'bottom';
+}
 
 export interface PanelContent {
   title: string;
@@ -36,6 +54,8 @@ interface Props {
   // Move a dragged tab (panel `id` from the leaf at `fromPath`) into the leaf
   // at `toPath` as a tab.
   onMove: (fromPath: Side[], id: LeafId, toPath: Side[]) => void;
+  // Drop on a leaf edge → split the leaf at `toPath` in that direction.
+  onSplit: (toPath: Side[], edge: Edge, id: LeafId, fromPath: Side[]) => void;
 }
 
 // dataTransfer payload for a dragged tab.
@@ -69,36 +89,44 @@ function DockLeaf({
   onClose,
   onAdd,
   onMove,
+  onSplit,
 }: Props & { leaf: LeafNode; path: Side[] }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
+  const [zone, setZone] = useState<DropZone | null>(null);
   const actionsRef = useRef<HTMLDivElement | null>(null);
+  const leafRef = useRef<HTMLElement | null>(null);
 
   const onTabDragStart =
     (id: LeafId) => (e: DragEvent<HTMLDivElement>) => {
       e.dataTransfer.setData(DRAG_MIME, JSON.stringify({ path, id }));
       e.dataTransfer.effectAllowed = 'move';
     };
-  // The whole leaf (tab row + body) is the drop target.
+  // The whole leaf is the drop target; the pointer's position within it picks
+  // a zone — center = tab into this leaf, an edge = split that direction.
   const onLeafDragOver = (e: DragEvent<HTMLElement>): void => {
     if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    setDragOver(true);
+    const el = leafRef.current;
+    if (el !== null) {
+      setZone(dropZoneFor(el.getBoundingClientRect(), e.clientX, e.clientY));
+    }
   };
   const onLeafDragLeave = (e: DragEvent<HTMLElement>): void => {
     // Ignore leaves into descendant elements; only clear when actually exiting.
     if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
-      setDragOver(false);
+      setZone(null);
     }
   };
   const onLeafDrop = (e: DragEvent<HTMLElement>): void => {
     e.preventDefault();
-    setDragOver(false);
+    const dropped = zone;
+    setZone(null);
     const raw = e.dataTransfer.getData(DRAG_MIME);
-    if (raw === '') return;
+    if (raw === '' || dropped === null) return;
     const data = JSON.parse(raw) as { path: Side[]; id: LeafId };
-    onMove(data.path, data.id, path);
+    if (dropped === 'center') onMove(data.path, data.id, path);
+    else onSplit(path, dropped, data.id, data.path);
   };
 
   useEffect(() => {
@@ -116,11 +144,13 @@ function DockLeaf({
   // counts. Anything panel-specific lives in the body.
   return (
     <section
-      className={`dock-leaf${dragOver ? ' drag-over' : ''}`}
+      className="dock-leaf"
+      ref={leafRef}
       onDragOver={onLeafDragOver}
       onDragLeave={onLeafDragLeave}
       onDrop={onLeafDrop}
     >
+      {zone !== null && <div className={`dock-drop dock-drop-${zone}`} />}
       <div className="dock-tabrow">
         <div className="dock-tabs">
           {leaf.panels.map((id) => (

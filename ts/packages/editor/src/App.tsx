@@ -44,10 +44,12 @@ import {
   initialLayout,
   movePanel,
   placedPanels,
+  splitLeafWith,
   withActiveAt,
   withRatioAt,
   PANEL_TITLES,
   TOOL_PANELS,
+  type Edge,
   type LayoutNode,
   type LeafId,
   type Side,
@@ -822,6 +824,12 @@ export function App() {
     },
     [],
   );
+  const handleSplitLeaf = useCallback(
+    (toPath: Side[], edge: Edge, id: LeafId, fromPath: Side[]) => {
+      setLayout((current) => splitLeafWith(current, toPath, edge, id, fromPath));
+    },
+    [],
+  );
   const handleResetLayout = useCallback(() => setLayout(initialLayout), []);
   // Tool panels not currently placed anywhere — offered by each leaf's + menu.
   const closedPanels = useMemo(() => {
@@ -1066,6 +1074,7 @@ export function App() {
             onClose={handleClosePanel}
             onAdd={handleAddPanel}
             onMove={handleMovePanel}
+            onSplit={handleSplitLeaf}
           />
         ) : (
           <FileDropZone onLoad={handleLoad} />

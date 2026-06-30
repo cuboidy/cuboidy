@@ -291,16 +291,47 @@ pre {
   background: #232323;
 }
 
-/* Overlay shown while a dragged tab hovers anywhere over this panel (a valid
-   drop target). pointer-events:none so it doesn't swallow the drop. */
-.dock-leaf.drag-over::after {
-  content: '';
+/* Drop-zone preview while a dragged tab hovers this panel: center = tab into
+   this leaf, an edge = split that direction (the overlay shows where the
+   panel will land). pointer-events:none so it doesn't swallow the drop. */
+.dock-drop {
   position: absolute;
-  inset: 0;
   z-index: 5;
   pointer-events: none;
-  background: rgba(90, 170, 255, 0.12);
+  background: rgba(90, 170, 255, 0.18);
   box-shadow: inset 0 0 0 2px #5af;
+}
+
+.dock-drop-center {
+  inset: 0;
+}
+
+.dock-drop-left {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 50%;
+}
+
+.dock-drop-right {
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 50%;
+}
+
+.dock-drop-top {
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 50%;
+}
+
+.dock-drop-bottom {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 50%;
 }
 
 .dock-tabrow {

@@ -142,6 +142,63 @@ export function movePanel(
   return closePanelAt(addPanelAt(root, toPath, id), fromPath, id);
 }
 
+export type Edge = 'top' | 'bottom' | 'left' | 'right';
+
+function edgeToSplit(edge: Edge): { dir: SplitDir; firstIsNew: boolean } {
+  switch (edge) {
+    case 'top':
+      return { dir: 'col', firstIsNew: true };
+    case 'bottom':
+      return { dir: 'col', firstIsNew: false };
+    case 'left':
+      return { dir: 'row', firstIsNew: true };
+    case 'right':
+      return { dir: 'row', firstIsNew: false };
+  }
+}
+
+function splitLeafAt(
+  node: LayoutNode,
+  path: readonly Side[],
+  dir: SplitDir,
+  newLeaf: LeafNode,
+  firstIsNew: boolean,
+): LayoutNode {
+  if (path.length === 0) {
+    if (node.kind !== 'leaf') return node;
+    return firstIsNew
+      ? split(dir, newLeaf, node, 0.5)
+      : split(dir, node, newLeaf, 0.5);
+  }
+  if (node.kind !== 'split') return node;
+  const [s, ...rest] = path;
+  if (s === 'a') return { ...node, a: splitLeafAt(node.a, rest, dir, newLeaf, firstIsNew) };
+  if (s === 'b') return { ...node, b: splitLeafAt(node.b, rest, dir, newLeaf, firstIsNew) };
+  return node;
+}
+
+// Drop a panel onto the `edge` of the leaf at `toPath`: the target leaf is
+// replaced by a binary split with the dragged panel as a new leaf on that
+// side. Split the target FIRST, then remove the panel from its source — and
+// if source === target, the original leaf has moved into the new split, so
+// fix up the source path accordingly.
+export function splitLeafWith(
+  root: LayoutNode,
+  toPath: readonly Side[],
+  edge: Edge,
+  id: LeafId,
+  fromPath: readonly Side[],
+): LayoutNode {
+  const { dir, firstIsNew } = edgeToSplit(edge);
+  const newLeaf: LeafNode = { kind: 'leaf', panels: [id], active: id };
+  const splitTree = splitLeafAt(root, toPath, dir, newLeaf, firstIsNew);
+  const origSide: Side = firstIsNew ? 'b' : 'a';
+  const newFromPath = samePath(fromPath, toPath)
+    ? [...toPath, origSide]
+    : fromPath;
+  return closePanelAt(splitTree, newFromPath, id);
+}
+
 // Remove a panel from the leaf at `path`. If the leaf empties, the parent
 // split collapses into its surviving side (which then fills the space).
 export function closePanelAt(
