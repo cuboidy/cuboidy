@@ -30,7 +30,7 @@ interface Props {
 //           which drops usage to 0 and naturally re-enables delete.
 //     The tooltip on the disabled × button names both.
 
-const MAX_PALETTE = 62; // SPEC §7.4
+export const MAX_PALETTE = 62; // SPEC §7.4
 
 export function PalettePanel({ cvox, disabled = false, onChange }: Props) {
   const usage = computePaletteUsage(cvox);
@@ -75,12 +75,6 @@ export function PalettePanel({ cvox, disabled = false, onChange }: Props) {
 
   return (
     <section className={`palette-panel${disabled ? ' disabled' : ''}`}>
-      <div className="panel-header">
-        <h3>Palette</h3>
-        <span className="panel-meta">
-          {cvox.palette.length} / {MAX_PALETTE}
-        </span>
-      </div>
       {disabled && (
         <p className="panel-note">
           Source has syntax errors — fix to enable palette editing.

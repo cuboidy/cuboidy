@@ -1,5 +1,6 @@
 import type { Cvox, Manifest } from '@cuboidy/core';
-import { PalettePanel } from './PalettePanel.js';
+import { Panel } from './Panel.js';
+import { MAX_PALETTE, PalettePanel } from './PalettePanel.js';
 import { PartProperties } from './PartProperties.js';
 
 interface Props {
@@ -41,21 +42,28 @@ export function RightPanel({
 }: Props) {
   return (
     <aside className="right-panel">
-      <PalettePanel
-        cvox={cvox}
-        disabled={cvoxEditsDisabled === true}
-        onChange={onCvoxChange}
-      />
-      {selectedPart !== null && (
-        <PartProperties
-          selectedPart={selectedPart}
+      <Panel
+        title="Palette"
+        meta={`${cvox.palette.length} / ${MAX_PALETTE}`}
+      >
+        <PalettePanel
           cvox={cvox}
-          manifest={manifest}
-          manifestEditsDisabled={manifestEditsDisabled}
-          onChangeParent={onChangePartParent}
-          onChangePosition={onChangePartPosition}
-          onCreateManifest={onCreateManifest}
+          disabled={cvoxEditsDisabled === true}
+          onChange={onCvoxChange}
         />
+      </Panel>
+      {selectedPart !== null && (
+        <Panel title="Properties">
+          <PartProperties
+            selectedPart={selectedPart}
+            cvox={cvox}
+            manifest={manifest}
+            manifestEditsDisabled={manifestEditsDisabled}
+            onChangeParent={onChangePartParent}
+            onChangePosition={onChangePartPosition}
+            onCreateManifest={onCreateManifest}
+          />
+        </Panel>
       )}
     </aside>
   );

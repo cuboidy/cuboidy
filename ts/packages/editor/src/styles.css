@@ -265,6 +265,57 @@ pre {
     monospace;
 }
 
+/* ─── Panel (uniform dock frame) ──────────────────────────────────── */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.panel + .panel {
+  border-top: 1px solid #3a3a3a;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.45rem 0.6rem 0.4rem;
+  user-select: none;
+}
+
+.panel-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #aaa;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-head-meta {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: #666;
+  font-variant-numeric: tabular-nums;
+}
+
+.panel-head-tools {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.panel-body {
+  min-height: 0;
+}
+
 /* ─── Right panel (palette + future tools) ────────────────────────── */
 
 .right-panel {
@@ -284,27 +335,6 @@ pre {
 .palette-panel.disabled {
   opacity: 0.5;
   pointer-events: none;
-}
-
-.palette-panel .panel-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin-bottom: 0.5rem;
-}
-
-.palette-panel .panel-header h3 {
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #aaa;
-}
-
-.palette-panel .panel-meta {
-  font-size: 0.75rem;
-  color: #666;
-  font-variant-numeric: tabular-nums;
 }
 
 .palette-panel .panel-note {
@@ -769,32 +799,6 @@ pre {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-}
-
-.sidebar-section + .sidebar-section {
-  border-top: 1px solid #3a3a3a;
-  margin-top: 0.25rem;
-}
-
-.sidebar-section-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  padding: 0.6rem 1rem 0.4rem;
-}
-
-.sidebar-section-header h2 {
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #888;
-}
-
-.sidebar-section-header .count {
-  font-size: 0.75rem;
-  color: #666;
-  font-variant-numeric: tabular-nums;
 }
 
 /* ─── File tree ───────────────────────────────────────────────────── */

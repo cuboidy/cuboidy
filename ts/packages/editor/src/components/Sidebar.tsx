@@ -1,5 +1,6 @@
 import type { LoadedSource, SelectedTab } from '../lib/types.js';
 import { FileTree } from './FileTree.js';
+import { Panel } from './Panel.js';
 import { PartTree } from './PartTree.js';
 
 interface Props {
@@ -46,10 +47,7 @@ export function Sidebar({
     source.kind === 'folder' ? source.manifest : undefined;
   return (
     <aside className="sidebar">
-      <section className="sidebar-section">
-        <div className="sidebar-section-header">
-          <h2>Files</h2>
-        </div>
+      <Panel title="Files">
         <FileTree
           source={source}
           selectedTab={selectedTab}
@@ -58,15 +56,12 @@ export function Sidebar({
           onSelectTab={onSelectTab}
           onCreateManifest={onCreateManifest}
         />
-      </section>
+      </Panel>
 
-      <section className="sidebar-section">
-        <div className="sidebar-section-header">
-          <h2>Parts</h2>
-          <span className="count">
-            {visibleCount} / {source.cvox.parts.length}
-          </span>
-        </div>
+      <Panel
+        title="Parts"
+        meta={`${visibleCount} / ${source.cvox.parts.length}`}
+      >
         <div className="sidebar-actions">
           <button
             type="button"
@@ -93,7 +88,7 @@ export function Sidebar({
           onSelectPart={onSelectPart}
           onChangeParent={onChangePartParent}
         />
-      </section>
+      </Panel>
     </aside>
   );
 }
