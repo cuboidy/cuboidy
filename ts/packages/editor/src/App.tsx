@@ -42,6 +42,7 @@ import {
   addPanelAt,
   closePanelAt,
   initialLayout,
+  movePanel,
   placedPanels,
   withActiveAt,
   withRatioAt,
@@ -815,6 +816,12 @@ export function App() {
   const handleAddPanel = useCallback((path: Side[], id: LeafId) => {
     setLayout((current) => addPanelAt(current, path, id));
   }, []);
+  const handleMovePanel = useCallback(
+    (fromPath: Side[], id: LeafId, toPath: Side[]) => {
+      setLayout((current) => movePanel(current, fromPath, toPath, id));
+    },
+    [],
+  );
   const handleResetLayout = useCallback(() => setLayout(initialLayout), []);
   // Tool panels not currently placed anywhere — offered by each leaf's + menu.
   const closedPanels = useMemo(() => {
@@ -1058,6 +1065,7 @@ export function App() {
             onActivate={handleActivatePanel}
             onClose={handleClosePanel}
             onAdd={handleAddPanel}
+            onMove={handleMovePanel}
           />
         ) : (
           <FileDropZone onLoad={handleLoad} />

@@ -125,6 +125,23 @@ export function withRatioAt(
   return root;
 }
 
+function samePath(a: readonly Side[], b: readonly Side[]): boolean {
+  return a.length === b.length && a.every((s, i) => s === b[i]);
+}
+
+// Move a panel from the leaf at `fromPath` to the leaf at `toPath` (as a tab).
+// Add to the target FIRST (a tab add doesn't change tree structure, so paths
+// stay valid), then remove from the source (which may collapse its split).
+export function movePanel(
+  root: LayoutNode,
+  fromPath: readonly Side[],
+  toPath: readonly Side[],
+  id: LeafId,
+): LayoutNode {
+  if (samePath(fromPath, toPath)) return root;
+  return closePanelAt(addPanelAt(root, toPath, id), fromPath, id);
+}
+
 // Remove a panel from the leaf at `path`. If the leaf empties, the parent
 // split collapses into its surviving side (which then fills the space).
 export function closePanelAt(

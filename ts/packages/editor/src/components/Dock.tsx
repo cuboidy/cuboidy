@@ -2,6 +2,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type DragEvent,
   type PointerEvent,
   type ReactNode,
 } from 'react';
@@ -32,7 +33,13 @@ interface Props {
   onActivate: (path: Side[], id: LeafId) => void;
   onClose: (path: Side[], id: LeafId) => void;
   onAdd: (path: Side[], id: LeafId) => void;
+  // Move a dragged tab (panel `id` from the leaf at `fromPath`) into the leaf
+  // at `toPath` as a tab.
+  onMove: (fromPath: Side[], id: LeafId, toPath: Side[]) => void;
 }
+
+// dataTransfer payload for a dragged tab.
+const DRAG_MIME = 'application/x-cuboidy-panel';
 
 // Each side keeps at least this fraction of its split.
 const MIN_RATIO = 0.06;
@@ -61,9 +68,38 @@ function DockLeaf({
   onActivate,
   onClose,
   onAdd,
+  onMove,
 }: Props & { leaf: LeafNode; path: Side[] }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const actionsRef = useRef<HTMLDivElement | null>(null);
+
+  const onTabDragStart =
+    (id: LeafId) => (e: DragEvent<HTMLDivElement>) => {
+      e.dataTransfer.setData(DRAG_MIME, JSON.stringify({ path, id }));
+      e.dataTransfer.effectAllowed = 'move';
+    };
+  // The whole leaf (tab row + body) is the drop target.
+  const onLeafDragOver = (e: DragEvent<HTMLElement>): void => {
+    if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOver(true);
+  };
+  const onLeafDragLeave = (e: DragEvent<HTMLElement>): void => {
+    // Ignore leaves into descendant elements; only clear when actually exiting.
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+      setDragOver(false);
+    }
+  };
+  const onLeafDrop = (e: DragEvent<HTMLElement>): void => {
+    e.preventDefault();
+    setDragOver(false);
+    const raw = e.dataTransfer.getData(DRAG_MIME);
+    if (raw === '') return;
+    const data = JSON.parse(raw) as { path: Side[]; id: LeafId };
+    onMove(data.path, data.id, path);
+  };
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -79,13 +115,20 @@ function DockLeaf({
   // The tab row holds only tabs + the add control — no panel content like
   // counts. Anything panel-specific lives in the body.
   return (
-    <section className="dock-leaf">
+    <section
+      className={`dock-leaf${dragOver ? ' drag-over' : ''}`}
+      onDragOver={onLeafDragOver}
+      onDragLeave={onLeafDragLeave}
+      onDrop={onLeafDrop}
+    >
       <div className="dock-tabrow">
         <div className="dock-tabs">
           {leaf.panels.map((id) => (
             <div
               key={id}
               className={`dock-tab${id === leaf.active ? ' active' : ''}`}
+              draggable
+              onDragStart={onTabDragStart(id)}
             >
               <button
                 type="button"
