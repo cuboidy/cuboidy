@@ -1347,7 +1347,7 @@ pre {
 }
 
 .anim-create-inline {
-  margin-left: auto;
+  flex-shrink: 0;
   padding: 0.25rem 0.6rem;
   background: #2a3a4a;
   color: #cde;
@@ -1361,6 +1361,69 @@ pre {
 .anim-create-inline:hover:not(:disabled) {
   background: #2a3a5a;
   border-color: #4a5a7a;
+}
+
+.anim-delete-clip {
+  margin-left: auto;
+  padding: 0.25rem 0.6rem;
+  background: #3a2424;
+  color: #ecc;
+  border: 1px solid #5a3030;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+}
+
+.anim-delete-clip:hover:not(:disabled) {
+  background: #4a2a2a;
+}
+
+.anim-delete-clip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ─── Text input (clip rename) ────────────────────────────────────── */
+
+.text-input {
+  width: 9rem;
+  background: #2a2a2a;
+  color: #e0e0e0;
+  border: 1px solid #3a3a3a;
+  border-radius: 3px;
+  padding: 0.15rem 0.3rem;
+  font: inherit;
+  font-family:
+    ui-monospace,
+    'SF Mono',
+    Menlo,
+    Consolas,
+    monospace;
+  font-size: 0.8rem;
+}
+
+.text-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Rejected commit (invalid identifier / duplicate name): brief red flash,
+   cleared by onAnimationEnd. */
+.text-input.invalid {
+  animation: text-input-invalid 0.45s ease-out;
+}
+
+@keyframes text-input-invalid {
+  0%,
+  70% {
+    border-color: #c55;
+    box-shadow: 0 0 0 1px #c55;
+  }
+  100% {
+    border-color: #3a3a3a;
+    box-shadow: none;
+  }
 }
 
 .anim-edit-main {
@@ -1428,8 +1491,32 @@ pre {
   padding-bottom: 2px;
 }
 
-.timeline-part-label {
-  padding: 2px 0.5rem 1px;
+.timeline-part-header {
+  display: flex;
+  align-items: center;
+  min-height: 18px;
+}
+
+.timeline-part-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+  padding-right: 0.3rem;
+  min-width: 0;
+}
+
+.timeline-part-toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 2px 0 1px 0.4rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
   font-family:
     ui-monospace,
     'SF Mono',
@@ -1438,9 +1525,68 @@ pre {
     monospace;
   font-size: 0.72rem;
   color: #cde;
+  text-align: left;
+}
+
+.timeline-part-toggle:hover {
+  color: #fff;
+}
+
+.timeline-caret {
+  flex-shrink: 0;
+  font-size: 0.6rem;
+  color: #888;
+}
+
+.timeline-part-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.timeline-part-clear {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  background: #2f2f2f;
+  color: #c99;
+  border: 1px solid #3a3a3a;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.timeline-part-clear:hover:not(:disabled) {
+  background: #4a2a2a;
+  color: #faa;
+}
+
+.timeline-part-clear:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Collapsed-part key summary: read-only ticks aligned with the lanes. */
+.timeline-summary-lane {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 10px;
+}
+
+.timeline-summary-tick {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  width: 2px;
+  background: #557;
+  transform: translateX(-50%);
+  pointer-events: none;
 }
 
 .timeline-attr-row {

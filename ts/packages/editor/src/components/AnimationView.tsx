@@ -3,6 +3,7 @@ import { OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import {
   formatTimeKey,
+  isIdentifier,
   isInlineAnimation,
   nearestExistingKey,
   restValue,
@@ -22,6 +23,7 @@ import type { SelectedKey } from '../lib/types.js';
 import { KeyInspector } from './KeyInspector.js';
 import { NumberInput } from './NumberInput.js';
 import { RiggedParts } from './RiggedParts.js';
+import { TextInput } from './TextInput.js';
 import { Timeline } from './Timeline.js';
 
 interface Props {
@@ -62,6 +64,9 @@ interface Props {
   onSetClipDuration: (animName: string, duration: number) => void;
   onSetClipLoop: (animName: string, loop: boolean) => void;
   onCreateClip: () => void;
+  onRenameClip: (oldName: string, newName: string) => void;
+  onDeleteClip: (name: string) => void;
+  onClearPartTrack: (animName: string, part: string) => void;
 }
 
 // Animation playback + keyframe editor. Play/pause + scrub drive a shared
@@ -82,6 +87,9 @@ export function AnimationView({
   onSetClipDuration,
   onSetClipLoop,
   onCreateClip,
+  onRenameClip,
+  onDeleteClip,
+  onClearPartTrack,
 }: Props) {
   const animations = manifest.animations ?? {};
   const inlineNames = useMemo(
@@ -280,6 +288,13 @@ export function AnimationView({
     [handleMoveKey],
   );
 
+  // Clear a part's whole track in the active clip (timeline part-header ×).
+  // Stable via the ref pattern so TimelineLanes' memo survives clip switches.
+  const handleClearPart = useCallback(
+    (part: string) => onClearPartTrack(activeNameRef.current, part),
+    [onClearPartTrack],
+  );
+
   // Prune a stale selection (the key may have been deleted/edited away or the
   // clip swapped). Done at render so the inspector never sees a dangling key.
   const effectiveSelectedKey = useMemo<SelectedKey | null>(() => {
@@ -336,6 +351,21 @@ export function AnimationView({
         <div className="anim-edit">
           <div className="anim-edit-toolbar">
             <label className="anim-edit-field">
+              <span>name</span>
+              <TextInput
+                value={activeName}
+                disabled={manifestEditsDisabled}
+                ariaLabel="Clip name"
+                validate={(s) => isIdentifier(s) && !Object.hasOwn(animations, s)}
+                onCommit={(next) => {
+                  onRenameClip(activeName, next);
+                  // Optimistic: keep the renamed clip selected (the re-sync
+                  // effect would otherwise fall back to the first clip).
+                  setSelected(next);
+                }}
+              />
+            </label>
+            <label className="anim-edit-field">
               <span>duration</span>
               <NumberInput
                 value={duration}
@@ -369,19 +399,24 @@ export function AnimationView({
                 </button>
               </span>
             )}
+            {/* Collection-level actions (switch / create) live in the bottom
+                bar next to the clip selector — this toolbar is scoped to
+                editing the CURRENT clip, so only per-clip operations here. */}
             <button
               type="button"
-              className="anim-create-inline"
+              className="anim-delete-clip"
               disabled={manifestEditsDisabled}
-              onClick={onCreateClip}
+              title="Delete this clip (undo restores it)"
+              onClick={() => onDeleteClip(activeName)}
             >
-              + New clip
+              Delete clip
             </button>
           </div>
           <div className="anim-edit-main">
             <Timeline
               partNames={partNames}
               inline={inline}
+              clipName={activeName}
               time={time}
               selectedKey={effectiveSelectedKey}
               disabled={manifestEditsDisabled}
@@ -389,6 +424,7 @@ export function AnimationView({
               onSelectKey={handleSelectKey}
               onAddKey={handleAddKey}
               onMoveKey={handleMoveKey}
+              onClearPart={handleClearPart}
             />
             {effectiveSelectedKey !== null && selectedKeyframe !== undefined && (
               <KeyInspector
@@ -469,6 +505,19 @@ export function AnimationView({
           </select>
         ) : (
           <span className="anim-name">{activeName}</span>
+        )}
+        {editMode && (
+          /* Collection-level: creating a clip sits beside the clip
+             selector, not inside the per-clip edit toolbar. Edit-gated
+             like the rest of the editing UI. */
+          <button
+            type="button"
+            className="anim-create-inline"
+            disabled={manifestEditsDisabled}
+            onClick={onCreateClip}
+          >
+            + New clip
+          </button>
         )}
         <button
           type="button"

@@ -9,6 +9,7 @@ import {
 import {
   addAttrAtTime,
   deleteAttrAtKey,
+  isIdentifier,
   moveAttrKey,
   parseCvox,
   parseManifest,
@@ -395,7 +396,12 @@ export function App() {
         if (src.manifest === undefined) return current;
         const prev = src.manifest.animations?.[animName];
         if (prev === undefined || typeof prev === 'string') return current;
-        const animations = { ...src.manifest.animations, [animName]: build(prev) };
+        const built = build(prev);
+        // A no-op build must return `current` itself, or the fresh wrapper
+        // objects below would defeat the history reducer's `next === present`
+        // no-op detection and record a junk undo entry.
+        if (built === prev) return current;
+        const animations = { ...src.manifest.animations, [animName]: built };
         const nextManifest: Manifest = { ...src.manifest, animations };
         const nextText = JSON.stringify(nextManifest, null, 2) + '\n';
         const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
@@ -560,6 +566,95 @@ export function App() {
     setViewMode('anim');
     setSelectedTab('preview');
   }, [dispatchEdit, cancelPendingManifestReparse]);
+
+  // Rename a clip, preserving its position in the animations map (rebuild
+  // entries in insertion order, swapping the key) so the JSON diff is one
+  // line. Collision checks use Object.hasOwn — `animations['constructor']`
+  // would be truthy via the prototype chain — and run against ALL keys
+  // (string-ref animations included).
+  const handleRenameClip = useCallback(
+    (oldName: string, newName: string) => {
+      if (oldName === newName || !isIdentifier(newName)) return;
+      dispatchEdit(null, (current) => {
+        if (current?.source?.kind !== 'folder') return current;
+        const src = current.source;
+        if (src.manifest === undefined) return current;
+        const animations = src.manifest.animations;
+        if (animations === undefined || !Object.hasOwn(animations, oldName)) {
+          return current;
+        }
+        if (Object.hasOwn(animations, newName)) return current;
+        const next: NonNullable<Manifest['animations']> = {};
+        for (const [k, v] of Object.entries(animations)) {
+          next[k === oldName ? newName : k] = v;
+        }
+        const nextManifest: Manifest = { ...src.manifest, animations: next };
+        const nextText = JSON.stringify(nextManifest, null, 2) + '\n';
+        const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
+        return {
+          ...current,
+          source: {
+            ...src,
+            manifest: nextManifest,
+            manifestFile: { ...baseFile, text: nextText },
+          },
+        };
+      });
+      cancelPendingManifestReparse();
+      setManifestParseError(null);
+    },
+    [dispatchEdit, cancelPendingManifestReparse],
+  );
+
+  // Delete a clip. No confirmation — undo is the safety net. Deleting the
+  // last clip drops the `animations` property entirely (SPEC: absent → no
+  // animations; cleaner authored JSON).
+  const handleDeleteClip = useCallback(
+    (name: string) => {
+      dispatchEdit(null, (current) => {
+        if (current?.source?.kind !== 'folder') return current;
+        const src = current.source;
+        if (src.manifest === undefined) return current;
+        const animations = src.manifest.animations;
+        if (animations === undefined || !Object.hasOwn(animations, name)) {
+          return current;
+        }
+        const { [name]: _dropped, ...rest } = animations;
+        let nextManifest: Manifest;
+        if (Object.keys(rest).length === 0) {
+          const { animations: _all, ...m } = src.manifest;
+          nextManifest = m;
+        } else {
+          nextManifest = { ...src.manifest, animations: rest };
+        }
+        const nextText = JSON.stringify(nextManifest, null, 2) + '\n';
+        const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
+        return {
+          ...current,
+          source: {
+            ...src,
+            manifest: nextManifest,
+            manifestFile: { ...baseFile, text: nextText },
+          },
+        };
+      });
+      cancelPendingManifestReparse();
+      setManifestParseError(null);
+    },
+    [dispatchEdit, cancelPendingManifestReparse],
+  );
+
+  // Remove a part's whole track from a clip (the timeline's per-part ×).
+  const handleClearPartTrack = useCallback(
+    (animName: string, part: string) => {
+      mutateManifestAnimation(null, animName, (anim) => {
+        if (anim.parts[part] === undefined) return anim;
+        const { [part]: _dropped, ...parts } = anim.parts;
+        return { ...anim, parts };
+      });
+    },
+    [mutateManifestAnimation],
+  );
 
   const handleViewModeChange = useCallback((mode: ViewMode) => {
     setViewMode(mode);
@@ -768,6 +863,9 @@ export function App() {
                       onSetClipDuration={handleSetClipDuration}
                       onSetClipLoop={handleSetClipLoop}
                       onCreateClip={handleCreateAnimationClip}
+                      onRenameClip={handleRenameClip}
+                      onDeleteClip={handleDeleteClip}
+                      onClearPartTrack={handleClearPartTrack}
                     />
                   ) : (
                     <VoxelScene

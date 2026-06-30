@@ -48,23 +48,40 @@ const ATTRS: ReadonlyArray<{ key: KeyAttr; label: string }> = [
 const clamp01 = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x);
 const snap = (t: number): number => Math.round(t * 1000) / 1000;
 
+interface Marker {
+  t: number;
+  timeKey: string;
+}
+
 // Time-keys (sorted) whose keyframe carries `attr` — the per-attribute lane's
-// markers, derived from the sparse Keyframe map.
+// markers, derived from the sparse Keyframe map. `attr === null` returns ALL
+// time-keys (every entry carries ≥1 attribute) — the collapsed summary lane.
 function markerTimes(
   track: AnimationTrack | undefined,
-  attr: KeyAttr,
-): { t: number; timeKey: string }[] {
+  attr: KeyAttr | null,
+): Marker[] {
   if (track === undefined) return [];
   return Object.keys(track)
-    .filter((k) => attr in track[k]!)
+    .filter((k) => attr === null || attr in track[k]!)
     .map((k) => ({ t: Number(k), timeKey: k }))
     .filter((m) => Number.isFinite(m.t))
     .sort((a, b) => a.t - b.t);
 }
 
+interface PartMarkers {
+  rot: Marker[];
+  pos: Marker[];
+  scale: Marker[];
+  visible: Marker[];
+  all: Marker[];
+}
+
 interface Props {
   partNames: readonly string[];
   inline: InlineAnimation;
+  // Active clip name. Used as TimelineLanes' key so a clip switch remounts
+  // the lanes and re-derives the expand/collapse defaults.
+  clipName: string;
   time: number;
   selectedKey: SelectedKey | null;
   disabled: boolean;
@@ -77,6 +94,7 @@ interface Props {
     fromTimeKey: string,
     toTime: number,
   ) => void;
+  onClearPart: (part: string) => void;
 }
 
 // Premiere/AE-style timeline: one row per model part, each expanded into
@@ -95,6 +113,7 @@ interface Props {
 export function Timeline({
   partNames,
   inline,
+  clipName,
   time,
   selectedKey,
   disabled,
@@ -102,6 +121,7 @@ export function Timeline({
   onSelectKey,
   onAddKey,
   onMoveKey,
+  onClearPart,
 }: Props) {
   const duration = inline.duration;
 
@@ -136,6 +156,7 @@ export function Timeline({
             />
           </div>
           <TimelineLanes
+            key={clipName}
             partNames={partNames}
             inline={inline}
             selectedKey={selectedKey}
@@ -144,6 +165,7 @@ export function Timeline({
             onAddKey={onAddKey}
             onMoveKey={onMoveKey}
             onScrub={onScrub}
+            onClearPart={onClearPart}
           />
           {/* Offset LABEL_W + a fraction of the lane width (container minus
               gutter minus right inset) so the playhead tracks the markers. */}
@@ -173,6 +195,7 @@ interface LanesProps {
     toTime: number,
   ) => void;
   onScrub: (t: number) => void;
+  onClearPart: (part: string) => void;
 }
 
 const TimelineLanes = memo(function TimelineLanes({
@@ -184,14 +207,32 @@ const TimelineLanes = memo(function TimelineLanes({
   onAddKey,
   onMoveKey,
   onScrub,
+  onClearPart,
 }: LanesProps) {
   const duration = inline.duration;
 
+  // Per-part expand/collapse. Default: parts WITH a track in this clip start
+  // expanded, keyless parts collapse to one header line. An explicit set
+  // (not deviations-from-default) so adding a first key to a manually
+  // expanded part doesn't snap it shut. The parent keys this component by
+  // clip name, so a clip switch remounts and re-derives the defaults.
+  const [expandedParts, setExpandedParts] = useState<ReadonlySet<string>>(
+    () => new Set(partNames.filter((p) => inline.parts[p] !== undefined)),
+  );
+  const togglePart = (part: string): void => {
+    setExpandedParts((prev) => {
+      const next = new Set(prev);
+      if (next.has(part)) next.delete(part);
+      else next.add(part);
+      return next;
+    });
+  };
+
   // Markers depend only on the animation data, not on `time`. Recomputed
   // when a key is added/edited/deleted/moved (inline changes), never on
-  // playback.
+  // playback. `all` is the union across attributes — the collapsed summary.
   const markers = useMemo(() => {
-    const m = new Map<string, Record<KeyAttr, { t: number; timeKey: string }[]>>();
+    const m = new Map<string, PartMarkers>();
     for (const part of partNames) {
       const track = inline.parts[part];
       m.set(part, {
@@ -199,6 +240,7 @@ const TimelineLanes = memo(function TimelineLanes({
         pos: markerTimes(track, 'pos'),
         scale: markerTimes(track, 'scale'),
         visible: markerTimes(track, 'visible'),
+        all: markerTimes(track, null),
       });
     }
     return m;
@@ -208,55 +250,101 @@ const TimelineLanes = memo(function TimelineLanes({
     <div className="timeline-body">
       {partNames.map((part) => {
         const rec = markers.get(part);
+        const hasTrack = inline.parts[part] !== undefined;
+        const expanded = expandedParts.has(part);
+        const keyCount = rec?.all.length ?? 0;
         return (
           <div className="timeline-part" key={part}>
-            <div className="timeline-part-label" title={part}>
-              {part}
-            </div>
-            {ATTRS.map(({ key, label }) => {
-              const arr = rec?.[key] ?? [];
-              return (
-                <div className="timeline-attr-row" key={key}>
-                  <div className="timeline-attr-head" style={{ width: LABEL_W }}>
-                    <span className="timeline-attr-label">{label}</span>
-                    <button
-                      type="button"
-                      className="timeline-add"
-                      title={`Add ${label} key at playhead`}
-                      disabled={disabled}
-                      onClick={() => onAddKey(part, key)}
-                    >
-                      +
-                    </button>
-                  </div>
-                  <div className="timeline-lane" style={{ marginRight: RIGHT_PAD }}>
-                    {arr.map(({ t, timeKey }, i) => (
-                      <TimelineMarker
-                        key={timeKey}
-                        part={part}
-                        attr={key}
-                        label={label}
-                        timeKey={timeKey}
-                        t={t}
-                        duration={duration}
-                        prevT={arr[i - 1]?.t ?? null}
-                        nextT={arr[i + 1]?.t ?? null}
-                        selected={
-                          selectedKey !== null &&
-                          selectedKey.part === part &&
-                          selectedKey.attr === key &&
-                          selectedKey.timeKey === timeKey
-                        }
-                        disabled={disabled}
-                        onSelectKey={onSelectKey}
-                        onMoveKey={onMoveKey}
-                        onScrub={onScrub}
-                      />
-                    ))}
-                  </div>
+            <div className="timeline-part-header">
+              <div className="timeline-part-head" style={{ width: LABEL_W }}>
+                {/* View state, deliberately NOT gated by `disabled` —
+                    collapsing is not a manifest edit. */}
+                <button
+                  type="button"
+                  className="timeline-part-toggle"
+                  aria-expanded={expanded}
+                  title={`${part} — ${keyCount} key${keyCount === 1 ? '' : 's'}`}
+                  onClick={() => togglePart(part)}
+                >
+                  <span className="timeline-caret">{expanded ? '▾' : '▸'}</span>
+                  <span className="timeline-part-name">{part}</span>
+                </button>
+                {hasTrack && (
+                  <button
+                    type="button"
+                    className="timeline-part-clear"
+                    disabled={disabled}
+                    title={`Clear all ${part} keys in this clip`}
+                    onClick={() => onClearPart(part)}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+              {!expanded && (
+                /* Collapsed summary: non-interactive ticks at every key time,
+                   sharing the lane geometry so they align with the playhead. */
+                <div
+                  className="timeline-summary-lane"
+                  style={{ marginRight: RIGHT_PAD }}
+                >
+                  {(rec?.all ?? []).map(({ t, timeKey }) => (
+                    <span
+                      key={timeKey}
+                      className="timeline-summary-tick"
+                      style={{
+                        left: `${(duration > 0 ? clamp01(t / duration) : 0) * 100}%`,
+                      }}
+                    />
+                  ))}
                 </div>
-              );
-            })}
+              )}
+            </div>
+            {expanded &&
+              ATTRS.map(({ key, label }) => {
+                const arr = rec?.[key] ?? [];
+                return (
+                  <div className="timeline-attr-row" key={key}>
+                    <div className="timeline-attr-head" style={{ width: LABEL_W }}>
+                      <span className="timeline-attr-label">{label}</span>
+                      <button
+                        type="button"
+                        className="timeline-add"
+                        title={`Add ${label} key at playhead`}
+                        disabled={disabled}
+                        onClick={() => onAddKey(part, key)}
+                      >
+                        +
+                      </button>
+                    </div>
+                    <div className="timeline-lane" style={{ marginRight: RIGHT_PAD }}>
+                      {arr.map(({ t, timeKey }, i) => (
+                        <TimelineMarker
+                          key={timeKey}
+                          part={part}
+                          attr={key}
+                          label={label}
+                          timeKey={timeKey}
+                          t={t}
+                          duration={duration}
+                          prevT={arr[i - 1]?.t ?? null}
+                          nextT={arr[i + 1]?.t ?? null}
+                          selected={
+                            selectedKey !== null &&
+                            selectedKey.part === part &&
+                            selectedKey.attr === key &&
+                            selectedKey.timeKey === timeKey
+                          }
+                          disabled={disabled}
+                          onSelectKey={onSelectKey}
+                          onMoveKey={onMoveKey}
+                          onScrub={onScrub}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
           </div>
         );
       })}
