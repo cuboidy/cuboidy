@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type PointerEvent,
 } from 'react';
 import {
@@ -47,6 +48,27 @@ const ATTRS: ReadonlyArray<{ key: KeyAttr; label: string }> = [
 
 const clamp01 = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x);
 const snap = (t: number): number => Math.round(t * 1000) / 1000;
+
+// Coarse snap grid for dragging keyframes — markers land on 0.05s steps so a
+// drag reads as deliberate "clicks" instead of free-floating. Holding Alt
+// bypasses to the fine 1e-3 grid (formatTimeKey's storage resolution).
+const SNAP_STEP = 0.05;
+const snapTo = (t: number, step: number): number => Math.round(t / step) * step;
+
+// Ruler tick / lane gridline spacing: a "nice" step (1/2/2.5/5 ×10ⁿ) chosen so
+// ~8 labelled ticks span the clip — makes the grid the keyframes snap onto
+// actually visible (the seed concern was "drag doesn't feel snapped").
+function gridStep(duration: number): number {
+  if (duration <= 0) return 0;
+  const rough = duration / 8;
+  const pow = Math.pow(10, Math.floor(Math.log10(rough)));
+  for (const m of [1, 2, 2.5, 5]) {
+    if (m * pow >= rough) return m * pow;
+  }
+  return 10 * pow;
+}
+
+const fmtTick = (t: number): string => `${Number(t.toFixed(3))}`;
 
 interface Marker {
   t: number;
@@ -142,6 +164,15 @@ export function Timeline({
 
   const headFrac = duration > 0 ? clamp01(time / duration) : 0;
 
+  // Labelled major ticks across the clip (same step as the lane gridlines).
+  const majorStep = gridStep(duration);
+  const ticks: number[] = [];
+  if (majorStep > 0 && duration > 0) {
+    for (let i = 0; i * majorStep <= duration + 1e-9; i++) {
+      ticks.push(snap(i * majorStep));
+    }
+  }
+
   return (
     <div className="timeline">
       <div className="timeline-scroll">
@@ -153,7 +184,27 @@ export function Timeline({
               style={{ marginRight: RIGHT_PAD }}
               onPointerDown={handleRulerDown}
               onPointerMove={handleRulerMove}
-            />
+            >
+              {ticks.map((tt) => {
+                const f = tt / duration;
+                // Anchor edge labels inward so they don't clip past the ruler.
+                const anchor = f < 0.04 ? '0' : f > 0.96 ? '-100%' : '-50%';
+                return (
+                  <div
+                    key={tt}
+                    className="timeline-tick"
+                    style={{ left: `${f * 100}%` }}
+                  >
+                    <span
+                      className="timeline-tick-label"
+                      style={{ transform: `translateX(${anchor})` }}
+                    >
+                      {fmtTick(tt)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
           <TimelineLanes
             key={clipName}
@@ -211,14 +262,31 @@ const TimelineLanes = memo(function TimelineLanes({
 }: LanesProps) {
   const duration = inline.duration;
 
+  // Lane gridlines: a major line per `gridStep` (matching the ruler ticks) and
+  // a fainter minor line per snap step, the minor only when sparse enough to
+  // stay legible. Exposed as CSS vars (fraction of the lane width) consumed by
+  // the .timeline-lane background gradient. Fall back to 1 (= a line only at
+  // the far edge, i.e. none) when there's no usable grid.
+  const majorStep = gridStep(duration);
+  const gridFrac = duration > 0 && majorStep > 0 ? majorStep / duration : 0;
+  const snapFrac = duration > 0 && duration <= 2 ? SNAP_STEP / duration : 0;
+  const gridStyle = {
+    '--grid-frac': gridFrac > 0 ? gridFrac : 1,
+    '--snap-frac': snapFrac > 0 ? snapFrac : 1,
+  } as CSSProperties;
+
   // Per-part expand/collapse. Default: parts WITH a track in this clip start
   // expanded, keyless parts collapse to one header line. An explicit set
   // (not deviations-from-default) so adding a first key to a manually
   // expanded part doesn't snap it shut. The parent keys this component by
   // clip name, so a clip switch remounts and re-derives the defaults.
-  const [expandedParts, setExpandedParts] = useState<ReadonlySet<string>>(
-    () => new Set(partNames.filter((p) => inline.parts[p] !== undefined)),
-  );
+  const [expandedParts, setExpandedParts] = useState<ReadonlySet<string>>(() => {
+    const withTrack = partNames.filter((p) => inline.parts[p] !== undefined);
+    // Empty clip (no part has a track yet): expand the first part so its + add
+    // buttons are reachable — otherwise every row is collapsed and there is no
+    // visible way to drop the first keyframe.
+    return new Set(withTrack.length > 0 ? withTrack : partNames.slice(0, 1));
+  });
   const togglePart = (part: string): void => {
     setExpandedParts((prev) => {
       const next = new Set(prev);
@@ -247,7 +315,7 @@ const TimelineLanes = memo(function TimelineLanes({
   }, [partNames, inline]);
 
   return (
-    <div className="timeline-body">
+    <div className="timeline-body" style={gridStyle}>
       {partNames.map((part) => {
         const rec = markers.get(part);
         const hasTrack = inline.parts[part] !== undefined;
@@ -438,14 +506,15 @@ function TimelineMarker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dragging]);
 
-  // clientX → clamped grid time. Snap to the 1e-3 grid FIRST, then clamp to
-  // the grid-aligned duration and same-attr neighbor bounds (snapping after
-  // clamping could round back onto a neighbor).
-  const dragTimeFromClientX = (clientX: number): number => {
+  // clientX → clamped grid time. Snap FIRST (coarse SNAP_STEP, or the fine
+  // 1e-3 grid when Alt bypasses), then clamp to the grid-aligned duration and
+  // same-attr neighbor bounds (snapping after clamping could round back onto a
+  // neighbor).
+  const dragTimeFromClientX = (clientX: number, altKey: boolean): number => {
     const rect = laneRectRef.current;
     if (rect === null || duration <= 0) return t;
     const raw = clamp01((clientX - rect.left) / rect.width) * duration;
-    const snapped = snap(raw);
+    const snapped = altKey ? snap(raw) : snap(snapTo(raw, SNAP_STEP));
     const durGrid = Math.floor(duration * 1000) / 1000;
     // A grid step of clearance from each same-attr neighbor (no merge, no
     // crossing). No prev neighbor → 0 is allowed: landing on a "0.0" entry
@@ -481,7 +550,7 @@ function TimelineMarker({
       return;
     }
     draggingRef.current = true;
-    const next = dragTimeFromClientX(e.clientX);
+    const next = dragTimeFromClientX(e.clientX, e.altKey);
     dragTRef.current = next;
     setDragT(next);
     onScrub(next); // playhead (and the 3D pose) follow the ghost

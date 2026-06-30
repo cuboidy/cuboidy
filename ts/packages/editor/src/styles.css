@@ -1467,11 +1467,40 @@ pre {
 .timeline-ruler {
   flex: 1;
   min-width: 0;
+  position: relative;
   background: #1c1c1c;
   cursor: pointer;
   /* Pointer-capture drag-scrubbing on touch: stop the browser from
      claiming horizontal pan gestures. */
   touch-action: none;
+}
+
+/* A labelled time tick in the ruler — thin full-height line + a small time
+   label. pointer-events:none so the ruler underneath still drag-scrubs. */
+.timeline-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: #3a3a3a;
+  pointer-events: none;
+}
+
+.timeline-tick-label {
+  position: absolute;
+  bottom: 1px;
+  left: 0;
+  padding: 0 2px;
+  font-family:
+    ui-monospace,
+    'SF Mono',
+    Menlo,
+    Consolas,
+    monospace;
+  font-size: 0.6rem;
+  line-height: 1;
+  color: #888;
+  white-space: nowrap;
 }
 
 .timeline-scroll {
@@ -1580,6 +1609,12 @@ pre {
   flex: 1;
   min-width: 0;
   height: 10px;
+  /* Major gridlines only (see .timeline-lane for the var contract). */
+  background-image: repeating-linear-gradient(
+    90deg,
+    #2c2c2c 0 1px,
+    transparent 1px calc(100% * var(--grid-frac, 1))
+  );
 }
 
 .timeline-summary-tick {
@@ -1650,7 +1685,21 @@ pre {
   flex: 1;
   min-width: 0;
   height: 100%;
-  background: #1a1a1a;
+  /* Gridlines aligned to the ruler ticks + the snap grid. --grid-frac and
+     --snap-frac (fractions of the lane width) are set on .timeline-body; the
+     major layer is drawn over the minor where they coincide. */
+  background-color: #1a1a1a;
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      #2c2c2c 0 1px,
+      transparent 1px calc(100% * var(--grid-frac, 1))
+    ),
+    repeating-linear-gradient(
+      90deg,
+      #232323 0 1px,
+      transparent 1px calc(100% * var(--snap-frac, 1))
+    );
 }
 
 .timeline-marker {
