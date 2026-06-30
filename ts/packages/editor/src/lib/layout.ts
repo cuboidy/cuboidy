@@ -1,9 +1,13 @@
-// Recursive split-tree layout for the dockable panel system (design:
-// docs/panel-system-design.md). A layout is a tree of SplitNodes (row/col
-// with per-child sizes) and LeafNodes (a tab-group of panels). Phase B
-// renders this with fixed sizes; resize + persistence land in B2.
+// Binary split-tree layout for the dockable panel system (design:
+// docs/panel-system-design.md). VS Code / react-mosaic style: every split is
+// a 2-way division (a | b) with a direction and a ratio. Closing one side
+// collapses the split into the surviving side, which fills the space; a drop
+// onto a leaf's edge makes a directional binary split (unambiguous). N-way
+// stacks are nested binary splits.
 
 export type SplitDir = 'row' | 'col';
+// Path into the tree: a sequence of sides from the root ([] = the root node).
+export type Side = 'a' | 'b';
 
 // Tool panels live in the registry; '__center__' is a special leaf that
 // renders the existing main pane (TabBar + preview/source). It becomes real
@@ -14,8 +18,9 @@ export type LeafId = PanelId | '__center__';
 export interface SplitNode {
   kind: 'split';
   dir: SplitDir;
-  children: LayoutNode[]; // length ≥ 2
-  sizes: number[]; // relative flex ratios, one per child
+  a: LayoutNode;
+  b: LayoutNode;
+  ratio: number; // a's fraction of the split (0..1); b gets 1 - ratio
 }
 
 export interface LeafNode {
@@ -27,6 +32,32 @@ export interface LeafNode {
 export type LayoutNode = SplitNode | LeafNode;
 
 const leaf = (id: LeafId): LeafNode => ({ kind: 'leaf', panels: [id], active: id });
+const split = (
+  dir: SplitDir,
+  a: LayoutNode,
+  b: LayoutNode,
+  ratio: number,
+): SplitNode => ({ kind: 'split', dir, a, b, ratio });
+
+// The dockable tool panels (the center is special and never closed/added).
+export const TOOL_PANELS: PanelId[] = ['files', 'parts', 'properties', 'palette'];
+
+export const PANEL_TITLES: Record<PanelId, string> = {
+  files: 'Files',
+  parts: 'Parts',
+  properties: 'Properties',
+  palette: 'Palette',
+};
+
+// Default layout (nested binary): left column = Files over (Parts over
+// Properties); the rest = center over... beside Palette. Realizes the IA:
+// Parts/Properties adjacent (#5), Palette separated from rig (#6).
+export const initialLayout: LayoutNode = split(
+  'row',
+  split('col', leaf('files'), split('col', leaf('parts'), leaf('properties'), 0.4), 0.25),
+  split('row', leaf('__center__'), leaf('palette'), 0.78),
+  0.2,
+);
 
 // All panel ids currently placed somewhere in the tree.
 export function placedPanels(
@@ -36,37 +67,69 @@ export function placedPanels(
   if (node.kind === 'leaf') {
     for (const p of node.panels) acc.add(p);
   } else {
-    for (const c of node.children) placedPanels(c, acc);
+    placedPanels(node.a, acc);
+    placedPanels(node.b, acc);
   }
   return acc;
+}
+
+// Apply `fn` to the leaf at `path`, returning a new tree (off-path shared).
+function updateLeaf(
+  node: LayoutNode,
+  path: readonly Side[],
+  fn: (leaf: LeafNode) => LeafNode,
+): LayoutNode {
+  if (path.length === 0) return node.kind === 'leaf' ? fn(node) : node;
+  if (node.kind !== 'split') return node;
+  const [side, ...rest] = path;
+  if (side === 'a') return { ...node, a: updateLeaf(node.a, rest, fn) };
+  if (side === 'b') return { ...node, b: updateLeaf(node.b, rest, fn) };
+  return node;
 }
 
 // Set the active tab of the leaf at `path`.
 export function withActiveAt(
   root: LayoutNode,
-  path: readonly number[],
+  path: readonly Side[],
   active: LeafId,
 ): LayoutNode {
-  if (path.length === 0) {
-    return root.kind === 'leaf' && root.panels.includes(active)
-      ? { ...root, active }
-      : root;
-  }
-  if (root.kind !== 'split') return root;
-  const [i, ...rest] = path;
-  return {
-    ...root,
-    children: root.children.map((c, idx) =>
-      idx === i ? withActiveAt(c, rest, active) : c,
-    ),
-  };
+  return updateLeaf(root, path, (l) =>
+    l.panels.includes(active) ? { ...l, active } : l,
+  );
 }
 
-// Remove a panel from the leaf at `path`. If the leaf empties, drop it from
-// its parent split; a split left with one child collapses into that child.
+// Append a panel as a tab to the leaf at `path` and make it active.
+export function addPanelAt(
+  root: LayoutNode,
+  path: readonly Side[],
+  id: LeafId,
+): LayoutNode {
+  return updateLeaf(root, path, (l) =>
+    l.panels.includes(id) ? l : { ...l, panels: [...l.panels, id], active: id },
+  );
+}
+
+// Set the ratio of the split at `path`.
+export function withRatioAt(
+  root: LayoutNode,
+  path: readonly Side[],
+  ratio: number,
+): LayoutNode {
+  if (path.length === 0) {
+    return root.kind === 'split' ? { ...root, ratio } : root;
+  }
+  if (root.kind !== 'split') return root;
+  const [side, ...rest] = path;
+  if (side === 'a') return { ...root, a: withRatioAt(root.a, rest, ratio) };
+  if (side === 'b') return { ...root, b: withRatioAt(root.b, rest, ratio) };
+  return root;
+}
+
+// Remove a panel from the leaf at `path`. If the leaf empties, the parent
+// split collapses into its surviving side (which then fills the space).
 export function closePanelAt(
   root: LayoutNode,
-  path: readonly number[],
+  path: readonly Side[],
   id: LeafId,
 ): LayoutNode {
   return closeRec(root, path, id) ?? root;
@@ -74,7 +137,7 @@ export function closePanelAt(
 
 function closeRec(
   node: LayoutNode,
-  path: readonly number[],
+  path: readonly Side[],
   id: LeafId,
 ): LayoutNode | null {
   if (path.length === 0) {
@@ -85,61 +148,14 @@ function closeRec(
     return { ...node, panels, active };
   }
   if (node.kind !== 'split') return node;
-  const i = path[0];
-  if (i === undefined) return node;
-  const rest = path.slice(1);
-  const child = node.children[i];
-  if (child === undefined) return node;
-  const next = closeRec(child, rest, id);
-  const children = node.children.slice();
-  const sizes = node.sizes.slice();
-  if (next === null) {
-    children.splice(i, 1);
-    sizes.splice(i, 1);
-  } else {
-    children[i] = next;
+  const [side, ...rest] = path;
+  if (side === 'a') {
+    const a = closeRec(node.a, rest, id);
+    return a === null ? node.b : { ...node, a }; // collapse to sibling
   }
-  if (children.length === 1) return children[0]!; // collapse single-child split
-  if (children.length === 0) return null;
-  return { ...node, children, sizes };
-}
-
-// Return a copy of the tree with the SplitNode at `path` given new child
-// `sizes` (path = child indices from the root; [] = the root split). Used by
-// the resize splitters; everything off the path is shared by reference.
-export function withSizesAt(
-  root: LayoutNode,
-  path: readonly number[],
-  sizes: number[],
-): LayoutNode {
-  if (path.length === 0) {
-    return root.kind === 'split' ? { ...root, sizes } : root;
+  if (side === 'b') {
+    const b = closeRec(node.b, rest, id);
+    return b === null ? node.a : { ...node, b };
   }
-  if (root.kind !== 'split') return root;
-  const [i, ...rest] = path;
-  return {
-    ...root,
-    children: root.children.map((child, idx) =>
-      idx === i ? withSizesAt(child, rest, sizes) : child,
-    ),
-  };
+  return node;
 }
-
-// Default layout = the recommended IA: left column stacks Files / Parts /
-// Properties (select→edit adjacency, #5); right holds Palette alone (cvox
-// separated from rig, #6); the center is the existing main pane.
-export const initialLayout: LayoutNode = {
-  kind: 'split',
-  dir: 'row',
-  sizes: [0.2, 0.62, 0.18],
-  children: [
-    {
-      kind: 'split',
-      dir: 'col',
-      sizes: [0.26, 0.44, 0.3],
-      children: [leaf('files'), leaf('parts'), leaf('properties')],
-    },
-    leaf('__center__'),
-    leaf('palette'),
-  ],
-};

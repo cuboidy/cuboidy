@@ -39,12 +39,17 @@ import { ViewModeToggle } from './components/ViewModeToggle.js';
 import { VoxelScene } from './components/VoxelScene.js';
 import { historyReducer, makeHistory } from './lib/history.js';
 import {
+  addPanelAt,
   closePanelAt,
   initialLayout,
+  placedPanels,
   withActiveAt,
-  withSizesAt,
+  withRatioAt,
+  PANEL_TITLES,
+  TOOL_PANELS,
   type LayoutNode,
   type LeafId,
+  type Side,
 } from './lib/layout.js';
 import { synthesizeManifest } from './lib/synthesize-manifest.js';
 import type {
@@ -798,16 +803,27 @@ export function App() {
   // Dock layout tree (resizable). In-memory only for now — persistence lands
   // in Phase C once the layout is also user-rearrangeable.
   const [layout, setLayout] = useState<LayoutNode>(initialLayout);
-  const handleResize = useCallback((path: number[], sizes: number[]) => {
-    setLayout((current) => withSizesAt(current, path, sizes));
+  const handleResize = useCallback((path: Side[], ratio: number) => {
+    setLayout((current) => withRatioAt(current, path, ratio));
   }, []);
-  const handleActivatePanel = useCallback((path: number[], id: LeafId) => {
+  const handleActivatePanel = useCallback((path: Side[], id: LeafId) => {
     setLayout((current) => withActiveAt(current, path, id));
   }, []);
-  const handleClosePanel = useCallback((path: number[], id: LeafId) => {
+  const handleClosePanel = useCallback((path: Side[], id: LeafId) => {
     setLayout((current) => closePanelAt(current, path, id));
   }, []);
+  const handleAddPanel = useCallback((path: Side[], id: LeafId) => {
+    setLayout((current) => addPanelAt(current, path, id));
+  }, []);
   const handleResetLayout = useCallback(() => setLayout(initialLayout), []);
+  // Tool panels not currently placed anywhere — offered by each leaf's + menu.
+  const closedPanels = useMemo(() => {
+    const placed = placedPanels(layout);
+    return TOOL_PANELS.filter((id) => !placed.has(id)).map((id) => ({
+      id,
+      title: PANEL_TITLES[id],
+    }));
+  }, [layout]);
 
   // The center pane (tab bar + preview/source) — rendered as the dock's
   // '__center__' leaf. Becomes real panels (preview/source/timeline) in
@@ -1037,9 +1053,11 @@ export function App() {
             node={layout}
             getPanel={getPanel}
             renderCenter={renderCenter}
+            closedPanels={closedPanels}
             onResize={handleResize}
             onActivate={handleActivatePanel}
             onClose={handleClosePanel}
+            onAdd={handleAddPanel}
           />
         ) : (
           <FileDropZone onLoad={handleLoad} />
