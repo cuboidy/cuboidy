@@ -42,7 +42,7 @@ import {
   addPanelAt,
   closePanelAt,
   initialLayout,
-  movePanel,
+  placePanelBeside,
   placedPanels,
   splitLeafWith,
   withActiveAt,
@@ -818,15 +818,23 @@ export function App() {
   const handleAddPanel = useCallback((path: Side[], id: LeafId) => {
     setLayout((current) => addPanelAt(current, path, id));
   }, []);
-  const handleMovePanel = useCallback(
-    (fromPath: Side[], id: LeafId, toPath: Side[]) => {
-      setLayout((current) => movePanel(current, fromPath, toPath, id));
-    },
-    [],
-  );
   const handleSplitLeaf = useCallback(
     (toPath: Side[], edge: Edge, id: LeafId, fromPath: Side[]) => {
       setLayout((current) => splitLeafWith(current, toPath, edge, id, fromPath));
+    },
+    [],
+  );
+  const handleReorderPanel = useCallback(
+    (
+      toPath: Side[],
+      targetId: LeafId,
+      before: boolean,
+      id: LeafId,
+      fromPath: Side[],
+    ) => {
+      setLayout((current) =>
+        placePanelBeside(current, toPath, targetId, before, id, fromPath),
+      );
     },
     [],
   );
@@ -1073,8 +1081,8 @@ export function App() {
             onActivate={handleActivatePanel}
             onClose={handleClosePanel}
             onAdd={handleAddPanel}
-            onMove={handleMovePanel}
             onSplit={handleSplitLeaf}
+            onReorder={handleReorderPanel}
           />
         ) : (
           <FileDropZone onLoad={handleLoad} />

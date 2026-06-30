@@ -291,19 +291,15 @@ pre {
   background: #232323;
 }
 
-/* Drop-zone preview while a dragged tab hovers this panel: center = tab into
-   this leaf, an edge = split that direction (the overlay shows where the
-   panel will land). pointer-events:none so it doesn't swallow the drop. */
+/* Split preview while a dragged tab hovers the panel BODY: the overlay shows
+   which half the panel will land in. pointer-events:none so it doesn't
+   swallow the drop. */
 .dock-drop {
   position: absolute;
   z-index: 5;
   pointer-events: none;
   background: rgba(90, 170, 255, 0.18);
   box-shadow: inset 0 0 0 2px #5af;
-}
-
-.dock-drop-center {
-  inset: 0;
 }
 
 .dock-drop-left {
@@ -346,7 +342,22 @@ pre {
   cursor: grab;
 }
 
+/* One insertion line in the tab strip, positioned at the exact boundary x
+   (computed from tab offsets in JS, so it never shifts with tab borders and is
+   identical for "after tab N" / "before tab N+1"). */
+.dock-insert-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: #5af;
+  pointer-events: none;
+  z-index: 3;
+}
+
 .dock-tabs {
+  position: relative;
   display: flex;
   align-items: stretch;
   flex: 1;
@@ -360,6 +371,7 @@ pre {
 }
 
 .dock-tab {
+  position: relative;
   display: flex;
   align-items: center;
   flex-shrink: 0;
@@ -474,6 +486,16 @@ pre {
 }
 
 .dock-leaf-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Inner scroll wrapper so the split-preview overlay (a child of
+   .dock-leaf-body) stays fixed to the body viewport instead of scrolling. */
+.dock-leaf-scroll {
   flex: 1;
   min-height: 0;
   overflow: auto;

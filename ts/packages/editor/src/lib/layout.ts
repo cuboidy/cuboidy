@@ -129,17 +129,48 @@ function samePath(a: readonly Side[], b: readonly Side[]): boolean {
   return a.length === b.length && a.every((s, i) => s === b[i]);
 }
 
-// Move a panel from the leaf at `fromPath` to the leaf at `toPath` (as a tab).
-// Add to the target FIRST (a tab add doesn't change tree structure, so paths
-// stay valid), then remove from the source (which may collapse its split).
-export function movePanel(
-  root: LayoutNode,
-  fromPath: readonly Side[],
-  toPath: readonly Side[],
+function insertBeside(
+  panels: LeafId[],
   id: LeafId,
+  targetId: LeafId,
+  before: boolean,
+): LeafId[] {
+  const ti = panels.indexOf(targetId);
+  if (ti < 0) return [...panels, id];
+  const at = before ? ti : ti + 1;
+  return [...panels.slice(0, at), id, ...panels.slice(at)];
+}
+
+// Place `id` immediately before/after `targetId` in the leaf at `toPath`.
+// Same leaf → reorder its tabs; other leaf → insert there at that position
+// and remove from the source.
+export function placePanelBeside(
+  root: LayoutNode,
+  toPath: readonly Side[],
+  targetId: LeafId,
+  before: boolean,
+  id: LeafId,
+  fromPath: readonly Side[],
 ): LayoutNode {
-  if (samePath(fromPath, toPath)) return root;
-  return closePanelAt(addPanelAt(root, toPath, id), fromPath, id);
+  if (id === targetId) return root;
+  if (samePath(fromPath, toPath)) {
+    return updateLeaf(root, toPath, (l) => ({
+      ...l,
+      panels: insertBeside(
+        l.panels.filter((p) => p !== id),
+        id,
+        targetId,
+        before,
+      ),
+      active: id,
+    }));
+  }
+  const added = updateLeaf(root, toPath, (l) =>
+    l.panels.includes(id)
+      ? l
+      : { ...l, panels: insertBeside(l.panels, id, targetId, before), active: id },
+  );
+  return closePanelAt(added, fromPath, id);
 }
 
 export type Edge = 'top' | 'bottom' | 'left' | 'right';
