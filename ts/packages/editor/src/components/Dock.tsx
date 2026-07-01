@@ -5,6 +5,7 @@ import {
   type DragEvent,
   type PointerEvent,
   type ReactNode,
+  type WheelEvent,
 } from 'react';
 import type {
   Edge,
@@ -166,6 +167,17 @@ function DockLeaf({
     if (d !== null) onReorder(path, lastId, false, d.id, d.path);
   };
 
+  // The tab strip scrolls horizontally but hides its scrollbar, and a
+  // mouse wheel only emits vertical deltas — map them onto scrollLeft so
+  // wheeling over the tabs scrolls them (VS Code behavior). No
+  // preventDefault needed: nothing above the tab row scrolls vertically.
+  const onTabsWheel = (e: WheelEvent<HTMLDivElement>): void => {
+    const el = e.currentTarget;
+    if (e.deltaY !== 0 && el.scrollWidth > el.clientWidth) {
+      el.scrollLeft += e.deltaY;
+    }
+  };
+
   // Body → split by nearest edge.
   const onBodyDragOver = (e: DragEvent<HTMLDivElement>): void => {
     if (!hasDrag(e)) return;
@@ -194,6 +206,7 @@ function DockLeaf({
       <div className="dock-tabrow">
         <div
           className="dock-tabs"
+          onWheel={onTabsWheel}
           onDragOver={onTabsDragOver}
           onDragLeave={() => setInsertX(null)}
           onDrop={onTabsDrop}
