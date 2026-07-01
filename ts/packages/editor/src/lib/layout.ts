@@ -15,7 +15,7 @@ export type Side = 'a' | 'b';
 // move, split and reorder like any other. (The timeline becomes its own
 // panel in a later Phase D step.)
 export type ToolPanelId = 'files' | 'parts' | 'properties' | 'palette';
-export type SourcePanelId = 'preview' | 'cvox' | 'manifest';
+export type SourcePanelId = 'preview' | 'cvox' | 'manifest' | 'timeline';
 export type LeafId = ToolPanelId | SourcePanelId;
 
 export interface SplitNode {
@@ -53,18 +53,25 @@ export const ALL_PANELS: LeafId[] = [
   'preview',
   'cvox',
   'manifest',
+  'timeline',
 ];
 
 // Default layout (nested binary): left column = Files over (Parts over
-// Properties); center = the source panels (Preview/cvox/manifest as tabs)
-// beside Palette. Realizes the IA: Parts/Properties adjacent (#5), Palette
-// separated from the rig (#6).
+// Properties); center column = the source panels (Preview/cvox/manifest as
+// tabs) over the Timeline; Palette on the right. Realizes the IA:
+// Parts/Properties adjacent (#5), Palette separated from the rig (#6), and the
+// timeline docked under the viewport like a Premiere-style editor.
 export const initialLayout: LayoutNode = split(
   'row',
   split('col', leaf('files'), split('col', leaf('parts'), leaf('properties'), 0.4), 0.25),
   split(
     'row',
-    { kind: 'leaf', panels: ['preview', 'cvox', 'manifest'], active: 'preview' },
+    split(
+      'col',
+      { kind: 'leaf', panels: ['preview', 'cvox', 'manifest'], active: 'preview' },
+      leaf('timeline'),
+      0.68,
+    ),
     leaf('palette'),
     0.78,
   ),

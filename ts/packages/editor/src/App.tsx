@@ -23,7 +23,7 @@ import {
   type Manifest,
   type ManifestPart,
 } from '@cuboidy/core';
-import { AnimationView } from './components/AnimationView.js';
+import { AnimationViewport } from './components/AnimationViewport.js';
 import { Dock, type PanelContent } from './components/Dock.js';
 import { ExportMenu } from './components/ExportMenu.js';
 import { FileDropZone } from './components/FileDropZone.js';
@@ -33,6 +33,7 @@ import { PartProperties } from './components/PartProperties.js';
 import { PartTree } from './components/PartTree.js';
 import { SaveButton } from './components/SaveButton.js';
 import { SourceEditor } from './components/SourceEditor.js';
+import { TimelinePanel } from './components/TimelinePanel.js';
 import { ViewModeToggle } from './components/ViewModeToggle.js';
 import { VoxelScene } from './components/VoxelScene.js';
 import { historyReducer, makeHistory } from './lib/history.js';
@@ -792,20 +793,7 @@ export function App() {
       : null;
   }, [selectedPartName, source]);
 
-  // Shared animation session (active clip, playback time, selected key). Owned
-  // here so the Preview viewport and the Timeline can be separate dock panels
-  // reading the same state. `enabled` gates the rAF clock / keyboard to when
-  // the anim viewport is actually the shown view.
   const animManifest = source?.kind === 'folder' ? source.manifest : undefined;
-  const animSession = useAnimationSession({
-    cvox: source?.cvox,
-    manifest: animManifest,
-    enabled: effectiveViewMode === 'anim' && animManifest !== undefined,
-    onAddAnimKey: handleAddAnimKey,
-    onDeleteAnimKey: handleDeleteAnimKey,
-    onMoveAnimKey: handleMoveAnimKey,
-    onClearPartTrack: handleClearPartTrack,
-  });
 
   // Dock layout tree (resizable, rearrangeable). In-memory only — layout is
   // session-scoped by design (no persistence); "Reset layout" restores it.
@@ -827,6 +815,8 @@ export function App() {
           return 'Palette';
         case 'preview':
           return 'Preview';
+        case 'timeline':
+          return 'Timeline';
         case 'cvox':
           return source?.cvoxFile.name ?? 'voxels.cvox';
         case 'manifest':
@@ -885,6 +875,21 @@ export function App() {
     if (isPanelVisible(layout, 'manifest')) s.add('manifest');
     return s;
   }, [layout]);
+
+  // Shared animation session (active clip, playback time, selected key). Owned
+  // here so the Preview viewport and the Timeline panel are separate dock
+  // panels reading the same state. The clock/Space follow the anim viewport;
+  // the lane-editing keys follow the Timeline panel's visibility.
+  const animSession = useAnimationSession({
+    cvox: source?.cvox,
+    manifest: animManifest,
+    clockEnabled: effectiveViewMode === 'anim' && animManifest !== undefined,
+    editKeysEnabled: isPanelVisible(layout, 'timeline') && animManifest !== undefined,
+    onAddAnimKey: handleAddAnimKey,
+    onDeleteAnimKey: handleDeleteAnimKey,
+    onMoveAnimKey: handleMoveAnimKey,
+    onClearPartTrack: handleClearPartTrack,
+  });
   // Any panel not currently placed anywhere — offered by each leaf's + menu so
   // a closed panel can be reopened.
   const closedPanels = useMemo(() => {
@@ -924,20 +929,13 @@ export function App() {
               {effectiveViewMode === 'anim' &&
               source.kind === 'folder' &&
               source.manifest !== undefined ? (
-                <AnimationView
+                <AnimationViewport
                   cvox={source.cvox}
                   manifest={source.manifest}
                   hiddenParts={hiddenParts}
                   session={animSession}
                   manifestEditsDisabled={manifestParseError !== null}
-                  onSetAnimField={handleSetAnimField}
-                  onDeleteAnimKey={handleDeleteAnimKey}
-                  onTrimClip={handleTrimClip}
-                  onSetClipDuration={handleSetClipDuration}
-                  onSetClipLoop={handleSetClipLoop}
                   onCreateClip={handleCreateAnimationClip}
-                  onRenameClip={handleRenameClip}
-                  onDeleteClip={handleDeleteClip}
                 />
               ) : (
                 <VoxelScene
@@ -948,6 +946,27 @@ export function App() {
                 />
               )}
             </>
+          ),
+        };
+      case 'timeline':
+        return {
+          title,
+          fill: true,
+          body: (
+            <TimelinePanel
+              session={animSession}
+              manifest={manifest}
+              hasManifest={manifest !== undefined}
+              manifestEditsDisabled={manifestParseError !== null}
+              onSetAnimField={handleSetAnimField}
+              onDeleteAnimKey={handleDeleteAnimKey}
+              onTrimClip={handleTrimClip}
+              onSetClipDuration={handleSetClipDuration}
+              onSetClipLoop={handleSetClipLoop}
+              onCreateClip={handleCreateAnimationClip}
+              onRenameClip={handleRenameClip}
+              onDeleteClip={handleDeleteClip}
+            />
           ),
         };
       case 'cvox':

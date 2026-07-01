@@ -1543,6 +1543,28 @@ pre {
   cursor: not-allowed;
 }
 
+/* ─── Timeline panel (keyframe editor) ────────────────────────────── */
+
+/* The keyframe editor as a dock panel: toolbar over the lane timeline. Fills
+   its leaf (rendered inside .dock-leaf-fill); the lanes scroll internally. */
+.timeline-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #202020;
+}
+
+.timeline-empty {
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  color: #888;
+  font-size: 0.9rem;
+  padding: 1rem;
+  text-align: center;
+}
+
 /* ─── Animation edit panel (keyframe timeline) ────────────────────── */
 
 .anim-edit-toggle {

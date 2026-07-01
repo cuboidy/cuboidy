@@ -32,14 +32,12 @@ export interface AnimationSession {
   time: number;
   poses: Map<string, Pose> | null;
   // Editing.
-  editMode: boolean;
   effectiveSelectedKey: SelectedKey | null;
   overrunCount: number;
   partNames: string[];
   // Commands.
   setSelectedClip: (name: string) => void;
   setPlaying: (next: boolean | ((p: boolean) => boolean)) => void;
-  setEditMode: (next: boolean | ((b: boolean) => boolean)) => void;
   setSelectedKey: (k: SelectedKey | null) => void;
   scrub: (t: number) => void;
   selectKey: (k: SelectedKey) => void;
@@ -52,10 +50,13 @@ export interface AnimationSession {
 interface Params {
   cvox: Cvox | undefined;
   manifest: Manifest | undefined;
-  // The anim viewport is actually on screen. Gates the rAF clock and the
-  // timeline keyboard shortcuts so a backgrounded session doesn't tick or
-  // steal keys (matches the old "AnimationView is mounted" condition).
-  enabled: boolean;
+  // The preview is showing the anim viewport. Gates the rAF clock and the
+  // Space play/pause key (the transport lives in that viewport).
+  clockEnabled: boolean;
+  // The Timeline panel is visible. Gates the lane-editing keys (Delete /
+  // arrows) so they only fire when the timeline (and its selection) is on
+  // screen.
+  editKeysEnabled: boolean;
   onAddAnimKey: (
     animName: string,
     part: string,
@@ -82,7 +83,8 @@ interface Params {
 export function useAnimationSession({
   cvox,
   manifest,
-  enabled,
+  clockEnabled,
+  editKeysEnabled,
   onAddAnimKey,
   onDeleteAnimKey,
   onMoveAnimKey,
@@ -111,7 +113,6 @@ export function useAnimationSession({
 
   const [playing, setPlaying] = useState(true);
   const [time, setTime] = useState(0);
-  const [editMode, setEditMode] = useState(false);
   const [selectedKey, setSelectedKey] = useState<SelectedKey | null>(null);
 
   // Restart and drop any key selection whenever the active clip changes.
@@ -126,10 +127,10 @@ export function useAnimationSession({
   }, [inlineNames, selected]);
 
   // rAF clock: advance `time`, wrapping at duration (auto-loop). Paused when
-  // `playing` is false, while scrubbing/editing, or when the viewport is off
-  // screen (`enabled` is false).
+  // `playing` is false, while scrubbing/editing, or when the anim viewport is
+  // off screen (`clockEnabled` is false).
   useEffect(() => {
-    if (!playing || duration <= 0 || !enabled) return;
+    if (!playing || duration <= 0 || !clockEnabled) return;
     let raf = 0;
     let last: number | null = null;
     const tick = (ts: number) => {
@@ -145,7 +146,7 @@ export function useAnimationSession({
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, duration, enabled]);
+  }, [playing, duration, clockEnabled]);
 
   const poses = useMemo<Map<string, Pose> | null>(
     () => (inline ? sampleAnimation(inline, time) : null),
@@ -292,14 +293,14 @@ export function useAnimationSession({
   const selectedKeyRef = useRef(effectiveSelectedKey);
   selectedKeyRef.current = effectiveSelectedKey;
 
-  // Timeline keyboard shortcuts (active while the anim viewport is shown):
-  //   Space             play / pause
-  //   Delete/Backspace  remove the selected key
+  // Timeline keyboard shortcuts:
+  //   Space             play / pause      (while the anim viewport is shown)
+  //   Delete/Backspace  remove the selected key   (while the timeline is shown)
   //   ← / →             nudge the selected key one snap step (Alt = fine 1e-3)
   // Guarded for IME and text fields; Ctrl/Meta combos are left alone. Space is
   // skipped when a button is focused so it doesn't double-fire.
   useEffect(() => {
-    if (!enabled) return;
+    if (!clockEnabled && !editKeysEnabled) return;
     const onKey = (e: KeyboardEvent): void => {
       if (e.isComposing || e.keyCode === 229) return;
       if (e.ctrlKey || e.metaKey) return;
@@ -315,16 +316,16 @@ export function useAnimationSession({
 
       if (e.key === ' ' || e.code === 'Space') {
         if (target instanceof Element && target.closest('button') !== null) return;
-        if (!hasTimeline) return;
+        if (!clockEnabled || !hasTimeline) return;
         e.preventDefault();
         setPlaying((p) => !p);
         return;
       }
 
-      // Key delete / nudge act on the selected marker — edit mode only (a
-      // selection can linger in state after leaving edit mode, but there's no
-      // marker on screen, so acting on it would be invisible/surprising).
-      if (!editMode) return;
+      // Key delete / nudge act on the selected marker — only while the timeline
+      // is on screen (a selection can linger in state, but with no visible
+      // marker acting on it would be surprising).
+      if (!editKeysEnabled) return;
       const sel = selectedKeyRef.current;
       if (sel === null) return;
 
@@ -348,7 +349,7 @@ export function useAnimationSession({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [enabled, editMode, hasTimeline, onDeleteAnimKey, retimeKey]);
+  }, [clockEnabled, editKeysEnabled, hasTimeline, onDeleteAnimKey, retimeKey]);
 
   return {
     activeName,
@@ -359,13 +360,11 @@ export function useAnimationSession({
     playing,
     time,
     poses,
-    editMode,
     effectiveSelectedKey,
     overrunCount,
     partNames,
     setSelectedClip: setSelected,
     setPlaying,
-    setEditMode,
     setSelectedKey,
     scrub,
     selectKey,
