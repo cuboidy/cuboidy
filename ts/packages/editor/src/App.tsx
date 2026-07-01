@@ -54,6 +54,7 @@ import {
   type Side,
 } from './lib/layout.js';
 import { synthesizeManifest } from './lib/synthesize-manifest.js';
+import { useAnimationSession } from './lib/useAnimationSession.js';
 import type { LoadResult, LoadedSource, ViewMode } from './lib/types.js';
 
 // Debounce window for live re-parse of the cvox source view. Long
@@ -791,6 +792,21 @@ export function App() {
       : null;
   }, [selectedPartName, source]);
 
+  // Shared animation session (active clip, playback time, selected key). Owned
+  // here so the Preview viewport and the Timeline can be separate dock panels
+  // reading the same state. `enabled` gates the rAF clock / keyboard to when
+  // the anim viewport is actually the shown view.
+  const animManifest = source?.kind === 'folder' ? source.manifest : undefined;
+  const animSession = useAnimationSession({
+    cvox: source?.cvox,
+    manifest: animManifest,
+    enabled: effectiveViewMode === 'anim' && animManifest !== undefined,
+    onAddAnimKey: handleAddAnimKey,
+    onDeleteAnimKey: handleDeleteAnimKey,
+    onMoveAnimKey: handleMoveAnimKey,
+    onClearPartTrack: handleClearPartTrack,
+  });
+
   // Dock layout tree (resizable, rearrangeable). In-memory only — layout is
   // session-scoped by design (no persistence); "Reset layout" restores it.
   const [layout, setLayout] = useState<LayoutNode>(initialLayout);
@@ -912,18 +928,16 @@ export function App() {
                   cvox={source.cvox}
                   manifest={source.manifest}
                   hiddenParts={hiddenParts}
+                  session={animSession}
                   manifestEditsDisabled={manifestParseError !== null}
                   onSetAnimField={handleSetAnimField}
-                  onAddAnimKey={handleAddAnimKey}
                   onDeleteAnimKey={handleDeleteAnimKey}
-                  onMoveAnimKey={handleMoveAnimKey}
                   onTrimClip={handleTrimClip}
                   onSetClipDuration={handleSetClipDuration}
                   onSetClipLoop={handleSetClipLoop}
                   onCreateClip={handleCreateAnimationClip}
                   onRenameClip={handleRenameClip}
                   onDeleteClip={handleDeleteClip}
-                  onClearPartTrack={handleClearPartTrack}
                 />
               ) : (
                 <VoxelScene

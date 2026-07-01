@@ -1,35 +1,32 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo } from 'react';
 import { OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import {
-  formatTimeKey,
   isIdentifier,
-  isInlineAnimation,
-  nearestExistingKey,
-  restValue,
-  sampleAnimation,
   type AttrValue,
   type Cvox,
   type KeyAttr,
   type Manifest,
-  type Pose,
 } from '@cuboidy/core';
 import {
   buildRigTree,
   computeSceneCenter,
   computeSceneSpan,
 } from '../lib/rig.js';
-import type { SelectedKey } from '../lib/types.js';
+import type { AnimationSession } from '../lib/useAnimationSession.js';
 import { KeyInspector } from './KeyInspector.js';
 import { NumberInput } from './NumberInput.js';
 import { RiggedParts } from './RiggedParts.js';
 import { TextInput } from './TextInput.js';
-import { SNAP_STEP, Timeline } from './Timeline.js';
+import { Timeline } from './Timeline.js';
 
 interface Props {
   cvox: Cvox;
   manifest: Manifest;
   hiddenParts: ReadonlySet<string>;
+  // The shared playback + selection state, owned by App so this viewport and
+  // the timeline read the same session (see useAnimationSession).
+  session: AnimationSession;
   // Disabled while the manifest source tab has parse errors — a structural
   // edit here would re-serialize from a stale AST.
   manifestEditsDisabled: boolean;
@@ -40,24 +37,10 @@ interface Props {
     attr: KeyAttr,
     value: AttrValue,
   ) => void;
-  onAddAnimKey: (
-    animName: string,
-    part: string,
-    time: number,
-    attr: KeyAttr,
-    value: AttrValue,
-  ) => void;
   onDeleteAnimKey: (
     animName: string,
     part: string,
     timeKey: string,
-    attr: KeyAttr,
-  ) => void;
-  onMoveAnimKey: (
-    animName: string,
-    part: string,
-    fromTimeKey: string,
-    toTime: number,
     attr: KeyAttr,
   ) => void;
   onTrimClip: (animName: string) => void;
@@ -66,122 +49,55 @@ interface Props {
   onCreateClip: () => void;
   onRenameClip: (oldName: string, newName: string) => void;
   onDeleteClip: (name: string) => void;
-  onClearPartTrack: (animName: string, part: string) => void;
 }
 
-// Animation playback + keyframe editor. Play/pause + scrub drive a shared
-// `time`; Edit mode reveals a per-attribute timeline (one row per part, lanes
-// for rot/pos/scale/visible) and an inspector for the selected key. Editing a
-// value flows back to the manifest and the 3D updates live (poses re-sample
-// from the edited animation). The rest-pose camera framing holds steady.
+// Animation playback + keyframe editor. Play/pause + scrub drive the session's
+// shared `time`; Edit mode reveals a per-attribute timeline (one row per part,
+// lanes for rot/pos/scale/visible) and an inspector for the selected key.
+// Editing a value flows back to the manifest and the 3D updates live (poses
+// re-sample from the edited animation). The rest-pose camera framing holds
+// steady. The playback/selection state lives in `session` (App-owned) so the
+// timeline can become its own dock panel.
 export function AnimationView({
   cvox,
   manifest,
   hiddenParts,
+  session,
   manifestEditsDisabled,
   onSetAnimField,
-  onAddAnimKey,
   onDeleteAnimKey,
-  onMoveAnimKey,
   onTrimClip,
   onSetClipDuration,
   onSetClipLoop,
   onCreateClip,
   onRenameClip,
   onDeleteClip,
-  onClearPartTrack,
 }: Props) {
   const animations = manifest.animations ?? {};
-  const inlineNames = useMemo(
-    () =>
-      Object.keys(animations).filter((n) => {
-        const a = animations[n];
-        return a !== undefined && isInlineAnimation(a);
-      }),
-    [animations],
-  );
-
-  const [selected, setSelected] = useState<string>(inlineNames[0] ?? '');
-  const activeName = inlineNames.includes(selected)
-    ? selected
-    : (inlineNames[0] ?? '');
-
-  const active = animations[activeName];
-  const inline =
-    active !== undefined && isInlineAnimation(active) ? active : undefined;
-  const duration = inline?.duration ?? 0;
-  const hasTimeline = duration > 0;
-
-  const [playing, setPlaying] = useState(true);
-  const [time, setTime] = useState(0);
-  const [editMode, setEditMode] = useState(false);
-  const [selectedKey, setSelectedKey] = useState<SelectedKey | null>(null);
-
-  // Restart and drop any key selection whenever the active clip changes.
-  useEffect(() => {
-    setTime(0);
-    setSelectedKey(null);
-  }, [activeName]);
-
-  // Re-sync the clip selection if the available clips changed under it.
-  useEffect(() => {
-    if (!inlineNames.includes(selected)) setSelected(inlineNames[0] ?? '');
-  }, [inlineNames, selected]);
-
-  // rAF clock: advance `time`, wrapping at duration (auto-loop). Paused when
-  // `playing` is false or while scrubbing/editing.
-  useEffect(() => {
-    if (!playing || duration <= 0) return;
-    let raf = 0;
-    let last: number | null = null;
-    const tick = (ts: number) => {
-      if (last !== null) {
-        const dt = (ts - last) / 1000;
-        setTime((prev) => {
-          const next = prev + dt;
-          return next - Math.floor(next / duration) * duration;
-        });
-      }
-      last = ts;
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [playing, duration]);
-
-  const poses = useMemo<Map<string, Pose> | null>(
-    () => (inline ? sampleAnimation(inline, time) : null),
-    [inline, time],
-  );
-
-  // Latest-value refs so the stable add-key callback can read the current
-  // playhead / pose / clip without re-binding every frame (which would defeat
-  // the timeline's memoization during playback).
-  const timeRef = useRef(time);
-  const posesRef = useRef(poses);
-  const inlineRef = useRef(inline);
-  const activeNameRef = useRef(activeName);
-  timeRef.current = time;
-  posesRef.current = poses;
-  inlineRef.current = inline;
-  activeNameRef.current = activeName;
-
-  const partNames = useMemo(() => cvox.parts.map((p) => p.name), [cvox]);
-
-  // SPEC §6.6 lint: count whole time-key entries beyond the clip duration
-  // (left behind when the user shortened it). Same predicate as
-  // trimTrackKeys, so the Trim action provably zeroes this. Depends only on
-  // the clip data — never recomputed by playback frames.
-  const overrunCount = useMemo(() => {
-    if (inline === undefined) return 0;
-    let n = 0;
-    for (const track of Object.values(inline.parts)) {
-      for (const k of Object.keys(track)) {
-        if (Number(k) > inline.duration) n += 1;
-      }
-    }
-    return n;
-  }, [inline]);
+  const {
+    activeName,
+    inlineNames,
+    inline,
+    duration,
+    hasTimeline,
+    playing,
+    time,
+    poses,
+    editMode,
+    effectiveSelectedKey,
+    overrunCount,
+    partNames,
+    setSelectedClip,
+    setPlaying,
+    setEditMode,
+    setSelectedKey,
+    scrub,
+    selectKey,
+    addKey,
+    moveKey,
+    retimeKey,
+    clearPart,
+  } = session;
 
   const roots = useMemo(() => buildRigTree(cvox, manifest), [cvox, manifest]);
   const center = useMemo<[number, number, number]>(
@@ -200,172 +116,6 @@ export function AnimationView({
     );
     return raw + (raw % 2);
   }, [cvox]);
-
-  // Scrubbing / selecting pauses playback. onAddKey is stable (reads refs) so
-  // the memoized timeline isn't re-created each frame.
-  const handleScrub = useCallback((t: number) => {
-    setPlaying(false);
-    setTime(t);
-  }, []);
-
-  const handleSelectKey = useCallback((k: SelectedKey) => {
-    setPlaying(false);
-    setSelectedKey(k);
-    // Snap the playhead to the key so the 3D shows that key's pose (WYSIWYG),
-    // clamped to the clip range so an out-of-range key (e.g. one left behind
-    // after duration was shortened) can't push the internal time past
-    // duration. Such keys stay selectable on purpose, so they can be fixed
-    // or deleted.
-    const t = Number(k.timeKey);
-    const dur = inlineRef.current?.duration ?? 0;
-    if (Number.isFinite(t)) setTime(dur > 0 ? Math.max(0, Math.min(t, dur)) : 0);
-  }, []);
-
-  const handleAddKey = useCallback(
-    (part: string, attr: KeyAttr) => {
-      const t = timeRef.current;
-      const pose = posesRef.current?.get(part);
-      const value: AttrValue =
-        attr === 'visible'
-          ? (pose?.visible ?? true)
-          : (pose?.[attr] ?? restValue(attr));
-      const animName = activeNameRef.current;
-      onAddAnimKey(animName, part, t, attr, value);
-      // Resolve the resulting time-key (same logic the mutation uses) and
-      // select the new marker.
-      const track = inlineRef.current?.parts[part] ?? {};
-      const timeKey = nearestExistingKey(track, t) ?? formatTimeKey(t);
-      setSelectedKey({ part, attr, timeKey });
-      setPlaying(false);
-    },
-    [onAddAnimKey],
-  );
-
-  // Commit a marker drag (retiming). Resolves the resulting time-key
-  // optimistically — same pattern as handleAddKey — so the moved key stays
-  // selected, and parks the playhead at the new time.
-  const handleMoveKey = useCallback(
-    (part: string, attr: KeyAttr, fromTimeKey: string, toTime: number) => {
-      onMoveAnimKey(activeNameRef.current, part, fromTimeKey, toTime, attr);
-      const track = inlineRef.current?.parts[part] ?? {};
-      const timeKey = nearestExistingKey(track, toTime) ?? formatTimeKey(toTime);
-      setSelectedKey({ part, attr, timeKey });
-      const dur = inlineRef.current?.duration ?? 0;
-      setTime(dur > 0 ? Math.max(0, Math.min(toTime, dur)) : 0);
-      setPlaying(false);
-    },
-    [onMoveAnimKey],
-  );
-
-  // Retime via the inspector's numeric time field. Applies the same rules
-  // as a marker drag: snap to the 1e-3 grid, stay one grid step clear of
-  // same-attribute neighbors (no silent merge/crossing), clamp to the clip
-  // range — then delegates to handleMoveKey.
-  const handleRetimeKey = useCallback(
-    (part: string, attr: KeyAttr, fromTimeKey: string, toTime: number) => {
-      const track = inlineRef.current?.parts[part];
-      const dur = inlineRef.current?.duration ?? 0;
-      if (track === undefined || dur <= 0) return;
-      const fromT = Number(fromTimeKey);
-      const times = Object.keys(track)
-        .filter((k) => attr in track[k]!)
-        .map(Number)
-        .filter(Number.isFinite)
-        .sort((a, b) => a - b);
-      const i = times.indexOf(fromT);
-      const prev = i > 0 ? times[i - 1]! : null;
-      const next = i >= 0 && i < times.length - 1 ? times[i + 1]! : null;
-      const durGrid = Math.floor(dur * 1000) / 1000;
-      const min = prev !== null ? Math.round((prev + 0.001) * 1000) / 1000 : 0;
-      const max = Math.min(
-        next !== null ? Math.round((next - 0.001) * 1000) / 1000 : durGrid,
-        durGrid,
-      );
-      if (min > max) return;
-      const snapped = Math.round(toTime * 1000) / 1000;
-      handleMoveKey(part, attr, fromTimeKey, Math.min(Math.max(snapped, min), max));
-    },
-    [handleMoveKey],
-  );
-
-  // Clear a part's whole track in the active clip (timeline part-header ×).
-  // Stable via the ref pattern so TimelineLanes' memo survives clip switches.
-  const handleClearPart = useCallback(
-    (part: string) => onClearPartTrack(activeNameRef.current, part),
-    [onClearPartTrack],
-  );
-
-  // Prune a stale selection (the key may have been deleted/edited away or the
-  // clip swapped). Done at render so the inspector never sees a dangling key.
-  const effectiveSelectedKey = useMemo<SelectedKey | null>(() => {
-    if (selectedKey === null || inline === undefined) return null;
-    const kf = inline.parts[selectedKey.part]?.[selectedKey.timeKey];
-    if (kf === undefined || !(selectedKey.attr in kf)) return null;
-    return selectedKey;
-  }, [selectedKey, inline]);
-
-  // Mirror the pruned selection into a ref so the keyboard handler reads the
-  // live value without re-installing the listener on every selection change.
-  const selectedKeyRef = useRef(effectiveSelectedKey);
-  selectedKeyRef.current = effectiveSelectedKey;
-
-  // Timeline keyboard shortcuts (active while the anim view is mounted):
-  //   Space             play / pause
-  //   Delete/Backspace  remove the selected key
-  //   ← / →             nudge the selected key one snap step (Alt = fine 1e-3)
-  // Guarded for IME and text fields like App's undo/redo handler; Ctrl/Meta
-  // combos are left alone. Space is skipped when a button is focused so it
-  // doesn't double-fire with that button's own activation.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.isComposing || e.keyCode === 229) return;
-      if (e.ctrlKey || e.metaKey) return;
-      const target = e.target;
-      if (
-        target instanceof Element &&
-        target.closest(
-          'textarea, input, select, [contenteditable=""], [contenteditable="true"]',
-        ) !== null
-      ) {
-        return;
-      }
-
-      if (e.key === ' ' || e.code === 'Space') {
-        if (target instanceof Element && target.closest('button') !== null) return;
-        if (!hasTimeline) return;
-        e.preventDefault();
-        setPlaying((p) => !p);
-        return;
-      }
-
-      // Key delete / nudge act on the selected marker — edit mode only (a
-      // selection can linger in state after leaving edit mode, but there's no
-      // marker on screen, so acting on it would be invisible/surprising).
-      if (!editMode) return;
-      const sel = selectedKeyRef.current;
-      if (sel === null) return;
-
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        e.preventDefault();
-        onDeleteAnimKey(activeNameRef.current, sel.part, sel.timeKey, sel.attr);
-        setSelectedKey(null);
-        setPlaying(false);
-        return;
-      }
-
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-        if (sel.timeKey === formatTimeKey(0)) return; // start key is locked
-        const fromT = Number(sel.timeKey);
-        if (!Number.isFinite(fromT)) return;
-        e.preventDefault();
-        const step = e.altKey ? 0.001 : SNAP_STEP;
-        const dir = e.key === 'ArrowLeft' ? -1 : 1;
-        handleRetimeKey(sel.part, sel.attr, sel.timeKey, fromT + dir * step);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [editMode, hasTimeline, onDeleteAnimKey, handleRetimeKey]);
 
   if (inline === undefined) {
     return (
@@ -429,7 +179,7 @@ export function AnimationView({
                   onRenameClip(activeName, next);
                   // Optimistic: keep the renamed clip selected (the re-sync
                   // effect would otherwise fall back to the first clip).
-                  setSelected(next);
+                  setSelectedClip(next);
                 }}
               />
             </label>
@@ -488,11 +238,11 @@ export function AnimationView({
               time={time}
               selectedKey={effectiveSelectedKey}
               disabled={manifestEditsDisabled}
-              onScrub={handleScrub}
-              onSelectKey={handleSelectKey}
-              onAddKey={handleAddKey}
-              onMoveKey={handleMoveKey}
-              onClearPart={handleClearPart}
+              onScrub={scrub}
+              onSelectKey={selectKey}
+              onAddKey={addKey}
+              onMoveKey={moveKey}
+              onClearPart={clearPart}
             />
             {effectiveSelectedKey !== null && selectedKeyframe !== undefined && (
               <KeyInspector
@@ -500,7 +250,7 @@ export function AnimationView({
                 keyframe={selectedKeyframe}
                 disabled={manifestEditsDisabled}
                 onSetTime={(t) =>
-                  handleRetimeKey(
+                  retimeKey(
                     effectiveSelectedKey.part,
                     effectiveSelectedKey.attr,
                     effectiveSelectedKey.timeKey,
@@ -550,10 +300,7 @@ export function AnimationView({
           value={hasTimeline ? Math.min(time, duration) : 0}
           disabled={!hasTimeline}
           aria-label="Scrub timeline"
-          onChange={(e) => {
-            setPlaying(false);
-            setTime(Number(e.target.value));
-          }}
+          onChange={(e) => scrub(Number(e.target.value))}
         />
         <span className="anim-time">
           {(hasTimeline ? time : 0).toFixed(2)} / {duration.toFixed(2)}s
@@ -563,7 +310,7 @@ export function AnimationView({
             className="anim-select"
             value={activeName}
             aria-label="Animation"
-            onChange={(e) => setSelected(e.target.value)}
+            onChange={(e) => setSelectedClip(e.target.value)}
           >
             {inlineNames.map((n) => (
               <option key={n} value={n}>
