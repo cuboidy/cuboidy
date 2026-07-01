@@ -101,7 +101,7 @@ export function KeyInspector({
 
       <button
         type="button"
-        className="anim-inspector-delete"
+        className="btn btn-danger btn-sm anim-inspector-delete"
         disabled={disabled}
         onClick={onDelete}
       >

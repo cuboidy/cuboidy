@@ -1277,7 +1277,7 @@ export function App() {
                 <p>No manifest in this model yet.</p>
                 <button
                   type="button"
-                  className="create-manifest"
+                  className="btn btn-create btn-sm"
                   onClick={handleCreateManifest}
                 >
                   + Create manifest
@@ -1315,6 +1315,7 @@ export function App() {
               <div className="parts-toolbar">
                 <button
                   type="button"
+                  className="btn btn-sm"
                   disabled={cvoxParseError !== null}
                   title={
                     cvoxParseError !== null
@@ -1327,6 +1328,7 @@ export function App() {
                 </button>
                 <button
                   type="button"
+                  className="btn btn-sm"
                   onClick={handleShowAll}
                   disabled={hiddenParts.size === 0}
                 >
@@ -1334,6 +1336,7 @@ export function App() {
                 </button>
                 <button
                   type="button"
+                  className="btn btn-sm"
                   onClick={handleHideAll}
                   disabled={visibleCount === 0}
                 >
@@ -1417,7 +1420,7 @@ export function App() {
             <>
               <button
                 type="button"
-                className="history-btn"
+                className="btn"
                 disabled={history.past.length === 0}
                 title="Undo (Ctrl+Z)"
                 onClick={performUndo}
@@ -1426,7 +1429,7 @@ export function App() {
               </button>
               <button
                 type="button"
-                className="history-btn"
+                className="btn"
                 disabled={history.future.length === 0}
                 title="Redo (Ctrl+Shift+Z)"
                 onClick={performRedo}
@@ -1440,7 +1443,7 @@ export function App() {
           {source !== undefined && (
             <button
               type="button"
-              className="history-btn"
+              className="btn"
               title="Reset the panel layout to the default"
               onClick={handleResetLayout}
             >
@@ -1448,7 +1451,7 @@ export function App() {
             </button>
           )}
           {loaded !== null && (
-            <button type="button" className="reset" onClick={handleReset}>
+            <button type="button" className="btn" onClick={handleReset}>
               Load another
             </button>
           )}
@@ -1465,7 +1468,7 @@ export function App() {
                 <button
                   type="button"
                   key={p.id}
-                  className="dock-empty-add"
+                  className="btn btn-create"
                   onClick={() => handleReopenPanel(p.id)}
                 >
                   + {p.title}
@@ -1474,7 +1477,7 @@ export function App() {
             </div>
             <button
               type="button"
-              className="history-btn"
+              className="btn"
               onClick={handleResetLayout}
             >
               Reset layout

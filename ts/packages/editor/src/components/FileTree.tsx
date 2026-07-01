@@ -58,7 +58,7 @@ export function FileTree({
       {canCreateManifest(source) && (
         <button
           type="button"
-          className="create-manifest"
+          className="btn btn-create btn-sm create-manifest"
           onClick={onCreateManifest}
         >
           + Create manifest

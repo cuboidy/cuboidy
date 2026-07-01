@@ -90,11 +90,11 @@ export function FileDropZone({ onLoad }: Props) {
       <p className="dropzone-sub">or</p>
       <div className="dropzone-buttons">
         {hasFsa ? (
-          <button type="button" className="open-btn" onClick={handleOpenFolderFSA}>
+          <button type="button" className="btn open-btn" onClick={handleOpenFolderFSA}>
             Open folder
           </button>
         ) : (
-          <label className="open-btn">
+          <label className="btn open-btn">
             <input
               type="file"
               {...({ webkitdirectory: '', directory: '' } as Record<string, string>)}
@@ -103,7 +103,7 @@ export function FileDropZone({ onLoad }: Props) {
             <span>Open folder</span>
           </label>
         )}
-        <label className="open-btn">
+        <label className="btn open-btn">
           <input
             type="file"
             accept=".cvox,.cuboidy,text/plain,application/zip"

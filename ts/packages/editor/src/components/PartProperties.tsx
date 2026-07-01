@@ -101,7 +101,7 @@ export function PartProperties({
             <p>No manifest — parent and position can't be set yet.</p>
             <button
               type="button"
-              className="create-manifest-inline"
+              className="btn btn-create btn-sm create-manifest-inline"
               onClick={onCreateManifest}
             >
               + Create manifest
@@ -128,7 +128,7 @@ export function PartProperties({
       <div className="part-properties-footer">
         <button
           type="button"
-          className="part-delete"
+          className="btn btn-danger btn-sm"
           disabled={deleteDisabled}
           title={deleteTitle}
           onClick={() => onDeletePart(selectedPart)}

@@ -38,7 +38,7 @@ export function SaveButton({ source }: Props) {
   return (
     <button
       type="button"
-      className="save-btn"
+      className="btn btn-primary save-btn"
       onClick={handleSave}
       disabled={state === 'saving'}
     >

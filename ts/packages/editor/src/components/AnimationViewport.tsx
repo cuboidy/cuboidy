@@ -70,7 +70,7 @@ export function AnimationViewport({
           <p>This model has no animations yet.</p>
           <button
             type="button"
-            className="anim-create"
+            className="btn btn-create"
             disabled={manifestEditsDisabled}
             onClick={onCreateClip}
           >
@@ -104,7 +104,7 @@ export function AnimationViewport({
       <div className="anim-controls">
         <button
           type="button"
-          className="anim-play"
+          className="btn btn-primary anim-play"
           aria-label={playing ? 'Pause' : 'Play'}
           disabled={!hasTimeline}
           onClick={() => setPlaying((p) => !p)}
@@ -143,7 +143,7 @@ export function AnimationViewport({
         )}
         <button
           type="button"
-          className="anim-create-inline"
+          className="btn btn-create btn-sm anim-create-inline"
           disabled={manifestEditsDisabled}
           title="Create a new clip"
           onClick={onCreateClip}

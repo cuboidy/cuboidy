@@ -70,7 +70,7 @@ export function ExportMenu({ source }: Props) {
     <div className="export-menu" ref={containerRef}>
       <button
         type="button"
-        className="export-btn"
+        className="btn"
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -78,13 +78,19 @@ export function ExportMenu({ source }: Props) {
         Export ▾
       </button>
       {open && (
-        <div className="export-menu-items" role="menu">
-          <button type="button" role="menuitem" onClick={handleDownloadCvox}>
+        <div className="menu export-menu-items" role="menu">
+          <button
+            type="button"
+            className="menu-item"
+            role="menuitem"
+            onClick={handleDownloadCvox}
+          >
             Download {source.cvoxFile.name}
           </button>
           {hasManifest && (
             <button
               type="button"
+              className="menu-item"
               role="menuitem"
               onClick={handleDownloadManifest}
             >
@@ -92,7 +98,12 @@ export function ExportMenu({ source }: Props) {
             </button>
           )}
           {isFolder && (
-            <button type="button" role="menuitem" onClick={handleDownloadZip}>
+            <button
+              type="button"
+              className="menu-item"
+              role="menuitem"
+              onClick={handleDownloadZip}
+            >
               Download as .cuboidy (ZIP)
             </button>
           )}

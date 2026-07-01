@@ -35,6 +35,139 @@ pre {
   font-size: 0.9em;
 }
 
+/* ─── Buttons & menus (shared skeleton + intent modifiers) ────────── */
+
+/* One skeleton for every push button; modifiers change only the palette.
+   Segmented controls (.view-toggle), dock tabs and tree rows keep their
+   own patterns. The transparent border keeps bordered intents (danger/
+   warning/create) the same size as borderless ones. */
+.btn {
+  padding: 0.3rem 0.8rem;
+  background: #3a3a3a;
+  color: #e0e0e0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.btn:hover:not(:disabled) {
+  background: #4a4a4a;
+}
+
+.btn-primary {
+  background: #3a4a6a;
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #4a5a7a;
+}
+
+.btn-danger {
+  background: #3a2424;
+  color: #ecc;
+  border-color: #5a3030;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #4a2a2a;
+}
+
+.btn-warning {
+  background: #4a3a1a;
+  color: #fc8;
+  border-color: #6a5a2a;
+}
+
+.btn-warning:hover:not(:disabled) {
+  background: #5a4a2a;
+}
+
+/* Dashed = creates something that doesn't exist yet. */
+.btn-create {
+  background: #2a3a4a;
+  color: #cde;
+  border: 1px dashed #3a4a6a;
+}
+
+.btn-create:hover:not(:disabled) {
+  background: #2a3a5a;
+  border-color: #4a5a7a;
+}
+
+/* Dense contexts: panel toolbars, inline actions. */
+.btn-sm {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+}
+
+/* Compact glyph-only button; width/height/glyph-size come from the
+   context class. */
+.btn-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  color: #999;
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+}
+
+.btn-icon:hover:not(:disabled) {
+  background: #333;
+  color: #ddd;
+}
+
+.btn:disabled,
+.btn-icon:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn:focus-visible,
+.btn-icon:focus-visible,
+.menu-item:focus-visible {
+  outline: 1px solid #5af;
+  outline-offset: 1px;
+}
+
+/* Dropdown menu (export menu, dock add-panel menu). The context class
+   positions it. */
+.menu {
+  position: absolute;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  background: #2a2a2a;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.menu-item {
+  padding: 0.45rem 0.8rem;
+  background: none;
+  border: none;
+  color: #e0e0e0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.menu-item:hover {
+  background: #3a4a6a;
+}
+
 .app {
   display: flex;
   flex-direction: column;
@@ -65,42 +198,8 @@ pre {
   gap: 0.75rem;
 }
 
-.reset,
-.save-btn,
-.export-btn,
-.history-btn {
-  padding: 0.3rem 0.8rem;
-  background: #3a3a3a;
-  color: #e0e0e0;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.85rem;
-}
-
-.reset:hover,
-.export-btn:hover,
-.history-btn:hover:not(:disabled),
-.save-btn:hover:not(:disabled) {
-  background: #4a4a4a;
-}
-
-.history-btn:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.save-btn {
-  background: #3a4a6a;
-}
-
-.save-btn:hover:not(:disabled) {
-  background: #4a5a7a;
-}
-
+/* Save-in-flight: the disabled cursor signals "wait", not "unavailable". */
 .save-btn:disabled {
-  opacity: 0.6;
   cursor: wait;
 }
 
@@ -110,33 +209,9 @@ pre {
 }
 
 .export-menu-items {
-  position: absolute;
   top: calc(100% + 0.3rem);
   right: 0;
   min-width: 14rem;
-  background: #2a2a2a;
-  border: 1px solid #3a3a3a;
-  border-radius: 4px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-  display: flex;
-  flex-direction: column;
-  z-index: 100;
-  overflow: hidden;
-}
-
-.export-menu-items button {
-  text-align: left;
-  padding: 0.5rem 0.8rem;
-  background: transparent;
-  color: #e0e0e0;
-  border: none;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.85rem;
-}
-
-.export-menu-items button:hover {
-  background: #3a3a3a;
 }
 
 /* ─── View mode toggle ────────────────────────────────────────────── */
@@ -176,7 +251,7 @@ pre {
 }
 
 .view-toggle button:disabled {
-  opacity: 0.4;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
@@ -208,76 +283,6 @@ pre {
   flex: 1;
   position: relative;
   min-width: 0;
-}
-
-.main-pane {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-}
-
-.main-pane-body {
-  flex: 1;
-  position: relative;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-/* ─── Tab bar ─────────────────────────────────────────────────────── */
-
-.tab-bar {
-  display: flex;
-  align-items: stretch;
-  background: #232323;
-  border-bottom: 1px solid #3a3a3a;
-  flex-shrink: 0;
-  overflow-x: auto;
-}
-
-.tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.5rem 0.9rem;
-  background: transparent;
-  color: #aaa;
-  border: none;
-  border-right: 1px solid #2a2a2a;
-  border-bottom: 2px solid transparent;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.85rem;
-  transition:
-    color 0.12s,
-    background 0.12s;
-  white-space: nowrap;
-}
-
-.tab:hover:not(.active) {
-  background: #2a2a2a;
-  color: #e0e0e0;
-}
-
-.tab.active {
-  background: #1a1a1a;
-  color: #fff;
-  border-bottom-color: #5af;
-}
-
-.tab .tab-icon {
-  font-size: 0.95rem;
-}
-
-.tab .tab-label {
-  font-family:
-    ui-monospace,
-    'SF Mono',
-    Menlo,
-    Consolas,
-    monospace;
 }
 
 /* ─── Dock leaf (tab row + body) ──────────────────────────────────── */
@@ -405,20 +410,13 @@ pre {
 }
 
 .dock-tab-close {
-  flex-shrink: 0;
   width: 16px;
   height: 16px;
   margin-right: 0.3rem;
-  padding: 0;
-  background: none;
-  border: none;
-  border-radius: 3px;
   color: #777;
-  cursor: pointer;
-  line-height: 1;
 }
 
-.dock-tab-close:hover {
+.dock-tab-close:hover:not(:disabled) {
   background: #4a2a2a;
   color: #faa;
 }
@@ -434,55 +432,13 @@ pre {
   width: 22px;
   height: 22px;
   margin: 0 0.2rem;
-  padding: 0;
-  background: none;
-  border: none;
-  border-radius: 3px;
-  color: #999;
-  cursor: pointer;
   font-size: 1rem;
-  line-height: 1;
-}
-
-.dock-add:hover:not(:disabled) {
-  background: #333;
-  color: #ddd;
-}
-
-.dock-add:disabled {
-  opacity: 0.35;
-  cursor: default;
 }
 
 .dock-add-menu {
-  position: absolute;
   top: 100%;
   right: 0.2rem;
-  z-index: 10;
   min-width: 120px;
-  display: flex;
-  flex-direction: column;
-  background: #2a2a2a;
-  border: 1px solid #444;
-  border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-  overflow: hidden;
-}
-
-.dock-add-item {
-  padding: 0.4rem 0.7rem;
-  background: none;
-  border: none;
-  color: #ddd;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.8rem;
-  text-align: left;
-  white-space: nowrap;
-}
-
-.dock-add-item:hover {
-  background: #3a4a6a;
 }
 
 .dock-leaf-body {
@@ -547,22 +503,6 @@ pre {
   gap: 0.5rem;
   justify-content: center;
   max-width: 32rem;
-}
-
-.dock-empty-add {
-  padding: 0.35rem 0.8rem;
-  background: #2a3a4a;
-  color: #cde;
-  border: 1px dashed #3a4a6a;
-  border-radius: 4px;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.85rem;
-}
-
-.dock-empty-add:hover {
-  background: #2a3a5a;
-  border-color: #4a5a7a;
 }
 
 .panel-empty {
@@ -722,26 +662,6 @@ pre {
   display: flex;
 }
 
-.part-delete {
-  padding: 0.3rem 0.7rem;
-  background: #3a2424;
-  color: #ecc;
-  border: 1px solid #5a3030;
-  border-radius: 4px;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.8rem;
-}
-
-.part-delete:hover:not(:disabled) {
-  background: #4a2a2a;
-}
-
-.part-delete:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
 .property-group {
   display: flex;
   flex-direction: column;
@@ -777,19 +697,6 @@ pre {
 
 .create-manifest-inline {
   align-self: flex-start;
-  padding: 0.3rem 0.6rem;
-  background: #2a3a4a;
-  color: #cde;
-  border: 1px dashed #3a4a6a;
-  border-radius: 4px;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.75rem;
-}
-
-.create-manifest-inline:hover {
-  background: #2a3a5a;
-  border-color: #4a5a7a;
 }
 
 .property-group-note {
@@ -1254,19 +1161,6 @@ pre {
 .create-manifest {
   width: calc(100% - 1.5rem);
   margin: 0.25rem 0.75rem 0.75rem;
-  padding: 0.4rem 0.6rem;
-  background: #2a3a4a;
-  color: #cde;
-  border: 1px dashed #3a4a6a;
-  border-radius: 4px;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.8rem;
-}
-
-.create-manifest:hover {
-  background: #2a3a5a;
-  border-color: #4a5a7a;
 }
 
 /* ─── Parts list ──────────────────────────────────────────────────── */
@@ -1286,51 +1180,7 @@ pre {
 
 .parts-toolbar button {
   flex: 1;
-  padding: 0.3rem 0.5rem;
-  background: #3a3a3a;
-  color: #e0e0e0;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.78rem;
   white-space: nowrap;
-}
-
-.parts-toolbar button:hover:not(:disabled) {
-  background: #4a4a4a;
-}
-
-.parts-toolbar button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.sidebar-actions {
-  display: flex;
-  gap: 0.5rem;
-  padding: 0.25rem 1rem 0.5rem;
-}
-
-.sidebar-actions button {
-  flex: 1;
-  padding: 0.3rem 0.6rem;
-  background: #3a3a3a;
-  color: #e0e0e0;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.8rem;
-}
-
-.sidebar-actions button:hover:not(:disabled) {
-  background: #4a4a4a;
-}
-
-.sidebar-actions button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
 }
 
 .part-tree {
@@ -1545,17 +1395,12 @@ pre {
   margin-bottom: 0.5rem;
 }
 
+/* Hero-size CTA; two of these are <label>s wrapping hidden file inputs,
+   so the display and hover need restating at this specificity. */
 .dropzone .open-btn {
   display: inline-block;
-  cursor: pointer;
   padding: 0.5rem 1.2rem;
-  background: #3a3a3a;
-  border-radius: 4px;
-  color: #e0e0e0;
-  font: inherit;
   font-size: 0.9rem;
-  border: none;
-  transition: background 0.15s;
 }
 
 .dropzone .open-btn:hover {
@@ -1636,21 +1481,13 @@ pre {
 .anim-play {
   width: 2.2rem;
   height: 1.8rem;
+  padding: 0;
   flex-shrink: 0;
-  background: #3a4a6a;
-  color: #fff;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
   font-size: 0.75rem;
   line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.anim-play:hover {
-  background: #4a5a7a;
 }
 
 .anim-scrub {
@@ -1708,27 +1545,6 @@ pre {
   font-size: 0.9rem;
 }
 
-.anim-create {
-  padding: 0.4rem 0.9rem;
-  background: #2a3a4a;
-  color: #cde;
-  border: 1px dashed #3a4a6a;
-  border-radius: 4px;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.85rem;
-}
-
-.anim-create:hover:not(:disabled) {
-  background: #2a3a5a;
-  border-color: #4a5a7a;
-}
-
-.anim-create:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 /* ─── Timeline panel (keyframe editor) ────────────────────────────── */
 
 /* The keyframe editor as a dock panel: toolbar over the lane timeline. Fills
@@ -1752,36 +1568,6 @@ pre {
 }
 
 /* ─── Animation edit panel (keyframe timeline) ────────────────────── */
-
-.anim-edit-toggle {
-  flex-shrink: 0;
-  padding: 0.3rem 0.7rem;
-  background: #3a3a3a;
-  color: #e0e0e0;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.8rem;
-}
-
-.anim-edit-toggle:hover {
-  background: #4a4a4a;
-}
-
-.anim-edit-toggle.active {
-  background: #3a4a6a;
-  color: #fff;
-}
-
-.anim-edit {
-  flex: 0 0 46%;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  background: #202020;
-  border-top: 1px solid #3a3a3a;
-}
 
 .anim-edit-toolbar {
   flex-shrink: 0;
@@ -1815,40 +1601,10 @@ pre {
 
 .anim-create-inline {
   flex-shrink: 0;
-  padding: 0.25rem 0.6rem;
-  background: #2a3a4a;
-  color: #cde;
-  border: 1px dashed #3a4a6a;
-  border-radius: 4px;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.75rem;
-}
-
-.anim-create-inline:hover:not(:disabled) {
-  background: #2a3a5a;
-  border-color: #4a5a7a;
 }
 
 .anim-delete-clip {
   margin-left: auto;
-  padding: 0.25rem 0.6rem;
-  background: #3a2424;
-  color: #ecc;
-  border: 1px solid #5a3030;
-  border-radius: 4px;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.75rem;
-}
-
-.anim-delete-clip:hover:not(:disabled) {
-  background: #4a2a2a;
-}
-
-.anim-delete-clip:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 /* ─── Text input (clip rename) ────────────────────────────────────── */
@@ -2041,30 +1797,15 @@ pre {
 }
 
 .timeline-part-clear {
-  flex-shrink: 0;
   width: 15px;
   height: 15px;
-  padding: 0;
-  background: #2f2f2f;
   color: #c99;
-  border: 1px solid #3a3a3a;
-  border-radius: 3px;
-  cursor: pointer;
   font-size: 0.8rem;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .timeline-part-clear:hover:not(:disabled) {
   background: #4a2a2a;
   color: #faa;
-}
-
-.timeline-part-clear:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
 }
 
 /* Collapsed-part key summary: read-only ticks aligned with the lanes. */
@@ -2119,29 +1860,15 @@ pre {
 }
 
 .timeline-add {
-  flex-shrink: 0;
   width: 15px;
   height: 15px;
-  padding: 0;
-  background: #2f2f2f;
   color: #cde;
-  border: 1px solid #3a3a3a;
-  border-radius: 3px;
-  cursor: pointer;
   font-size: 0.8rem;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .timeline-add:hover:not(:disabled) {
   background: #3a4a6a;
-}
-
-.timeline-add:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+  color: #cde;
 }
 
 .timeline-lane {
@@ -2243,26 +1970,6 @@ pre {
   font-size: 0.75rem;
 }
 
-.anim-lint-trim {
-  padding: 0.1rem 0.45rem;
-  background: #4a3a1a;
-  color: #fc8;
-  border: 1px solid #6a5a2a;
-  border-radius: 3px;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.72rem;
-}
-
-.anim-lint-trim:hover:not(:disabled) {
-  background: #5a4a2a;
-}
-
-.anim-lint-trim:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .timeline-playhead {
   position: absolute;
   top: 0;
@@ -2338,21 +2045,4 @@ pre {
 .anim-inspector-delete {
   margin-top: 0.25rem;
   align-self: flex-start;
-  padding: 0.25rem 0.6rem;
-  background: #3a2020;
-  color: #faa;
-  border: 1px solid #5a2a2a;
-  border-radius: 4px;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.75rem;
-}
-
-.anim-inspector-delete:hover:not(:disabled) {
-  background: #4a2424;
-}
-
-.anim-inspector-delete:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }

@@ -84,7 +84,7 @@ export function TimelinePanel({
             <p>This model has no animations yet.</p>
             <button
               type="button"
-              className="anim-create"
+              className="btn btn-create"
               disabled={manifestEditsDisabled}
               onClick={onCreateClip}
             >
@@ -152,7 +152,7 @@ export function TimelinePanel({
             {overrunCount} key{overrunCount > 1 ? 's' : ''} beyond duration
             <button
               type="button"
-              className="anim-lint-trim"
+              className="btn btn-warning btn-sm"
               disabled={manifestEditsDisabled}
               onClick={() => onTrimClip(activeName)}
             >
@@ -162,7 +162,7 @@ export function TimelinePanel({
         )}
         <button
           type="button"
-          className="anim-delete-clip"
+          className="btn btn-danger btn-sm anim-delete-clip"
           disabled={manifestEditsDisabled}
           title="Delete this clip (undo restores it)"
           onClick={() => onDeleteClip(activeName)}

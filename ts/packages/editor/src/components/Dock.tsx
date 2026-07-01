@@ -216,7 +216,7 @@ function DockLeaf({
               </button>
               <button
                 type="button"
-                className="dock-tab-close"
+                className="btn-icon dock-tab-close"
                 aria-label={`Close ${getPanel(id)?.title ?? id}`}
                 title="Close panel"
                 onClick={() => onClose(path, id)}
@@ -232,7 +232,7 @@ function DockLeaf({
         <div className="dock-tabrow-actions" ref={actionsRef}>
           <button
             type="button"
-            className="dock-add"
+            className="btn-icon dock-add"
             title="Add a panel"
             aria-label="Add a panel"
             disabled={closedPanels.length === 0}
@@ -241,12 +241,12 @@ function DockLeaf({
             +
           </button>
           {menuOpen && closedPanels.length > 0 && (
-            <div className="dock-add-menu">
+            <div className="menu dock-add-menu">
               {closedPanels.map((p) => (
                 <button
                   type="button"
                   key={p.id}
-                  className="dock-add-item"
+                  className="menu-item"
                   onClick={() => {
                     onAdd(path, p.id);
                     setMenuOpen(false);
