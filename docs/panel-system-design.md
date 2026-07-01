@@ -216,17 +216,17 @@ const initialLayout = split('row',
 | **A. 共通パネル枠 + 固有ツールバー** | `Panel` コンポーネント(統一ヘッダ:タイトル + メタ + 固有ツールバー枠 + 本体。**折りたたみ無し**)を作り、既存ツールパネル(Files/Parts/Properties/Palette)を載せ替え。**cvox/rig/anim を Preview 右上のフローティングへ**移設。CSS 統一(P4-1 と相性良)。**配置は現状のまま** | 新規 `Panel.tsx`、各パネル、`App.tsx`、`styles.css` | M |
 | **B. 再帰 split エンジン + リサイズ** | `LayoutNode` ツリーを描画する `Dock`(split の入れ子)。**B1**: ツール系パネルを初期配置で描画(中央は当面 TabBar 流用、**サイズ固定**)。**B2**: スプリッタで `SplitNode.ratio` をリサイズ(状態は React 内)。**永続化はしない**(セッション内のみ)。**binary 化**もここで(n分割→2分割の入れ子) | 新規 `Dock.tsx`/`lib/layout.ts`、`App.tsx` | M |
 | **C. タブ行 + 移動/分割/閉じる/追加** | 複数パネルの葉に**専用タブ行**(各タブ `タイトル ×`、**タブ行内 D&D 並べ替え**、オーバーフロー)。⋯メニューで「移動 / 分割 / タブ化」、**+/View メニューで閉じたパネルを追加** = ツリー組み替え。「レイアウトをリセット」(初期配置へ、セッション内)。**永続化なし** | `Dock`、`lib/layout.ts` | M |
-| **D. 中央もパネル化 + アニメセッション分離** | Preview / cvoxSource / manifestSource / Timeline / KeyInspector を**パネル化**し、中央も split ツリーに統合(= 全部パネル)。`AnimationSession` を App へ持ち上げ、Preview と Timeline で共有(§4) | `App.tsx`、`AnimationView` 解体、新パネル群 | **L(最大)** |
-| **E. ドラッグ&ドロップ(任意)** | **葉/ゾーンをまたぐ**ドラッグドッキング(タブを別の場所へドラッグ、分割線へドロップ)。手組みが辛ければ **dockview** 等に置換も検討 | — | L |
+| **D. 中央もパネル化 + アニメセッション分離 ✅** | Preview / cvox / manifest / Timeline を**パネル化**し、中央も split ツリーに統合(= 全部パネル、`__center__` 廃止)。`useAnimationSession` を App へ持ち上げ、Preview(ビューポート+トランスポート)と Timeline(レーン編集)で共有(§4)。**Edit モード廃止**(Timeline パネルの表示 = 編集面) | `App.tsx`、`AnimationView` 解体 → `AnimationViewport`+`TimelinePanel`、`lib/useAnimationSession.ts` | **L(最大)** |
+| **E. ドラッグ&ドロップ(C に統合済み)** | **葉/ゾーンをまたぐ**ドラッグドッキング(タブを別の場所へドラッグ、分割線へドロップ)。手組みで完了、dockview 置換は不要 | — | L |
 
 **進め方:A → B → C → D を手組みで段階実装**。各段階を単独コミット、動作確認してから次へ。
-D(中央パネル化+セッション分離)が最大の山。E は D まで使ってみて必要なら。
+**A〜E すべて完了**。パネルシステムは一通り機能している。
 
 ### 各段階の完了条件(目安)
 - **A ✅**: 全ツールパネルが同一ヘッダ。Preview 右上に cvox/rig/anim。配置は不変
 - **B ✅**: 初期配置が binary split で描画(#5/#6 解消)、スプリッタでリサイズ(React 内・永続化なし)
 - **C ✅**: パネルを移動・分割・タブ化・閉じる/追加でき、リセットで初期配置へ。**D&D ドッキング込み**(ヘッダー=タブ、本体=分割)。E はここに統合済み
-- **D(残り)**: ビューポート/ソース/タイムラインもパネルとして自由配置。アニメは Preview+Timeline がセッション共有で連動 ← 次の大物
+- **D ✅**: ビューポート/ソース(cvox/manifest)/タイムラインもパネルとして自由配置(`preview`/`cvox`/`manifest`/`timeline` を `lib/layout.ts` に登録)。アニメは `useAnimationSession`(App 所有)を Preview+Timeline で共有して連動。トランスポートは Preview 側、レーン編集は Timeline パネル。クロック=`clockEnabled`(anim ビューポート)、編集キー=`editKeysEnabled`(Timeline 可視)で分離ゲート
 
 ---
 
