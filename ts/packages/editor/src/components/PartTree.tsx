@@ -28,11 +28,15 @@ interface Props {
   creating: { parent: string | null } | null;
   createSuggested: string;
   validateNewName: (name: string) => boolean;
+  // Inline rename is disabled while cvox/manifest have syntax errors (a rewrite
+  // would clobber the in-progress text).
+  renameEnabled: boolean;
   onToggleVisibility: (name: string) => void;
   onSelectPart: (name: string | null) => void;
   onChangeParent: (name: string, parent: string | null) => void;
   onConfirmCreate: (name: string) => void;
   onCancelCreate: () => void;
+  onRenamePart: (oldName: string, newName: string) => void;
 }
 
 type DropTarget = { kind: 'node'; name: string } | { kind: 'root' };
@@ -46,15 +50,27 @@ export function PartTree({
   creating,
   createSuggested,
   validateNewName,
+  renameEnabled,
   onToggleVisibility,
   onSelectPart,
   onChangeParent,
   onConfirmCreate,
   onCancelCreate,
+  onRenamePart,
 }: Props) {
   const tree = useMemo(() => buildPartTree(parts, manifest), [parts, manifest]);
   const [draggingName, setDraggingName] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
+  // Name of the part whose row is currently in inline-rename mode, or null.
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const startRename = (name: string): void => {
+    if (renameEnabled) setRenaming(name);
+  };
+  const cancelRename = (): void => setRenaming(null);
+  const commitRename = (oldName: string, newName: string): void => {
+    onRenamePart(oldName, newName);
+    setRenaming(null);
+  };
   // Names of nodes whose children are hidden. Absent = expanded (the default),
   // so a freshly loaded tree shows everything.
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
@@ -125,11 +141,15 @@ export function PartTree({
             creating={creating}
             createSuggested={createSuggested}
             validateNewName={validateNewName}
+            renaming={renaming}
             onToggleExpand={toggleExpand}
             onToggleVisibility={onToggleVisibility}
             onSelectPart={onSelectPart}
             onConfirmCreate={onConfirmCreate}
             onCancelCreate={onCancelCreate}
+            onStartRename={startRename}
+            onCancelRename={cancelRename}
+            onCommitRename={commitRename}
             onDragStartName={(name) => {
               setDraggingName(name);
               setDropTarget(null);
@@ -197,11 +217,15 @@ interface BranchProps {
   creating: { parent: string | null } | null;
   createSuggested: string;
   validateNewName: (name: string) => boolean;
+  renaming: string | null;
   onToggleExpand: (name: string) => void;
   onToggleVisibility: (name: string) => void;
   onSelectPart: (name: string | null) => void;
   onConfirmCreate: (name: string) => void;
   onCancelCreate: () => void;
+  onStartRename: (name: string) => void;
+  onCancelRename: () => void;
+  onCommitRename: (oldName: string, newName: string) => void;
   onDragStartName: (name: string) => void;
   onDragOverNode: (name: string) => void;
   onDropNode: (name: string) => void;
@@ -222,11 +246,15 @@ function PartTreeBranch(props: BranchProps) {
     creating,
     createSuggested,
     validateNewName,
+    renaming,
     onToggleExpand,
     onToggleVisibility,
     onSelectPart,
     onConfirmCreate,
     onCancelCreate,
+    onStartRename,
+    onCancelRename,
+    onCommitRename,
     onDragStartName,
     onDragOverNode,
     onDropNode,
@@ -280,13 +308,14 @@ function PartTreeBranch(props: BranchProps) {
   const hasChildren = node.children.length > 0 || isCreateHere;
   // A create-in-progress forces its parent open so the draft row is visible.
   const expanded = !collapsed.has(node.name) || isCreateHere;
+  const isRenaming = renaming === node.name;
 
   return (
     <li className="part-tree-node" role="treeitem">
       <div
         className={rowClass}
         style={{ paddingLeft: `${0.5 + depth * 0.9}rem` }}
-        draggable={dndEnabled}
+        draggable={dndEnabled && !isRenaming}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
@@ -311,7 +340,26 @@ function PartTreeBranch(props: BranchProps) {
         ) : (
           <span className="part-tree-caret-spacer" aria-hidden="true" />
         )}
-        <span className="part-tree-name">{node.name}</span>
+        {isRenaming ? (
+          <PartNameInput
+            initial={node.name}
+            ariaLabel={`Rename ${node.name}`}
+            validate={(name) => name === node.name || validateNewName(name)}
+            onCommit={(name) => onCommitRename(node.name, name)}
+            onCancel={onCancelRename}
+          />
+        ) : (
+          <span
+            className="part-tree-name"
+            title="Double-click to rename"
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              onStartRename(node.name);
+            }}
+          >
+            {node.name}
+          </span>
+        )}
         <input
           type="checkbox"
           className="part-tree-visibility"
@@ -346,26 +394,27 @@ function PartTreeBranch(props: BranchProps) {
   );
 }
 
-// Inline draft row for creating a part: auto-focused, text pre-selected. Enter
-// confirms a valid, unique name; Escape or blurring away (clicking elsewhere)
-// cancels — so an accidental click never creates a stray part. Invalid names
-// flash red and keep the row open. A `done` latch keeps the unmount-blur from
-// firing after Enter/Escape already resolved the draft.
-function DraftPartRow({
-  depth,
-  suggested,
+// Shared inline text field for naming a part — the create draft and the rename
+// edit both use it. Auto-focuses and selects its text; Enter commits a valid,
+// non-empty name; Escape or blurring away (clicking elsewhere) cancels — so an
+// accidental click never commits. Invalid names flash red and keep the field
+// open. A `done` latch keeps the unmount-blur from firing after Enter/Escape
+// already resolved it.
+function PartNameInput({
+  initial,
+  ariaLabel,
   validate,
-  onConfirm,
+  onCommit,
   onCancel,
 }: {
-  depth: number;
-  suggested: string;
+  initial: string;
+  ariaLabel: string;
   validate: (name: string) => boolean;
-  onConfirm: (name: string) => void;
+  onCommit: (name: string) => void;
   onCancel: () => void;
 }) {
   const ref = useRef<HTMLInputElement>(null);
-  const [text, setText] = useState(suggested);
+  const [text, setText] = useState(initial);
   const [invalid, setInvalid] = useState(false);
   const done = useRef(false);
 
@@ -395,7 +444,7 @@ function DraftPartRow({
       return;
     }
     done.current = true;
-    onConfirm(next);
+    onCommit(next);
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>): void => {
@@ -409,6 +458,41 @@ function DraftPartRow({
   };
 
   return (
+    <input
+      ref={ref}
+      type="text"
+      className={`part-tree-name-input${invalid ? ' invalid' : ''}`}
+      value={text}
+      aria-label={ariaLabel}
+      spellCheck={false}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => {
+        setText(e.target.value);
+        setInvalid(false);
+      }}
+      onKeyDown={handleKeyDown}
+      onBlur={() => finish(false)}
+      onAnimationEnd={() => setInvalid(false)}
+    />
+  );
+}
+
+// Draft row for creating a part — a caret spacer keeps its input aligned with
+// the other rows' names.
+function DraftPartRow({
+  depth,
+  suggested,
+  validate,
+  onConfirm,
+  onCancel,
+}: {
+  depth: number;
+  suggested: string;
+  validate: (name: string) => boolean;
+  onConfirm: (name: string) => void;
+  onCancel: () => void;
+}) {
+  return (
     <li className="part-tree-node" role="treeitem">
       <div
         className="part-tree-row part-tree-draft"
@@ -416,20 +500,12 @@ function DraftPartRow({
         onClick={(e) => e.stopPropagation()}
       >
         <span className="part-tree-caret-spacer" aria-hidden="true" />
-        <input
-          ref={ref}
-          type="text"
-          className={`part-tree-name-input${invalid ? ' invalid' : ''}`}
-          value={text}
-          aria-label="New part name"
-          spellCheck={false}
-          onChange={(e) => {
-            setText(e.target.value);
-            setInvalid(false);
-          }}
-          onKeyDown={handleKeyDown}
-          onBlur={() => finish(false)}
-          onAnimationEnd={() => setInvalid(false)}
+        <PartNameInput
+          initial={suggested}
+          ariaLabel="New part name"
+          validate={validate}
+          onCommit={onConfirm}
+          onCancel={onCancel}
         />
       </div>
     </li>

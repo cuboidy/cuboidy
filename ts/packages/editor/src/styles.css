@@ -681,6 +681,33 @@ pre {
   white-space: nowrap;
 }
 
+/* Editable part name. Reads as a heading until hovered/focused, where a field
+   background + border reveal that it's editable (the rename affordance). */
+.part-properties-name-edit {
+  flex: 1;
+  min-width: 0;
+}
+
+.part-properties-name-edit .text-input {
+  width: 100%;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e8e8f0;
+  background: transparent;
+  border-color: transparent;
+}
+
+.part-properties-name-edit .text-input:hover:not(:disabled),
+.part-properties-name-edit .text-input:focus {
+  background: #1a1a1a;
+  border-color: #3a3a3a;
+}
+
+.part-properties-name-edit .text-input:disabled {
+  color: #e8e8f0;
+  opacity: 0.7;
+}
+
 .part-properties-meta {
   font-size: 0.75rem;
   color: #888;

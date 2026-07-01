@@ -1,7 +1,8 @@
 import { type ChangeEvent } from 'react';
-import type { Cvox, Manifest, ManifestPart } from '@cuboidy/core';
+import { isIdentifier, type Cvox, type Manifest, type ManifestPart } from '@cuboidy/core';
 import { findManifestPart } from '../lib/part-tree.js';
 import { NumberInput } from './NumberInput.js';
+import { TextInput } from './TextInput.js';
 
 interface Props {
   selectedPart: string;
@@ -11,8 +12,12 @@ interface Props {
   // structural edit here would re-serialize from a stale AST and
   // clobber the user's in-progress source-tab text.
   manifestEditsDisabled: boolean;
+  // Renaming rewrites cvox (always) and the manifest (if present), so it's
+  // blocked while either source has syntax errors.
+  renameDisabled: boolean;
   onChangeParent: (partName: string, parent: string | null) => void;
   onChangePosition: (partName: string, axis: 0 | 1 | 2, value: number) => void;
+  onRenamePart: (oldName: string, newName: string) => void;
   onCreateManifest: () => void;
 }
 
@@ -27,8 +32,10 @@ export function PartProperties({
   cvox,
   manifest,
   manifestEditsDisabled,
+  renameDisabled,
   onChangeParent,
   onChangePosition,
+  onRenamePart,
   onCreateManifest,
 }: Props) {
   const cvoxPart = cvox.parts.find((p) => p.name === selectedPart);
@@ -48,7 +55,19 @@ export function PartProperties({
   return (
     <section className="part-properties">
       <div className="part-properties-header">
-        <h3 className="part-properties-name">{selectedPart}</h3>
+        <div className="part-properties-name-edit">
+          <TextInput
+            value={selectedPart}
+            disabled={renameDisabled}
+            ariaLabel="Part name"
+            validate={(name) =>
+              isIdentifier(name) &&
+              (name === selectedPart ||
+                !cvox.parts.some((p) => p.name === name))
+            }
+            onCommit={(name) => onRenamePart(selectedPart, name)}
+          />
+        </div>
         <span className="part-properties-meta">
           {cvoxPart.size.w}×{cvoxPart.size.h}×{cvoxPart.size.d}
         </span>

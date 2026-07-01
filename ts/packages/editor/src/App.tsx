@@ -325,6 +325,94 @@ export function App() {
     [dispatchEdit, cancelPendingCvoxReparse, cancelPendingManifestReparse],
   );
 
+  // Rename a part everywhere it's referenced, atomically (one dispatchEdit =
+  // one undo). The name is a cross-file join key, so a piecemeal rename would
+  // leave dangling references. Rewrites:
+  //   cvox     — the part's `name`, and any part cloning/mirroring it (from.part)
+  //   manifest — the entry `name`, any `parent` pointing at it, and every inline
+  //              animation track keyed by the old name (re-keyed, order kept)
+  // External string-ref animation files live outside the manifest and can't be
+  // rewritten here — a part they reference by name would break (known limit).
+  const handleRenamePart = useCallback(
+    (oldName: string, newName: string) => {
+      if (oldName === newName || !isIdentifier(newName)) return;
+      cancelPendingCvoxReparse();
+      cancelPendingManifestReparse();
+      setCvoxParseError(null);
+      dispatchEdit(null, (current) => {
+        if (current?.source === undefined) return current;
+        const src = current.source;
+        if (!src.cvox.parts.some((p) => p.name === oldName)) return current;
+        if (src.cvox.parts.some((p) => p.name === newName)) return current;
+        const nextParts: Part[] = src.cvox.parts.map((p) => {
+          let np: Part = p;
+          if (np.name === oldName) np = { ...np, name: newName };
+          if (np.from !== undefined && np.from.part === oldName) {
+            np = { ...np, from: { ...np.from, part: newName } };
+          }
+          return np;
+        });
+        const nextCvox: Cvox = { ...src.cvox, parts: nextParts };
+        const cvoxPatch = {
+          cvox: nextCvox,
+          cvoxFile: { ...src.cvoxFile, text: serializeCvox(nextCvox) },
+        };
+        if (src.kind === 'folder' && src.manifest !== undefined) {
+          const m = src.manifest;
+          const nextMParts: ManifestPart[] = m.parts.map((mp) => {
+            let nmp: ManifestPart = mp;
+            if (nmp.name === oldName) nmp = { ...nmp, name: newName };
+            if (nmp.parent === oldName) nmp = { ...nmp, parent: newName };
+            return nmp;
+          });
+          let nextManifest: Manifest = { ...m, parts: nextMParts };
+          if (m.animations !== undefined) {
+            const rebuilt: NonNullable<Manifest['animations']> = {};
+            let changed = false;
+            for (const [aName, anim] of Object.entries(m.animations)) {
+              if (typeof anim === 'string' || !Object.hasOwn(anim.parts, oldName)) {
+                rebuilt[aName] = anim;
+                continue;
+              }
+              const nextTracks: InlineAnimation['parts'] = {};
+              for (const [pName, track] of Object.entries(anim.parts)) {
+                nextTracks[pName === oldName ? newName : pName] = track;
+              }
+              rebuilt[aName] = { ...anim, parts: nextTracks };
+              changed = true;
+            }
+            if (changed) nextManifest = { ...nextManifest, animations: rebuilt };
+          }
+          const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
+          return {
+            ...current,
+            source: {
+              ...src,
+              ...cvoxPatch,
+              manifest: nextManifest,
+              manifestFile: {
+                ...baseFile,
+                text: JSON.stringify(nextManifest, null, 2) + '\n',
+              },
+            },
+          };
+        }
+        return { ...current, source: { ...src, ...cvoxPatch } };
+      });
+      setManifestParseError(null);
+      setSelectedPartName(newName);
+      // Carry a hidden part's visibility over to the new name.
+      setHiddenParts((prev) => {
+        if (!prev.has(oldName)) return prev;
+        const next = new Set(prev);
+        next.delete(oldName);
+        next.add(newName);
+        return next;
+      });
+    },
+    [dispatchEdit, cancelPendingCvoxReparse, cancelPendingManifestReparse],
+  );
+
   // Manifest source-text edit (manifest tab textarea typing). Same
   // shape as the cvox counterpart but uses JSON.parse + parseManifest.
   // Folder-only: cvox-only sources have no manifest file to edit.
@@ -1176,6 +1264,10 @@ export function App() {
                 validateNewName={(name) =>
                   isIdentifier(name) && !existingNames.has(name)
                 }
+                renameEnabled={
+                  cvoxParseError === null &&
+                  !(manifest !== undefined && manifestParseError !== null)
+                }
                 onToggleVisibility={handleToggle}
                 onSelectPart={setSelectedPartName}
                 onChangeParent={handleChangePartParent}
@@ -1183,6 +1275,7 @@ export function App() {
                   handleConfirmCreatePart(name, creating?.parent ?? null)
                 }
                 onCancelCreate={handleCancelCreatePart}
+                onRenamePart={handleRenamePart}
               />
             </>
           ),
@@ -1198,8 +1291,13 @@ export function App() {
                 cvox={source.cvox}
                 manifest={manifest}
                 manifestEditsDisabled={manifestParseError !== null}
+                renameDisabled={
+                  cvoxParseError !== null ||
+                  (manifest !== undefined && manifestParseError !== null)
+                }
                 onChangeParent={handleChangePartParent}
                 onChangePosition={handleChangePartPosition}
+                onRenamePart={handleRenamePart}
                 onCreateManifest={handleCreateManifest}
               />
             ) : (
