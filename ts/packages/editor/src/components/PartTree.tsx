@@ -55,6 +55,30 @@ export function PartTree({
   const tree = useMemo(() => buildPartTree(parts, manifest), [parts, manifest]);
   const [draggingName, setDraggingName] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
+  // Names of nodes whose children are hidden. Absent = expanded (the default),
+  // so a freshly loaded tree shows everything.
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const toggleExpand = (name: string): void => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
+  // If a draft opens under a collapsed parent, expand it (and keep it expanded
+  // after the part is created) so the new child doesn't vanish on confirm.
+  useEffect(() => {
+    const parent = creating?.parent;
+    if (parent === undefined || parent === null) return;
+    setCollapsed((prev) => {
+      if (!prev.has(parent)) return prev;
+      const next = new Set(prev);
+      next.delete(parent);
+      return next;
+    });
+  }, [creating]);
 
   // While dragging, descendants of the dragged node (including itself)
   // are forbidden as drop targets — reassigning to one would create a
@@ -97,9 +121,11 @@ export function PartTree({
             draggingName={draggingName}
             dropTarget={dropTarget}
             forbidden={forbidden}
+            collapsed={collapsed}
             creating={creating}
             createSuggested={createSuggested}
             validateNewName={validateNewName}
+            onToggleExpand={toggleExpand}
             onToggleVisibility={onToggleVisibility}
             onSelectPart={onSelectPart}
             onConfirmCreate={onConfirmCreate}
@@ -167,9 +193,11 @@ interface BranchProps {
   draggingName: string | null;
   dropTarget: DropTarget | null;
   forbidden: ReadonlySet<string> | null;
+  collapsed: ReadonlySet<string>;
   creating: { parent: string | null } | null;
   createSuggested: string;
   validateNewName: (name: string) => boolean;
+  onToggleExpand: (name: string) => void;
   onToggleVisibility: (name: string) => void;
   onSelectPart: (name: string | null) => void;
   onConfirmCreate: (name: string) => void;
@@ -190,9 +218,11 @@ function PartTreeBranch(props: BranchProps) {
     draggingName,
     dropTarget,
     forbidden,
+    collapsed,
     creating,
     createSuggested,
     validateNewName,
+    onToggleExpand,
     onToggleVisibility,
     onSelectPart,
     onConfirmCreate,
@@ -246,6 +276,11 @@ function PartTreeBranch(props: BranchProps) {
     .filter(Boolean)
     .join(' ');
 
+  const isCreateHere = creating?.parent === node.name;
+  const hasChildren = node.children.length > 0 || isCreateHere;
+  // A create-in-progress forces its parent open so the draft row is visible.
+  const expanded = !collapsed.has(node.name) || isCreateHere;
+
   return (
     <li className="part-tree-node" role="treeitem">
       <div
@@ -261,6 +296,22 @@ function PartTreeBranch(props: BranchProps) {
           onSelectPart(node.name);
         }}
       >
+        {hasChildren ? (
+          <button
+            type="button"
+            className="part-tree-caret-btn"
+            aria-label={`${expanded ? 'Collapse' : 'Expand'} ${node.name}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleExpand(node.name);
+            }}
+          >
+            <span className="part-tree-caret">{expanded ? '▾' : '▸'}</span>
+          </button>
+        ) : (
+          <span className="part-tree-caret-spacer" aria-hidden="true" />
+        )}
+        <span className="part-tree-name">{node.name}</span>
         <input
           type="checkbox"
           className="part-tree-visibility"
@@ -269,12 +320,8 @@ function PartTreeBranch(props: BranchProps) {
           onClick={(e) => e.stopPropagation()}
           onChange={() => onToggleVisibility(node.name)}
         />
-        <span className="part-tree-name">{node.name}</span>
-        <span className="part-tree-size">
-          {node.cvox.size.w}×{node.cvox.size.h}×{node.cvox.size.d}
-        </span>
       </div>
-      {(node.children.length > 0 || creating?.parent === node.name) && (
+      {hasChildren && expanded && (
         <ul className="part-tree-children" role="group">
           {node.children.map((child) => (
             <PartTreeBranch
@@ -284,7 +331,7 @@ function PartTreeBranch(props: BranchProps) {
               depth={depth + 1}
             />
           ))}
-          {creating?.parent === node.name && (
+          {isCreateHere && (
             <DraftPartRow
               depth={depth + 1}
               suggested={createSuggested}
@@ -368,7 +415,7 @@ function DraftPartRow({
         style={{ paddingLeft: `${0.5 + depth * 0.9}rem` }}
         onClick={(e) => e.stopPropagation()}
       >
-        <span className="part-tree-visibility-spacer" aria-hidden="true" />
+        <span className="part-tree-caret-spacer" aria-hidden="true" />
         <input
           ref={ref}
           type="text"

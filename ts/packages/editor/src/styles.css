@@ -1318,8 +1318,7 @@ pre {
   background: #2a3a5a;
 }
 
-.part-tree-row.hidden .part-tree-name,
-.part-tree-row.hidden .part-tree-size {
+.part-tree-row.hidden .part-tree-name {
   opacity: 0.4;
 }
 
@@ -1335,20 +1334,45 @@ pre {
   cursor: not-allowed;
 }
 
+/* Visibility toggle now sits at the right end of the row (name flex:1 pushes
+   it over). */
 .part-tree-visibility {
   cursor: pointer;
   flex-shrink: 0;
+  margin-left: 0.4rem;
 }
 
-/* Inline new-part draft: keeps the checkbox column's width so the name field
-   lines up with the other rows' names. */
+/* Expand/collapse caret at the left. Fixed-width so leaf rows (which use the
+   spacer instead) keep their names aligned with expandable siblings'.
+   TODO: replace the ▾/▸ glyph with a proper icon — the character has too much
+   built-in whitespace to scale up cleanly. */
+.part-tree-caret-btn {
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: none;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  font-size: 0.6rem;
+  line-height: 1;
+}
+
+.part-tree-caret-btn:hover {
+  color: #ddd;
+}
+
+.part-tree-caret-spacer {
+  width: 1rem;
+  flex-shrink: 0;
+}
+
 .part-tree-draft {
   cursor: default;
-}
-
-.part-tree-visibility-spacer {
-  width: 13px;
-  flex-shrink: 0;
 }
 
 .part-tree-name-input {
@@ -1389,13 +1413,6 @@ pre {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.part-tree-size {
-  font-size: 0.7rem;
-  color: #888;
-  font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
 }
 
 /* Root drop zone for unparenting via D&D. Hidden when not dragging
