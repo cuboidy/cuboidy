@@ -7,6 +7,7 @@ import {
   useState,
 } from 'react';
 import {
+  AIR,
   addAttrAtTime,
   deleteAttrAtKey,
   isIdentifier,
@@ -22,6 +23,7 @@ import {
   type KeyAttr,
   type Manifest,
   type ManifestPart,
+  type Part,
 } from '@cuboidy/core';
 import { AnimationViewport } from './components/AnimationViewport.js';
 import { Dock, type PanelContent } from './components/Dock.js';
@@ -88,6 +90,10 @@ export function App() {
   // render time if the name no longer exists in cvox.parts so stale
   // selections after source edits don't leak through.
   const [selectedPartName, setSelectedPartName] = useState<string | null>(null);
+  // In-progress "new part" draft: non-null while the tree shows the inline
+  // name field (VS Code-style). `parent` is the part it will be nested under
+  // (null = root). Cleared on confirm / cancel / load.
+  const [creating, setCreating] = useState<{ parent: string | null } | null>(null);
   // Live parse error on the cvox source text. Non-null only while the
   // user's currently-typed text doesn't parse. Palette panel disables
   // itself in this state so its re-serialize doesn't clobber the
@@ -125,6 +131,7 @@ export function App() {
       dispatch({ type: 'replace', next: result });
       setHiddenParts(new Set());
       setSelectedPartName(null);
+      setCreating(null);
       setCvoxParseError(null);
       setManifestParseError(null);
       const hasManifest =
@@ -143,6 +150,7 @@ export function App() {
     dispatch({ type: 'replace', next: null });
     setHiddenParts(new Set());
     setSelectedPartName(null);
+    setCreating(null);
     setCvoxParseError(null);
     setManifestParseError(null);
     setViewMode('cvox');
@@ -235,6 +243,86 @@ export function App() {
       });
     },
     [dispatchEdit, cancelPendingCvoxReparse],
+  );
+
+  // Begin creating a part: open the inline draft row in the tree. The draft is
+  // nested under the selected part when a manifest is loaded (so the new part
+  // becomes its child); otherwise it goes to the root. Nothing is written until
+  // the user confirms a name.
+  const handleStartCreatePart = useCallback(() => {
+    const src = loaded?.source;
+    if (src === undefined) return;
+    // Parenting writes the manifest, so it needs a clean manifest AST — with a
+    // manifest syntax error, fall back to a root part (cvox-only, no clobber).
+    const canParent =
+      src.kind === 'folder' &&
+      src.manifest !== undefined &&
+      manifestParseError === null;
+    const parent =
+      canParent &&
+      selectedPartName !== null &&
+      src.cvox.parts.some((p) => p.name === selectedPartName)
+        ? selectedPartName
+        : null;
+    setCreating({ parent });
+  }, [loaded, selectedPartName, manifestParseError]);
+
+  const handleCancelCreatePart = useCallback(() => setCreating(null), []);
+
+  // Confirm the draft: append a 1×1×1 solid block (palette index 0, or AIR if
+  // the palette is empty) named `name`, and — when a `parent` is given — add a
+  // manifest entry parenting it there. Both files change in ONE dispatchEdit,
+  // so it's a single atomic undo step. Re-guards uniqueness (the UI validates,
+  // but a race could sneak a dup in). Then selects the new part.
+  const handleConfirmCreatePart = useCallback(
+    (name: string, parent: string | null) => {
+      cancelPendingCvoxReparse();
+      cancelPendingManifestReparse();
+      setCvoxParseError(null);
+      dispatchEdit(null, (current) => {
+        if (current?.source === undefined) return current;
+        const src = current.source;
+        if (src.cvox.parts.some((p) => p.name === name)) return current;
+        const seed = src.cvox.palette.length > 0 ? 0 : AIR;
+        const newPart: Part = {
+          name,
+          size: { w: 1, h: 1, d: 1 },
+          pivot: { pos: { x: 0.5, y: 0, z: 0.5 } },
+          sockets: [],
+          voxels: [[[seed]]],
+        };
+        const nextCvox: Cvox = {
+          ...src.cvox,
+          parts: [...src.cvox.parts, newPart],
+        };
+        const cvoxPatch = {
+          cvox: nextCvox,
+          cvoxFile: { ...src.cvoxFile, text: serializeCvox(nextCvox) },
+        };
+        if (parent !== null && src.kind === 'folder' && src.manifest !== undefined) {
+          const parts: ManifestPart[] = [...src.manifest.parts, { name, parent }];
+          const nextManifest: Manifest = { ...src.manifest, parts };
+          const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
+          return {
+            ...current,
+            source: {
+              ...src,
+              ...cvoxPatch,
+              manifest: nextManifest,
+              manifestFile: {
+                ...baseFile,
+                text: JSON.stringify(nextManifest, null, 2) + '\n',
+              },
+            },
+          };
+        }
+        return { ...current, source: { ...src, ...cvoxPatch } };
+      });
+      setManifestParseError(null);
+      setSelectedPartName(name);
+      setCreating(null);
+    },
+    [dispatchEdit, cancelPendingCvoxReparse, cancelPendingManifestReparse],
   );
 
   // Manifest source-text edit (manifest tab textarea typing). Same
@@ -1041,11 +1129,27 @@ export function App() {
         };
       case 'parts': {
         const visibleCount = source.cvox.parts.length - hiddenParts.size;
+        const existingNames = new Set(source.cvox.parts.map((p) => p.name));
+        let n = 1;
+        while (existingNames.has(`part${n}`)) n += 1;
+        const createSuggested = `part${n}`;
         return {
           title: 'Parts',
           body: (
             <>
-              <div className="sidebar-actions">
+              <div className="parts-toolbar">
+                <button
+                  type="button"
+                  disabled={cvoxParseError !== null}
+                  title={
+                    cvoxParseError !== null
+                      ? 'Fix cvox syntax errors to add parts'
+                      : 'New part (child of the selected part)'
+                  }
+                  onClick={handleStartCreatePart}
+                >
+                  + New part
+                </button>
                 <button
                   type="button"
                   onClick={handleShowAll}
@@ -1067,9 +1171,18 @@ export function App() {
                 hiddenParts={hiddenParts}
                 selectedPart={effectiveSelectedPart}
                 dndEnabled={manifest !== undefined}
+                creating={creating}
+                createSuggested={createSuggested}
+                validateNewName={(name) =>
+                  isIdentifier(name) && !existingNames.has(name)
+                }
                 onToggleVisibility={handleToggle}
                 onSelectPart={setSelectedPartName}
                 onChangeParent={handleChangePartParent}
+                onConfirmCreate={(name) =>
+                  handleConfirmCreatePart(name, creating?.parent ?? null)
+                }
+                onCancelCreate={handleCancelCreatePart}
               />
             </>
           ),

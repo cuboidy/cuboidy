@@ -1,4 +1,11 @@
-import { useMemo, useState, type DragEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type KeyboardEvent,
+} from 'react';
 import {
   buildPartTree,
   descendantNames,
@@ -15,9 +22,17 @@ interface Props {
   // — without one there's nowhere to record the new parent. The tree
   // still renders (flat) so the user sees their parts.
   dndEnabled: boolean;
+  // In-progress inline "new part" draft (VS Code-style). Non-null renders an
+  // editable name row nested under `creating.parent` (null = root); the caller
+  // creates the part on confirm.
+  creating: { parent: string | null } | null;
+  createSuggested: string;
+  validateNewName: (name: string) => boolean;
   onToggleVisibility: (name: string) => void;
   onSelectPart: (name: string | null) => void;
   onChangeParent: (name: string, parent: string | null) => void;
+  onConfirmCreate: (name: string) => void;
+  onCancelCreate: () => void;
 }
 
 type DropTarget = { kind: 'node'; name: string } | { kind: 'root' };
@@ -28,9 +43,14 @@ export function PartTree({
   hiddenParts,
   selectedPart,
   dndEnabled,
+  creating,
+  createSuggested,
+  validateNewName,
   onToggleVisibility,
   onSelectPart,
   onChangeParent,
+  onConfirmCreate,
+  onCancelCreate,
 }: Props) {
   const tree = useMemo(() => buildPartTree(parts, manifest), [parts, manifest]);
   const [draggingName, setDraggingName] = useState<string | null>(null);
@@ -77,8 +97,13 @@ export function PartTree({
             draggingName={draggingName}
             dropTarget={dropTarget}
             forbidden={forbidden}
+            creating={creating}
+            createSuggested={createSuggested}
+            validateNewName={validateNewName}
             onToggleVisibility={onToggleVisibility}
             onSelectPart={onSelectPart}
+            onConfirmCreate={onConfirmCreate}
+            onCancelCreate={onCancelCreate}
             onDragStartName={(name) => {
               setDraggingName(name);
               setDropTarget(null);
@@ -96,6 +121,15 @@ export function PartTree({
             onDragEnd={endDrag}
           />
         ))}
+        {creating?.parent === null && (
+          <DraftPartRow
+            depth={0}
+            suggested={createSuggested}
+            validate={validateNewName}
+            onConfirm={onConfirmCreate}
+            onCancel={onCancelCreate}
+          />
+        )}
       </ul>
       {dndEnabled && (
         <div
@@ -133,8 +167,13 @@ interface BranchProps {
   draggingName: string | null;
   dropTarget: DropTarget | null;
   forbidden: ReadonlySet<string> | null;
+  creating: { parent: string | null } | null;
+  createSuggested: string;
+  validateNewName: (name: string) => boolean;
   onToggleVisibility: (name: string) => void;
   onSelectPart: (name: string | null) => void;
+  onConfirmCreate: (name: string) => void;
+  onCancelCreate: () => void;
   onDragStartName: (name: string) => void;
   onDragOverNode: (name: string) => void;
   onDropNode: (name: string) => void;
@@ -151,8 +190,13 @@ function PartTreeBranch(props: BranchProps) {
     draggingName,
     dropTarget,
     forbidden,
+    creating,
+    createSuggested,
+    validateNewName,
     onToggleVisibility,
     onSelectPart,
+    onConfirmCreate,
+    onCancelCreate,
     onDragStartName,
     onDragOverNode,
     onDropNode,
@@ -230,7 +274,7 @@ function PartTreeBranch(props: BranchProps) {
           {node.cvox.size.w}×{node.cvox.size.h}×{node.cvox.size.d}
         </span>
       </div>
-      {node.children.length > 0 && (
+      {(node.children.length > 0 || creating?.parent === node.name) && (
         <ul className="part-tree-children" role="group">
           {node.children.map((child) => (
             <PartTreeBranch
@@ -240,8 +284,107 @@ function PartTreeBranch(props: BranchProps) {
               depth={depth + 1}
             />
           ))}
+          {creating?.parent === node.name && (
+            <DraftPartRow
+              depth={depth + 1}
+              suggested={createSuggested}
+              validate={validateNewName}
+              onConfirm={onConfirmCreate}
+              onCancel={onCancelCreate}
+            />
+          )}
         </ul>
       )}
+    </li>
+  );
+}
+
+// Inline draft row for creating a part: auto-focused, text pre-selected. Enter
+// confirms a valid, unique name; Escape or blurring away (clicking elsewhere)
+// cancels — so an accidental click never creates a stray part. Invalid names
+// flash red and keep the row open. A `done` latch keeps the unmount-blur from
+// firing after Enter/Escape already resolved the draft.
+function DraftPartRow({
+  depth,
+  suggested,
+  validate,
+  onConfirm,
+  onCancel,
+}: {
+  depth: number;
+  suggested: string;
+  validate: (name: string) => boolean;
+  onConfirm: (name: string) => void;
+  onCancel: () => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  const [text, setText] = useState(suggested);
+  const [invalid, setInvalid] = useState(false);
+  const done = useRef(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (el !== null) {
+      el.focus();
+      el.select();
+    }
+  }, []);
+
+  const finish = (commit: boolean): void => {
+    if (done.current) return;
+    if (!commit) {
+      done.current = true;
+      onCancel();
+      return;
+    }
+    const next = text.trim();
+    if (next === '') {
+      done.current = true;
+      onCancel();
+      return;
+    }
+    if (!validate(next)) {
+      setInvalid(true);
+      return;
+    }
+    done.current = true;
+    onConfirm(next);
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>): void => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      finish(true);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      finish(false);
+    }
+  };
+
+  return (
+    <li className="part-tree-node" role="treeitem">
+      <div
+        className="part-tree-row part-tree-draft"
+        style={{ paddingLeft: `${0.5 + depth * 0.9}rem` }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <span className="part-tree-visibility-spacer" aria-hidden="true" />
+        <input
+          ref={ref}
+          type="text"
+          className={`part-tree-name-input${invalid ? ' invalid' : ''}`}
+          value={text}
+          aria-label="New part name"
+          spellCheck={false}
+          onChange={(e) => {
+            setText(e.target.value);
+            setInvalid(false);
+          }}
+          onKeyDown={handleKeyDown}
+          onBlur={() => finish(false)}
+          onAnimationEnd={() => setInvalid(false)}
+        />
+      </div>
     </li>
   );
 }
