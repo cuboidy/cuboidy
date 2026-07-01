@@ -1,13 +1,19 @@
-import type { LoadedSource, SelectedTab } from '../lib/types.js';
+import type { LoadedSource } from '../lib/types.js';
+
+// The two source files the tree can open as dock panels.
+type SourceFile = 'cvox' | 'manifest';
 
 interface Props {
   source: LoadedSource;
-  selectedTab: SelectedTab;
+  // Which source panels are currently *visible* (the active tab of their
+  // leaf). A set rather than a single value because, once panelized, cvox
+  // and manifest can be docked apart and shown at the same time.
+  activeFiles: ReadonlySet<SourceFile>;
   // Current syntax error per file (undefined = none). Drives a VS Code-style
   // red filename so a broken file is visible without hovering for the tooltip.
   cvoxError?: string | undefined;
   manifestError?: string | undefined;
-  onSelectTab: (tab: SelectedTab) => void;
+  onOpenFile: (file: SourceFile) => void;
   onCreateManifest: () => void;
 }
 
@@ -16,17 +22,17 @@ interface Props {
 // files indented one level under it; cvox-only loads show a single
 // file at the root (no synthetic folder wrap).
 //
-// Clicking a file activates its tab in the main pane (the file tree
-// and the tab bar share `selectedTab` state via App). The active file
-// gets a highlighted background so the tree is a constant indicator
-// of "what am I viewing right now."
+// Clicking a file brings its dock panel to the foreground (App.openPanelById,
+// re-opening it if it was closed). A file is highlighted while its panel is
+// the visible tab of its leaf, so the tree is a constant indicator of "what
+// am I viewing right now."
 
 export function FileTree({
   source,
-  selectedTab,
+  activeFiles,
   cvoxError,
   manifestError,
-  onSelectTab,
+  onOpenFile,
   onCreateManifest,
 }: Props) {
   return (
@@ -34,18 +40,18 @@ export function FileTree({
       {source.kind === 'folder' ? (
         <FolderTree
           source={source}
-          selectedTab={selectedTab}
+          activeFiles={activeFiles}
           cvoxError={cvoxError}
           manifestError={manifestError}
-          onSelectTab={onSelectTab}
+          onOpenFile={onOpenFile}
         />
       ) : (
         <ul className="tree-root">
           <CvoxFileNode
             name={source.cvoxFile.name}
-            active={selectedTab === 'cvox'}
+            active={activeFiles.has('cvox')}
             error={cvoxError}
-            onClick={() => onSelectTab('cvox')}
+            onClick={() => onOpenFile('cvox')}
           />
         </ul>
       )}
@@ -64,18 +70,18 @@ export function FileTree({
 
 interface FolderTreeProps {
   source: Extract<LoadedSource, { kind: 'folder' }>;
-  selectedTab: SelectedTab;
+  activeFiles: ReadonlySet<SourceFile>;
   cvoxError?: string | undefined;
   manifestError?: string | undefined;
-  onSelectTab: (tab: SelectedTab) => void;
+  onOpenFile: (file: SourceFile) => void;
 }
 
 function FolderTree({
   source,
-  selectedTab,
+  activeFiles,
   cvoxError,
   manifestError,
-  onSelectTab,
+  onOpenFile,
 }: FolderTreeProps) {
   return (
     <ul className="tree-root">
@@ -88,13 +94,13 @@ function FolderTree({
         <ul className="tree-children">
           <CvoxFileNode
             name={source.cvoxFile.name}
-            active={selectedTab === 'cvox'}
+            active={activeFiles.has('cvox')}
             error={cvoxError}
-            onClick={() => onSelectTab('cvox')}
+            onClick={() => onOpenFile('cvox')}
           />
           {source.manifestFile !== undefined ? (
             <li
-              className={`tree-node file${selectedTab === 'manifest' ? ' active' : ''}${manifestError !== undefined ? ' error' : ''}`}
+              className={`tree-node file${activeFiles.has('manifest') ? ' active' : ''}${manifestError !== undefined ? ' error' : ''}`}
               title={
                 manifestError !== undefined
                   ? `Manifest syntax error: ${manifestError}`
@@ -104,7 +110,7 @@ function FolderTree({
               <button
                 type="button"
                 className="tree-node-button"
-                onClick={() => onSelectTab('manifest')}
+                onClick={() => onOpenFile('manifest')}
               >
                 <span className="icon">📄</span>
                 <span className="name">{source.manifestFile.name}</span>

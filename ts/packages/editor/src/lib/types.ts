@@ -56,15 +56,6 @@ export interface LoadResult {
 // animation. The UI disables each toggle when its requirement is unmet.
 export type ViewMode = 'cvox' | 'rig' | 'anim';
 
-// Which surface is currently shown in the main pane.
-//   - 'preview': 3D scene (the model viewer)
-//   - 'cvox':    raw text of voxels.cvox
-//   - 'manifest': raw text of cuboidy.json (only meaningful when loaded
-//                 source has a manifest)
-// Per-file editing UIs will replace the raw text views one tab at a
-// time (palette editor on the 'cvox' tab in a future stage, etc.).
-export type SelectedTab = 'preview' | 'cvox' | 'manifest';
-
 // A keyframe selected in the animation timeline: one attribute (rot/pos/
 // scale/visible) of one part at one time-key. The per-attribute model means
 // selection is an (attribute, time) pair, not a whole-keyframe marker.

@@ -5,7 +5,6 @@ import {
   useReducer,
   useRef,
   useState,
-  type ReactNode,
 } from 'react';
 import {
   addAttrAtTime,
@@ -34,7 +33,6 @@ import { PartProperties } from './components/PartProperties.js';
 import { PartTree } from './components/PartTree.js';
 import { SaveButton } from './components/SaveButton.js';
 import { SourceEditor } from './components/SourceEditor.js';
-import { TabBar } from './components/TabBar.js';
 import { ViewModeToggle } from './components/ViewModeToggle.js';
 import { VoxelScene } from './components/VoxelScene.js';
 import { historyReducer, makeHistory } from './lib/history.js';
@@ -42,25 +40,21 @@ import {
   addPanelAt,
   closePanelAt,
   initialLayout,
+  isPanelVisible,
+  openPanelById,
   placePanelBeside,
   placedPanels,
   splitLeafWith,
   withActiveAt,
   withRatioAt,
-  PANEL_TITLES,
-  TOOL_PANELS,
+  ALL_PANELS,
   type Edge,
   type LayoutNode,
   type LeafId,
   type Side,
 } from './lib/layout.js';
 import { synthesizeManifest } from './lib/synthesize-manifest.js';
-import type {
-  LoadResult,
-  LoadedSource,
-  SelectedTab,
-  ViewMode,
-} from './lib/types.js';
+import type { LoadResult, LoadedSource, ViewMode } from './lib/types.js';
 
 // Debounce window for live re-parse of the cvox source view. Long
 // enough that mid-keystroke typing doesn't constantly fire (and
@@ -87,7 +81,6 @@ export function App() {
   );
   const [hiddenParts, setHiddenParts] = useState<ReadonlySet<string>>(new Set());
   const [viewMode, setViewMode] = useState<ViewMode>('cvox');
-  const [selectedTab, setSelectedTab] = useState<SelectedTab>('preview');
   // Selected part for the right-panel inspector. Null = nothing
   // selected (right panel hides the properties section). Pruned at
   // render time if the name no longer exists in cvox.parts so stale
@@ -137,7 +130,7 @@ export function App() {
         result.source.kind === 'folder' &&
         result.source.manifest !== undefined;
       setViewMode(hasManifest ? 'rig' : 'cvox');
-      setSelectedTab('preview');
+      setLayout((l) => openPanelById(l, 'preview'));
     },
     [cancelPendingCvoxReparse, cancelPendingManifestReparse],
   );
@@ -151,7 +144,6 @@ export function App() {
     setCvoxParseError(null);
     setManifestParseError(null);
     setViewMode('cvox');
-    setSelectedTab('preview');
   }, [cancelPendingCvoxReparse, cancelPendingManifestReparse]);
 
   const handleToggle = useCallback((name: string) => {
@@ -170,10 +162,6 @@ export function App() {
       setHiddenParts(new Set(loaded.source.cvox.parts.map((p) => p.name)));
     }
   }, [loaded]);
-
-  const handleSelectTab = useCallback((tab: SelectedTab) => {
-    setSelectedTab(tab);
-  }, []);
 
   // Cvox source-text edit (cvox tab textarea typing). Updates the text
   // immediately so every keystroke persists; schedules a debounced
@@ -399,7 +387,7 @@ export function App() {
     // reachable when a source is loaded, so switching unconditionally is
     // safe even if the edit no-opped.
     setViewMode('rig');
-    setSelectedTab('preview');
+    setLayout((l) => openPanelById(l, 'preview'));
   }, [dispatchEdit, cancelPendingManifestReparse]);
 
   // ─── Animation (keyframe editor) edits ──────────────────────────────
@@ -588,7 +576,7 @@ export function App() {
     });
     // Outside the apply closure for reducer purity (see handleCreateManifest).
     setViewMode('anim');
-    setSelectedTab('preview');
+    setLayout((l) => openPanelById(l, 'preview'));
   }, [dispatchEdit, cancelPendingManifestReparse]);
 
   // Rename a clip, preserving its position in the animations map (rebuild
@@ -803,9 +791,37 @@ export function App() {
       : null;
   }, [selectedPartName, source]);
 
-  // Dock layout tree (resizable). In-memory only for now — persistence lands
-  // in Phase C once the layout is also user-rearrangeable.
+  // Dock layout tree (resizable, rearrangeable). In-memory only — layout is
+  // session-scoped by design (no persistence); "Reset layout" restores it.
   const [layout, setLayout] = useState<LayoutNode>(initialLayout);
+
+  // Display title for any panel. Static for tool panels; the source files take
+  // their actual file name so the dock tab reads "voxels.cvox" / "cuboidy.json"
+  // (matching the file tree). Used for both tab labels and the + menu.
+  const panelTitle = useCallback(
+    (id: LeafId): string => {
+      switch (id) {
+        case 'files':
+          return 'Files';
+        case 'parts':
+          return 'Parts';
+        case 'properties':
+          return 'Properties';
+        case 'palette':
+          return 'Palette';
+        case 'preview':
+          return 'Preview';
+        case 'cvox':
+          return source?.cvoxFile.name ?? 'voxels.cvox';
+        case 'manifest':
+          return (
+            (source?.kind === 'folder' ? source.manifestFile?.name : undefined) ??
+            'cuboidy.json'
+          );
+      }
+    },
+    [source],
+  );
   const handleResize = useCallback((path: Side[], ratio: number) => {
     setLayout((current) => withRatioAt(current, path, ratio));
   }, []);
@@ -839,82 +855,105 @@ export function App() {
     [],
   );
   const handleResetLayout = useCallback(() => setLayout(initialLayout), []);
-  // Tool panels not currently placed anywhere — offered by each leaf's + menu.
+  // Click a file in the tree → bring its source panel forward (re-opening it
+  // if it was closed). Same path the preview-focus calls use.
+  const handleOpenFile = useCallback((file: 'cvox' | 'manifest') => {
+    setLayout((l) => openPanelById(l, file));
+  }, []);
+  // Which source files are currently visible (active tab of their leaf) — the
+  // file tree highlights accordingly. Once panelized, cvox and manifest can be
+  // docked apart and shown at once, so this is a set.
+  const visibleSourceFiles = useMemo(() => {
+    const s = new Set<'cvox' | 'manifest'>();
+    if (isPanelVisible(layout, 'cvox')) s.add('cvox');
+    if (isPanelVisible(layout, 'manifest')) s.add('manifest');
+    return s;
+  }, [layout]);
+  // Any panel not currently placed anywhere — offered by each leaf's + menu so
+  // a closed panel can be reopened.
   const closedPanels = useMemo(() => {
     const placed = placedPanels(layout);
-    return TOOL_PANELS.filter((id) => !placed.has(id)).map((id) => ({
+    return ALL_PANELS.filter((id) => !placed.has(id)).map((id) => ({
       id,
-      title: PANEL_TITLES[id],
+      title: panelTitle(id),
     }));
-  }, [layout]);
+  }, [layout, panelTitle]);
 
-  // The center pane (tab bar + preview/source) — rendered as the dock's
-  // '__center__' leaf. Becomes real panels (preview/source/timeline) in
-  // Phase D; for now it stays the existing main pane.
-  const renderCenter = (): ReactNode => {
+  // Per-panel content for the dock's tab rows. The leaf owns the tab header,
+  // so each panel supplies just { title, fill?, body }. The source panels
+  // (preview / cvox / manifest) were the in-center TabBar's tabs; they now
+  // `fill` their leaf and manage their own scrolling (3D canvas, textareas).
+  const getPanel = (id: LeafId): PanelContent | null => {
     if (source === undefined) return null;
-    return (
-      <div className="main-pane">
-        <TabBar
-          source={source}
-          selected={selectedTab}
-          onSelect={handleSelectTab}
-        />
-        <div className="main-pane-body">
-          {selectedTab === 'preview' && (
-            // Panel-local toolbar: the view-mode switch belongs to the
-            // Preview pane, so it floats over the 3D's top-right rather than
-            // living in the global header (panel-system design A2).
-            <div className="view-mode-overlay">
-              <ViewModeToggle
-                mode={effectiveViewMode}
-                rigAvailable={rigAvailable}
-                animAvailable={animAvailable}
-                onChange={handleViewModeChange}
-              />
-            </div>
-          )}
-          {selectedTab === 'preview' &&
-            (effectiveViewMode === 'anim' &&
-            source.kind === 'folder' &&
-            source.manifest !== undefined ? (
-              <AnimationView
-                cvox={source.cvox}
-                manifest={source.manifest}
-                hiddenParts={hiddenParts}
-                manifestEditsDisabled={manifestParseError !== null}
-                onSetAnimField={handleSetAnimField}
-                onAddAnimKey={handleAddAnimKey}
-                onDeleteAnimKey={handleDeleteAnimKey}
-                onMoveAnimKey={handleMoveAnimKey}
-                onTrimClip={handleTrimClip}
-                onSetClipDuration={handleSetClipDuration}
-                onSetClipLoop={handleSetClipLoop}
-                onCreateClip={handleCreateAnimationClip}
-                onRenameClip={handleRenameClip}
-                onDeleteClip={handleDeleteClip}
-                onClearPartTrack={handleClearPartTrack}
-              />
-            ) : (
-              <VoxelScene
-                cvox={source.cvox}
-                manifest={
-                  source.kind === 'folder' ? source.manifest : undefined
-                }
-                viewMode={effectiveViewMode}
-                hiddenParts={hiddenParts}
-              />
-            ))}
-          {selectedTab === 'cvox' && (
+    const manifest = source.kind === 'folder' ? source.manifest : undefined;
+    const title = panelTitle(id);
+    switch (id) {
+      case 'preview':
+        return {
+          title,
+          fill: true,
+          body: (
+            <>
+              {/* Panel-local toolbar: the view-mode switch belongs to the
+                  Preview panel, so it floats over the 3D's top-right rather
+                  than the global header (panel-system design A2). */}
+              <div className="view-mode-overlay">
+                <ViewModeToggle
+                  mode={effectiveViewMode}
+                  rigAvailable={rigAvailable}
+                  animAvailable={animAvailable}
+                  onChange={handleViewModeChange}
+                />
+              </div>
+              {effectiveViewMode === 'anim' &&
+              source.kind === 'folder' &&
+              source.manifest !== undefined ? (
+                <AnimationView
+                  cvox={source.cvox}
+                  manifest={source.manifest}
+                  hiddenParts={hiddenParts}
+                  manifestEditsDisabled={manifestParseError !== null}
+                  onSetAnimField={handleSetAnimField}
+                  onAddAnimKey={handleAddAnimKey}
+                  onDeleteAnimKey={handleDeleteAnimKey}
+                  onMoveAnimKey={handleMoveAnimKey}
+                  onTrimClip={handleTrimClip}
+                  onSetClipDuration={handleSetClipDuration}
+                  onSetClipLoop={handleSetClipLoop}
+                  onCreateClip={handleCreateAnimationClip}
+                  onRenameClip={handleRenameClip}
+                  onDeleteClip={handleDeleteClip}
+                  onClearPartTrack={handleClearPartTrack}
+                />
+              ) : (
+                <VoxelScene
+                  cvox={source.cvox}
+                  manifest={source.kind === 'folder' ? source.manifest : undefined}
+                  viewMode={effectiveViewMode}
+                  hiddenParts={hiddenParts}
+                />
+              )}
+            </>
+          ),
+        };
+      case 'cvox':
+        return {
+          title,
+          fill: true,
+          body: (
             <SourceEditor
               text={source.cvoxFile.text}
               {...(cvoxParseError !== null && { parseError: cvoxParseError })}
               onChange={handleEditCvoxText}
             />
-          )}
-          {selectedTab === 'manifest' &&
-            source.kind === 'folder' &&
-            source.manifestFile !== undefined && (
+          ),
+        };
+      case 'manifest':
+        return {
+          title,
+          fill: true,
+          body:
+            source.kind === 'folder' && source.manifestFile !== undefined ? (
               <SourceEditor
                 text={source.manifestFile.text}
                 {...(manifestParseError !== null && {
@@ -922,34 +961,32 @@ export function App() {
                 })}
                 onChange={handleEditManifestText}
               />
-            )}
-        </div>
-      </div>
-    );
-  };
-
-  // Per-panel content for the dock's tab rows. The leaf owns the header now,
-  // so panels supply only { title, meta?, toolbar?, body }; '__center__' is
-  // null (rendered raw by renderCenter).
-  const getPanel = (id: LeafId): PanelContent | null => {
-    if (source === undefined) return null;
-    const manifest = source.kind === 'folder' ? source.manifest : undefined;
-    switch (id) {
-      case '__center__':
-        return null;
+            ) : (
+              <div className="panel-empty manifest-empty">
+                <p>No manifest in this model yet.</p>
+                <button
+                  type="button"
+                  className="create-manifest"
+                  onClick={handleCreateManifest}
+                >
+                  + Create manifest
+                </button>
+              </div>
+            ),
+        };
       case 'files':
         return {
-          title: 'Files',
+          title,
           body: (
             <FileTree
               source={source}
-              selectedTab={selectedTab}
+              activeFiles={visibleSourceFiles}
               cvoxError={cvoxParseError ?? undefined}
               manifestError={
                 manifestParseError ??
                 (source.kind === 'folder' ? source.manifestError : undefined)
               }
-              onSelectTab={handleSelectTab}
+              onOpenFile={handleOpenFile}
               onCreateManifest={handleCreateManifest}
             />
           ),
@@ -1075,7 +1112,6 @@ export function App() {
           <Dock
             node={layout}
             getPanel={getPanel}
-            renderCenter={renderCenter}
             closedPanels={closedPanels}
             onResize={handleResize}
             onActivate={handleActivatePanel}

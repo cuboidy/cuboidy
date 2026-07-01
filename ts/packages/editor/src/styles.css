@@ -501,6 +501,27 @@ pre {
   overflow: auto;
 }
 
+/* Fill variant: panels whose body owns the full leaf and its own scrolling
+   (the 3D preview, the source editors). A flex column with a definite height
+   so a `flex: 1` child stretches, position:relative so the preview's floating
+   view-mode toggle anchors to the panel. */
+.dock-leaf-fill {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Empty-state body for the manifest panel on a model with no cuboidy.json. */
+.manifest-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
 .panel-empty {
   margin: 0;
   padding: 0.75rem 1rem;

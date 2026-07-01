@@ -9,11 +9,14 @@ export type SplitDir = 'row' | 'col';
 // Path into the tree: a sequence of sides from the root ([] = the root node).
 export type Side = 'a' | 'b';
 
-// Tool panels live in the registry; '__center__' is a special leaf that
-// renders the existing main pane (TabBar + preview/source). It becomes real
-// panels (preview / cvoxSource / manifestSource / timeline) in Phase D.
-export type PanelId = 'files' | 'parts' | 'properties' | 'palette';
-export type LeafId = PanelId | '__center__';
+// Every leaf hosts dockable panels (tabs). Tool panels sit on the sides; the
+// source panels (preview / cvox / manifest) are the model-viewing surfaces —
+// formerly the bespoke in-center TabBar, now first-class dock tabs you can
+// move, split and reorder like any other. (The timeline becomes its own
+// panel in a later Phase D step.)
+export type ToolPanelId = 'files' | 'parts' | 'properties' | 'palette';
+export type SourcePanelId = 'preview' | 'cvox' | 'manifest';
+export type LeafId = ToolPanelId | SourcePanelId;
 
 export interface SplitNode {
   kind: 'split';
@@ -39,23 +42,32 @@ const split = (
   ratio: number,
 ): SplitNode => ({ kind: 'split', dir, a, b, ratio });
 
-// The dockable tool panels (the center is special and never closed/added).
-export const TOOL_PANELS: PanelId[] = ['files', 'parts', 'properties', 'palette'];
-
-export const PANEL_TITLES: Record<PanelId, string> = {
-  files: 'Files',
-  parts: 'Parts',
-  properties: 'Properties',
-  palette: 'Palette',
-};
+// Every dockable panel. The leaf "+" menu offers any of these not currently
+// placed anywhere (so a closed panel can always be reopened). Titles for the
+// dynamic ones (cvox/manifest take their file name) live in App.panelTitle.
+export const ALL_PANELS: LeafId[] = [
+  'files',
+  'parts',
+  'properties',
+  'palette',
+  'preview',
+  'cvox',
+  'manifest',
+];
 
 // Default layout (nested binary): left column = Files over (Parts over
-// Properties); the rest = center over... beside Palette. Realizes the IA:
-// Parts/Properties adjacent (#5), Palette separated from rig (#6).
+// Properties); center = the source panels (Preview/cvox/manifest as tabs)
+// beside Palette. Realizes the IA: Parts/Properties adjacent (#5), Palette
+// separated from the rig (#6).
 export const initialLayout: LayoutNode = split(
   'row',
   split('col', leaf('files'), split('col', leaf('parts'), leaf('properties'), 0.4), 0.25),
-  split('row', leaf('__center__'), leaf('palette'), 0.78),
+  split(
+    'row',
+    { kind: 'leaf', panels: ['preview', 'cvox', 'manifest'], active: 'preview' },
+    leaf('palette'),
+    0.78,
+  ),
   0.2,
 );
 
@@ -263,4 +275,43 @@ function closeRec(
     return b === null ? node.a : { ...node, b };
   }
   return node;
+}
+
+// Locate the leaf hosting `id` (DFS, left-first): its path + the leaf node.
+function locate(
+  node: LayoutNode,
+  id: LeafId,
+  path: Side[] = [],
+): { path: Side[]; leaf: LeafNode } | null {
+  if (node.kind === 'leaf') {
+    return node.panels.includes(id) ? { path, leaf: node } : null;
+  }
+  return locate(node.a, id, [...path, 'a']) ?? locate(node.b, id, [...path, 'b']);
+}
+
+// Path to the leaf currently hosting `id`, or null if not placed anywhere.
+export function findLeafPath(root: LayoutNode, id: LeafId): Side[] | null {
+  return locate(root, id)?.path ?? null;
+}
+
+// True when `id` is the *visible* (active) tab of its leaf — i.e. on screen,
+// not just placed-but-behind-another-tab.
+export function isPanelVisible(root: LayoutNode, id: LeafId): boolean {
+  const found = locate(root, id);
+  return found !== null && found.leaf.active === id;
+}
+
+// Path to the left-most leaf — a guaranteed-existing fallback host.
+function firstLeafPath(node: LayoutNode, path: Side[] = []): Side[] {
+  return node.kind === 'leaf' ? [...path] : firstLeafPath(node.a, [...path, 'a']);
+}
+
+// Bring `id` to the foreground: if already placed, make it its leaf's active
+// tab; otherwise re-open it as a tab on the center (preview's leaf), falling
+// back to the left-most leaf.
+export function openPanelById(root: LayoutNode, id: LeafId): LayoutNode {
+  const here = findLeafPath(root, id);
+  if (here !== null) return withActiveAt(root, here, id);
+  const host = findLeafPath(root, 'preview') ?? firstLeafPath(root);
+  return addPanelAt(root, host, id);
 }

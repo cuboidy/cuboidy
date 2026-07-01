@@ -18,15 +18,18 @@ import type {
 export interface PanelContent {
   title: string;
   body: ReactNode;
+  // When set, the body fills the panel (no scroll wrapper) and anchors any
+  // absolutely-positioned overlay — used by the 3D preview and the source
+  // editors, which manage their own internal scrolling.
+  fill?: boolean;
 }
 
 interface Props {
   node: LayoutNode;
   path?: Side[];
-  // Content for a tool panel (title + body); null for the special
-  // '__center__' panel, which renders raw via renderCenter.
+  // Content for the panel at `id` (title + body). Null only defensively
+  // (e.g. nothing loaded); a placed panel always has content.
   getPanel: (id: LeafId) => PanelContent | null;
-  renderCenter: () => ReactNode;
   // Closed (not-placed) panels, for the leaf "+" add menu.
   closedPanels: { id: LeafId; title: string }[];
   onResize: (path: Side[], ratio: number) => void;
@@ -52,9 +55,6 @@ const MIN_RATIO = 0.06;
 // dataTransfer payload for a dragged tab.
 const DRAG_MIME = 'application/x-cuboidy-panel';
 
-const isCenter = (leaf: LeafNode): boolean =>
-  leaf.panels.length === 1 && leaf.panels[0] === '__center__';
-
 // Nearest edge of a rect to a point — used to pick the split direction.
 function nearestEdge(rect: DOMRect, x: number, y: number): Edge {
   const d = {
@@ -74,11 +74,9 @@ function nearestEdge(rect: DOMRect, x: number, y: number): Edge {
 //   - drop on a leaf's HEADER (tab row) → tab into that leaf (reorder on a
 //     tab, append on the empty space);
 //   - drop on a leaf's BODY → split that leaf in the nearest-edge direction.
-// '__center__' renders raw.
 export function Dock(props: Props) {
-  const { node, path = [], renderCenter } = props;
+  const { node, path = [] } = props;
   if (node.kind === 'leaf') {
-    if (isCenter(node)) return <>{renderCenter()}</>;
     return <DockLeaf {...props} leaf={node} path={path} />;
   }
   return <DockSplit {...props} node={node} path={path} />;
@@ -103,6 +101,7 @@ function DockLeaf({
   const bodyRef = useRef<HTMLDivElement | null>(null);
 
   const lastId = leaf.panels[leaf.panels.length - 1]!;
+  const active = getPanel(leaf.active);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -268,7 +267,11 @@ function DockLeaf({
         onDrop={onBodyDrop}
       >
         {splitEdge !== null && <div className={`dock-drop dock-drop-${splitEdge}`} />}
-        <div className="dock-leaf-scroll">{getPanel(leaf.active)?.body}</div>
+        {active?.fill ? (
+          <div className="dock-leaf-fill">{active.body}</div>
+        ) : (
+          <div className="dock-leaf-scroll">{active?.body}</div>
+        )}
       </div>
     </section>
   );
