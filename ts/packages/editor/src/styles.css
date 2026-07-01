@@ -1448,9 +1448,54 @@ pre {
   color: #faa;
 }
 
-.notice.warning {
-  background: #3a2a1a;
+/* ─── Console panel ───────────────────────────────────────────────── */
+
+.console-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.4rem 0;
+}
+
+.console-entry {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.3rem 1rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.console-entry + .console-entry {
+  border-top: 1px solid #2a2a2a;
+}
+
+.console-severity {
+  flex-shrink: 0;
+}
+
+.console-entry.error .console-severity {
+  color: #f47171;
+}
+
+.console-entry.warning .console-severity {
   color: #fc8;
+}
+
+.console-source {
+  font-family:
+    ui-monospace,
+    'SF Mono',
+    Menlo,
+    Consolas,
+    monospace;
+  color: #888;
+  margin-right: 0.5rem;
+}
+
+.console-message code {
+  background: #2a2a2a;
+  padding: 0 0.25rem;
+  border-radius: 3px;
 }
 
 /* ─── Animation view ──────────────────────────────────────────────── */

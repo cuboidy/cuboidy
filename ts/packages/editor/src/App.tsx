@@ -26,6 +26,7 @@ import {
   type Part,
 } from '@cuboidy/core';
 import { AnimationViewport } from './components/AnimationViewport.js';
+import { ConsolePanel, type ConsoleEntry } from './components/ConsolePanel.js';
 import { Dock, type PanelContent } from './components/Dock.js';
 import { ExportMenu } from './components/ExportMenu.js';
 import { FileDropZone } from './components/FileDropZone.js';
@@ -140,6 +141,17 @@ export function App() {
         result.source.manifest !== undefined;
       setViewMode(hasManifest ? 'rig' : 'cvox');
       setLayout((l) => openPanelById(l, 'preview'));
+      // A load that carries problems (manifest that didn't parse, inline
+      // comments that won't round-trip) foregrounds the Console so the
+      // notice isn't silently hidden behind the Timeline tab.
+      if (
+        result.source !== undefined &&
+        (result.source.droppedInlineComments > 0 ||
+          (result.source.kind === 'folder' &&
+            result.source.manifestError !== undefined))
+      ) {
+        setLayout((l) => openPanelById(l, 'console'));
+      }
     },
     [cancelPendingCvoxReparse, cancelPendingManifestReparse],
   );
@@ -1081,6 +1093,8 @@ export function App() {
           return 'Preview';
         case 'timeline':
           return 'Timeline';
+        case 'console':
+          return 'Console';
         case 'cvox':
           return source?.cvoxFile.name ?? 'voxels.cvox';
         case 'manifest':
@@ -1408,6 +1422,57 @@ export function App() {
             />
           ),
         };
+      case 'console': {
+        // Derived, not stored: the model's current problems. Live parse
+        // errors mirror the in-editor banners; the dropped-comments notice
+        // is load-time only (it can't change until the next load).
+        const entries: ConsoleEntry[] = [];
+        if (cvoxParseError !== null) {
+          entries.push({
+            severity: 'error',
+            source: source.cvoxFile.name,
+            message: (
+              <>
+                <strong>Syntax error:</strong> {cvoxParseError}
+              </>
+            ),
+          });
+        }
+        const manifestErr =
+          manifestParseError ??
+          (source.kind === 'folder' ? source.manifestError : undefined) ??
+          null;
+        if (manifestErr !== null) {
+          entries.push({
+            severity: 'error',
+            source:
+              (source.kind === 'folder' ? source.manifestFile?.name : undefined) ??
+              'cuboidy.json',
+            message: (
+              <>
+                <strong>Syntax error:</strong> {manifestErr}
+              </>
+            ),
+          });
+        }
+        if (source.droppedInlineComments > 0) {
+          entries.push({
+            severity: 'warning',
+            source: source.cvoxFile.name,
+            message: (
+              <>
+                <strong>
+                  {source.droppedInlineComments} inline comment(s) will not be
+                  preserved.
+                </strong>{' '}
+                Only file-header comments (consecutive <code>//</code> lines
+                before the first declaration) round-trip through the editor.
+              </>
+            ),
+          });
+        }
+        return { title, body: <ConsolePanel entries={entries} /> };
+      }
     }
   };
 
@@ -1497,35 +1562,22 @@ export function App() {
           />
         )}
       </main>
-      {loaded !== null && <Notices loaded={loaded} />}
+      {loaded !== null && loaded.source === undefined && (
+        <Notices loaded={loaded} />
+      )}
     </div>
   );
 }
 
+// Hard load failure only (no source → no dock → no Console panel): the
+// error strip renders under the drop zone. Loaded-model problems live in
+// the Console panel instead.
 function Notices({ loaded }: { loaded: LoadResult }) {
   return (
     <aside className="notices">
       {loaded.error !== undefined && (
         <div className="notice error">
           <strong>Syntax error:</strong> {loaded.error}
-        </div>
-      )}
-      {loaded.source?.kind === 'folder' &&
-        loaded.source.manifestError !== undefined && (
-          <div className="notice error">
-            <strong>
-              Manifest syntax error ({loaded.source.manifestFile?.name}):
-            </strong>{' '}
-            {loaded.source.manifestError}
-          </div>
-        )}
-      {loaded.source !== undefined && loaded.source.droppedInlineComments > 0 && (
-        <div className="notice warning">
-          <strong>
-            {loaded.source.droppedInlineComments} inline comment(s) will not be preserved.
-          </strong>{' '}
-          Only file-header comments (consecutive <code>//</code> lines before
-          the first declaration) round-trip through the editor.
         </div>
       )}
     </aside>
