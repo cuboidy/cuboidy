@@ -18,6 +18,7 @@ interface Props {
   onChangeParent: (partName: string, parent: string | null) => void;
   onChangePosition: (partName: string, axis: 0 | 1 | 2, value: number) => void;
   onRenamePart: (oldName: string, newName: string) => void;
+  onDeletePart: (name: string) => void;
   onCreateManifest: () => void;
 }
 
@@ -36,6 +37,7 @@ export function PartProperties({
   onChangeParent,
   onChangePosition,
   onRenamePart,
+  onDeletePart,
   onCreateManifest,
 }: Props) {
   const cvoxPart = cvox.parts.find((p) => p.name === selectedPart);
@@ -51,6 +53,23 @@ export function PartProperties({
     manifest !== undefined ? findManifestPart(manifest, selectedPart) : undefined;
   const hasManifest = manifest !== undefined;
   const rigDisabled = !hasManifest || manifestEditsDisabled;
+
+  // Parts that clone/mirror this one would dangle if it were deleted, so delete
+  // is blocked while any exist (the user repoints/renames them first).
+  const clonedBy = cvox.parts
+    .filter((p) => p.name !== selectedPart && p.from?.part === selectedPart)
+    .map((p) => p.name);
+  // A model needs at least one part; the last one can't be deleted.
+  const isOnlyPart = cvox.parts.length <= 1;
+  const deleteDisabled = renameDisabled || clonedBy.length > 0 || isOnlyPart;
+  const deleteTitle =
+    clonedBy.length > 0
+      ? `Can't delete — cloned/mirrored by: ${clonedBy.join(', ')}`
+      : isOnlyPart
+        ? "Can't delete the only part"
+        : renameDisabled
+          ? 'Fix source syntax errors to delete'
+          : 'Delete this part (undo restores it)';
 
   return (
     <section className="part-properties">
@@ -104,6 +123,18 @@ export function PartProperties({
             onChangePosition={onChangePosition}
           />
         )}
+      </div>
+
+      <div className="part-properties-footer">
+        <button
+          type="button"
+          className="part-delete"
+          disabled={deleteDisabled}
+          title={deleteTitle}
+          onClick={() => onDeletePart(selectedPart)}
+        >
+          Delete part
+        </button>
       </div>
     </section>
   );

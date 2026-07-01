@@ -715,6 +715,33 @@ pre {
   flex-shrink: 0;
 }
 
+.part-properties-footer {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #2a2a2a;
+  display: flex;
+}
+
+.part-delete {
+  padding: 0.3rem 0.7rem;
+  background: #3a2424;
+  color: #ecc;
+  border: 1px solid #5a3030;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.part-delete:hover:not(:disabled) {
+  background: #4a2a2a;
+}
+
+.part-delete:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .property-group {
   display: flex;
   flex-direction: column;

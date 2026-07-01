@@ -413,6 +413,93 @@ export function App() {
     [dispatchEdit, cancelPendingCvoxReparse, cancelPendingManifestReparse],
   );
 
+  // Delete a part, cleaning up its references atomically (one undo). Removes
+  // the cvox part; in the manifest drops its entry, re-parents its children to
+  // its own parent (grandparent, or root if none), and drops its animation
+  // tracks. BLOCKS (no-op) if another part clones/mirrors it — the UI disables
+  // the action in that case, so this guard is just defensive. No confirmation:
+  // undo is the safety net (same as clip delete).
+  const handleDeletePart = useCallback(
+    (name: string) => {
+      cancelPendingCvoxReparse();
+      cancelPendingManifestReparse();
+      setCvoxParseError(null);
+      dispatchEdit(null, (current) => {
+        if (current?.source === undefined) return current;
+        const src = current.source;
+        if (!src.cvox.parts.some((p) => p.name === name)) return current;
+        // A clone/mirror of this part would dangle — refuse.
+        if (src.cvox.parts.some((p) => p.name !== name && p.from?.part === name)) {
+          return current;
+        }
+        const nextCvox: Cvox = {
+          ...src.cvox,
+          parts: src.cvox.parts.filter((p) => p.name !== name),
+        };
+        const cvoxPatch = {
+          cvox: nextCvox,
+          cvoxFile: { ...src.cvoxFile, text: serializeCvox(nextCvox) },
+        };
+        if (src.kind === 'folder' && src.manifest !== undefined) {
+          const m = src.manifest;
+          const grandparent = m.parts.find((mp) => mp.name === name)?.parent;
+          const nextMParts: ManifestPart[] = [];
+          for (const mp of m.parts) {
+            if (mp.name === name) continue; // drop the deleted part's entry
+            if (mp.parent === name) {
+              if (grandparent !== undefined) {
+                nextMParts.push({ ...mp, parent: grandparent });
+              } else {
+                const { parent: _drop, ...rest } = mp; // re-root
+                nextMParts.push(rest);
+              }
+            } else {
+              nextMParts.push(mp);
+            }
+          }
+          let nextManifest: Manifest = { ...m, parts: nextMParts };
+          if (m.animations !== undefined) {
+            const rebuilt: NonNullable<Manifest['animations']> = {};
+            let changed = false;
+            for (const [aName, anim] of Object.entries(m.animations)) {
+              if (typeof anim === 'string' || !Object.hasOwn(anim.parts, name)) {
+                rebuilt[aName] = anim;
+                continue;
+              }
+              const { [name]: _dropped, ...restTracks } = anim.parts;
+              rebuilt[aName] = { ...anim, parts: restTracks };
+              changed = true;
+            }
+            if (changed) nextManifest = { ...nextManifest, animations: rebuilt };
+          }
+          const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
+          return {
+            ...current,
+            source: {
+              ...src,
+              ...cvoxPatch,
+              manifest: nextManifest,
+              manifestFile: {
+                ...baseFile,
+                text: JSON.stringify(nextManifest, null, 2) + '\n',
+              },
+            },
+          };
+        }
+        return { ...current, source: { ...src, ...cvoxPatch } };
+      });
+      setManifestParseError(null);
+      setSelectedPartName((prev) => (prev === name ? null : prev));
+      setHiddenParts((prev) => {
+        if (!prev.has(name)) return prev;
+        const next = new Set(prev);
+        next.delete(name);
+        return next;
+      });
+    },
+    [dispatchEdit, cancelPendingCvoxReparse, cancelPendingManifestReparse],
+  );
+
   // Manifest source-text edit (manifest tab textarea typing). Same
   // shape as the cvox counterpart but uses JSON.parse + parseManifest.
   // Folder-only: cvox-only sources have no manifest file to edit.
@@ -1298,6 +1385,7 @@ export function App() {
                 onChangeParent={handleChangePartParent}
                 onChangePosition={handleChangePartPosition}
                 onRenamePart={handleRenamePart}
+                onDeletePart={handleDeletePart}
                 onCreateManifest={handleCreateManifest}
               />
             ) : (
