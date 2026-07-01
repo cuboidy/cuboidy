@@ -80,7 +80,11 @@
 
 ---
 
-## P4 — 一貫性・アクセシビリティ・状態表示
+## P4 — 一貫性・アクセシビリティ・状態表示 — 🟡 P4-1/P4-2 完了 (2026-07-02)
+
+> P4-1・P4-2 は `.btn`＋intent 修飾子(primary/danger/warning/create/sm/icon)と
+> 共通 `.menu`/`.menu-item` への統一パスとして実装済み。disabled は opacity 0.45、
+> focus-visible リングも共通化。
 
 | ID | 課題 | 規模 | 対象 |
 |---|---|---|---|
