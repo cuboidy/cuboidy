@@ -189,7 +189,9 @@ export function placePanelBeside(
       ? l
       : { ...l, panels: insertBeside(l.panels, id, targetId, before), active: id },
   );
-  return closePanelAt(added, fromPath, id);
+  // `added` already holds id at toPath, so removing it from the source can
+  // never empty the whole tree — the `?? added` is just a type-level guard.
+  return closeRec(added, fromPath, id) ?? added;
 }
 
 export type Edge = 'top' | 'bottom' | 'left' | 'right';
@@ -246,17 +248,20 @@ export function splitLeafWith(
   const newFromPath = samePath(fromPath, toPath)
     ? [...toPath, origSide]
     : fromPath;
-  return closePanelAt(splitTree, newFromPath, id);
+  // The new split holds id, so the source removal can't empty the tree.
+  return closeRec(splitTree, newFromPath, id) ?? splitTree;
 }
 
 // Remove a panel from the leaf at `path`. If the leaf empties, the parent
 // split collapses into its surviving side (which then fills the space).
+// Closing the very last panel empties the whole dock → returns null (App
+// renders an empty-dock state you can add panels back from).
 export function closePanelAt(
   root: LayoutNode,
   path: readonly Side[],
   id: LeafId,
-): LayoutNode {
-  return closeRec(root, path, id) ?? root;
+): LayoutNode | null {
+  return closeRec(root, path, id);
 }
 
 function closeRec(
@@ -315,8 +320,10 @@ function firstLeafPath(node: LayoutNode, path: Side[] = []): Side[] {
 
 // Bring `id` to the foreground: if already placed, make it its leaf's active
 // tab; otherwise re-open it as a tab on the center (preview's leaf), falling
-// back to the left-most leaf.
-export function openPanelById(root: LayoutNode, id: LeafId): LayoutNode {
+// back to the left-most leaf. From an empty dock (null) it seeds a fresh
+// single-panel leaf.
+export function openPanelById(root: LayoutNode | null, id: LeafId): LayoutNode {
+  if (root === null) return { kind: 'leaf', panels: [id], active: id };
   const here = findLeafPath(root, id);
   if (here !== null) return withActiveAt(root, here, id);
   const host = findLeafPath(root, 'preview') ?? firstLeafPath(root);

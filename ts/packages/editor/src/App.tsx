@@ -797,7 +797,8 @@ export function App() {
 
   // Dock layout tree (resizable, rearrangeable). In-memory only — layout is
   // session-scoped by design (no persistence); "Reset layout" restores it.
-  const [layout, setLayout] = useState<LayoutNode>(initialLayout);
+  // Null = every panel closed (empty dock); App renders an add-panel state.
+  const [layout, setLayout] = useState<LayoutNode | null>(initialLayout);
 
   // Display title for any panel. Static for tool panels; the source files take
   // their actual file name so the dock tab reads "voxels.cvox" / "cuboidy.json"
@@ -828,21 +829,25 @@ export function App() {
     },
     [source],
   );
+  // Layout mutations no-op on a null (empty) dock — they only fire from a
+  // rendered Dock, but the guard keeps the reducer total.
   const handleResize = useCallback((path: Side[], ratio: number) => {
-    setLayout((current) => withRatioAt(current, path, ratio));
+    setLayout((current) => (current === null ? null : withRatioAt(current, path, ratio)));
   }, []);
   const handleActivatePanel = useCallback((path: Side[], id: LeafId) => {
-    setLayout((current) => withActiveAt(current, path, id));
+    setLayout((current) => (current === null ? null : withActiveAt(current, path, id)));
   }, []);
   const handleClosePanel = useCallback((path: Side[], id: LeafId) => {
-    setLayout((current) => closePanelAt(current, path, id));
+    setLayout((current) => (current === null ? null : closePanelAt(current, path, id)));
   }, []);
   const handleAddPanel = useCallback((path: Side[], id: LeafId) => {
-    setLayout((current) => addPanelAt(current, path, id));
+    setLayout((current) => (current === null ? null : addPanelAt(current, path, id)));
   }, []);
   const handleSplitLeaf = useCallback(
     (toPath: Side[], edge: Edge, id: LeafId, fromPath: Side[]) => {
-      setLayout((current) => splitLeafWith(current, toPath, edge, id, fromPath));
+      setLayout((current) =>
+        current === null ? null : splitLeafWith(current, toPath, edge, id, fromPath),
+      );
     },
     [],
   );
@@ -855,14 +860,22 @@ export function App() {
       fromPath: Side[],
     ) => {
       setLayout((current) =>
-        placePanelBeside(current, toPath, targetId, before, id, fromPath),
+        current === null
+          ? null
+          : placePanelBeside(current, toPath, targetId, before, id, fromPath),
       );
     },
     [],
   );
   const handleResetLayout = useCallback(() => setLayout(initialLayout), []);
+  // Re-open a panel by id — brings it forward if placed, else re-adds it (and
+  // seeds a fresh leaf from an empty dock). Drives both the tree-file clicks
+  // and the empty-dock add buttons.
+  const handleReopenPanel = useCallback((id: LeafId) => {
+    setLayout((l) => openPanelById(l, id));
+  }, []);
   // Click a file in the tree → bring its source panel forward (re-opening it
-  // if it was closed). Same path the preview-focus calls use.
+  // if it was closed).
   const handleOpenFile = useCallback((file: 'cvox' | 'manifest') => {
     setLayout((l) => openPanelById(l, file));
   }, []);
@@ -871,8 +884,8 @@ export function App() {
   // docked apart and shown at once, so this is a set.
   const visibleSourceFiles = useMemo(() => {
     const s = new Set<'cvox' | 'manifest'>();
-    if (isPanelVisible(layout, 'cvox')) s.add('cvox');
-    if (isPanelVisible(layout, 'manifest')) s.add('manifest');
+    if (layout !== null && isPanelVisible(layout, 'cvox')) s.add('cvox');
+    if (layout !== null && isPanelVisible(layout, 'manifest')) s.add('manifest');
     return s;
   }, [layout]);
 
@@ -884,16 +897,18 @@ export function App() {
     cvox: source?.cvox,
     manifest: animManifest,
     clockEnabled: effectiveViewMode === 'anim' && animManifest !== undefined,
-    editKeysEnabled: isPanelVisible(layout, 'timeline') && animManifest !== undefined,
+    editKeysEnabled:
+      layout !== null && isPanelVisible(layout, 'timeline') && animManifest !== undefined,
     onAddAnimKey: handleAddAnimKey,
     onDeleteAnimKey: handleDeleteAnimKey,
     onMoveAnimKey: handleMoveAnimKey,
     onClearPartTrack: handleClearPartTrack,
   });
   // Any panel not currently placed anywhere — offered by each leaf's + menu so
-  // a closed panel can be reopened.
+  // a closed panel can be reopened (and by the empty-dock state, where the set
+  // is everything).
   const closedPanels = useMemo(() => {
-    const placed = placedPanels(layout);
+    const placed = layout === null ? new Set<LeafId>() : placedPanels(layout);
     return ALL_PANELS.filter((id) => !placed.has(id)).map((id) => ({
       id,
       title: panelTitle(id),
@@ -1141,7 +1156,32 @@ export function App() {
         </div>
       </header>
       <main className="main">
-        {source !== undefined ? (
+        {source === undefined ? (
+          <FileDropZone onLoad={handleLoad} />
+        ) : layout === null ? (
+          <div className="dock-empty">
+            <p className="dock-empty-title">All panels are closed.</p>
+            <div className="dock-empty-actions">
+              {closedPanels.map((p) => (
+                <button
+                  type="button"
+                  key={p.id}
+                  className="dock-empty-add"
+                  onClick={() => handleReopenPanel(p.id)}
+                >
+                  + {p.title}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="history-btn"
+              onClick={handleResetLayout}
+            >
+              Reset layout
+            </button>
+          </div>
+        ) : (
           <Dock
             node={layout}
             getPanel={getPanel}
@@ -1153,8 +1193,6 @@ export function App() {
             onSplit={handleSplitLeaf}
             onReorder={handleReorderPanel}
           />
-        ) : (
-          <FileDropZone onLoad={handleLoad} />
         )}
       </main>
       {loaded !== null && <Notices loaded={loaded} />}

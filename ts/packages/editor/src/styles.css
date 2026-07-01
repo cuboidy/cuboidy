@@ -522,6 +522,49 @@ pre {
   gap: 0.6rem;
 }
 
+/* Whole-dock empty state: shown after the last panel is closed. Every panel
+   can be re-added here (and layout reset), so closing everything is not a
+   dead end. */
+.dock-empty {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  color: #888;
+}
+
+.dock-empty-title {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.dock-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  max-width: 32rem;
+}
+
+.dock-empty-add {
+  padding: 0.35rem 0.8rem;
+  background: #2a3a4a;
+  color: #cde;
+  border: 1px dashed #3a4a6a;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.dock-empty-add:hover {
+  background: #2a3a5a;
+  border-color: #4a5a7a;
+}
+
 .panel-empty {
   margin: 0;
   padding: 0.75rem 1rem;
