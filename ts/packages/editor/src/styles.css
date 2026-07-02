@@ -1201,6 +1201,25 @@ pre {
   opacity: 0.4;
 }
 
+/* Hover-revealed "new file in this folder" on folder rows. */
+.folder-add {
+  width: 16px;
+  height: 16px;
+  margin-left: auto;
+  color: #777;
+  font-size: 0.85rem;
+  opacity: 0;
+}
+
+.folder-row:hover .folder-add {
+  opacity: 1;
+}
+
+.folder-add:hover {
+  background: #3a4a6a;
+  color: #cde;
+}
+
 /* ─── Parts list ──────────────────────────────────────────────────── */
 
 /* Parts panel toolbar: New part / Show all / Hide all on one row, pinned to

@@ -31,11 +31,14 @@ const CREATABLE_RE = /^[^\\:]+\.(cvox|json|md|txt)$/i;
 // panel, and any other file a dynamic `file:<path>` editor tab.
 //
 // CRUD: "+ New file" opens an inline draft whose name may contain `/`
-// (folders are implicit — `anims/idle.json` creates the folder). Double-
-// click renames (full relative path, so a rename can also move); the
-// hover × deletes. The manifest anchor is never renamable/deletable; the
-// primary geometry is renamable only when a manifest records it, and
-// never deletable.
+// (folders are implicit); hovering a folder row reveals a "+" that
+// drafts a file inside it. "+ New folder" drafts an empty folder —
+// session-only until a file lands in it (the package model is a file
+// map, so an empty folder has no on-disk representation). Double-click
+// renames a file (full relative path, so a rename can also move); the
+// hover × deletes. The manifest anchor is never renamable/deletable;
+// the primary geometry is renamable only when a manifest records it,
+// and never deletable.
 export function FileTree({
   source,
   activePaths,
@@ -46,7 +49,14 @@ export function FileTree({
   onRenameFile,
   onDeleteFile,
 }: Props) {
-  const [creating, setCreating] = useState(false);
+  // Directory path ('' = package root) that has an open new-file draft,
+  // or null. Folder "+" buttons target their own directory.
+  const [creatingIn, setCreatingIn] = useState<string | null>(null);
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  // Session-draft empty folders (paths). Materialize on disk only once a
+  // file is created inside; pruned automatically when that happens
+  // (buildFsTree already shows dirs that contain files).
+  const [draftDirs, setDraftDirs] = useState<ReadonlySet<string>>(new Set());
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
 
   const allPaths = useMemo(() => {
@@ -64,7 +74,10 @@ export function FileTree({
     }
     return paths;
   }, [source]);
-  const tree = useMemo(() => buildFsTree(allPaths), [allPaths]);
+  const tree = useMemo(
+    () => buildFsTree(allPaths, draftDirs),
+    [allPaths, draftDirs],
+  );
 
   const isFolder = source.kind === 'folder';
   const canEdit = isFolder && source.files !== undefined;
@@ -90,11 +103,19 @@ export function FileTree({
     return { renameReason, deleteReason };
   };
 
-  const validateNewPath = (name: string): boolean =>
-    CREATABLE_RE.test(name) &&
+  const validNewSegments = (name: string): boolean =>
     !name.startsWith('/') &&
-    !name.split('/').some((s) => s === '' || s === '.' || s === '..') &&
-    !allPaths.has(name);
+    !name.includes('\\') &&
+    !name.includes(':') &&
+    !name.split('/').some((s) => s === '' || s === '.' || s === '..');
+
+  const validateNewPath = (path: string): boolean =>
+    CREATABLE_RE.test(path) && validNewSegments(path) && !allPaths.has(path);
+
+  const validateNewFolder = (name: string): boolean =>
+    validNewSegments(name) &&
+    !allPaths.has(name) &&
+    !draftDirs.has(name);
 
   const validateRename = (oldPath: string) => (name: string) => {
     if (name === oldPath) return true;
@@ -107,6 +128,22 @@ export function FileTree({
     return true;
   };
 
+  const commitCreateFile = (dirPath: string, name: string): void => {
+    const path = dirPath === '' ? name : `${dirPath}/${name}`;
+    onCreateFile(path);
+    setCreatingIn(null);
+    // The folder now has a real file — the draft entry is redundant.
+    setDraftDirs((prev) => {
+      const covered = [...prev].filter(
+        (d) => path === d || path.startsWith(`${d}/`),
+      );
+      if (covered.length === 0) return prev;
+      const next = new Set(prev);
+      for (const d of covered) next.delete(d);
+      return next;
+    });
+  };
+
   return (
     <div className="file-tree">
       {canEdit && (
@@ -115,9 +152,23 @@ export function FileTree({
             type="button"
             className="btn btn-sm"
             title="New file (use / for folders, e.g. anims/idle.json)"
-            onClick={() => setCreating(true)}
+            onClick={() => {
+              setCreatingFolder(false);
+              setCreatingIn('');
+            }}
           >
             + New file
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm"
+            title="New folder (kept for this session; saved to disk once a file is created inside)"
+            onClick={() => {
+              setCreatingIn(null);
+              setCreatingFolder(true);
+            }}
+          >
+            + New folder
           </button>
         </div>
       )}
@@ -129,20 +180,22 @@ export function FileTree({
               <span className="name">{source.folderName}</span>
               {source.synthetic && <span className="badge">unsaved</span>}
             </div>
-            {creating && (
+            {creatingFolder && (
               <ul className="tree-children">
-                <li className="tree-node file">
+                <li className="tree-node folder">
                   <div className="tree-node-draft">
-                    <span className="icon">📄</span>
+                    <span className="icon">📁</span>
                     <InlineNameInput
-                      initial="new.cvox"
-                      ariaLabel="New file name"
-                      validate={validateNewPath}
+                      initial="folder"
+                      ariaLabel="New folder name"
+                      validate={validateNewFolder}
                       onCommit={(name) => {
-                        onCreateFile(name);
-                        setCreating(false);
+                        setDraftDirs((prev) => new Set(prev).add(name));
+                        setCreatingFolder(false);
+                        // Flow straight into "new file inside it".
+                        setCreatingIn(name);
                       }}
-                      onCancel={() => setCreating(false)}
+                      onCancel={() => setCreatingFolder(false)}
                     />
                   </div>
                 </li>
@@ -150,15 +203,25 @@ export function FileTree({
             )}
             <DirChildren
               node={tree}
+              dirPath=""
               activePaths={activePaths}
               fileErrors={fileErrors}
               newBadgePath={
                 source.synthetic ? source.manifestFile?.name : undefined
               }
+              canEdit={canEdit}
+              creatingIn={creatingIn}
               renamingPath={renamingPath}
               rowOps={rowOps}
+              validateNewPath={validateNewPath}
               validateRename={validateRename}
               onOpenPath={onOpenPath}
+              onStartCreateIn={(dir) => {
+                setCreatingFolder(false);
+                setCreatingIn(dir);
+              }}
+              onCommitCreate={commitCreateFile}
+              onCancelCreate={() => setCreatingIn(null)}
               onStartRename={setRenamingPath}
               onCommitRename={(oldPath, name) => {
                 onRenameFile(oldPath, name);
@@ -182,20 +245,19 @@ export function FileTree({
         </ul>
       ) : (
         <ul className="tree-root">
-          <FileNode
-            path={primary}
-            name={primary}
-            active={activePaths.has(primary)}
-            error={fileErrors.get(primary)}
-            renaming={false}
-            ops={{ renameReason: 'hidden', deleteReason: 'hidden' }}
-            validateRename={() => false}
-            onOpenPath={onOpenPath}
-            onStartRename={() => {}}
-            onCommitRename={() => {}}
-            onCancelRename={() => {}}
-            onDeleteFile={() => {}}
-          />
+          <li
+            className={`tree-node file${activePaths.has(primary) ? ' active' : ''}${fileErrors.has(primary) ? ' error' : ''}`}
+            title={fileErrors.get(primary) ?? primary}
+          >
+            <button
+              type="button"
+              className="tree-node-button"
+              onClick={() => onOpenPath(primary)}
+            >
+              <span className="icon">📄</span>
+              <span className="name">{primary}</span>
+            </button>
+          </li>
         </ul>
       )}
       {canCreateManifest(source) && (
@@ -225,11 +287,12 @@ interface DirNode {
   files: Array<{ path: string; name: string }>;
 }
 
-function buildFsTree(paths: Iterable<string>): DirNode {
+function buildFsTree(
+  paths: Iterable<string>,
+  emptyDirs: Iterable<string> = [],
+): DirNode {
   const root: DirNode = { dirs: new Map(), files: [] };
-  for (const path of [...paths].sort()) {
-    const segments = path.split('/');
-    const name = segments.pop()!;
+  const dirAt = (segments: string[]): DirNode => {
     let node = root;
     for (const seg of segments) {
       let child = node.dirs.get(seg);
@@ -239,20 +302,36 @@ function buildFsTree(paths: Iterable<string>): DirNode {
       }
       node = child;
     }
-    node.files.push({ path, name });
+    return node;
+  };
+  for (const dir of [...emptyDirs].sort()) {
+    dirAt(dir.split('/'));
+  }
+  for (const path of [...paths].sort()) {
+    const segments = path.split('/');
+    const name = segments.pop()!;
+    dirAt(segments).files.push({ path, name });
   }
   return root;
 }
 
 interface DirChildrenProps {
   node: DirNode;
+  // This directory's package-relative path ('' = root).
+  dirPath: string;
   activePaths: ReadonlySet<string>;
   fileErrors: ReadonlyMap<string, string>;
   newBadgePath?: string | undefined;
+  canEdit: boolean;
+  creatingIn: string | null;
   renamingPath: string | null;
   rowOps: (path: string) => RowOps;
+  validateNewPath: (path: string) => boolean;
   validateRename: (oldPath: string) => (name: string) => boolean;
   onOpenPath: (path: string) => void;
+  onStartCreateIn: (dirPath: string) => void;
+  onCommitCreate: (dirPath: string, name: string) => void;
+  onCancelCreate: () => void;
   onStartRename: (path: string) => void;
   onCommitRename: (oldPath: string, name: string) => void;
   onCancelRename: () => void;
@@ -260,18 +339,53 @@ interface DirChildrenProps {
 }
 
 function DirChildren(props: DirChildrenProps) {
-  const { node } = props;
+  const { node, dirPath } = props;
   return (
     <ul className="tree-children">
-      {[...node.dirs.entries()].map(([name, child]) => (
-        <li className="tree-node folder" key={name}>
-          <div className="folder-row">
-            <span className="icon">📁</span>
-            <span className="name">{name}</span>
+      {[...node.dirs.entries()].map(([name, child]) => {
+        const childPath = dirPath === '' ? name : `${dirPath}/${name}`;
+        return (
+          <li className="tree-node folder" key={name}>
+            <div className="folder-row">
+              <span className="icon">📁</span>
+              <span className="name">{name}</span>
+              {props.canEdit && (
+                <span
+                  className="btn-icon folder-add"
+                  role="button"
+                  aria-label={`New file in ${childPath}`}
+                  title={`New file in ${childPath}/`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    props.onStartCreateIn(childPath);
+                  }}
+                >
+                  +
+                </span>
+              )}
+            </div>
+            <DirChildren {...props} node={child} dirPath={childPath} />
+          </li>
+        );
+      })}
+      {props.creatingIn === dirPath && (
+        <li className="tree-node file">
+          <div className="tree-node-draft">
+            <span className="icon">📄</span>
+            <InlineNameInput
+              initial="new.cvox"
+              ariaLabel={`New file in ${dirPath === '' ? 'package root' : dirPath}`}
+              validate={(name) =>
+                props.validateNewPath(
+                  dirPath === '' ? name : `${dirPath}/${name}`,
+                )
+              }
+              onCommit={(name) => props.onCommitCreate(dirPath, name)}
+              onCancel={props.onCancelCreate}
+            />
           </div>
-          <DirChildren {...props} node={child} />
         </li>
-      ))}
+      )}
       {node.files.map((f) => (
         <FileNode
           key={f.path}
