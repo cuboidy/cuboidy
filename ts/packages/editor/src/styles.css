@@ -1319,6 +1319,29 @@ pre {
   white-space: nowrap;
 }
 
+/* Defining-file badge (v0.7 multi-cvox): faint, right-aligned, never
+   steals click focus from the row. */
+.part-tree-file {
+  flex-shrink: 0;
+  margin-left: 0.4rem;
+  font-family:
+    ui-monospace,
+    'SF Mono',
+    Menlo,
+    Consolas,
+    monospace;
+  font-size: 0.65rem;
+  color: #666;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 8rem;
+}
+
+.part-tree-row.selected .part-tree-file {
+  color: #9ab;
+}
+
 /* Root drop zone for unparenting via D&D. Hidden when not dragging
    (the .visible class is added by PartTree while a drag is in flight)
    so it doesn't take up sidebar space in the idle state. */

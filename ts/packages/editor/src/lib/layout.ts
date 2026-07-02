@@ -16,7 +16,16 @@ export type Side = 'a' | 'b';
 // panel in a later Phase D step.)
 export type ToolPanelId = 'files' | 'parts' | 'properties' | 'palette' | 'console';
 export type SourcePanelId = 'preview' | 'cvox' | 'manifest' | 'timeline';
-export type LeafId = ToolPanelId | SourcePanelId;
+// Dynamic per-file editor tabs (v0.7 multi-file packages): one panel per
+// package file, keyed by its /-relative path. Opened from the Files tree;
+// not in ALL_PANELS (closing one just removes it — reopen via the tree).
+export type FilePanelId = `file:${string}`;
+export type LeafId = ToolPanelId | SourcePanelId | FilePanelId;
+
+export const filePanel = (path: string): FilePanelId => `file:${path}`;
+export function filePanelPath(id: LeafId): string | null {
+  return id.startsWith('file:') ? id.slice('file:'.length) : null;
+}
 
 export interface SplitNode {
   kind: 'split';

@@ -268,7 +268,7 @@ function buildFolderResult(
 // Minimal posix-style normalize for SPEC §8 reference paths and package
 // file paths: resolves `.` / `..` segments and collapses empty ones.
 // Leading `..` segments are preserved (they mean "outside the package").
-function normalizePath(path: string): string {
+export function normalizePath(path: string): string {
   const out: string[] = [];
   for (const seg of path.split('/')) {
     if (seg === '' || seg === '.') continue;

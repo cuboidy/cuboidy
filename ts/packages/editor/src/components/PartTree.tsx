@@ -15,6 +15,10 @@ import type { Manifest, Part } from '@cuboidy/core';
 
 interface Props {
   parts: readonly Part[];
+  // Defining geometry file per part (v0.7 multi-cvox). Present only when
+  // the model spans more than one file — each row then shows a faint
+  // file badge at its right so cross-file rigs stay legible.
+  partFiles?: ReadonlyMap<string, string> | undefined;
   manifest: Manifest | undefined;
   hiddenParts: ReadonlySet<string>;
   selectedPart: string | null;
@@ -41,8 +45,14 @@ interface Props {
 
 type DropTarget = { kind: 'node'; name: string } | { kind: 'root' };
 
+function basename(path: string): string {
+  const i = path.lastIndexOf('/');
+  return i === -1 ? path : path.slice(i + 1);
+}
+
 export function PartTree({
   parts,
+  partFiles,
   manifest,
   hiddenParts,
   selectedPart,
@@ -131,6 +141,7 @@ export function PartTree({
             key={node.name}
             node={node}
             depth={0}
+            partFiles={partFiles}
             hiddenParts={hiddenParts}
             selectedPart={selectedPart}
             dndEnabled={dndEnabled}
@@ -207,6 +218,7 @@ export function PartTree({
 interface BranchProps {
   node: PartTreeNode;
   depth: number;
+  partFiles?: ReadonlyMap<string, string> | undefined;
   hiddenParts: ReadonlySet<string>;
   selectedPart: string | null;
   dndEnabled: boolean;
@@ -236,6 +248,7 @@ function PartTreeBranch(props: BranchProps) {
   const {
     node,
     depth,
+    partFiles,
     hiddenParts,
     selectedPart,
     dndEnabled,
@@ -358,6 +371,11 @@ function PartTreeBranch(props: BranchProps) {
             }}
           >
             {node.name}
+          </span>
+        )}
+        {partFiles?.has(node.name) === true && (
+          <span className="part-tree-file" title={partFiles.get(node.name)}>
+            {basename(partFiles.get(node.name)!)}
           </span>
         )}
         <input

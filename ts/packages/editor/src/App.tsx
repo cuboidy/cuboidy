@@ -14,6 +14,7 @@ import {
   moveAttrKey,
   parseCvox,
   parseManifest,
+  parsePaletteFile,
   serializeCvox,
   setAttrAtKey,
   trimTrackKeys,
@@ -40,9 +41,12 @@ import { TimelinePanel } from './components/TimelinePanel.js';
 import { ViewModeToggle } from './components/ViewModeToggle.js';
 import { VoxelScene } from './components/VoxelScene.js';
 import { historyReducer, makeHistory } from './lib/history.js';
+import { normalizePath } from './lib/load-model.js';
 import {
   addPanelAt,
   closePanelAt,
+  filePanel,
+  filePanelPath,
   initialLayout,
   isPanelVisible,
   openPanelById,
@@ -59,13 +63,96 @@ import {
 } from './lib/layout.js';
 import { synthesizeManifest } from './lib/synthesize-manifest.js';
 import { useAnimationSession } from './lib/useAnimationSession.js';
-import type { LoadResult, LoadedSource, ViewMode } from './lib/types.js';
+import type {
+  FileEntry,
+  LoadResult,
+  LoadedSource,
+  ViewMode,
+} from './lib/types.js';
 
 // Debounce window for live re-parse of the cvox source view. Long
 // enough that mid-keystroke typing doesn't constantly fire (and
 // flicker palette/3D between transient invalid states); short enough
 // that a deliberate pause feels live.
 const REPARSE_DEBOUNCE_MS = 300;
+
+// v0.7 multi-cvox (Phase C): the DISPLAY model is the union of every
+// geometry file's parts, in geometry-list order. The primary file's
+// live AST (source.cvox) overrides its load-time snapshot in
+// source.geometries so mid-edit state stays current. A cross-file
+// duplicate name keeps the first definition (validateProject flags the
+// error). `files` records each part's defining file — edit routing and
+// the part tree's file badges.
+function mergeGeometries(src: LoadedSource): {
+  parts: Part[];
+  files: ReadonlyMap<string, string>;
+} {
+  const files = new Map<string, string>();
+  if (src.kind !== 'folder' || src.geometries === undefined) {
+    return { parts: src.cvox.parts, files };
+  }
+  const parts: Part[] = [];
+  for (const [path, g] of src.geometries) {
+    const cvox = path === src.cvoxFile.name ? src.cvox : g;
+    for (const part of cvox.parts) {
+      if (files.has(part.name)) continue;
+      files.set(part.name, path);
+      parts.push(part);
+    }
+  }
+  return { parts, files };
+}
+
+// Apply `fn` to every geometry file's AST (or the single cvox for
+// cvox-only / synthetic sources). Returns the source with each CHANGED
+// file kept fully in sync: geometries map, the files snapshot (so
+// export sees the edit), and — when the primary file changed — the live
+// cvox/cvoxFile pair the rest of the editor reads. `fn` returns null
+// for "no change to this file".
+function pathBasename(path: string): string {
+  const i = path.lastIndexOf('/');
+  return i === -1 ? path : path.slice(i + 1);
+}
+
+function mapGeometryFiles<S extends LoadedSource>(
+  src: S,
+  fn: (cvox: Cvox, path: string) => Cvox | null,
+): S {
+  if (src.kind !== 'folder' || src.geometries === undefined) {
+    const next = fn(src.cvox, src.cvoxFile.name);
+    if (next === null) return src;
+    return {
+      ...src,
+      cvox: next,
+      cvoxFile: { ...src.cvoxFile, text: serializeCvox(next) },
+    };
+  }
+  let geometries: Map<string, Cvox> | null = null;
+  let files: Map<string, FileEntry> | null = null;
+  let primaryPatch: Pick<typeof src, 'cvox' | 'cvoxFile'> | null = null;
+  for (const [path, g] of src.geometries) {
+    const cur = path === src.cvoxFile.name ? src.cvox : g;
+    const next = fn(cur, path);
+    if (next === null) continue;
+    const text = serializeCvox(next);
+    if (geometries === null) geometries = new Map(src.geometries);
+    geometries.set(path, next);
+    if (src.files !== undefined) {
+      if (files === null) files = new Map(src.files);
+      files.set(path, { name: path, text });
+    }
+    if (path === src.cvoxFile.name) {
+      primaryPatch = { cvox: next, cvoxFile: { ...src.cvoxFile, text } };
+    }
+  }
+  if (geometries === null) return src;
+  return {
+    ...src,
+    geometries,
+    ...(files !== null && { files }),
+    ...(primaryPatch !== null && primaryPatch),
+  };
+}
 
 export function App() {
   // The loaded document plus its undo/redo history, in one pure reducer.
@@ -129,6 +216,13 @@ export function App() {
     (result: LoadResult) => {
       cancelPendingCvoxReparse();
       cancelPendingManifestReparse();
+      // Per-file reparse timers / errors belong to the previous package.
+      // (Ref + setter are stable — safe to use without listing as deps.)
+      for (const t of fileReparseTimers.current.values()) {
+        window.clearTimeout(t);
+      }
+      fileReparseTimers.current.clear();
+      setFileParseErrors(new Map());
       dispatch({ type: 'replace', next: result });
       setHiddenParts(new Set());
       setSelectedPartName(null);
@@ -160,6 +254,11 @@ export function App() {
   const handleReset = useCallback(() => {
     cancelPendingCvoxReparse();
     cancelPendingManifestReparse();
+    for (const t of fileReparseTimers.current.values()) {
+      window.clearTimeout(t);
+    }
+    fileReparseTimers.current.clear();
+    setFileParseErrors(new Map());
     dispatch({ type: 'replace', next: null });
     setHiddenParts(new Set());
     setSelectedPartName(null);
@@ -182,7 +281,9 @@ export function App() {
 
   const handleHideAll = useCallback(() => {
     if (loaded?.source !== undefined) {
-      setHiddenParts(new Set(loaded.source.cvox.parts.map((p) => p.name)));
+      setHiddenParts(
+        new Set(mergeGeometries(loaded.source).parts.map((p) => p.name)),
+      );
     }
   }, [loaded]);
 
@@ -231,6 +332,118 @@ export function App() {
     [dispatchEdit, cancelPendingCvoxReparse],
   );
 
+  // Per-file source editing for the dynamic file tabs (v0.7 packages).
+  // Same shape as the cvox/manifest pipelines: record the text now
+  // (per-file coalescing tag), debounce a reparse that amends derived
+  // state (a geometry file's AST, the bound palette) on success.
+  const [fileParseErrors, setFileParseErrors] = useState<
+    ReadonlyMap<string, string>
+  >(new Map());
+  const fileReparseTimers = useRef<Map<string, number>>(new Map());
+  const cancelAllFileReparse = useCallback(() => {
+    for (const t of fileReparseTimers.current.values()) {
+      window.clearTimeout(t);
+    }
+    fileReparseTimers.current.clear();
+  }, []);
+  const setFileParseError = useCallback((path: string, msg: string | null) => {
+    setFileParseErrors((prev) => {
+      if (msg === null && !prev.has(path)) return prev;
+      const next = new Map(prev);
+      if (msg === null) next.delete(path);
+      else next.set(path, msg);
+      return next;
+    });
+  }, []);
+
+  const handleEditFileText = useCallback(
+    (path: string, nextText: string) => {
+      dispatchEdit(`text:${path}`, (current) => {
+        const src = current?.source;
+        if (
+          src === undefined ||
+          src.kind !== 'folder' ||
+          src.files === undefined
+        ) {
+          return current;
+        }
+        const prev = src.files.get(path);
+        if (prev === undefined) return current;
+        const files = new Map(src.files);
+        files.set(path, { ...prev, text: nextText });
+        return { ...current, source: { ...src, files } };
+      });
+      const timers = fileReparseTimers.current;
+      const existing = timers.get(path);
+      if (existing !== undefined) window.clearTimeout(existing);
+      timers.set(
+        path,
+        window.setTimeout(() => {
+          timers.delete(path);
+          if (path.endsWith('.cvox')) {
+            const r = parseCvox(nextText);
+            if (!r.ok) {
+              setFileParseError(path, r.message);
+              return;
+            }
+            setFileParseError(path, null);
+            dispatch({
+              type: 'amend',
+              apply: (current) => {
+                const src = current?.source;
+                if (
+                  src === undefined ||
+                  src.kind !== 'folder' ||
+                  src.geometries?.has(path) !== true
+                ) {
+                  return current;
+                }
+                const geometries = new Map(src.geometries);
+                geometries.set(path, r.value);
+                return { ...current, source: { ...src, geometries } };
+              },
+            });
+          } else if (path.endsWith('.json')) {
+            let json: unknown;
+            try {
+              json = JSON.parse(nextText);
+            } catch (e) {
+              setFileParseError(path, `JSON parse: ${(e as Error).message}`);
+              return;
+            }
+            setFileParseError(path, null);
+            // If this file is the manifest-bound palette, re-derive it.
+            // A schema-invalid edit keeps the last good palette (a reload
+            // surfaces it as a project error).
+            dispatch({
+              type: 'amend',
+              apply: (current) => {
+                const src = current?.source;
+                if (
+                  src === undefined ||
+                  src.kind !== 'folder' ||
+                  src.manifest?.palette === undefined ||
+                  normalizePath(src.manifest.palette) !== path
+                ) {
+                  return current;
+                }
+                const pR = parsePaletteFile(json);
+                if (!pR.ok) return current;
+                return {
+                  ...current,
+                  source: { ...src, externalPalette: pR.value },
+                };
+              },
+            });
+          } else {
+            setFileParseError(path, null);
+          }
+        }, REPARSE_DEBOUNCE_MS),
+      );
+    },
+    [dispatchEdit, setFileParseError],
+  );
+
   // Palette / future structural edit on the cvox AST. Re-serializes to
   // canonical text immediately and pre-empts any pending reparse (the
   // new text is by-construction parseable, so we know the error state
@@ -244,15 +457,12 @@ export function App() {
       dispatchEdit(tag ?? null, (current) => {
         if (current?.source === undefined) return current;
         const src = current.source;
-        const nextText = serializeCvox(nextCvox);
-        return {
-          ...current,
-          source: {
-            ...src,
-            cvox: nextCvox,
-            cvoxFile: { ...src.cvoxFile, text: nextText },
-          },
-        };
+        // Callers hand back a whole next AST for the PRIMARY file (the
+        // palette panel and friends operate on it).
+        const nextSrc = mapGeometryFiles(src, (_cvox, path) =>
+          path === src.cvoxFile.name ? nextCvox : null,
+        );
+        return { ...current, source: nextSrc };
       });
     },
     [dispatchEdit, cancelPendingCvoxReparse],
@@ -274,7 +484,7 @@ export function App() {
     const parent =
       canParent &&
       selectedPartName !== null &&
-      src.cvox.parts.some((p) => p.name === selectedPartName)
+      mergeGeometries(src).parts.some((p) => p.name === selectedPartName)
         ? selectedPartName
         : null;
     setCreating({ parent });
@@ -295,7 +505,11 @@ export function App() {
       dispatchEdit(null, (current) => {
         if (current?.source === undefined) return current;
         const src = current.source;
-        if (src.cvox.parts.some((p) => p.name === name)) return current;
+        // Uniqueness is model-wide (§5): guard against a name defined in
+        // ANY geometry file. New parts are created in the primary file.
+        if (mergeGeometries(src).parts.some((p) => p.name === name)) {
+          return current;
+        }
         const seed = src.cvox.palette.length > 0 ? 0 : AIR;
         const newPart: Part = {
           name,
@@ -304,14 +518,11 @@ export function App() {
           sockets: [],
           voxels: [[[seed]]],
         };
-        const nextCvox: Cvox = {
-          ...src.cvox,
-          parts: [...src.cvox.parts, newPart],
-        };
-        const cvoxPatch = {
-          cvox: nextCvox,
-          cvoxFile: { ...src.cvoxFile, text: serializeCvox(nextCvox) },
-        };
+        const nextSrc = mapGeometryFiles(src, (cvox, path) =>
+          path === src.cvoxFile.name
+            ? { ...cvox, parts: [...cvox.parts, newPart] }
+            : null,
+        );
         if (parent !== null && src.kind === 'folder' && src.manifest !== undefined) {
           const parts: ManifestPart[] = [...src.manifest.parts, { name, parent }];
           const nextManifest: Manifest = { ...src.manifest, parts };
@@ -319,8 +530,7 @@ export function App() {
           return {
             ...current,
             source: {
-              ...src,
-              ...cvoxPatch,
+              ...nextSrc,
               manifest: nextManifest,
               manifestFile: {
                 ...baseFile,
@@ -329,7 +539,7 @@ export function App() {
             },
           };
         }
-        return { ...current, source: { ...src, ...cvoxPatch } };
+        return { ...current, source: nextSrc };
       });
       setManifestParseError(null);
       setSelectedPartName(name);
@@ -355,21 +565,27 @@ export function App() {
       dispatchEdit(null, (current) => {
         if (current?.source === undefined) return current;
         const src = current.source;
-        if (!src.cvox.parts.some((p) => p.name === oldName)) return current;
-        if (src.cvox.parts.some((p) => p.name === newName)) return current;
-        const nextParts: Part[] = src.cvox.parts.map((p) => {
-          let np: Part = p;
-          if (np.name === oldName) np = { ...np, name: newName };
-          if (np.from !== undefined && np.from.part === oldName) {
-            np = { ...np, from: { ...np.from, part: newName } };
-          }
-          return np;
+        // Existence / collision checks are model-wide (§5) — the part and
+        // its reuse references may live in different geometry files.
+        const allParts = mergeGeometries(src).parts;
+        if (!allParts.some((p) => p.name === oldName)) return current;
+        if (allParts.some((p) => p.name === newName)) return current;
+        const nextSrc = mapGeometryFiles(src, (cvox) => {
+          let changed = false;
+          const parts: Part[] = cvox.parts.map((p) => {
+            let np: Part = p;
+            if (np.name === oldName) {
+              np = { ...np, name: newName };
+              changed = true;
+            }
+            if (np.from !== undefined && np.from.part === oldName) {
+              np = { ...np, from: { ...np.from, part: newName } };
+              changed = true;
+            }
+            return np;
+          });
+          return changed ? { ...cvox, parts } : null;
         });
-        const nextCvox: Cvox = { ...src.cvox, parts: nextParts };
-        const cvoxPatch = {
-          cvox: nextCvox,
-          cvoxFile: { ...src.cvoxFile, text: serializeCvox(nextCvox) },
-        };
         if (src.kind === 'folder' && src.manifest !== undefined) {
           const m = src.manifest;
           const nextMParts: ManifestPart[] = m.parts.map((mp) => {
@@ -400,8 +616,7 @@ export function App() {
           return {
             ...current,
             source: {
-              ...src,
-              ...cvoxPatch,
+              ...nextSrc,
               manifest: nextManifest,
               manifestFile: {
                 ...baseFile,
@@ -410,7 +625,7 @@ export function App() {
             },
           };
         }
-        return { ...current, source: { ...src, ...cvoxPatch } };
+        return { ...current, source: nextSrc };
       });
       setManifestParseError(null);
       setSelectedPartName(newName);
@@ -440,19 +655,19 @@ export function App() {
       dispatchEdit(null, (current) => {
         if (current?.source === undefined) return current;
         const src = current.source;
-        if (!src.cvox.parts.some((p) => p.name === name)) return current;
+        // Model-wide checks (§5): the part and any clone/mirror of it may
+        // live in different geometry files.
+        const allParts = mergeGeometries(src).parts;
+        if (!allParts.some((p) => p.name === name)) return current;
         // A clone/mirror of this part would dangle — refuse.
-        if (src.cvox.parts.some((p) => p.name !== name && p.from?.part === name)) {
+        if (allParts.some((p) => p.name !== name && p.from?.part === name)) {
           return current;
         }
-        const nextCvox: Cvox = {
-          ...src.cvox,
-          parts: src.cvox.parts.filter((p) => p.name !== name),
-        };
-        const cvoxPatch = {
-          cvox: nextCvox,
-          cvoxFile: { ...src.cvoxFile, text: serializeCvox(nextCvox) },
-        };
+        const nextSrc = mapGeometryFiles(src, (cvox) =>
+          cvox.parts.some((p) => p.name === name)
+            ? { ...cvox, parts: cvox.parts.filter((p) => p.name !== name) }
+            : null,
+        );
         if (src.kind === 'folder' && src.manifest !== undefined) {
           const m = src.manifest;
           const grandparent = m.parts.find((mp) => mp.name === name)?.parent;
@@ -489,8 +704,7 @@ export function App() {
           return {
             ...current,
             source: {
-              ...src,
-              ...cvoxPatch,
+              ...nextSrc,
               manifest: nextManifest,
               manifestFile: {
                 ...baseFile,
@@ -499,7 +713,7 @@ export function App() {
             },
           };
         }
-        return { ...current, source: { ...src, ...cvoxPatch } };
+        return { ...current, source: nextSrc };
       });
       setManifestParseError(null);
       setSelectedPartName((prev) => (prev === name ? null : prev));
@@ -1058,29 +1272,39 @@ export function App() {
         ? 'cvox'
         : viewMode;
 
-  // Prune a selection that points at a part the cvox no longer
+  // The display model: all geometry files' parts merged (Phase C), with
+  // the SPEC §6.10 palette precedence applied for rendering — a manifest-
+  // bound external palette wins over the inline one. Editing surfaces
+  // (PalettePanel, source text) keep operating on the real per-file data.
+  const merged = useMemo(
+    () => (source === undefined ? undefined : mergeGeometries(source)),
+    [source],
+  );
+  const partFiles = merged?.files;
+
+  // Prune a selection that points at a part the model no longer
   // contains (e.g., user edited the source view to remove it). Done
   // at render time rather than via effect so downstream components
   // never see the dangling name even for one frame.
   const effectiveSelectedPart = useMemo(() => {
-    if (selectedPartName === null || source === undefined) return null;
-    return source.cvox.parts.some((p) => p.name === selectedPartName)
+    if (selectedPartName === null || merged === undefined) return null;
+    return merged.parts.some((p) => p.name === selectedPartName)
       ? selectedPartName
       : null;
-  }, [selectedPartName, source]);
+  }, [selectedPartName, merged]);
 
   const animManifest = source?.kind === 'folder' ? source.manifest : undefined;
-
-  // SPEC §6.10: rendering resolves the palette with binding precedence —
-  // a manifest-bound external palette wins over the inline one. Only the
-  // 3D views use this; editing surfaces (PalettePanel, source text) keep
-  // operating on the real inline palette.
+  const modelCvox = useMemo((): Cvox | undefined => {
+    if (source === undefined || merged === undefined) return undefined;
+    return { palette: source.cvox.palette, parts: merged.parts };
+  }, [source, merged]);
   const renderCvox = useMemo(() => {
+    if (modelCvox === undefined) return undefined;
     if (source?.kind !== 'folder' || source.externalPalette === undefined) {
-      return source?.cvox;
+      return modelCvox;
     }
-    return { ...source.cvox, palette: source.externalPalette };
-  }, [source]);
+    return { ...modelCvox, palette: source.externalPalette };
+  }, [modelCvox, source]);
 
   // Dock layout tree (resizable, rearrangeable). In-memory only — layout is
   // session-scoped by design (no persistence); "Reset layout" restores it.
@@ -1092,6 +1316,8 @@ export function App() {
   // (matching the file tree). Used for both tab labels and the + menu.
   const panelTitle = useCallback(
     (id: LeafId): string => {
+      const fpath = filePanelPath(id);
+      if (fpath !== null) return pathBasename(fpath);
       switch (id) {
         case 'files':
           return 'Files';
@@ -1114,6 +1340,8 @@ export function App() {
             (source?.kind === 'folder' ? source.manifestFile?.name : undefined) ??
             'cuboidy.json'
           );
+        default:
+          return id;
       }
     },
     [source],
@@ -1163,27 +1391,74 @@ export function App() {
   const handleReopenPanel = useCallback((id: LeafId) => {
     setLayout((l) => openPanelById(l, id));
   }, []);
-  // Click a file in the tree → bring its source panel forward (re-opening it
-  // if it was closed).
-  const handleOpenFile = useCallback((file: 'cvox' | 'manifest') => {
-    setLayout((l) => openPanelById(l, file));
-  }, []);
-  // Which source files are currently visible (active tab of their leaf) — the
-  // file tree highlights accordingly. Once panelized, cvox and manifest can be
-  // docked apart and shown at once, so this is a set.
-  const visibleSourceFiles = useMemo(() => {
-    const s = new Set<'cvox' | 'manifest'>();
-    if (layout !== null && isPanelVisible(layout, 'cvox')) s.add('cvox');
-    if (layout !== null && isPanelVisible(layout, 'manifest')) s.add('manifest');
+  // Click a file in the tree → bring its panel forward (re-opening it if
+  // it was closed). The primary geometry maps to the classic cvox panel,
+  // cuboidy.json to the manifest panel, anything else to a dynamic
+  // per-file tab.
+  const handleOpenPath = useCallback(
+    (path: string) => {
+      const src = loaded?.source;
+      if (src === undefined) return;
+      const id: LeafId =
+        path === src.cvoxFile.name
+          ? 'cvox'
+          : src.kind === 'folder' && src.manifestFile?.name === path
+            ? 'manifest'
+            : filePanel(path);
+      setLayout((l) => openPanelById(l, id));
+    },
+    [loaded],
+  );
+  // Which package files are currently visible (their panel is the active
+  // tab of its leaf) — the Files tree highlights accordingly.
+  const visiblePaths = useMemo(() => {
+    const s = new Set<string>();
+    if (layout === null || source === undefined) return s;
+    if (isPanelVisible(layout, 'cvox')) s.add(source.cvoxFile.name);
+    if (
+      source.kind === 'folder' &&
+      source.manifestFile !== undefined &&
+      isPanelVisible(layout, 'manifest')
+    ) {
+      s.add(source.manifestFile.name);
+    }
+    if (source.kind === 'folder' && source.files !== undefined) {
+      for (const path of source.files.keys()) {
+        if (isPanelVisible(layout, filePanel(path))) s.add(path);
+      }
+    }
     return s;
-  }, [layout]);
+  }, [layout, source]);
+  // Error per file path (parse errors on live-edited files + load-time
+  // project errors) — red names in the Files tree.
+  const treeFileErrors = useMemo(() => {
+    const m = new Map<string, string>();
+    if (source === undefined) return m;
+    if (source.kind === 'folder') {
+      for (const pe of source.projectErrors ?? []) m.set(pe.file, pe.message);
+    }
+    for (const [p, msg] of fileParseErrors) m.set(p, msg);
+    const mErr =
+      manifestParseError ??
+      (source.kind === 'folder' ? source.manifestError : undefined);
+    if (
+      mErr !== undefined &&
+      mErr !== null &&
+      source.kind === 'folder' &&
+      source.manifestFile !== undefined
+    ) {
+      m.set(source.manifestFile.name, mErr);
+    }
+    if (cvoxParseError !== null) m.set(source.cvoxFile.name, cvoxParseError);
+    return m;
+  }, [source, fileParseErrors, cvoxParseError, manifestParseError]);
 
   // Shared animation session (active clip, playback time, selected key). Owned
   // here so the Preview viewport and the Timeline panel are separate dock
   // panels reading the same state. The clock/Space follow the anim viewport;
   // the lane-editing keys follow the Timeline panel's visibility.
   const animSession = useAnimationSession({
-    cvox: source?.cvox,
+    cvox: modelCvox,
     manifest: animManifest,
     clockEnabled: effectiveViewMode === 'anim' && animManifest !== undefined,
     editKeysEnabled:
@@ -1212,6 +1487,31 @@ export function App() {
     if (source === undefined) return null;
     const manifest = source.kind === 'folder' ? source.manifest : undefined;
     const title = panelTitle(id);
+    // Dynamic per-file editor tabs (v0.7): any package file the Files
+    // tree opened that isn't the primary cvox / manifest pair.
+    const fpath = filePanelPath(id);
+    if (fpath !== null) {
+      const entry =
+        source.kind === 'folder' ? source.files?.get(fpath) : undefined;
+      if (entry === undefined) {
+        return {
+          title,
+          body: <p className="panel-empty">File not found in this package.</p>,
+        };
+      }
+      const err = fileParseErrors.get(fpath);
+      return {
+        title,
+        fill: true,
+        body: (
+          <SourceEditor
+            text={entry.text}
+            {...(err !== undefined && { parseError: err })}
+            onChange={(t) => handleEditFileText(fpath, t)}
+          />
+        ),
+      };
+    }
     switch (id) {
       case 'preview':
         return {
@@ -1317,20 +1617,17 @@ export function App() {
           body: (
             <FileTree
               source={source}
-              activeFiles={visibleSourceFiles}
-              cvoxError={cvoxParseError ?? undefined}
-              manifestError={
-                manifestParseError ??
-                (source.kind === 'folder' ? source.manifestError : undefined)
-              }
-              onOpenFile={handleOpenFile}
+              activePaths={visiblePaths}
+              fileErrors={treeFileErrors}
+              onOpenPath={handleOpenPath}
               onCreateManifest={handleCreateManifest}
             />
           ),
         };
       case 'parts': {
-        const visibleCount = source.cvox.parts.length - hiddenParts.size;
-        const existingNames = new Set(source.cvox.parts.map((p) => p.name));
+        const modelParts = merged?.parts ?? source.cvox.parts;
+        const visibleCount = modelParts.length - hiddenParts.size;
+        const existingNames = new Set(modelParts.map((p) => p.name));
         let n = 1;
         while (existingNames.has(`part${n}`)) n += 1;
         const createSuggested = `part${n}`;
@@ -1370,7 +1667,13 @@ export function App() {
                 </button>
               </div>
               <PartTree
-                parts={source.cvox.parts}
+                parts={modelParts}
+                partFiles={
+                  source.kind === 'folder' &&
+                  (source.geometries?.size ?? 0) > 1
+                    ? partFiles
+                    : undefined
+                }
                 manifest={manifest}
                 hiddenParts={hiddenParts}
                 selectedPart={effectiveSelectedPart}
@@ -1382,6 +1685,7 @@ export function App() {
                 }
                 renameEnabled={
                   cvoxParseError === null &&
+                  fileParseErrors.size === 0 &&
                   !(manifest !== undefined && manifestParseError !== null)
                 }
                 onToggleVisibility={handleToggle}
@@ -1404,11 +1708,12 @@ export function App() {
             effectiveSelectedPart !== null ? (
               <PartProperties
                 selectedPart={effectiveSelectedPart}
-                cvox={source.cvox}
+                cvox={modelCvox ?? source.cvox}
                 manifest={manifest}
                 manifestEditsDisabled={manifestParseError !== null}
                 renameDisabled={
                   cvoxParseError !== null ||
+                  fileParseErrors.size > 0 ||
                   (manifest !== undefined && manifestParseError !== null)
                 }
                 onChangeParent={handleChangePartParent}
@@ -1476,6 +1781,17 @@ export function App() {
             });
           }
         }
+        for (const [p, msg] of fileParseErrors) {
+          entries.push({
+            severity: 'error',
+            source: p,
+            message: (
+              <>
+                <strong>Syntax error:</strong> {msg}
+              </>
+            ),
+          });
+        }
         if (source.droppedInlineComments > 0) {
           entries.push({
             severity: 'warning',
@@ -1495,6 +1811,9 @@ export function App() {
         return { title, body: <ConsolePanel entries={entries} /> };
       }
     }
+    // Unreachable for static ids (the switch is exhaustive over them);
+    // satisfies TS now that LeafId also includes dynamic file ids.
+    return null;
   };
 
   return (
