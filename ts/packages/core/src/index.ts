@@ -1,5 +1,13 @@
-export { ManifestSchema, ManifestPartSchema, parseManifest } from './manifest.js';
+export {
+  ManifestSchema,
+  ManifestPartSchema,
+  manifestGeometry,
+  parseManifest,
+} from './manifest.js';
 export type { Manifest, ManifestPart } from './manifest.js';
+
+export { PaletteFileSchema, parsePaletteFile } from './palette-file.js';
+export { MAX_PALETTE } from './cvox/palette.js';
 
 export {
   AnimationsSchema,
@@ -50,7 +58,8 @@ export type {
 export { buildMesh } from './mesh.js';
 export type { MeshData } from './mesh.js';
 
-export { validateCrossFile } from './lint/cross-file.js';
+export { validateCrossFile, validateProject } from './lint/cross-file.js';
+export type { ProjectInput } from './lint/cross-file.js';
 export { lintCvox } from './lint/voxel-rules.js';
 export type { Diagnostic, LintRuleId, Severity } from './diagnostic.js';
 

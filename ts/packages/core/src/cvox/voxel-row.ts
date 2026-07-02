@@ -5,10 +5,13 @@ export const AIR = -1;
 // Inside a voxels { ... } block, every non-punctuation token is a voxel-row
 // candidate. parseVoxelRow validates it against the declared row width (W)
 // and the palette length. Characters outside [.0-9a-zA-Z] are invalid-value.
+// `paletteSize: null` = the file declares no palette (SPEC §7.4 v0.7) —
+// charset and width still validate, but the index-range check is skipped
+// (it moves to cross-file lint against the manifest-bound palette).
 export function parseVoxelRow(
   text: string,
   w: number,
-  paletteSize: number,
+  paletteSize: number | null,
 ): Result<number[]> {
   if (text.length !== w) {
     return err(
@@ -26,7 +29,7 @@ export function parseVoxelRow(
         `voxel cell '${c}' is not in [.0-9a-zA-Z]`,
       );
     }
-    if (idx !== AIR && idx >= paletteSize) {
+    if (idx !== AIR && paletteSize !== null && idx >= paletteSize) {
       return err(
         'invalid-value',
         `voxel cell '${c}' references palette index ${idx}, palette has ${paletteSize}`,

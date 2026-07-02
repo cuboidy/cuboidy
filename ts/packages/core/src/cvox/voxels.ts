@@ -108,7 +108,13 @@ export function resolveVoxels(
     }
     const layerCells: number[][] = [];
     for (const row of section.rows) {
-      const rowR = parseVoxelRow(row.text, size.w, palette.length);
+      // Empty palette = no inline declaration (SPEC §7.4 v0.7): skip the
+      // index-range check; cross-file lint validates against the bound one.
+      const rowR = parseVoxelRow(
+        row.text,
+        size.w,
+        palette.length === 0 ? null : palette.length,
+      );
       if (!rowR.ok) {
         return err(
           rowR.code,

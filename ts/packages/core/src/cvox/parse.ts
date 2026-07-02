@@ -108,13 +108,18 @@ export class CvoxParser {
   }
 
   private assemble(): Result<Cvox> {
-    if (this.palette === null) {
-      return err('missing', 'missing palette declaration');
-    }
     if (this.parts.length === 0) {
-      return err('missing', 'file contains palette but no parts');
+      return err(
+        'missing',
+        this.palette !== null
+          ? 'file contains palette but no parts'
+          : 'file contains no part declarations',
+      );
     }
-    const palette = this.palette;
+    // SPEC §7.4 (v0.7): the palette declaration is optional ("at most
+    // one"). No declaration → empty palette; voxel index-range validation
+    // is deferred to cross-file lint against the manifest-bound palette.
+    const palette = this.palette ?? [];
 
     // Phase 1: assemble all concrete (non-reuse) parts into a lookup map.
     // Reuse parts (clone/mirror, SPEC §7.5.1) resolve against this map in

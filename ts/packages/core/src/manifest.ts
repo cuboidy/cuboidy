@@ -5,6 +5,31 @@ import { err, ok, type CuboidyErrorCode, type Result } from './result.js';
 
 const Vec3 = z.tuple([z.number(), z.number(), z.number()]);
 
+// SPEC §8 reference path, parameterized by the required extension
+// (`.cvox` for geometry entries, `.json` for the palette binding and
+// animation references). Syntax-only: whether the target exists — and
+// whether a `../` path is loadable at all — is the consuming tool's
+// concern.
+function refPath(ext: string) {
+  return z
+    .string()
+    .refine((s) => s.endsWith(ext) && s.length > ext.length, {
+      message: `must be a relative path ending in ${ext}`,
+    })
+    .refine((s) => !s.includes('\\'), {
+      message: 'must use forward slashes',
+    })
+    .refine((s) => !s.startsWith('/'), {
+      message: 'absolute paths are forbidden',
+    })
+    .refine((s) => !s.includes(':'), {
+      message: 'URLs and namespace:key URIs are forbidden',
+    })
+    .refine((s) => !s.split('/').includes(''), {
+      message: 'empty path segment',
+    });
+}
+
 export const ManifestPartSchema = z
   .object({
     name: Identifier,
@@ -17,10 +42,28 @@ export const ManifestSchema = z
   .object({
     name: Identifier,
     version: z.string().optional(),
+    // SPEC §6.9 (v0.7): the model's geometry files. Absent → the default
+    // ["voxels.cvox"] (use manifestGeometry() to read with the default
+    // applied). Part names are unique across ALL listed files.
+    geometry: z
+      .array(refPath('.cvox'))
+      .min(1)
+      .refine((a) => new Set(a).size === a.length, {
+        message: 'duplicate geometry entry',
+      })
+      .optional(),
+    // SPEC §6.10 (v0.7): external palette binding. When present it applies
+    // to every geometry file and takes precedence over inline palettes.
+    palette: refPath('.json').optional(),
     parts: z.array(ManifestPartSchema).min(1),
     animations: AnimationsSchema.optional(),
   })
   .strict();
+
+// SPEC §6.9: `geometry` with its default applied.
+export function manifestGeometry(m: Manifest): readonly string[] {
+  return m.geometry ?? ['voxels.cvox'];
+}
 
 export type Manifest = z.infer<typeof ManifestSchema>;
 export type ManifestPart = z.infer<typeof ManifestPartSchema>;

@@ -71,6 +71,12 @@ export interface Cvox {
   // comment and the first declaration) are trimmed. Absent when the
   // file has no header comments; never an empty array.
   header?: readonly string[];
+  // SPEC §7.4 (v0.7): at most one palette declaration per file. An EMPTY
+  // array means the file declared no palette — a declared palette always
+  // has ≥ 1 color, so length 0 is unambiguous. Palette-less files rely on
+  // a manifest-bound external palette (§6.10); their voxel index-range
+  // validation moves to cross-file lint. The serializer emits no palette
+  // line for an empty array (round-trips to absent).
   palette: Palette;
   parts: Part[];
 }

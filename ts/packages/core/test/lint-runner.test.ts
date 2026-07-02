@@ -121,6 +121,89 @@ describe('runLint — cross-file diagnostics', () => {
   });
 });
 
+describe('runLint — v0.7 project shape (geometry list + palette binding)', () => {
+  const paletteJson = JSON.stringify({ colors: ['#F00', '#0F0'] });
+
+  it('multi-cvox model with a bound palette lints clean', async () => {
+    const dir = await makeModel({
+      'body.cvox': 'part body\nsize 1 1 1\nvoxels { 0 }',
+      'gear/hat.cvox': 'part hat\nsize 1 1 1\nvoxels { 1 }',
+      'palette.json': paletteJson,
+      'cuboidy.json': JSON.stringify({
+        name: 'm',
+        geometry: ['body.cvox', 'gear/hat.cvox'],
+        palette: 'palette.json',
+        parts: [{ name: 'body' }, { name: 'hat', parent: 'body' }],
+      }),
+    });
+    const r = await runLint(dir);
+    expect(r.diagnostics).toEqual([]);
+    expect(r.exitCode).toBe(0);
+  });
+
+  it('a geometry ref that cannot be read is a model error (exit 1)', async () => {
+    const dir = await makeModel({
+      'cuboidy.json': JSON.stringify({
+        name: 'm',
+        geometry: ['nope.cvox'],
+        parts: [{ name: 'body' }],
+      }),
+    });
+    const r = await runLint(dir);
+    expect(r.exitCode).toBe(1);
+    expect(
+      r.diagnostics.some((d) => d.diag.message.includes('nope.cvox')),
+    ).toBe(true);
+  });
+
+  it('W07: an unreferenced .cvox in the package warns', async () => {
+    const dir = await makeModel({
+      'voxels.cvox': 'palette #F00\npart body\nsize 1 1 1\nvoxels { 0 }',
+      'scratch.cvox': 'palette #F00\npart junk\nsize 1 1 1\nvoxels { 0 }',
+      'cuboidy.json': JSON.stringify({
+        name: 'm',
+        parts: [{ name: 'body' }],
+      }),
+    });
+    const r = await runLint(dir);
+    const w07 = r.diagnostics.find((d) => d.diag.ruleId === 'W07');
+    expect(w07?.diag.message).toContain('scratch.cvox');
+    expect(r.exitCode).toBe(0); // warning only
+  });
+
+  it('a broken palette file is an error and suppresses cross-file noise', async () => {
+    const dir = await makeModel({
+      'body.cvox': 'part body\nsize 1 1 1\nvoxels { 0 }',
+      'palette.json': JSON.stringify({ colors: [] }),
+      'cuboidy.json': JSON.stringify({
+        name: 'm',
+        geometry: ['body.cvox'],
+        palette: 'palette.json',
+        parts: [{ name: 'body' }],
+      }),
+    });
+    const r = await runLint(dir);
+    expect(r.exitCode).toBe(1);
+    expect(r.diagnostics).toHaveLength(1);
+    expect(r.diagnostics[0]?.diag.code).toBe('wrong-arity');
+  });
+
+  it('palette-less geometry without a binding errors cross-file', async () => {
+    const dir = await makeModel({
+      'voxels.cvox': 'part body\nsize 1 1 1\nvoxels { 0 }',
+      'cuboidy.json': JSON.stringify({
+        name: 'm',
+        parts: [{ name: 'body' }],
+      }),
+    });
+    const r = await runLint(dir);
+    expect(r.exitCode).toBe(1);
+    const xfile = r.diagnostics.find((d) => d.file === '<cross-file>');
+    expect(xfile?.diag.code).toBe('missing');
+    expect(xfile?.diag.message).toContain('no palette');
+  });
+});
+
 describe('formatDiagnostic — SPEC §11.7 format', () => {
   it('uses ruleId in brackets when present', () => {
     const line = formatDiagnostic({

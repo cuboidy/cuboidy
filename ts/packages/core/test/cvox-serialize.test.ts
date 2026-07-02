@@ -9,6 +9,35 @@ function unwrap(input: string): Cvox {
   return r.value;
 }
 
+describe('serializeCvox — palette-less files (SPEC §7.4 v0.7)', () => {
+  it('emits no palette line for an empty palette and round-trips', () => {
+    const cvox = unwrap('part box\nsize 1 1 1\nvoxels { 0 }');
+    const text = serializeCvox(cvox);
+    expect(text).toBe(
+      'part box\n' +
+        '    size 1 1 1\n' +
+        '    voxels {\n' +
+        '        0\n' +
+        '    }\n',
+    );
+    expect(unwrap(text)).toEqual(cvox);
+  });
+
+  it('keeps a single blank line between header and first part', () => {
+    const cvox = unwrap('// my header\n\npart box\nsize 1 1 1\nvoxels { . }');
+    const text = serializeCvox(cvox);
+    expect(text).toBe(
+      '// my header\n' +
+        '\n' +
+        'part box\n' +
+        '    size 1 1 1\n' +
+        '    voxels {\n' +
+        '        .\n' +
+        '    }\n',
+    );
+  });
+});
+
 describe('serializeCvox — canonical output shape', () => {
   it('emits palette on the first line, then a blank line, then parts', () => {
     const cvox = unwrap('palette #FFD700\npart crown\nsize 1 1 1\nvoxels { 0 }');

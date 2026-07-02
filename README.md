@@ -2,7 +2,7 @@
 
 An open text-based file format for voxel character models, rigs, and animations.
 
-**Status: v0.6 draft. See [SPEC.md](SPEC.md) for the formal specification.**
+**Status: v0.7 draft. See [SPEC.md](SPEC.md) for the formal specification.**
 
 ## What it is
 
@@ -127,12 +127,12 @@ Full methodology, dataset, and per-model numbers in
 
 ## Roadmap
 
-- [x] Spec document (`SPEC.md`) — v0.6 draft
-- [x] Reference parser (TypeScript) — `ts/packages/core/`, full v0.6 grammar (321 tests)
-- [x] Cross-file lint — `missing` error / `unknown` warning between manifest and voxels
+- [x] Spec document (`SPEC.md`) — v0.7 draft (multi-file geometry, shareable external palettes)
+- [x] Reference parser (TypeScript) — `ts/packages/core/`, full v0.7 grammar (432 tests)
+- [x] Cross-file lint — project-shaped validation (`validateProject`): manifest↔geometry part matching, cross-file duplicate names, palette resolution/range, W07 unreferenced `.cvox`, H03 shadowed inline palette
 - [x] Shared parity fixtures — `fixtures/cvox/<code>/` and `fixtures/json/<code>/`, contract for cross-implementation conformance
 - [x] JSON Schema for `cuboidy.json` — `schema/cuboidy.schema.json` (Draft 2020-12, derived from the Zod ManifestSchema; reference via `"$schema": "https://cuboidy.com/schema/cuboidy.schema.json"` or the GitHub raw URL)
-- [x] Canonical serializer (reader-tolerant / writer-strict) — `serializeCvox(cvox)` produces canonical text; round-trip with `parseCvox` verified. **File header preserved** (SPEC §7.11.1); inline comments are advisory and intentionally not preserved (v0.6 policy)
+- [x] Canonical serializer (reader-tolerant / writer-strict) — `serializeCvox(cvox)` produces canonical text; round-trip with `parseCvox` verified. **File header preserved** (SPEC §7.11.1); inline comments are advisory and intentionally not preserved (v0.6+ policy)
 - [x] Voxel definition linter — `lintCvox(cvox)` library (W01–W05 + H01–H02) and `cuboidy-lint <dir>` CLI (SPEC §11.7 output, `--strict` for warnings-as-errors)
 - [x] Model inspection CLIs — `cuboidy-view` (ASCII projection), `cuboidy-query` (exact coordinate lookup), and `cuboidy-snap` (multi-angle PNG renders; contact sheet + per-angle, dependency-free) for human / multimodal review
 - [x] Image snapshots — `cuboidy-snap <dir>` renders a model to PNG from several angles, the raster counterpart to `cuboidy-view`, for visual review and AI-assisted editing

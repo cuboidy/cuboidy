@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseManifest } from '../src/manifest.js';
+import { manifestGeometry, parseManifest } from '../src/manifest.js';
 import { readFixtureJson } from './helpers/fixtures.js';
 
 describe('parseManifest', () => {
@@ -86,6 +86,85 @@ describe('parseManifest', () => {
   it('invalid-value (not missing): wrong-type `parts` falls through to invalid-value', () => {
     const json = { name: 'test', parts: 'not an array' };
     const r = parseManifest(json);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('invalid-value');
+  });
+});
+
+// SPEC §6.9 / §6.10 (v0.7): geometry list + external palette binding.
+describe('parseManifest — geometry & palette (v0.7)', () => {
+  const base = { name: 'test', parts: [{ name: 'body' }] };
+
+  it('accepts a geometry list and a palette binding', () => {
+    const r = parseManifest({
+      ...base,
+      geometry: ['body.cvox', 'gear/hat.cvox', '../shared/tail.cvox'],
+      palette: 'palette.json',
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.geometry).toEqual([
+      'body.cvox',
+      'gear/hat.cvox',
+      '../shared/tail.cvox',
+    ]);
+    expect(r.value.palette).toBe('palette.json');
+  });
+
+  it('manifestGeometry applies the ["voxels.cvox"] default', () => {
+    const r = parseManifest(base);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.geometry).toBeUndefined();
+    expect(manifestGeometry(r.value)).toEqual(['voxels.cvox']);
+  });
+
+  it('rejects a geometry entry with the wrong extension', () => {
+    const r = parseManifest({ ...base, geometry: ['body.json'] });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('invalid-value');
+  });
+
+  it('rejects an absolute geometry path', () => {
+    const r = parseManifest({ ...base, geometry: ['/etc/body.cvox'] });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('invalid-value');
+  });
+
+  it('rejects backslashes in a reference path', () => {
+    const r = parseManifest({ ...base, geometry: ['gear\\hat.cvox'] });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('invalid-value');
+  });
+
+  it('rejects URL and namespace:key forms', () => {
+    for (const bad of ['https://x.com/a.cvox', 'pack:body.cvox']) {
+      const r = parseManifest({ ...base, geometry: [bad] });
+      expect(r.ok, bad).toBe(false);
+      if (!r.ok) expect(r.code).toBe('invalid-value');
+    }
+  });
+
+  it('rejects duplicate geometry entries', () => {
+    const r = parseManifest({ ...base, geometry: ['a.cvox', 'a.cvox'] });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('invalid-value');
+  });
+
+  it('rejects an empty geometry list', () => {
+    const r = parseManifest({ ...base, geometry: [] });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('invalid-value');
+  });
+
+  it('rejects a bare extension as a path', () => {
+    const r = parseManifest({ ...base, palette: '.json' });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('invalid-value');
+  });
+
+  it('rejects a palette binding that is not .json', () => {
+    const r = parseManifest({ ...base, palette: 'palette.cvox' });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe('invalid-value');
   });

@@ -47,7 +47,7 @@ export function buildManifestJsonSchema(): Record<string, unknown> {
     $id: 'https://cuboidy.com/schema/cuboidy.schema.json',
     title: 'Cuboidy Manifest',
     description:
-      'Schema for cuboidy.json — the manifest file of a Cuboidy v0.6 model package (rig hierarchy + animation references). Generated from the Zod ManifestSchema in @cuboidy/core.',
+      'Schema for cuboidy.json — the manifest file of a Cuboidy v0.7 model package (geometry list, palette binding, rig hierarchy + animation references). Generated from the Zod ManifestSchema in @cuboidy/core. Note: SPEC §8 reference-path rules on geometry/palette entries are runtime-only (Zod refinements) and appear here as plain strings.',
     ...constrained,
   };
 }

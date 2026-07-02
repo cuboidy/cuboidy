@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseManifest } from '../src/manifest.js';
 import { parseCvox } from '../src/cvox/parse.js';
-import { validateCrossFile } from '../src/lint/cross-file.js';
+import { validateCrossFile, validateProject } from '../src/lint/cross-file.js';
 import { readFixtureJson, readFixtureText } from './helpers/fixtures.js';
 
 async function loadModel(folder: string) {
@@ -95,5 +95,153 @@ describe('validateCrossFile', () => {
     const diags = validateCrossFile(manifest, voxelDef);
     const codes = diags.map((d) => d.code).sort();
     expect(codes).toEqual(['missing', 'unknown', 'unknown']);
+  });
+});
+
+// SPEC §11 (v0.7): project-shaped validation — multiple geometry files,
+// palette binding resolution, unreferenced-file warning.
+describe('validateProject (v0.7)', () => {
+  function cvoxOrThrow(text: string) {
+    const r = parseCvox(text);
+    if (!r.ok) throw new Error(`cvox parse failed: ${r.message}`);
+    return r.value;
+  }
+  const bodyCvox = cvoxOrThrow(
+    'palette #F00 #0F0\npart body\nsize 1 1 1\nvoxels { 1 }',
+  );
+  // No inline palette; uses index 0 (valid only when a palette is bound).
+  const bareCvox = cvoxOrThrow('part gear\nsize 1 1 1\nvoxels { 0 }');
+  // No inline palette; all air (never needs a palette).
+  const airCvox = cvoxOrThrow('part ghost\nsize 1 1 1\nvoxels { . }');
+
+  it('errors on a part name defined in two geometry files', () => {
+    const manifest = manifestOrThrow({
+      name: 't',
+      geometry: ['a.cvox', 'b.cvox'],
+      parts: [{ name: 'body' }],
+    });
+    const diags = validateProject({
+      manifest,
+      geometries: [
+        { path: 'a.cvox', cvox: bodyCvox },
+        { path: 'b.cvox', cvox: bodyCvox },
+      ],
+    });
+    const dup = diags.find((d) => d.code === 'duplicate');
+    expect(dup?.severity).toBe('error');
+    expect(dup?.message).toContain('a.cvox');
+    expect(dup?.message).toContain('b.cvox');
+  });
+
+  it('errors on a manifest part defined in no geometry file', () => {
+    const manifest = manifestOrThrow({
+      name: 't',
+      parts: [{ name: 'body' }, { name: 'wing' }],
+    });
+    const diags = validateProject({
+      manifest,
+      geometries: [{ path: 'voxels.cvox', cvox: bodyCvox }],
+    });
+    expect(diags.some((d) => d.code === 'missing' && d.message.includes("'wing'"))).toBe(
+      true,
+    );
+  });
+
+  it('errors when a file uses color indices with no palette anywhere', () => {
+    const manifest = manifestOrThrow({
+      name: 't',
+      geometry: ['gear.cvox'],
+      parts: [{ name: 'gear' }],
+    });
+    const diags = validateProject({
+      manifest,
+      geometries: [{ path: 'gear.cvox', cvox: bareCvox }],
+    });
+    expect(
+      diags.some((d) => d.code === 'missing' && d.message.includes('no palette')),
+    ).toBe(true);
+  });
+
+  it('accepts an all-air file with no palette anywhere', () => {
+    const manifest = manifestOrThrow({
+      name: 't',
+      geometry: ['ghost.cvox'],
+      parts: [{ name: 'ghost' }],
+    });
+    expect(
+      validateProject({
+        manifest,
+        geometries: [{ path: 'ghost.cvox', cvox: airCvox }],
+      }),
+    ).toEqual([]);
+  });
+
+  it('a bound palette satisfies a palette-less file', () => {
+    const manifest = manifestOrThrow({
+      name: 't',
+      geometry: ['gear.cvox'],
+      palette: 'palette.json',
+      parts: [{ name: 'gear' }],
+    });
+    const diags = validateProject({
+      manifest,
+      geometries: [{ path: 'gear.cvox', cvox: bareCvox }],
+      externalPalette: [{ r: 0, g: 0, b: 0, a: 255 }],
+    });
+    expect(diags).toEqual([]);
+  });
+
+  it('errors when the bound palette is shorter than the used indices', () => {
+    const manifest = manifestOrThrow({
+      name: 't',
+      geometry: ['body.cvox'],
+      palette: 'palette.json',
+      parts: [{ name: 'body' }],
+    });
+    // bodyCvox uses index 1; the bound palette has a single color.
+    const diags = validateProject({
+      manifest,
+      geometries: [{ path: 'body.cvox', cvox: bodyCvox }],
+      externalPalette: [{ r: 0, g: 0, b: 0, a: 255 }],
+    });
+    expect(
+      diags.some(
+        (d) => d.code === 'invalid-value' && d.severity === 'error' && d.message.includes('index 1'),
+      ),
+    ).toBe(true);
+  });
+
+  it('H03: hints when a binding shadows an inline palette', () => {
+    const manifest = manifestOrThrow({
+      name: 't',
+      geometry: ['body.cvox'],
+      palette: 'palette.json',
+      parts: [{ name: 'body' }],
+    });
+    const diags = validateProject({
+      manifest,
+      geometries: [{ path: 'body.cvox', cvox: bodyCvox }],
+      externalPalette: [
+        { r: 0, g: 0, b: 0, a: 255 },
+        { r: 1, g: 1, b: 1, a: 255 },
+      ],
+    });
+    expect(diags.map((d) => d.ruleId)).toEqual(['H03']);
+    expect(diags[0]?.severity).toBe('hint');
+  });
+
+  it('W07: warns on a package .cvox not referenced by the geometry list', () => {
+    const manifest = manifestOrThrow({
+      name: 't',
+      geometry: ['body.cvox'],
+      parts: [{ name: 'body' }],
+    });
+    const diags = validateProject({
+      manifest,
+      geometries: [{ path: 'body.cvox', cvox: bodyCvox }],
+      packageCvoxPaths: ['body.cvox', 'scratch.cvox'],
+    });
+    expect(diags.map((d) => d.ruleId)).toEqual(['W07']);
+    expect(diags[0]?.message).toContain('scratch.cvox');
   });
 });

@@ -4,11 +4,14 @@ import type { CvoxParser } from './parse.js';
 import type { Token } from './tokenize.js';
 import type { Color, Palette } from './types.js';
 
-const MAX_PALETTE = 62;
+// SPEC §7.4: shared by the inline cvox palette and the external palette
+// file (§6.10) — both use the same color grammar and the same 62-slot
+// index space.
+export const MAX_PALETTE = 62;
 
 const HEX_RE = /^#([0-9a-fA-F]+)$/;
 
-function parseHexColor(s: string): Color | null {
+export function parseHexColor(s: string): Color | null {
   const m = HEX_RE.exec(s);
   if (!m) return null;
   const hex = m[1]!;

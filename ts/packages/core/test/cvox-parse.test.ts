@@ -87,9 +87,21 @@ describe('parseCvox (v0.3 voxels block grammar)', () => {
   });
 
   describe('missing', () => {
-    it('rejects missing palette', () => {
+    // SPEC §7.4 (v0.7): the palette declaration is "at most one" — a file
+    // with no palette parses (empty palette in the AST) and its voxel
+    // index-range check defers to cross-file lint.
+    it('accepts a file with no palette declaration', () => {
       const text = 'part head\nsize 1 1 1\nvoxels { 0 }';
       const r = parseCvox(text);
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        expect(r.value.palette).toEqual([]);
+        expect(r.value.parts[0]?.voxels[0]?.[0]?.[0]).toBe(0);
+      }
+    });
+
+    it('rejects an empty file', () => {
+      const r = parseCvox('// just a comment\n');
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.code).toBe('missing');
     });
