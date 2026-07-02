@@ -11,6 +11,7 @@ import {
   addAttrAtTime,
   deleteAttrAtKey,
   isIdentifier,
+  manifestGeometry,
   moveAttrKey,
   parseCvox,
   parseManifest,
@@ -442,6 +443,270 @@ export function App() {
       );
     },
     [dispatchEdit, setFileParseError],
+  );
+
+  // ── File CRUD (Phase D). Folder sources with a files map only; each
+  // operation is one dispatchEdit = one atomic undo step. The manifest
+  // is the reference anchor, so structural file ops keep its geometry /
+  // palette / animation refs in sync and re-serialize it. ──
+
+  const handleCreateFile = useCallback(
+    (path: string) => {
+      dispatchEdit(null, (current) => {
+        const src = current?.source;
+        if (
+          src === undefined ||
+          src.kind !== 'folder' ||
+          src.files === undefined
+        ) {
+          return current;
+        }
+        const norm = normalizePath(path);
+        if (norm === '' || norm.startsWith('../')) return current;
+        if (
+          src.files.has(norm) ||
+          src.cvoxFile.name === norm ||
+          src.manifestFile?.name === norm
+        ) {
+          return current;
+        }
+        const isCvox = norm.toLowerCase().endsWith('.cvox');
+        let text: string;
+        let parsed: Cvox | null = null;
+        if (isCvox) {
+          // Template: one all-air part — valid with or without a palette
+          // (§7.4). Part name unique model-wide (§5).
+          const names = new Set(mergeGeometries(src).parts.map((p) => p.name));
+          let n = 1;
+          while (names.has(`part${n}`)) n += 1;
+          const part: Part = {
+            name: `part${n}`,
+            size: { w: 1, h: 1, d: 1 },
+            pivot: { pos: { x: 0.5, y: 0, z: 0.5 } },
+            sockets: [],
+            voxels: [[[AIR]]],
+          };
+          parsed = { palette: [], parts: [part] };
+          text = serializeCvox(parsed);
+        } else {
+          text = norm.toLowerCase().endsWith('.json') ? '{}\n' : '';
+        }
+        const files = new Map(src.files);
+        files.set(norm, { name: norm, text });
+        const removedFiles = new Set(src.removedFiles ?? []);
+        removedFiles.delete(norm); // re-creating a removed path revives it
+        let next: typeof src = { ...src, files, removedFiles };
+        if (isCvox && parsed !== null) {
+          const geometries = new Map(
+            src.geometries ?? [[src.cvoxFile.name, src.cvox]],
+          );
+          geometries.set(norm, parsed);
+          next = { ...next, geometries };
+          // Reference it from the manifest so it's part of the model
+          // (unreferenced files are ignored + lint as W07).
+          if (src.manifest !== undefined) {
+            const geometry = manifestGeometry(src.manifest).map(normalizePath);
+            if (!geometry.includes(norm)) geometry.push(norm);
+            const nextManifest: Manifest = { ...src.manifest, geometry };
+            const baseFile =
+              src.manifestFile ?? { name: 'cuboidy.json', text: '' };
+            next = {
+              ...next,
+              manifest: nextManifest,
+              manifestFile: {
+                ...baseFile,
+                text: JSON.stringify(nextManifest, null, 2) + '\n',
+              },
+            };
+          }
+        }
+        return { ...current, source: next };
+      });
+    },
+    [dispatchEdit],
+  );
+
+  const handleRenameFile = useCallback(
+    (oldPath: string, newPath: string) => {
+      const from = normalizePath(oldPath);
+      const to = normalizePath(newPath);
+      dispatchEdit(null, (current) => {
+        const src = current?.source;
+        if (
+          src === undefined ||
+          src.kind !== 'folder' ||
+          src.files === undefined
+        ) {
+          return current;
+        }
+        if (from === to || to === '' || to.startsWith('../')) return current;
+        if (src.manifestFile?.name === from) return current; // the anchor
+        if (src.files.has(to) || src.manifestFile?.name === to) return current;
+        const entry = src.files.get(from);
+        if (entry === undefined) return current;
+        const isPrimary = src.cvoxFile.name === from;
+        const inGeometry = src.geometries?.has(from) === true;
+        // Geometry renames must be recorded in the manifest — without
+        // one the loader can't find the file next time. And a reference
+        // keeps its §8 extension.
+        if (isPrimary || inGeometry) {
+          if (src.manifest === undefined) return current;
+          if (!to.toLowerCase().endsWith('.cvox')) return current;
+        }
+        const isBoundPalette =
+          src.manifest?.palette !== undefined &&
+          normalizePath(src.manifest.palette) === from;
+        if (isBoundPalette && !to.toLowerCase().endsWith('.json')) {
+          return current;
+        }
+
+        const files = new Map(src.files);
+        files.delete(from);
+        files.set(to, { name: to, text: entry.text });
+        const removedFiles = new Set(src.removedFiles ?? []);
+        removedFiles.add(from);
+        removedFiles.delete(to);
+        let next: typeof src = { ...src, files, removedFiles };
+
+        if (src.geometries?.has(from) === true) {
+          const geometries = new Map(src.geometries);
+          const cvox = geometries.get(from)!;
+          geometries.delete(from);
+          geometries.set(to, cvox);
+          next = { ...next, geometries };
+        }
+        if (isPrimary) {
+          next = { ...next, cvoxFile: { ...src.cvoxFile, name: to } };
+        }
+
+        if (src.manifest !== undefined) {
+          let m = src.manifest;
+          let changed = false;
+          if (isPrimary || inGeometry) {
+            const geometry = manifestGeometry(m).map((g) =>
+              normalizePath(g) === from ? to : normalizePath(g),
+            );
+            m = { ...m, geometry };
+            changed = true;
+          }
+          if (isBoundPalette) {
+            m = { ...m, palette: to };
+            changed = true;
+          }
+          if (m.animations !== undefined) {
+            const rebuilt: NonNullable<Manifest['animations']> = {};
+            let animChanged = false;
+            for (const [aName, anim] of Object.entries(m.animations)) {
+              if (typeof anim === 'string' && normalizePath(anim) === from) {
+                rebuilt[aName] = to;
+                animChanged = true;
+              } else {
+                rebuilt[aName] = anim;
+              }
+            }
+            if (animChanged) {
+              m = { ...m, animations: rebuilt };
+              changed = true;
+            }
+          }
+          if (changed) {
+            const baseFile =
+              src.manifestFile ?? { name: 'cuboidy.json', text: '' };
+            next = {
+              ...next,
+              manifest: m,
+              manifestFile: {
+                ...baseFile,
+                text: JSON.stringify(m, null, 2) + '\n',
+              },
+            };
+          }
+        }
+        return { ...current, source: next };
+      });
+      // Re-key any live parse error for the renamed file.
+      setFileParseErrors((prev) => {
+        if (!prev.has(from)) return prev;
+        const next = new Map(prev);
+        const msg = next.get(from)!;
+        next.delete(from);
+        next.set(to, msg);
+        return next;
+      });
+    },
+    [dispatchEdit],
+  );
+
+  const handleDeleteFile = useCallback(
+    (path: string) => {
+      const p = normalizePath(path);
+      dispatchEdit(null, (current) => {
+        const src = current?.source;
+        if (
+          src === undefined ||
+          src.kind !== 'folder' ||
+          src.files === undefined
+        ) {
+          return current;
+        }
+        if (src.manifestFile?.name === p) return current; // the anchor
+        if (src.cvoxFile.name === p) return current; // primary geometry
+        if (!src.files.has(p)) return current;
+        const files = new Map(src.files);
+        files.delete(p);
+        const removedFiles = new Set(src.removedFiles ?? []);
+        removedFiles.add(p);
+        let next: typeof src = { ...src, files, removedFiles };
+        if (src.geometries?.has(p) === true) {
+          const geometries = new Map(src.geometries);
+          geometries.delete(p);
+          next = { ...next, geometries };
+        }
+        if (src.manifest !== undefined) {
+          let m = src.manifest;
+          let changed = false;
+          if (
+            m.geometry !== undefined &&
+            m.geometry.some((g) => normalizePath(g) === p)
+          ) {
+            m = {
+              ...m,
+              geometry: m.geometry.filter((g) => normalizePath(g) !== p),
+            };
+            changed = true;
+          }
+          if (m.palette !== undefined && normalizePath(m.palette) === p) {
+            // Deleting the bound palette drops the binding too — a
+            // dangling reference would just be a guaranteed load error.
+            const { palette: _dropped, ...rest } = m;
+            m = rest;
+            changed = true;
+            const { externalPalette: _x, ...srcRest } = next;
+            next = srcRest;
+          }
+          if (changed) {
+            const baseFile =
+              src.manifestFile ?? { name: 'cuboidy.json', text: '' };
+            next = {
+              ...next,
+              manifest: m,
+              manifestFile: {
+                ...baseFile,
+                text: JSON.stringify(m, null, 2) + '\n',
+              },
+            };
+          }
+        }
+        return { ...current, source: next };
+      });
+      setFileParseErrors((prev) => {
+        if (!prev.has(p)) return prev;
+        const next = new Map(prev);
+        next.delete(p);
+        return next;
+      });
+    },
+    [dispatchEdit],
   );
 
   // Palette / future structural edit on the cvox AST. Re-serializes to
@@ -1621,6 +1886,9 @@ export function App() {
               fileErrors={treeFileErrors}
               onOpenPath={handleOpenPath}
               onCreateManifest={handleCreateManifest}
+              onCreateFile={handleCreateFile}
+              onRenameFile={handleRenameFile}
+              onDeleteFile={handleDeleteFile}
             />
           ),
         };

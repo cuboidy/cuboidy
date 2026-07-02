@@ -1163,6 +1163,44 @@ pre {
   margin: 0.25rem 0.75rem 0.75rem;
 }
 
+/* Inline create/rename row in the Files tree (v0.7 CRUD) — mirrors the
+   tree-node-button geometry so the input lines up with file names. */
+.tree-node-draft {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 1rem;
+}
+
+/* Hover-revealed per-file delete. A span styled as a button (nested
+   inside the row's real <button>, so it can't be one itself). */
+.file-delete {
+  width: 16px;
+  height: 16px;
+  margin-left: auto;
+  color: #777;
+  font-size: 0.85rem;
+  opacity: 0;
+}
+
+.tree-node.file:hover .file-delete {
+  opacity: 1;
+}
+
+.file-delete:hover:not([aria-disabled='true']) {
+  background: #4a2a2a;
+  color: #faa;
+}
+
+.file-delete[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0;
+}
+
+.tree-node.file:hover .file-delete[aria-disabled='true'] {
+  opacity: 0.4;
+}
+
 /* ─── Parts list ──────────────────────────────────────────────────── */
 
 /* Parts panel toolbar: New part / Show all / Hide all on one row, pinned to

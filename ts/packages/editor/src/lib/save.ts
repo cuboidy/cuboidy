@@ -42,13 +42,24 @@ export async function saveToFolder(
     throw new Error('No folder handle — cannot save in place');
   }
   await ensureReadwritePermission(source.handle);
-  await writeTextFile(source.handle, source.cvoxFile.name, source.cvoxFile.text);
+  // Whole package (v0.7): every collected file, with the live-edited
+  // pair overriding their load-time snapshots.
+  const files = new Map<string, string>();
+  if (source.files !== undefined) {
+    for (const [path, entry] of source.files) files.set(path, entry.text);
+  }
+  files.set(source.cvoxFile.name, source.cvoxFile.text);
   if (source.manifestFile !== undefined) {
-    await writeTextFile(
-      source.handle,
-      source.manifestFile.name,
-      source.manifestFile.text,
-    );
+    files.set(source.manifestFile.name, source.manifestFile.text);
+  }
+  for (const [path, text] of files) {
+    await writeTextFile(source.handle, path, text);
+  }
+  // Files deleted / renamed away in the editor. Already-gone entries are
+  // fine (a second save after a successful delete is a no-op).
+  for (const path of source.removedFiles ?? []) {
+    if (files.has(path)) continue; // defensive: never delete a live path
+    await removeFile(source.handle, path);
   }
 }
 
@@ -118,6 +129,23 @@ async function writeTextFile(
     await writable.write(text);
   } finally {
     await writable.close();
+  }
+}
+
+async function removeFile(
+  dir: FileSystemDirectoryHandle,
+  name: string,
+): Promise<void> {
+  const segments = name.split('/');
+  const base = segments.pop()!;
+  let target = dir;
+  try {
+    for (const seg of segments) {
+      target = await target.getDirectoryHandle(seg);
+    }
+    await target.removeEntry(base);
+  } catch {
+    // Not found (already deleted on a previous save) — nothing to do.
   }
 }
 

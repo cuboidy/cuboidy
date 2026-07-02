@@ -57,6 +57,12 @@ export type LoadedSource =
       // (missing/unparsable geometry refs, palette issues). Surfaced in
       // the Console panel.
       projectErrors?: ReadonlyArray<{ file: string; message: string }>;
+      // Paths deleted (or renamed away) in the editor since load. Save
+      // removes them from disk (ignoring already-gone ones, so the set
+      // never needs clearing); ZIP export omits them naturally. Part of
+      // the undoable source state — undo restores the file AND unmarks
+      // the removal.
+      removedFiles?: ReadonlySet<string>;
     };
 
 // Result of attempting a load. `source` is undefined on hard parse
