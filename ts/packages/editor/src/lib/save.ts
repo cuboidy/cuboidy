@@ -61,9 +61,16 @@ export async function downloadAsZip(
   source: Extract<LoadedSource, { kind: 'folder' }>,
   zipName: string,
 ): Promise<void> {
-  const files: Zippable = {
-    [source.cvoxFile.name]: strToU8(source.cvoxFile.text),
-  };
+  // Whole package (v0.7): every file collected at load, with the two
+  // live-edited files overriding their load-time snapshots — so extra
+  // geometry files, palette.json and anims/ survive the round-trip.
+  const files: Zippable = {};
+  if (source.files !== undefined) {
+    for (const [path, entry] of source.files) {
+      files[path] = strToU8(entry.text);
+    }
+  }
+  files[source.cvoxFile.name] = strToU8(source.cvoxFile.text);
   if (source.manifestFile !== undefined) {
     files[source.manifestFile.name] = strToU8(source.manifestFile.text);
   }
@@ -92,12 +99,20 @@ async function ensureReadwritePermission(
   }
 }
 
+// `name` may be a /-separated sub-path (v0.7 geometry refs like
+// `gear/hat.cvox`) — intermediate directories are created as needed.
 async function writeTextFile(
   dir: FileSystemDirectoryHandle,
   name: string,
   text: string,
 ): Promise<void> {
-  const fileHandle = await dir.getFileHandle(name, { create: true });
+  const segments = name.split('/');
+  const base = segments.pop()!;
+  let target = dir;
+  for (const seg of segments) {
+    target = await target.getDirectoryHandle(seg, { create: true });
+  }
+  const fileHandle = await target.getFileHandle(base, { create: true });
   const writable = await fileHandle.createWritable();
   try {
     await writable.write(text);

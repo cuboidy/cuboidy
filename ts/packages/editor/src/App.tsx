@@ -148,7 +148,8 @@ export function App() {
         result.source !== undefined &&
         (result.source.droppedInlineComments > 0 ||
           (result.source.kind === 'folder' &&
-            result.source.manifestError !== undefined))
+            (result.source.manifestError !== undefined ||
+              (result.source.projectErrors?.length ?? 0) > 0)))
       ) {
         setLayout((l) => openPanelById(l, 'console'));
       }
@@ -1070,6 +1071,17 @@ export function App() {
 
   const animManifest = source?.kind === 'folder' ? source.manifest : undefined;
 
+  // SPEC §6.10: rendering resolves the palette with binding precedence —
+  // a manifest-bound external palette wins over the inline one. Only the
+  // 3D views use this; editing surfaces (PalettePanel, source text) keep
+  // operating on the real inline palette.
+  const renderCvox = useMemo(() => {
+    if (source?.kind !== 'folder' || source.externalPalette === undefined) {
+      return source?.cvox;
+    }
+    return { ...source.cvox, palette: source.externalPalette };
+  }, [source]);
+
   // Dock layout tree (resizable, rearrangeable). In-memory only — layout is
   // session-scoped by design (no persistence); "Reset layout" restores it.
   // Null = every panel closed (empty dock); App renders an add-panel state.
@@ -1222,7 +1234,7 @@ export function App() {
               source.kind === 'folder' &&
               source.manifest !== undefined ? (
                 <AnimationViewport
-                  cvox={source.cvox}
+                  cvox={renderCvox ?? source.cvox}
                   manifest={source.manifest}
                   hiddenParts={hiddenParts}
                   session={animSession}
@@ -1231,7 +1243,7 @@ export function App() {
                 />
               ) : (
                 <VoxelScene
-                  cvox={source.cvox}
+                  cvox={renderCvox ?? source.cvox}
                   manifest={source.kind === 'folder' ? source.manifest : undefined}
                   viewMode={effectiveViewMode}
                   hiddenParts={hiddenParts}
@@ -1454,6 +1466,15 @@ export function App() {
               </>
             ),
           });
+        }
+        if (source.kind === 'folder' && source.projectErrors !== undefined) {
+          for (const pe of source.projectErrors) {
+            entries.push({
+              severity: 'error',
+              source: pe.file,
+              message: pe.message,
+            });
+          }
         }
         if (source.droppedInlineComments > 0) {
           entries.push({

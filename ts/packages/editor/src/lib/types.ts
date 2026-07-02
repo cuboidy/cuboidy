@@ -1,4 +1,4 @@
-import type { Cvox, KeyAttr, Manifest } from '@cuboidy/core';
+import type { Cvox, KeyAttr, Manifest, Palette } from '@cuboidy/core';
 
 // What the editor currently has loaded. Two discriminated kinds keep the
 // possible states explicit; the absence of `handle` in the folder kind
@@ -40,6 +40,23 @@ export type LoadedSource =
       manifestFile?: FileEntry;
       manifestError?: string;
       droppedInlineComments: number;
+      // ── v0.7 project layer (SPEC §6.9/§6.10), populated at load ──
+      // Every text file in the package, keyed by /-relative path. The two
+      // LIVE-edited files above (cvoxFile / manifestFile) hold the current
+      // text; this map holds the load-time snapshot of everything else.
+      // Absent on synthetic folders (they have no other files).
+      files?: ReadonlyMap<string, FileEntry>;
+      // All geometry files that parsed, keyed by their (normalized)
+      // manifest `geometry` ref. Includes the primary (= cvoxFile) entry.
+      // The editor still edits only the primary until Phase C.
+      geometries?: ReadonlyMap<string, Cvox>;
+      // Parsed manifest-bound palette (§6.10). Rendering prefers this
+      // over the inline cvox palette, matching the spec precedence.
+      externalPalette?: Palette;
+      // Load problems in referenced files beyond the primary pair
+      // (missing/unparsable geometry refs, palette issues). Surfaced in
+      // the Console panel.
+      projectErrors?: ReadonlyArray<{ file: string; message: string }>;
     };
 
 // Result of attempting a load. `source` is undefined on hard parse
