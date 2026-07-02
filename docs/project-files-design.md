@@ -133,7 +133,7 @@ interface ProjectSource {
 | Phase | 内容 | 主な対象 |
 |---|---|---|
 | **A** ✅ | core: palette 省略可("at most one")・palette.json スキーマ・manifest `geometry`/`palette` フィールド・クロスファイル検証(重複パーツ名 / palette 解決 / インデックス範囲 / 未参照 .cvox)。**SPEC.md を v0.7 に改版するのはこのフェーズ**。2026-07-02 完了(`validateProject`、cuboidy-lint も v0.7 対応、AST は「空 palette = 宣言なし」方式で editor 無傷) | `core/src/cvox/*`, `manifest.ts`, SPEC.md |
-| **B** | loader/データモデル: フォルダ全走査(全ファイル取り込み)、`ProjectSource` 化、参照解決層。**UI は従来と同等の表示を維持**(見た目の変化なしで土台を差し替える) | `load-model.ts`, `types.ts`, `App.tsx`, `save.ts` |
+| **B** ✅ | loader/データモデル: フォルダ全走査(全ファイル取り込み)、`ProjectSource` 化、参照解決層。**UI は従来と同等の表示を維持**(見た目の変化なしで土台を差し替える)。2026-07-02 完了(`LoadedSource` に optional な files/geometries/externalPalette/projectErrors を追加する形で実現 — 全面置換ではなく既存フィールドと共存。描画は binding 優先パレット、Export ZIP はパッケージ全体同梱、Console に projectErrors) | `load-model.ts`, `types.ts`, `App.tsx`, `save.ts` |
 | **C** | multi-cvox の表示/編集: 結合レンダリング、パーツツリーのファイル横断表示(所属ファイルの区別)、動的ファイルタブ(`file:<path>` パネル) | `layout.ts`, `Dock`, `PartTree`, `SourceEditor` |
 | **D** | ファイル CRUD: ツリーで新規ファイル/フォルダ・リネーム・削除(パーツツリーの inline draft パターン流用)。`geometry`/参照の自動追随、save/export の per-file 化 | `FileTree`, `App.tsx`, `save.ts` |
 | **E** | 外部アニメーション: 参照解決 → タイムライン編集 → 「外部化/インライン化」アクション | `useAnimationSession`, `TimelinePanel`, core |
