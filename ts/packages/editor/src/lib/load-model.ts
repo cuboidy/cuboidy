@@ -1,9 +1,11 @@
 import {
+  InlineAnimationSchema,
   manifestGeometry,
   parseCvox,
   parseManifest,
   parsePaletteFile,
   type Cvox,
+  type InlineAnimation,
   type Manifest,
   type Palette,
 } from '@cuboidy/core';
@@ -196,10 +198,69 @@ function buildFolderResult(
     return { error: cvoxR.message, cvoxFileName: primary };
   }
 
+  const refs = resolveProjectRefs(manifest, (p) => fileTexts.get(p), {
+    path: primary,
+    cvox: cvoxR.value,
+  });
+  const { geometries, externalPalette, externalAnims, projectErrors } = refs;
+
+  const files = new Map<string, FileEntry>();
+  for (const [path, text] of fileTexts) {
+    files.set(path, { name: path, text });
+  }
+
+  const source: LoadedSource = {
+    kind: 'folder',
+    folderName,
+    synthetic: false,
+    ...(opts.handle !== undefined && { handle: opts.handle }),
+    cvox: cvoxR.value,
+    cvoxFile: { name: primary, text: primaryText },
+    ...(manifest !== undefined && { manifest }),
+    ...(manifestFile !== undefined && { manifestFile }),
+    ...(manifestError !== undefined && { manifestError }),
+    droppedInlineComments,
+    files,
+    geometries,
+    ...(externalPalette !== undefined && { externalPalette }),
+    ...(externalAnims !== undefined && { externalAnims }),
+    ...(projectErrors.length > 0 && { projectErrors }),
+  };
+  return { source, cvoxFileName: primary };
+}
+
+// ── reference resolution ─────────────────────────────────────────────
+
+export interface ResolvedProjectRefs {
+  geometries: Map<string, Cvox>;
+  externalPalette?: Palette;
+  externalAnims?: Map<string, { path: string; anim: InlineAnimation }>;
+  projectErrors: Array<{ file: string; message: string }>;
+}
+
+// Resolve the manifest's references — §6.9 geometry list, §6.10 palette
+// binding, §6.3 animation string refs — against the package's current
+// file texts. Pure; used by the loader AND by the editor's manifest
+// re-parse, so the derived maps never go stale when cuboidy.json is
+// edited directly. `primary` is the live-edited cvox (its in-memory AST
+// wins over its file-map snapshot).
+export function resolveProjectRefs(
+  manifest: Manifest | undefined,
+  getText: (path: string) => string | undefined,
+  primary: { path: string; cvox: Cvox },
+): ResolvedProjectRefs {
   const projectErrors: Array<{ file: string; message: string }> = [];
-  const geometries = new Map<string, Cvox>([[primary, cvoxR.value]]);
-  for (const ref of geometryRefs.slice(1)) {
-    const text = fileTexts.get(ref);
+  const geometries = new Map<string, Cvox>();
+
+  const geometryRefs = (
+    manifest !== undefined ? manifestGeometry(manifest) : [primary.path]
+  ).map(normalizePath);
+  for (const ref of geometryRefs) {
+    if (ref === primary.path) {
+      geometries.set(ref, primary.cvox);
+      continue;
+    }
+    const text = getText(ref);
     if (text === undefined) {
       projectErrors.push({
         file: ref,
@@ -217,7 +278,7 @@ function buildFolderResult(
   let externalPalette: Palette | undefined;
   if (manifest?.palette !== undefined) {
     const ref = normalizePath(manifest.palette);
-    const text = fileTexts.get(ref);
+    const text = getText(ref);
     if (text === undefined) {
       projectErrors.push({
         file: ref,
@@ -239,28 +300,50 @@ function buildFolderResult(
     }
   }
 
-  const files = new Map<string, FileEntry>();
-  for (const [path, text] of fileTexts) {
-    files.set(path, { name: path, text });
+  // External animations (§6.3 string refs): each references a JSON file
+  // holding ONE inline-animation object. Resolved per clip name.
+  const externalAnims = new Map<string, { path: string; anim: InlineAnimation }>();
+  if (manifest?.animations !== undefined) {
+    for (const [clip, anim] of Object.entries(manifest.animations)) {
+      if (typeof anim !== 'string') continue;
+      const ref = normalizePath(anim);
+      const text = getText(ref);
+      if (text === undefined) {
+        projectErrors.push({
+          file: ref,
+          message: ref.startsWith('../')
+            ? `animation '${clip}': outside the package — workspace references are not supported yet`
+            : `animation '${clip}' references it, but it was not found`,
+        });
+        continue;
+      }
+      try {
+        const parsed = InlineAnimationSchema.safeParse(JSON.parse(text));
+        if (parsed.success) {
+          externalAnims.set(clip, { path: ref, anim: parsed.data });
+        } else {
+          const issue = parsed.error.issues[0]!;
+          const at = issue.path.length > 0 ? issue.path.join('.') : '<root>';
+          projectErrors.push({
+            file: ref,
+            message: `animation '${clip}': ${at}: ${issue.message}`,
+          });
+        }
+      } catch (e) {
+        projectErrors.push({
+          file: ref,
+          message: `JSON parse: ${(e as Error).message}`,
+        });
+      }
+    }
   }
 
-  const source: LoadedSource = {
-    kind: 'folder',
-    folderName,
-    synthetic: false,
-    ...(opts.handle !== undefined && { handle: opts.handle }),
-    cvox: cvoxR.value,
-    cvoxFile: { name: primary, text: primaryText },
-    ...(manifest !== undefined && { manifest }),
-    ...(manifestFile !== undefined && { manifestFile }),
-    ...(manifestError !== undefined && { manifestError }),
-    droppedInlineComments,
-    files,
+  return {
     geometries,
     ...(externalPalette !== undefined && { externalPalette }),
-    ...(projectErrors.length > 0 && { projectErrors }),
+    ...(externalAnims.size > 0 && { externalAnims }),
+    projectErrors,
   };
-  return { source, cvoxFileName: primary };
 }
 
 // ── path helpers ─────────────────────────────────────────────────────

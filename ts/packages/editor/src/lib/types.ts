@@ -1,4 +1,10 @@
-import type { Cvox, KeyAttr, Manifest, Palette } from '@cuboidy/core';
+import type {
+  Cvox,
+  InlineAnimation,
+  KeyAttr,
+  Manifest,
+  Palette,
+} from '@cuboidy/core';
 
 // What the editor currently has loaded. Two discriminated kinds keep the
 // possible states explicit; the absence of `handle` in the folder kind
@@ -53,6 +59,11 @@ export type LoadedSource =
       // Parsed manifest-bound palette (§6.10). Rendering prefers this
       // over the inline cvox palette, matching the spec precedence.
       externalPalette?: Palette;
+      // Resolved external animations (§6.3 string refs), keyed by CLIP
+      // name. The manifest keeps the reference path; clip edits
+      // re-serialize into the referenced file (files map), never into
+      // the manifest.
+      externalAnims?: ReadonlyMap<string, { path: string; anim: InlineAnimation }>;
       // Load problems in referenced files beyond the primary pair
       // (missing/unparsable geometry refs, palette issues). Surfaced in
       // the Console panel.

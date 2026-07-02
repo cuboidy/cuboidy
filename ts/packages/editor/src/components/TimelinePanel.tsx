@@ -36,6 +36,11 @@ interface Props {
   onCreateClip: () => void;
   onRenameClip: (oldName: string, newName: string) => void;
   onDeleteClip: (name: string) => void;
+  // Clip name → external file path (§6.3 string refs). Absent from the
+  // map = stored inline in the manifest.
+  clipRefs: ReadonlyMap<string, string>;
+  onExternalizeClip: (name: string) => void;
+  onInlineClip: (name: string) => void;
 }
 
 // The keyframe editor as its own dock panel: the per-clip toolbar (name /
@@ -56,6 +61,9 @@ export function TimelinePanel({
   onCreateClip,
   onRenameClip,
   onDeleteClip,
+  clipRefs,
+  onExternalizeClip,
+  onInlineClip,
 }: Props) {
   const {
     activeName,
@@ -160,15 +168,42 @@ export function TimelinePanel({
             </button>
           </span>
         )}
-        <button
-          type="button"
-          className="btn btn-danger btn-sm anim-delete-clip"
-          disabled={manifestEditsDisabled}
-          title="Delete this clip (undo restores it)"
-          onClick={() => onDeleteClip(activeName)}
-        >
-          Delete clip
-        </button>
+        <div className="anim-toolbar-right">
+          {clipRefs.has(activeName) && (
+            <span
+              className="anim-clip-storage"
+              title={`Stored in ${clipRefs.get(activeName)} (SPEC §6.3 external animation)`}
+            >
+              {clipRefs.get(activeName)}
+            </span>
+          )}
+          <button
+            type="button"
+            className="btn btn-sm"
+            disabled={manifestEditsDisabled}
+            title={
+              clipRefs.has(activeName)
+                ? 'Copy this clip back into cuboidy.json (the file is kept)'
+                : `Move this clip out to anims/${activeName}.json (shareable across models)`
+            }
+            onClick={() =>
+              clipRefs.has(activeName)
+                ? onInlineClip(activeName)
+                : onExternalizeClip(activeName)
+            }
+          >
+            {clipRefs.has(activeName) ? 'Inline' : 'Externalize'}
+          </button>
+          <button
+            type="button"
+            className="btn btn-danger btn-sm"
+            disabled={manifestEditsDisabled}
+            title="Delete this clip (undo restores it)"
+            onClick={() => onDeleteClip(activeName)}
+          >
+            Delete clip
+          </button>
+        </div>
       </div>
       <div className="anim-edit-main">
         <Timeline

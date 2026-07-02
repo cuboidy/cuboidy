@@ -8,6 +8,7 @@ import {
 } from 'react';
 import {
   AIR,
+  InlineAnimationSchema,
   addAttrAtTime,
   deleteAttrAtKey,
   isIdentifier,
@@ -42,7 +43,7 @@ import { TimelinePanel } from './components/TimelinePanel.js';
 import { ViewModeToggle } from './components/ViewModeToggle.js';
 import { VoxelScene } from './components/VoxelScene.js';
 import { historyReducer, makeHistory } from './lib/history.js';
-import { normalizePath } from './lib/load-model.js';
+import { normalizePath, resolveProjectRefs } from './lib/load-model.js';
 import {
   addPanelAt,
   closePanelAt,
@@ -413,27 +414,40 @@ export function App() {
               return;
             }
             setFileParseError(path, null);
-            // If this file is the manifest-bound palette, re-derive it.
-            // A schema-invalid edit keeps the last good palette (a reload
-            // surfaces it as a project error).
+            // If this file is the manifest-bound palette or an external
+            // animation, re-derive that state. A schema-invalid edit
+            // keeps the last good value (a reload surfaces it as a
+            // project error).
             dispatch({
               type: 'amend',
               apply: (current) => {
                 const src = current?.source;
-                if (
-                  src === undefined ||
-                  src.kind !== 'folder' ||
-                  src.manifest?.palette === undefined ||
-                  normalizePath(src.manifest.palette) !== path
-                ) {
+                if (src === undefined || src.kind !== 'folder') {
                   return current;
                 }
-                const pR = parsePaletteFile(json);
-                if (!pR.ok) return current;
-                return {
-                  ...current,
-                  source: { ...src, externalPalette: pR.value },
-                };
+                let next = src;
+                if (
+                  src.manifest?.palette !== undefined &&
+                  normalizePath(src.manifest.palette) === path
+                ) {
+                  const pR = parsePaletteFile(json);
+                  if (pR.ok) next = { ...next, externalPalette: pR.value };
+                }
+                if (src.externalAnims !== undefined) {
+                  let anims: Map<
+                    string,
+                    { path: string; anim: InlineAnimation }
+                  > | null = null;
+                  for (const [clip, rec] of src.externalAnims) {
+                    if (rec.path !== path) continue;
+                    const parsed = InlineAnimationSchema.safeParse(json);
+                    if (!parsed.success) break; // keep last good
+                    if (anims === null) anims = new Map(src.externalAnims);
+                    anims.set(clip, { path, anim: parsed.data });
+                  }
+                  if (anims !== null) next = { ...next, externalAnims: anims };
+                }
+                return next === src ? current : { ...current, source: next };
               },
             });
           } else {
@@ -1023,14 +1037,43 @@ export function App() {
             type: 'amend',
             apply: (current) => {
               if (current?.source?.kind !== 'folder') return current;
-              const nextSource = {
-                ...current.source,
-                manifest: result.value,
+              const src = current.source;
+              // Re-run reference resolution so the derived maps
+              // (geometry ASTs, bound palette, external animations,
+              // project errors) track the edited manifest — otherwise a
+              // direct cuboidy.json edit leaves them stale (e.g. a
+              // renamed clip key still resolving to the old file).
+              const refs = resolveProjectRefs(
+                result.value,
+                (p) => src.files?.get(p)?.text,
+                { path: src.cvoxFile.name, cvox: src.cvox },
+              );
+              // Destructure away the maybe-now-absent keys (a successful
+              // reparse also clears any stale load-time manifest error).
+              const {
+                manifestError: _err,
+                externalPalette: _pal,
+                externalAnims: _anims,
+                projectErrors: _proj,
+                ...rest
+              } = src;
+              return {
+                ...current,
+                source: {
+                  ...rest,
+                  manifest: result.value,
+                  geometries: refs.geometries,
+                  ...(refs.externalPalette !== undefined && {
+                    externalPalette: refs.externalPalette,
+                  }),
+                  ...(refs.externalAnims !== undefined && {
+                    externalAnims: refs.externalAnims,
+                  }),
+                  ...(refs.projectErrors.length > 0 && {
+                    projectErrors: refs.projectErrors,
+                  }),
+                },
               };
-              // A successful reparse clears any stale load-time manifest
-              // error, so the file tree's error state tracks the live text.
-              delete (nextSource as { manifestError?: string }).manifestError;
-              return { ...current, source: nextSource };
             },
           });
         } else {
@@ -1150,9 +1193,11 @@ export function App() {
   // ─── Animation (keyframe editor) edits ──────────────────────────────
   //
   // The `animations` analog of mutateManifestPart: immutably updates one
-  // inline animation, keeps the serialized manifest text in sync, and clears
-  // stale parse-error state. No-ops on a string-ref animation (external file,
-  // not editable in-app yet) or when no manifest is loaded.
+  // clip and routes the write to where the clip LIVES — an inline object
+  // goes back into the manifest (text kept in sync); a §6.3 string ref
+  // goes into the referenced external file (files map + externalAnims),
+  // leaving the manifest untouched. No-ops on an unresolved ref (load
+  // error) or when no manifest is loaded.
   const mutateManifestAnimation = useCallback(
     (
       tag: string | null,
@@ -1164,7 +1209,29 @@ export function App() {
         const src = current.source;
         if (src.manifest === undefined) return current;
         const prev = src.manifest.animations?.[animName];
-        if (prev === undefined || typeof prev === 'string') return current;
+        if (prev === undefined) return current;
+        if (typeof prev === 'string') {
+          const rec = src.externalAnims?.get(animName);
+          if (rec === undefined) return current; // unresolved ref
+          const built = build(rec.anim);
+          if (built === rec.anim) return current;
+          const externalAnims = new Map(src.externalAnims);
+          externalAnims.set(animName, { path: rec.path, anim: built });
+          const files =
+            src.files !== undefined ? new Map(src.files) : undefined;
+          files?.set(rec.path, {
+            name: rec.path,
+            text: JSON.stringify(built, null, 2) + '\n',
+          });
+          return {
+            ...current,
+            source: {
+              ...src,
+              externalAnims,
+              ...(files !== undefined && { files }),
+            },
+          };
+        }
         const built = build(prev);
         // A no-op build must return `current` itself, or the fresh wrapper
         // objects below would defeat the history reducer's `next === present`
@@ -1360,12 +1427,23 @@ export function App() {
         const nextManifest: Manifest = { ...src.manifest, animations: next };
         const nextText = JSON.stringify(nextManifest, null, 2) + '\n';
         const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
+        // An external clip's resolution is keyed by clip name — re-key it
+        // (the referenced file itself is untouched by a clip rename).
+        let externalAnims = src.externalAnims;
+        const ext = externalAnims?.get(oldName);
+        if (externalAnims !== undefined && ext !== undefined) {
+          const rebuilt = new Map(externalAnims);
+          rebuilt.delete(oldName);
+          rebuilt.set(newName, ext);
+          externalAnims = rebuilt;
+        }
         return {
           ...current,
           source: {
             ...src,
             manifest: nextManifest,
             manifestFile: { ...baseFile, text: nextText },
+            ...(externalAnims !== undefined && { externalAnims }),
           },
         };
       });
@@ -1398,12 +1476,105 @@ export function App() {
         }
         const nextText = JSON.stringify(nextManifest, null, 2) + '\n';
         const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
+        // Deleting an external clip removes the manifest entry only; the
+        // referenced file stays (it may be shared — delete it from the
+        // Files tree if it's truly orphaned).
+        let externalAnims = src.externalAnims;
+        if (externalAnims?.has(name) === true) {
+          const rebuilt = new Map(externalAnims);
+          rebuilt.delete(name);
+          externalAnims = rebuilt;
+        }
         return {
           ...current,
           source: {
             ...src,
             manifest: nextManifest,
             manifestFile: { ...baseFile, text: nextText },
+            ...(externalAnims !== undefined && { externalAnims }),
+          },
+        };
+      });
+      cancelPendingManifestReparse();
+      setManifestParseError(null);
+    },
+    [dispatchEdit, cancelPendingManifestReparse],
+  );
+
+  // Move an inline clip out to its own file (§6.3): write
+  // `anims/<name>.json` (unique-suffixed if taken) and swap the manifest
+  // value to the reference path. One dispatchEdit = one undo.
+  const handleExternalizeClip = useCallback(
+    (name: string) => {
+      dispatchEdit(null, (current) => {
+        if (current?.source?.kind !== 'folder') return current;
+        const src = current.source;
+        if (src.manifest === undefined || src.files === undefined) {
+          return current;
+        }
+        const anim = src.manifest.animations?.[name];
+        if (anim === undefined || typeof anim === 'string') return current;
+        let path = `anims/${name}.json`;
+        let n = 2;
+        while (src.files.has(path)) path = `anims/${name}-${n++}.json`;
+        const files = new Map(src.files);
+        files.set(path, {
+          name: path,
+          text: JSON.stringify(anim, null, 2) + '\n',
+        });
+        const externalAnims = new Map(src.externalAnims ?? []);
+        externalAnims.set(name, { path, anim });
+        const animations = { ...src.manifest.animations, [name]: path };
+        const nextManifest: Manifest = { ...src.manifest, animations };
+        const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
+        return {
+          ...current,
+          source: {
+            ...src,
+            files,
+            externalAnims,
+            manifest: nextManifest,
+            manifestFile: {
+              ...baseFile,
+              text: JSON.stringify(nextManifest, null, 2) + '\n',
+            },
+          },
+        };
+      });
+      cancelPendingManifestReparse();
+      setManifestParseError(null);
+    },
+    [dispatchEdit, cancelPendingManifestReparse],
+  );
+
+  // The reverse: copy an external clip's object back into the manifest.
+  // The referenced file is kept (it may be shared) — it just becomes
+  // unreferenced; delete it from the Files tree if it's orphaned.
+  const handleInlineClip = useCallback(
+    (name: string) => {
+      dispatchEdit(null, (current) => {
+        if (current?.source?.kind !== 'folder') return current;
+        const src = current.source;
+        if (src.manifest === undefined) return current;
+        const ref = src.manifest.animations?.[name];
+        if (typeof ref !== 'string') return current;
+        const rec = src.externalAnims?.get(name);
+        if (rec === undefined) return current; // unresolved ref
+        const externalAnims = new Map(src.externalAnims);
+        externalAnims.delete(name);
+        const animations = { ...src.manifest.animations, [name]: rec.anim };
+        const nextManifest: Manifest = { ...src.manifest, animations };
+        const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
+        return {
+          ...current,
+          source: {
+            ...src,
+            externalAnims,
+            manifest: nextManifest,
+            manifestFile: {
+              ...baseFile,
+              text: JSON.stringify(nextManifest, null, 2) + '\n',
+            },
           },
         };
       });
@@ -1558,7 +1729,43 @@ export function App() {
       : null;
   }, [selectedPartName, merged]);
 
-  const animManifest = source?.kind === 'folder' ? source.manifest : undefined;
+  // The animation-facing manifest: §6.3 string refs replaced by their
+  // resolved external clips, so the session / viewport / timeline treat
+  // every clip uniformly. Unresolved refs (load errors) stay strings and
+  // are filtered out downstream as before.
+  const animManifest = useMemo(() => {
+    if (source?.kind !== 'folder' || source.manifest === undefined) {
+      return undefined;
+    }
+    const m = source.manifest;
+    if (m.animations === undefined || source.externalAnims === undefined) {
+      return m;
+    }
+    let changed = false;
+    const animations: NonNullable<Manifest['animations']> = {};
+    for (const [name, anim] of Object.entries(m.animations)) {
+      const ext =
+        typeof anim === 'string' ? source.externalAnims.get(name) : undefined;
+      if (ext !== undefined) {
+        animations[name] = ext.anim;
+        changed = true;
+      } else {
+        animations[name] = anim;
+      }
+    }
+    return changed ? { ...m, animations } : m;
+  }, [source]);
+  // Clip name → external file path, for the timeline's storage label and
+  // the Externalize / Inline toggle.
+  const clipRefs = useMemo(() => {
+    const m = new Map<string, string>();
+    if (source?.kind === 'folder' && source.manifest?.animations !== undefined) {
+      for (const [name, anim] of Object.entries(source.manifest.animations)) {
+        if (typeof anim === 'string') m.set(name, normalizePath(anim));
+      }
+    }
+    return m;
+  }, [source]);
   const modelCvox = useMemo((): Cvox | undefined => {
     if (source === undefined || merged === undefined) return undefined;
     return { palette: source.cvox.palette, parts: merged.parts };
@@ -1797,10 +2004,10 @@ export function App() {
               </div>
               {effectiveViewMode === 'anim' &&
               source.kind === 'folder' &&
-              source.manifest !== undefined ? (
+              animManifest !== undefined ? (
                 <AnimationViewport
                   cvox={renderCvox ?? source.cvox}
-                  manifest={source.manifest}
+                  manifest={animManifest}
                   hiddenParts={hiddenParts}
                   session={animSession}
                   manifestEditsDisabled={manifestParseError !== null}
@@ -1824,9 +2031,12 @@ export function App() {
           body: (
             <TimelinePanel
               session={animSession}
-              manifest={manifest}
+              manifest={animManifest}
               hasManifest={manifest !== undefined}
               manifestEditsDisabled={manifestParseError !== null}
+              clipRefs={clipRefs}
+              onExternalizeClip={handleExternalizeClip}
+              onInlineClip={handleInlineClip}
               onSetAnimField={handleSetAnimField}
               onDeleteAnimKey={handleDeleteAnimKey}
               onTrimClip={handleTrimClip}

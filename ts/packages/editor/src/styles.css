@@ -1728,8 +1728,29 @@ pre {
   flex-shrink: 0;
 }
 
-.anim-delete-clip {
+/* Right-aligned clip actions (storage label + externalize/inline +
+   delete) in the timeline toolbar. */
+.anim-toolbar-right {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.anim-clip-storage {
+  font-family:
+    ui-monospace,
+    'SF Mono',
+    Menlo,
+    Consolas,
+    monospace;
+  font-size: 0.7rem;
+  color: #8a9;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 14rem;
 }
 
 /* ─── Text input (clip rename) ────────────────────────────────────── */
