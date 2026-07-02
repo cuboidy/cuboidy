@@ -136,7 +136,7 @@ interface ProjectSource {
 | **B** ✅ | loader/データモデル: フォルダ全走査(全ファイル取り込み)、`ProjectSource` 化、参照解決層。**UI は従来と同等の表示を維持**(見た目の変化なしで土台を差し替える)。2026-07-02 完了(`LoadedSource` に optional な files/geometries/externalPalette/projectErrors を追加する形で実現 — 全面置換ではなく既存フィールドと共存。描画は binding 優先パレット、Export ZIP はパッケージ全体同梱、Console に projectErrors) | `load-model.ts`, `types.ts`, `App.tsx`, `save.ts` |
 | **C** ✅ | multi-cvox の表示/編集: 結合レンダリング、パーツツリーのファイル横断表示(所属ファイルの区別)、動的ファイルタブ(`file:<path>` パネル)。2026-07-02 完了(`mergeGeometries`+`mapGeometryFiles` で編集は定義元ファイルへ書き戻し・リネームは全ファイル追随、Files ツリーはパッケージ全表示、動的タブは per-file デバウンス再パースで palette.json ライブ反映) | `layout.ts`, `Dock`, `PartTree`, `SourceEditor` |
 | **D** ✅ | ファイル CRUD: ツリーで新規ファイル/フォルダ・リネーム・削除(パーツツリーの inline draft パターン流用)。`geometry`/参照の自動追随、save/export の per-file 化。2026-07-02 完了(フォルダは `/` 入りパスで暗黙作成、リネーム=フルパス編集で移動兼用、`removedFiles` を undo 対象状態に持ち Save がパッケージ全体書込+削除反映。アンカー/プライマリの保護つき) | `FileTree`, `App.tsx`, `save.ts` |
-| **E** | 外部アニメーション: 参照解決 → タイムライン編集 → 「外部化/インライン化」アクション | `useAnimationSession`, `TimelinePanel`, core |
+| **E** ✅ | 外部アニメーション: 参照解決 → タイムライン編集 → 「外部化/インライン化」アクション。2026-07-02 完了(実効マニフェスト方式で外部クリップもインライン同様に編集可、書き戻し先は自動ルーティング。参照解決は `resolveProjectRefs` に集約し manifest 再パースごとに再実行 — cuboidy.json 直編集の stale バグ修正込み) | `useAnimationSession`, `TimelinePanel`, core |
 | **F** | パレット共有 UI: palette.json の編集(既存 PalettePanel を束縛先に接続)、束縛の付け替え | `PalettePanel`, `PartProperties` |
 
 順序の理由: A/B が全フェーズの土台(A は core だけで完結しテスト可能、B は
