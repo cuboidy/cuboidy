@@ -583,6 +583,77 @@ export function App() {
     [dispatchEdit, cancelPendingCvoxReparse],
   );
 
+  // Re-point (or clear, path = null) the manifest's palette binding from
+  // the panel's picker. Pure binding switch — no colors are copied
+  // (Externalize / Inline do that). One undo.
+  const handleChangePaletteBinding = useCallback(
+    (path: string | null) => {
+      cancelPendingManifestReparse();
+      dispatchEdit(null, (current) => {
+        const src = current?.source;
+        if (
+          src === undefined ||
+          src.kind !== 'folder' ||
+          src.manifest === undefined
+        ) {
+          return current;
+        }
+        const currentBinding =
+          src.manifest.palette !== undefined
+            ? normalizePath(src.manifest.palette)
+            : undefined;
+        const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
+        if (path === null) {
+          if (currentBinding === undefined) return current;
+          const { palette: _dropped, ...restManifest } = src.manifest;
+          const { externalPalette: _x, ...restSrc } = src;
+          return {
+            ...current,
+            source: {
+              ...restSrc,
+              manifest: restManifest,
+              manifestFile: {
+                ...baseFile,
+                text: JSON.stringify(restManifest, null, 2) + '\n',
+              },
+            },
+          };
+        }
+        const norm = normalizePath(path);
+        if (currentBinding === norm) return current;
+        // Resolve the new binding now so the render/panel switch is
+        // immediate; an unresolvable choice leaves externalPalette unset
+        // (panel disables with a reason, Console explains on reload).
+        let external: Palette | undefined;
+        const text = src.files?.get(norm)?.text;
+        if (text !== undefined) {
+          try {
+            const r = parsePaletteFile(JSON.parse(text));
+            if (r.ok) external = r.value;
+          } catch {
+            // Falls through — binding set, resolution empty.
+          }
+        }
+        const nextManifest: Manifest = { ...src.manifest, palette: norm };
+        const { externalPalette: _x, ...restSrc } = src;
+        return {
+          ...current,
+          source: {
+            ...restSrc,
+            manifest: nextManifest,
+            manifestFile: {
+              ...baseFile,
+              text: JSON.stringify(nextManifest, null, 2) + '\n',
+            },
+            ...(external !== undefined && { externalPalette: external }),
+          },
+        };
+      });
+      setManifestParseError(null);
+    },
+    [dispatchEdit, cancelPendingManifestReparse],
+  );
+
   // Move the primary's inline palette out to palette.json and bind it
   // (§6.10) — the inline declaration is dropped (the binding would
   // shadow it anyway, H03). One undo.
@@ -2016,13 +2087,11 @@ export function App() {
     return m;
   }, [source]);
   // What the Palette panel edits — the model's EFFECTIVE palette per the
-  // §6.10 precedence: the bound external file, else the primary's inline.
+  // §6.10 precedence: the bound external file (binding presence decides,
+  // even while unresolved — the panel then disables with a reason), else
+  // the primary's inline.
   const paletteTarget = useMemo(() => {
-    if (
-      source?.kind === 'folder' &&
-      source.manifest?.palette !== undefined &&
-      source.externalPalette !== undefined
-    ) {
+    if (source?.kind === 'folder' && source.manifest?.palette !== undefined) {
       return {
         kind: 'external' as const,
         path: normalizePath(source.manifest.palette),
@@ -2031,6 +2100,30 @@ export function App() {
     return source !== undefined
       ? { kind: 'inline' as const, file: source.cvoxFile.name }
       : undefined;
+  }, [source]);
+  // Binding picker choices: every package .json that parses as a palette
+  // file, plus the current binding even when broken (the select shows
+  // reality). Sorted for a stable menu.
+  const paletteBindingChoices = useMemo(() => {
+    if (source?.kind !== 'folder' || source.files === undefined) return [];
+    const manifestName = source.manifestFile?.name ?? 'cuboidy.json';
+    const out: string[] = [];
+    for (const [path, entry] of source.files) {
+      if (!path.toLowerCase().endsWith('.json') || path === manifestName) {
+        continue;
+      }
+      try {
+        if (parsePaletteFile(JSON.parse(entry.text)).ok) out.push(path);
+      } catch {
+        // Not JSON — not a palette candidate.
+      }
+    }
+    const binding =
+      source.manifest?.palette !== undefined
+        ? normalizePath(source.manifest.palette)
+        : undefined;
+    if (binding !== undefined && !out.includes(binding)) out.push(binding);
+    return out.sort();
   }, [source]);
 
   // Dock layout tree (resizable, rearrangeable). In-memory only — layout is
@@ -2467,10 +2560,21 @@ export function App() {
         const target =
           paletteTarget ?? ({ kind: 'inline', file: source.cvoxFile.name } as const);
         const external = target.kind === 'external';
-        const effective =
-          external && source.kind === 'folder' && source.externalPalette !== undefined
-            ? source.externalPalette
-            : source.cvox.palette;
+        // A binding that didn't resolve (missing / invalid file) shows an
+        // empty palette + a disabled reason rather than silently falling
+        // back to inline (which the binding shadows anyway).
+        const unresolved =
+          external &&
+          (source.kind !== 'folder' || source.externalPalette === undefined);
+        const effective = external
+          ? source.kind === 'folder'
+            ? (source.externalPalette ?? [])
+            : []
+          : source.cvox.palette;
+        const bindable =
+          source.kind === 'folder' &&
+          source.manifest !== undefined &&
+          source.files !== undefined;
         return {
           title: 'Palette',
           body: (
@@ -2483,11 +2587,15 @@ export function App() {
               }
               target={target}
               disabled={
-                external ? manifestParseError !== null : cvoxParseError !== null
+                external
+                  ? manifestParseError !== null || unresolved
+                  : cvoxParseError !== null
               }
               disabledReason={
                 external
-                  ? 'Manifest source has syntax errors — fix to enable palette editing.'
+                  ? unresolved
+                    ? `The bound palette (${target.path}) is missing or invalid — fix the file or pick another binding above.`
+                    : 'Manifest source has syntax errors — fix to enable palette editing.'
                   : undefined
               }
               onChange={(next, tag) =>
@@ -2498,14 +2606,17 @@ export function App() {
               onDeleteColor={handleDeletePaletteColor}
               onExternalize={
                 !external &&
-                source.kind === 'folder' &&
-                source.manifest !== undefined &&
-                source.files !== undefined &&
+                bindable &&
                 source.cvox.palette.length > 0
                   ? handleExternalizePalette
                   : undefined
               }
-              onInline={external ? handleInlinePalette : undefined}
+              onInline={
+                external && !unresolved ? handleInlinePalette : undefined
+              }
+              bindingChoices={bindable ? paletteBindingChoices : undefined}
+              onChangeBinding={bindable ? handleChangePaletteBinding : undefined}
+              bindingDisabled={manifestParseError !== null}
             />
           ),
         };

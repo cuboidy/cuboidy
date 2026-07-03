@@ -33,6 +33,17 @@ interface Props {
   // Copy the bound palette back into the primary file's inline
   // declaration and drop the binding (the file is kept).
   onInline?: (() => void) | undefined;
+  // Binding picker: package .json files that parse as palettes (plus the
+  // current binding, even if broken). undefined = binding not available
+  // (cvox-only / no manifest) → the header shows a static label instead.
+  bindingChoices?: readonly string[] | undefined;
+  // null = clear the binding (back to inline palettes).
+  onChangeBinding?: ((path: string | null) => void) | undefined;
+  // Rewriting the binding rewrites the manifest — blocked only while the
+  // manifest text doesn't parse. Deliberately separate from `disabled`:
+  // an UNRESOLVED binding disables color editing but the picker must
+  // stay usable (it's the recovery path).
+  bindingDisabled?: boolean;
 }
 
 // Palette editing as a panel. All edits route through the callbacks;
@@ -57,6 +68,9 @@ export function PalettePanel({
   onDeleteColor,
   onExternalize,
   onInline,
+  bindingChoices,
+  onChangeBinding,
+  bindingDisabled = false,
 }: Props) {
   const usage = computePaletteUsage(palette, parts);
 
@@ -76,18 +90,40 @@ export function PalettePanel({
   };
 
   return (
-    <section className={`palette-panel${disabled ? ' disabled' : ''}`}>
+    <section className="palette-panel">
       <div className="palette-header">
-        <span
-          className="palette-target"
-          title={
-            target.kind === 'external'
-              ? `Editing the manifest-bound palette (${target.path}) — applies to every geometry file`
-              : `Editing the inline palette declared in ${target.file}`
-          }
-        >
-          {target.kind === 'external' ? target.path : `${target.file} (inline)`}
-        </span>
+        {onChangeBinding !== undefined ? (
+          <select
+            className="palette-binding"
+            value={target.kind === 'external' ? target.path : ''}
+            disabled={bindingDisabled}
+            title="Which palette this model uses (the manifest `palette` binding — SPEC §6.10). Binding a file overrides every inline palette."
+            aria-label="Palette binding"
+            onChange={(e) =>
+              onChangeBinding(e.target.value === '' ? null : e.target.value)
+            }
+          >
+            <option value="">(inline)</option>
+            {bindingChoices?.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span
+            className="palette-target"
+            title={
+              target.kind === 'external'
+                ? `Editing the manifest-bound palette (${target.path}) — applies to every geometry file`
+                : `Editing the inline palette declared in ${target.file}`
+            }
+          >
+            {target.kind === 'external'
+              ? target.path
+              : `${target.file} (inline)`}
+          </span>
+        )}
         <span className="palette-count">
           {palette.length} / {MAX_PALETTE}
         </span>
@@ -98,6 +134,7 @@ export function PalettePanel({
             'Source has syntax errors — fix to enable palette editing.'}
         </p>
       )}
+      <div className={`palette-body${disabled ? ' disabled' : ''}`}>
       <div className="palette-grid">
         {palette.map((color, i) => (
           <PaletteSwatch
@@ -143,6 +180,7 @@ export function PalettePanel({
           Inline palette
         </button>
       )}
+      </div>
     </section>
   );
 }
