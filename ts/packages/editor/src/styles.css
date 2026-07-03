@@ -1139,6 +1139,18 @@ pre {
   align-items: center;
   gap: 0.4rem;
   padding: 0.25rem 1rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tree-node.folder > .folder-row:hover {
+  background: #2c2c2c;
+}
+
+/* Selected folder = where New file / New folder create. */
+.tree-node.folder > .folder-row.selected {
+  background: #2a3a5a;
+  color: #fff;
 }
 
 .tree-node.file .tree-node-button {
@@ -1159,7 +1171,10 @@ pre {
   background: #2c2c2c;
 }
 
-.tree-node.file.active .tree-node-button {
+/* The single tree selection (file variant; folders use
+   .folder-row.selected). VS Code-style: no separate "open file"
+   indicator — the dock tabs already show what's open. */
+.tree-node.file.selected .tree-node-button {
   background: #2a3a5a;
   color: #fff;
 }
@@ -1191,7 +1206,7 @@ pre {
 
 /* A file whose current text has a syntax error — VS Code-style red name so
    it's visible at a glance (the tooltip carries the detail). Targets .name
-   directly so it overrides the active node's white text too. */
+   directly so it overrides the selected node's white text too. */
 .tree-node.file.error .name {
   color: #f47171;
 }

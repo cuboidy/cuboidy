@@ -4,10 +4,6 @@ import type { LoadedSource } from '../lib/types.js';
 
 interface Props {
   source: LoadedSource;
-  // Paths of files whose dock panel is currently *visible* (the active
-  // tab of its leaf) — highlighted so the tree is a constant indicator
-  // of "what am I viewing right now".
-  activePaths: ReadonlySet<string>;
   // Current syntax / load error per path (undefined = none). Drives a
   // VS Code-style red filename; the tooltip carries the message.
   fileErrors: ReadonlyMap<string, string>;
@@ -41,7 +37,6 @@ const CREATABLE_RE = /^[^\\:]+\.(cvox|json|md|txt)$/i;
 // and never deletable.
 export function FileTree({
   source,
-  activePaths,
   fileErrors,
   onOpenPath,
   onCreateManifest,
@@ -52,12 +47,19 @@ export function FileTree({
   // Directory path ('' = package root) that has an open new-file draft,
   // or null. Folder "+" buttons target their own directory.
   const [creatingIn, setCreatingIn] = useState<string | null>(null);
-  const [creatingFolder, setCreatingFolder] = useState(false);
+  // Directory a new-FOLDER draft is open in ('' = root), or null.
+  const [creatingFolderIn, setCreatingFolderIn] = useState<string | null>(null);
   // Session-draft empty folders (paths). Materialize on disk only once a
   // file is created inside; pruned automatically when that happens
   // (buildFsTree already shows dirs that contain files).
   const [draftDirs, setDraftDirs] = useState<ReadonlySet<string>>(new Set());
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  // The selected NODE (VS Code-style single selection): a folder or a
+  // file. Creation targets the selected folder, or a selected file's
+  // containing folder.
+  const [selected, setSelected] = useState<
+    { kind: 'dir' | 'file'; path: string } | null
+  >(null);
 
   const allPaths = useMemo(() => {
     const paths = new Set<string>();
@@ -78,6 +80,42 @@ export function FileTree({
     () => buildFsTree(allPaths, draftDirs),
     [allPaths, draftDirs],
   );
+  // Every directory that currently exists (all prefixes of file paths +
+  // draft folders). Guards the selection against dirs that vanished.
+  const allDirs = useMemo(() => {
+    const dirs = new Set<string>();
+    const addPrefixes = (p: string, includeSelf: boolean) => {
+      const segs = p.split('/');
+      const upto = includeSelf ? segs.length : segs.length - 1;
+      for (let i = 1; i <= upto; i++) dirs.add(segs.slice(0, i).join('/'));
+    };
+    for (const p of allPaths) addPrefixes(p, false);
+    for (const d of draftDirs) addPrefixes(d, true);
+    return dirs;
+  }, [allPaths, draftDirs]);
+  // Where New file / New folder create: the selected folder, or a
+  // selected file's containing folder. Vanished nodes fall back to root.
+  const effectiveDir = (() => {
+    if (selected === null) return '';
+    if (selected.kind === 'dir') {
+      return selected.path === '' || allDirs.has(selected.path)
+        ? selected.path
+        : '';
+    }
+    if (!allPaths.has(selected.path)) return '';
+    const i = selected.path.lastIndexOf('/');
+    return i === -1 ? '' : selected.path.slice(0, i);
+  })();
+  // Exactly ONE node carries the selection highlight — a folder or a
+  // file, never both. What's OPEN is the dock tabs' job, not the tree's.
+  const selectedDirForHighlight =
+    selected?.kind === 'dir' && (selected.path === '' || allDirs.has(selected.path))
+      ? selected.path
+      : null;
+  const selectedFileForHighlight =
+    selected?.kind === 'file' && allPaths.has(selected.path)
+      ? selected.path
+      : null;
 
   const isFolder = source.kind === 'folder';
   const canEdit = isFolder && source.files !== undefined;
@@ -112,10 +150,17 @@ export function FileTree({
   const validateNewPath = (path: string): boolean =>
     CREATABLE_RE.test(path) && validNewSegments(path) && !allPaths.has(path);
 
-  const validateNewFolder = (name: string): boolean =>
-    validNewSegments(name) &&
-    !allPaths.has(name) &&
-    !draftDirs.has(name);
+  const validateNewFolderIn =
+    (dir: string) =>
+    (name: string): boolean => {
+      const joined = dir === '' ? name : `${dir}/${name}`;
+      return (
+        validNewSegments(name) &&
+        !allPaths.has(joined) &&
+        !allDirs.has(joined) &&
+        !draftDirs.has(joined)
+      );
+    };
 
   const validateRename = (oldPath: string) => (name: string) => {
     if (name === oldPath) return true;
@@ -144,6 +189,15 @@ export function FileTree({
     });
   };
 
+  const commitCreateFolder = (dirPath: string, name: string): void => {
+    const joined = dirPath === '' ? name : `${dirPath}/${name}`;
+    setDraftDirs((prev) => new Set(prev).add(joined));
+    setCreatingFolderIn(null);
+    setSelected({ kind: 'dir', path: joined });
+    // Flow straight into "new file inside it".
+    setCreatingIn(joined);
+  };
+
   return (
     <div className="file-tree">
       {canEdit && (
@@ -151,10 +205,10 @@ export function FileTree({
           <button
             type="button"
             className="btn btn-sm"
-            title="New file (use / for folders, e.g. anims/idle.json)"
+            title={`New file in ${effectiveDir === '' ? 'the package root' : `${effectiveDir}/`} (use / for deeper folders)`}
             onClick={() => {
-              setCreatingFolder(false);
-              setCreatingIn('');
+              setCreatingFolderIn(null);
+              setCreatingIn(effectiveDir);
             }}
           >
             + New file
@@ -162,10 +216,10 @@ export function FileTree({
           <button
             type="button"
             className="btn btn-sm"
-            title="New folder (kept for this session; saved to disk once a file is created inside)"
+            title={`New folder in ${effectiveDir === '' ? 'the package root' : `${effectiveDir}/`} (kept for this session; saved to disk once a file is created inside)`}
             onClick={() => {
               setCreatingIn(null);
-              setCreatingFolder(true);
+              setCreatingFolderIn(effectiveDir);
             }}
           >
             + New folder
@@ -175,52 +229,44 @@ export function FileTree({
       {isFolder ? (
         <ul className="tree-root">
           <li className="tree-node folder">
-            <div className="folder-row">
+            <div
+              className={`folder-row${selectedDirForHighlight === '' ? ' selected' : ''}`}
+              title="Package root — New file / New folder create here while selected"
+              onClick={() => setSelected({ kind: 'dir', path: '' })}
+            >
               <span className="icon">📁</span>
               <span className="name">{source.folderName}</span>
               {source.synthetic && <span className="badge">unsaved</span>}
             </div>
-            {creatingFolder && (
-              <ul className="tree-children">
-                <li className="tree-node folder">
-                  <div className="tree-node-draft">
-                    <span className="icon">📁</span>
-                    <InlineNameInput
-                      initial="folder"
-                      ariaLabel="New folder name"
-                      validate={validateNewFolder}
-                      onCommit={(name) => {
-                        setDraftDirs((prev) => new Set(prev).add(name));
-                        setCreatingFolder(false);
-                        // Flow straight into "new file inside it".
-                        setCreatingIn(name);
-                      }}
-                      onCancel={() => setCreatingFolder(false)}
-                    />
-                  </div>
-                </li>
-              </ul>
-            )}
             <DirChildren
               node={tree}
               dirPath=""
-              activePaths={activePaths}
+
               fileErrors={fileErrors}
               newBadgePath={
                 source.synthetic ? source.manifestFile?.name : undefined
               }
               canEdit={canEdit}
               creatingIn={creatingIn}
+              creatingFolderIn={creatingFolderIn}
+              selectedDir={selectedDirForHighlight}
+              selectedFile={selectedFileForHighlight}
               renamingPath={renamingPath}
               rowOps={rowOps}
               validateNewPath={validateNewPath}
+              validateNewFolderIn={validateNewFolderIn}
               validateRename={validateRename}
               onOpenPath={onOpenPath}
+              onSelectDir={(dir) => setSelected({ kind: 'dir', path: dir })}
+              onSelectFile={(p) => setSelected({ kind: 'file', path: p })}
               onStartCreateIn={(dir) => {
-                setCreatingFolder(false);
+                setCreatingFolderIn(null);
+                setSelected({ kind: 'dir', path: dir });
                 setCreatingIn(dir);
               }}
               onCommitCreate={commitCreateFile}
+              onCommitCreateFolder={commitCreateFolder}
+              onCancelCreateFolder={() => setCreatingFolderIn(null)}
               onCancelCreate={() => setCreatingIn(null)}
               onStartRename={setRenamingPath}
               onCommitRename={(oldPath, name) => {
@@ -246,7 +292,7 @@ export function FileTree({
       ) : (
         <ul className="tree-root">
           <li
-            className={`tree-node file${activePaths.has(primary) ? ' active' : ''}${fileErrors.has(primary) ? ' error' : ''}`}
+            className={`tree-node file${fileErrors.has(primary) ? ' error' : ''}`}
             title={fileErrors.get(primary) ?? primary}
           >
             <button
@@ -319,19 +365,29 @@ interface DirChildrenProps {
   node: DirNode;
   // This directory's package-relative path ('' = root).
   dirPath: string;
-  activePaths: ReadonlySet<string>;
+
   fileErrors: ReadonlyMap<string, string>;
   newBadgePath?: string | undefined;
   canEdit: boolean;
   creatingIn: string | null;
+  creatingFolderIn: string | null;
+  // Explicitly selected folder / file to highlight (null = none;
+  // at most one of the two is non-null).
+  selectedDir: string | null;
+  selectedFile: string | null;
   renamingPath: string | null;
   rowOps: (path: string) => RowOps;
   validateNewPath: (path: string) => boolean;
+  validateNewFolderIn: (dir: string) => (name: string) => boolean;
   validateRename: (oldPath: string) => (name: string) => boolean;
   onOpenPath: (path: string) => void;
+  onSelectDir: (dirPath: string) => void;
+  onSelectFile: (path: string) => void;
   onStartCreateIn: (dirPath: string) => void;
   onCommitCreate: (dirPath: string, name: string) => void;
   onCancelCreate: () => void;
+  onCommitCreateFolder: (dirPath: string, name: string) => void;
+  onCancelCreateFolder: () => void;
   onStartRename: (path: string) => void;
   onCommitRename: (oldPath: string, name: string) => void;
   onCancelRename: () => void;
@@ -346,7 +402,11 @@ function DirChildren(props: DirChildrenProps) {
         const childPath = dirPath === '' ? name : `${dirPath}/${name}`;
         return (
           <li className="tree-node folder" key={name}>
-            <div className="folder-row">
+            <div
+              className={`folder-row${props.selectedDir === childPath ? ' selected' : ''}`}
+              title={`${childPath}/ — New file / New folder create here while selected`}
+              onClick={() => props.onSelectDir(childPath)}
+            >
               <span className="icon">📁</span>
               <span className="name">{name}</span>
               {props.canEdit && (
@@ -368,6 +428,20 @@ function DirChildren(props: DirChildrenProps) {
           </li>
         );
       })}
+      {props.creatingFolderIn === dirPath && (
+        <li className="tree-node folder">
+          <div className="tree-node-draft">
+            <span className="icon">📁</span>
+            <InlineNameInput
+              initial="folder"
+              ariaLabel={`New folder in ${dirPath === '' ? 'package root' : dirPath}`}
+              validate={props.validateNewFolderIn(dirPath)}
+              onCommit={(name) => props.onCommitCreateFolder(dirPath, name)}
+              onCancel={props.onCancelCreateFolder}
+            />
+          </div>
+        </li>
+      )}
       {props.creatingIn === dirPath && (
         <li className="tree-node file">
           <div className="tree-node-draft">
@@ -391,13 +465,18 @@ function DirChildren(props: DirChildrenProps) {
           key={f.path}
           path={f.path}
           name={f.name}
-          active={props.activePaths.has(f.path)}
+          selected={props.selectedFile === f.path}
           error={props.fileErrors.get(f.path)}
           isNew={f.path === props.newBadgePath}
           renaming={props.renamingPath === f.path}
           ops={props.rowOps(f.path)}
           validateRename={props.validateRename(f.path)}
-          onOpenPath={props.onOpenPath}
+          onOpenPath={(p) => {
+            // Opening a file retargets creation to its containing folder
+            // (no folder highlight — the file itself is the selection).
+            props.onSelectFile(p);
+            props.onOpenPath(p);
+          }}
           onStartRename={props.onStartRename}
           onCommitRename={props.onCommitRename}
           onCancelRename={props.onCancelRename}
@@ -411,7 +490,7 @@ function DirChildren(props: DirChildrenProps) {
 function FileNode({
   path,
   name,
-  active,
+  selected,
   error,
   isNew,
   renaming,
@@ -425,7 +504,7 @@ function FileNode({
 }: {
   path: string;
   name: string;
-  active: boolean;
+  selected?: boolean;
   error?: string | undefined;
   isNew?: boolean;
   renaming: boolean;
@@ -455,7 +534,7 @@ function FileNode({
   }
   return (
     <li
-      className={`tree-node file${active ? ' active' : ''}${error !== undefined ? ' error' : ''}`}
+      className={`tree-node file${selected === true ? ' selected' : ''}${error !== undefined ? ' error' : ''}`}
       title={error !== undefined ? `Syntax error: ${error}` : path}
     >
       <button

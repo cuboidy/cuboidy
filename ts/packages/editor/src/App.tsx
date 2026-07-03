@@ -2229,26 +2229,6 @@ export function App() {
     },
     [loaded],
   );
-  // Which package files are currently visible (their panel is the active
-  // tab of its leaf) — the Files tree highlights accordingly.
-  const visiblePaths = useMemo(() => {
-    const s = new Set<string>();
-    if (layout === null || source === undefined) return s;
-    if (isPanelVisible(layout, 'cvox')) s.add(source.cvoxFile.name);
-    if (
-      source.kind === 'folder' &&
-      source.manifestFile !== undefined &&
-      isPanelVisible(layout, 'manifest')
-    ) {
-      s.add(source.manifestFile.name);
-    }
-    if (source.kind === 'folder' && source.files !== undefined) {
-      for (const path of source.files.keys()) {
-        if (isPanelVisible(layout, filePanel(path))) s.add(path);
-      }
-    }
-    return s;
-  }, [layout, source]);
   // Error per file path (parse errors on live-edited files + load-time
   // project errors) — red names in the Files tree.
   const treeFileErrors = useMemo(() => {
@@ -2442,7 +2422,6 @@ export function App() {
           body: (
             <FileTree
               source={source}
-              activePaths={visiblePaths}
               fileErrors={treeFileErrors}
               onOpenPath={handleOpenPath}
               onCreateManifest={handleCreateManifest}
