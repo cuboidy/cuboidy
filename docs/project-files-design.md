@@ -137,7 +137,7 @@ interface ProjectSource {
 | **C** ✅ | multi-cvox の表示/編集: 結合レンダリング、パーツツリーのファイル横断表示(所属ファイルの区別)、動的ファイルタブ(`file:<path>` パネル)。2026-07-02 完了(`mergeGeometries`+`mapGeometryFiles` で編集は定義元ファイルへ書き戻し・リネームは全ファイル追随、Files ツリーはパッケージ全表示、動的タブは per-file デバウンス再パースで palette.json ライブ反映) | `layout.ts`, `Dock`, `PartTree`, `SourceEditor` |
 | **D** ✅ | ファイル CRUD: ツリーで新規ファイル/フォルダ・リネーム・削除(パーツツリーの inline draft パターン流用)。`geometry`/参照の自動追随、save/export の per-file 化。2026-07-02 完了(フォルダは `/` 入りパスで暗黙作成、リネーム=フルパス編集で移動兼用、`removedFiles` を undo 対象状態に持ち Save がパッケージ全体書込+削除反映。アンカー/プライマリの保護つき) | `FileTree`, `App.tsx`, `save.ts` |
 | **E** ✅ | 外部アニメーション: 参照解決 → タイムライン編集 → 「外部化/インライン化」アクション。2026-07-02 完了(実効マニフェスト方式で外部クリップもインライン同様に編集可、書き戻し先は自動ルーティング。参照解決は `resolveProjectRefs` に集約し manifest 再パースごとに再実行 — cuboidy.json 直編集の stale バグ修正込み) | `useAnimationSession`, `TimelinePanel`, core |
-| **F** | パレット共有 UI: palette.json の編集(既存 PalettePanel を束縛先に接続)、束縛の付け替え | `PalettePanel`, `PartProperties` |
+| **F** ✅ | パレット共有 UI: palette.json の編集(既存 PalettePanel を束縛先に接続)、束縛の付け替え。2026-07-03 完了(パネルは「実効パレット」を編集・対象をヘッダ表示、Externalize/Inline トグル、色削除の index シフトは効き先ファイル横断で 1 undo、束縛なし複数ファイルの per-file パレット解決も修正)。**全フェーズ A–F 完走** | `PalettePanel`, `PartProperties` |
 
 順序の理由: A/B が全フェーズの土台(A は core だけで完結しテスト可能、B は
 見た目を変えずに差し替えるので回帰確認が楽)。C 以降はユーザー価値の出る順で、
