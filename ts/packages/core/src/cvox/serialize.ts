@@ -46,7 +46,9 @@ function serializePalette(palette: readonly Color[]): string {
 // Canonical color form: `#RRGGBB` when alpha = 0xFF, `#RRGGBBAA` otherwise.
 // Short forms (`#RGB`, `#RGBA`) are reader-accepted but not writer-emitted —
 // canonical output has exactly one representation per color value.
-function serializeColor(c: Color): string {
+// Exported: the external palette file (§6.10) uses the same color grammar,
+// so its writers reuse this for identical canonical output.
+export function serializeColor(c: Color): string {
   const rgb = `#${hex2(c.r)}${hex2(c.g)}${hex2(c.b)}`;
   return c.a === 0xff ? rgb : `${rgb}${hex2(c.a)}`;
 }

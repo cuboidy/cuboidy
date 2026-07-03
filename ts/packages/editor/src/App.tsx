@@ -17,6 +17,7 @@ import {
   parseCvox,
   parseManifest,
   parsePaletteFile,
+  serializeColor,
   serializeCvox,
   setAttrAtKey,
   trimTrackKeys,
@@ -26,6 +27,7 @@ import {
   type KeyAttr,
   type Manifest,
   type ManifestPart,
+  type Palette,
   type Part,
 } from '@cuboidy/core';
 import { AnimationViewport } from './components/AnimationViewport.js';
@@ -458,6 +460,220 @@ export function App() {
     },
     [dispatchEdit, setFileParseError],
   );
+
+  // ── Palette editing (Phase F). The panel edits the EFFECTIVE palette
+  // (§6.10): a manifest binding routes writes to palette.json, else to
+  // the primary file's inline declaration (via handleEditCvox). ──
+
+  // Overwrite the bound external palette's colors (edit / add).
+  const handleEditExternalPalette = useCallback(
+    (next: Palette, tag?: string) => {
+      dispatchEdit(tag ?? null, (current) => {
+        const src = current?.source;
+        if (src === undefined || src.kind !== 'folder') return current;
+        if (src.manifest?.palette === undefined) return current;
+        const path = normalizePath(src.manifest.palette);
+        const files = src.files !== undefined ? new Map(src.files) : undefined;
+        files?.set(path, {
+          name: path,
+          text:
+            JSON.stringify({ colors: next.map(serializeColor) }, null, 2) +
+            '\n',
+        });
+        return {
+          ...current,
+          source: {
+            ...src,
+            externalPalette: next,
+            ...(files !== undefined && { files }),
+          },
+        };
+      });
+    },
+    [dispatchEdit],
+  );
+
+  // Delete an (unused) color: every higher index shifts down, so the
+  // voxels of every file resolving against this palette are remapped in
+  // the same edit. Bound palette → all geometry files; inline → the
+  // primary only (other files resolve against their own palettes).
+  const handleDeletePaletteColor = useCallback(
+    (index: number) => {
+      cancelPendingCvoxReparse();
+      setCvoxParseError(null);
+      dispatchEdit(null, (current) => {
+        const src = current?.source;
+        if (src === undefined) return current;
+        const bound =
+          src.kind === 'folder' &&
+          src.manifest?.palette !== undefined &&
+          src.externalPalette !== undefined;
+        const palette =
+          bound && src.kind === 'folder'
+            ? src.externalPalette!
+            : src.cvox.palette;
+        if (index < 0 || index >= palette.length) return current;
+        const inScope = (cvox: Cvox): boolean =>
+          bound || cvox === src.cvox;
+        // Refuse while any in-scope voxel still uses the color.
+        const scopeParts =
+          bound ? mergeGeometries(src).parts : src.cvox.parts;
+        for (const p of scopeParts) {
+          for (const layer of p.voxels) {
+            for (const row of layer) {
+              if (row.includes(index)) return current;
+            }
+          }
+        }
+        const nextPalette = palette.filter((_, i) => i !== index);
+        const shift = (cvox: Cvox): Cvox | null => {
+          if (!inScope(cvox)) return null;
+          let fileChanged = false;
+          const parts: Part[] = cvox.parts.map((p) => {
+            let partChanged = false;
+            const voxels = p.voxels.map((layer) =>
+              layer.map((row) =>
+                row.map((idx) => {
+                  if (idx !== AIR && idx > index) {
+                    partChanged = true;
+                    return idx - 1;
+                  }
+                  return idx;
+                }),
+              ),
+            );
+            if (!partChanged) return p;
+            fileChanged = true;
+            return { ...p, voxels };
+          });
+          const isPrimaryInlineHolder = !bound && cvox === src.cvox;
+          if (!fileChanged && !isPrimaryInlineHolder) return null;
+          return {
+            ...cvox,
+            parts: fileChanged ? parts : cvox.parts,
+            ...(isPrimaryInlineHolder && { palette: nextPalette }),
+          };
+        };
+        const nextSrc = mapGeometryFiles(src, (cvox) => shift(cvox));
+        if (!bound || nextSrc.kind !== 'folder' || src.kind !== 'folder') {
+          return { ...current, source: nextSrc };
+        }
+        const path = normalizePath(src.manifest!.palette!);
+        const files =
+          nextSrc.files !== undefined ? new Map(nextSrc.files) : undefined;
+        files?.set(path, {
+          name: path,
+          text:
+            JSON.stringify(
+              { colors: nextPalette.map(serializeColor) },
+              null,
+              2,
+            ) + '\n',
+        });
+        return {
+          ...current,
+          source: {
+            ...nextSrc,
+            externalPalette: nextPalette,
+            ...(files !== undefined && { files }),
+          },
+        };
+      });
+    },
+    [dispatchEdit, cancelPendingCvoxReparse],
+  );
+
+  // Move the primary's inline palette out to palette.json and bind it
+  // (§6.10) — the inline declaration is dropped (the binding would
+  // shadow it anyway, H03). One undo.
+  const handleExternalizePalette = useCallback(() => {
+    cancelPendingCvoxReparse();
+    cancelPendingManifestReparse();
+    setCvoxParseError(null);
+    dispatchEdit(null, (current) => {
+      const src = current?.source;
+      if (
+        src === undefined ||
+        src.kind !== 'folder' ||
+        src.manifest === undefined ||
+        src.files === undefined ||
+        src.manifest.palette !== undefined
+      ) {
+        return current;
+      }
+      const palette = src.cvox.palette;
+      if (palette.length === 0) return current;
+      let path = 'palette.json';
+      let n = 2;
+      while (src.files.has(path)) path = `palette-${n++}.json`;
+      // Drop the inline declaration from the primary (empty = absent).
+      const stripped = mapGeometryFiles(src, (cvox, p) =>
+        p === src.cvoxFile.name ? { ...cvox, palette: [] } : null,
+      );
+      const files = new Map(stripped.files ?? src.files);
+      files.set(path, {
+        name: path,
+        text:
+          JSON.stringify({ colors: palette.map(serializeColor) }, null, 2) +
+          '\n',
+      });
+      const nextManifest: Manifest = { ...src.manifest, palette: path };
+      const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
+      return {
+        ...current,
+        source: {
+          ...stripped,
+          files,
+          externalPalette: palette,
+          manifest: nextManifest,
+          manifestFile: {
+            ...baseFile,
+            text: JSON.stringify(nextManifest, null, 2) + '\n',
+          },
+        },
+      };
+    });
+    setManifestParseError(null);
+  }, [dispatchEdit, cancelPendingCvoxReparse, cancelPendingManifestReparse]);
+
+  // The reverse: copy the bound palette into the primary's inline
+  // declaration and drop the binding. The palette.json file is kept
+  // (it may be shared) — delete it from the Files tree if orphaned.
+  const handleInlinePalette = useCallback(() => {
+    cancelPendingCvoxReparse();
+    cancelPendingManifestReparse();
+    setCvoxParseError(null);
+    dispatchEdit(null, (current) => {
+      const src = current?.source;
+      if (
+        src === undefined ||
+        src.kind !== 'folder' ||
+        src.manifest?.palette === undefined ||
+        src.externalPalette === undefined
+      ) {
+        return current;
+      }
+      const palette = src.externalPalette;
+      const withInline = mapGeometryFiles(src, (cvox, p) =>
+        p === src.cvoxFile.name ? { ...cvox, palette } : null,
+      );
+      const { palette: _dropped, ...restManifest } = src.manifest;
+      const { externalPalette: _x, ...restSrc } = withInline;
+      const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
+      return {
+        ...current,
+        source: {
+          ...restSrc,
+          manifest: restManifest,
+          manifestFile: {
+            ...baseFile,
+            text: JSON.stringify(restManifest, null, 2) + '\n',
+          },
+        },
+      };
+    });
+    setManifestParseError(null);
+  }, [dispatchEdit, cancelPendingCvoxReparse, cancelPendingManifestReparse]);
 
   // ── File CRUD (Phase D). Folder sources with a files map only; each
   // operation is one dispatchEdit = one atomic undo step. The manifest
@@ -1777,6 +1993,45 @@ export function App() {
     }
     return { ...modelCvox, palette: source.externalPalette };
   }, [modelCvox, source]);
+  // Per-part render palettes (SPEC §6.10): with a binding, one palette
+  // covers everything (renderCvox above); WITHOUT one, each part
+  // resolves against its own defining file's inline palette — only
+  // relevant for unbound multi-file models.
+  const partPalettes = useMemo(() => {
+    if (
+      source?.kind !== 'folder' ||
+      source.geometries === undefined ||
+      source.geometries.size <= 1 ||
+      source.externalPalette !== undefined
+    ) {
+      return undefined;
+    }
+    const m = new Map<string, Palette>();
+    for (const [path, g] of source.geometries) {
+      const cvox = path === source.cvoxFile.name ? source.cvox : g;
+      for (const part of cvox.parts) {
+        if (!m.has(part.name)) m.set(part.name, cvox.palette);
+      }
+    }
+    return m;
+  }, [source]);
+  // What the Palette panel edits — the model's EFFECTIVE palette per the
+  // §6.10 precedence: the bound external file, else the primary's inline.
+  const paletteTarget = useMemo(() => {
+    if (
+      source?.kind === 'folder' &&
+      source.manifest?.palette !== undefined &&
+      source.externalPalette !== undefined
+    ) {
+      return {
+        kind: 'external' as const,
+        path: normalizePath(source.manifest.palette),
+      };
+    }
+    return source !== undefined
+      ? { kind: 'inline' as const, file: source.cvoxFile.name }
+      : undefined;
+  }, [source]);
 
   // Dock layout tree (resizable, rearrangeable). In-memory only — layout is
   // session-scoped by design (no persistence); "Reset layout" restores it.
@@ -2011,6 +2266,7 @@ export function App() {
                   hiddenParts={hiddenParts}
                   session={animSession}
                   manifestEditsDisabled={manifestParseError !== null}
+                  partPalettes={partPalettes}
                   onCreateClip={handleCreateAnimationClip}
                 />
               ) : (
@@ -2019,6 +2275,7 @@ export function App() {
                   manifest={source.kind === 'folder' ? source.manifest : undefined}
                   viewMode={effectiveViewMode}
                   hiddenParts={hiddenParts}
+                  partPalettes={partPalettes}
                 />
               )}
             </>
@@ -2206,17 +2463,53 @@ export function App() {
               </p>
             ),
         };
-      case 'palette':
+      case 'palette': {
+        const target =
+          paletteTarget ?? ({ kind: 'inline', file: source.cvoxFile.name } as const);
+        const external = target.kind === 'external';
+        const effective =
+          external && source.kind === 'folder' && source.externalPalette !== undefined
+            ? source.externalPalette
+            : source.cvox.palette;
         return {
           title: 'Palette',
           body: (
             <PalettePanel
-              cvox={source.cvox}
-              disabled={cvoxParseError !== null}
-              onChange={handleEditCvox}
+              palette={effective}
+              // Usage spans the files resolving against this palette:
+              // bound → the whole model; inline → the primary file.
+              parts={
+                external ? (merged?.parts ?? source.cvox.parts) : source.cvox.parts
+              }
+              target={target}
+              disabled={
+                external ? manifestParseError !== null : cvoxParseError !== null
+              }
+              disabledReason={
+                external
+                  ? 'Manifest source has syntax errors — fix to enable palette editing.'
+                  : undefined
+              }
+              onChange={(next, tag) =>
+                external
+                  ? handleEditExternalPalette(next, tag)
+                  : handleEditCvox({ ...source.cvox, palette: next }, tag)
+              }
+              onDeleteColor={handleDeletePaletteColor}
+              onExternalize={
+                !external &&
+                source.kind === 'folder' &&
+                source.manifest !== undefined &&
+                source.files !== undefined &&
+                source.cvox.palette.length > 0
+                  ? handleExternalizePalette
+                  : undefined
+              }
+              onInline={external ? handleInlinePalette : undefined}
             />
           ),
         };
+      }
       case 'console': {
         // Derived, not stored: the model's current problems. Live parse
         // errors mirror the in-editor banners; the dropped-comments notice

@@ -41,7 +41,7 @@ export {
 export type { KeyAttr, AttrValue } from './animation-edit.js';
 
 export { parseCvox } from './cvox/parse.js';
-export { serializeCvox } from './cvox/serialize.js';
+export { serializeColor, serializeCvox } from './cvox/serialize.js';
 
 export { AIR } from './cvox/voxel-row.js';
 export type {

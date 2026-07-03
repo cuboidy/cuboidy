@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
-import type { Cvox, Manifest } from '@cuboidy/core';
+import type { Cvox, Manifest, Palette } from '@cuboidy/core';
 import type { ViewMode } from '../lib/types.js';
 import {
   computePartPositions,
@@ -18,6 +18,10 @@ interface Props {
   manifest: Manifest | undefined;
   viewMode: ViewMode;
   hiddenParts: ReadonlySet<string>;
+  // Per-part palette override (SPEC §6.10): with no manifest binding,
+  // each part resolves against its DEFINING file's inline palette.
+  // Absent = every part uses cvox.palette (bound or single-file model).
+  partPalettes?: ReadonlyMap<string, Palette> | undefined;
 }
 
 // Renders the model in one of two static modes:
@@ -35,7 +39,13 @@ interface Props {
 // not the visible subset, so toggling visibility doesn't make the camera
 // jump. (drei OrbitControls re-snaps to a changed `target` prop.)
 
-export function VoxelScene({ cvox, manifest, viewMode, hiddenParts }: Props) {
+export function VoxelScene({
+  cvox,
+  manifest,
+  viewMode,
+  hiddenParts,
+  partPalettes,
+}: Props) {
   const visibleParts = cvox.parts.filter((p) => !hiddenParts.has(p.name));
 
   const positions = useMemo(() => computePartPositions(cvox, manifest, viewMode), [
@@ -77,7 +87,10 @@ export function VoxelScene({ cvox, manifest, viewMode, hiddenParts }: Props) {
         const pos = positions.get(part.name) ?? [0, 0, 0];
         return (
           <group key={part.name} position={pos}>
-            <PartMesh part={part} palette={cvox.palette} />
+            <PartMesh
+              part={part}
+              palette={partPalettes?.get(part.name) ?? cvox.palette}
+            />
           </group>
         );
       })}

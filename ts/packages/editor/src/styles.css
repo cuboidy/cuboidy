@@ -575,11 +575,39 @@ pre {
   pointer-events: none;
 }
 
+/* Edit-target header: which palette the panel writes to (palette.json
+   vs a file's inline declaration) + the slot count. */
+.palette-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.palette-target {
+  font-family:
+    ui-monospace,
+    'SF Mono',
+    Menlo,
+    Consolas,
+    monospace;
+  font-size: 0.72rem;
+  color: #8a9;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .palette-count {
+  flex-shrink: 0;
   font-size: 0.72rem;
   color: #666;
   font-variant-numeric: tabular-nums;
-  margin-bottom: 0.4rem;
+}
+
+.palette-storage-action {
+  margin-top: 0.75rem;
 }
 
 .palette-panel .panel-note {

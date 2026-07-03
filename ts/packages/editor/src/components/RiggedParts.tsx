@@ -11,6 +11,10 @@ interface Props {
   // rig). A part absent from the map also falls back to rest.
   poses: Map<string, Pose> | null;
   hiddenParts: ReadonlySet<string>;
+  // Per-part palette override (SPEC §6.10): with no manifest binding,
+  // each part resolves against its DEFINING file's inline palette.
+  // Absent = every part uses `palette`.
+  partPalettes?: ReadonlyMap<string, Palette> | undefined;
 }
 
 // Renders the rig forest as nested three.js groups so a parent's animated
@@ -19,7 +23,13 @@ interface Props {
 //   v_parent = part.position + anim.pos + M_pivot·M_anim·S_anim·(v_local − pivot.pos)
 // by placing the group at part.position+anim.pos (so the group origin IS the
 // part's pivot), rotating/scaling there, and offsetting the mesh by −pivot.
-export function RiggedParts({ roots, palette, poses, hiddenParts }: Props) {
+export function RiggedParts({
+  roots,
+  palette,
+  poses,
+  hiddenParts,
+  partPalettes,
+}: Props) {
   return (
     <>
       {roots.map((node) => (
@@ -29,6 +39,7 @@ export function RiggedParts({ roots, palette, poses, hiddenParts }: Props) {
           palette={palette}
           poses={poses}
           hiddenParts={hiddenParts}
+          partPalettes={partPalettes}
         />
       ))}
     </>
@@ -47,9 +58,16 @@ interface NodeProps {
   palette: Palette;
   poses: Map<string, Pose> | null;
   hiddenParts: ReadonlySet<string>;
+  partPalettes?: ReadonlyMap<string, Palette> | undefined;
 }
 
-function RigNodeView({ node, palette, poses, hiddenParts }: NodeProps) {
+function RigNodeView({
+  node,
+  palette,
+  poses,
+  hiddenParts,
+  partPalettes,
+}: NodeProps) {
   const part = node.part;
   const pose = poses?.get(part.name) ?? REST_POSE;
   const base = node.manifestPart?.position ?? [0, 0, 0];
@@ -108,7 +126,10 @@ function RigNodeView({ node, palette, poses, hiddenParts }: NodeProps) {
           not (v_local) − pivot). At rest scale [1,1,1] this is a no-op. */}
       <group scale={pose.scale}>
         <group position={[-piv.x, -piv.y, -piv.z]} visible={meshVisible}>
-          <PartMesh part={part} palette={palette} />
+          <PartMesh
+            part={part}
+            palette={partPalettes?.get(part.name) ?? palette}
+          />
         </group>
       </group>
       {node.children.map((child) => (
@@ -118,6 +139,7 @@ function RigNodeView({ node, palette, poses, hiddenParts }: NodeProps) {
           palette={palette}
           poses={poses}
           hiddenParts={hiddenParts}
+          partPalettes={partPalettes}
         />
       ))}
     </group>

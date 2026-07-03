@@ -1,90 +1,105 @@
-import { AIR, type Color, type Cvox, type Part } from '@cuboidy/core';
+import { AIR, type Color, type Palette, type Part } from '@cuboidy/core';
+
+// What the panel is editing — the model's EFFECTIVE palette per the
+// SPEC §6.10 precedence: the manifest-bound external file when a
+// binding exists, else the primary geometry file's inline declaration.
+export type PaletteTarget =
+  | { kind: 'external'; path: string }
+  | { kind: 'inline'; file: string };
 
 interface Props {
-  cvox: Cvox;
-  // When the current source text doesn't parse, the AST shown here is
+  // The effective palette being edited.
+  palette: Palette;
+  // Every part of the model — usage counts (and the parent's delete
+  // remap) span all geometry files sharing this palette.
+  parts: readonly Part[];
+  target: PaletteTarget;
+  // When the relevant source text doesn't parse, the state shown here is
   // stale relative to the user's in-progress edits. Disabling prevents
-  // palette mutations from re-serializing and clobbering the user's
-  // unsaved text. UX: source must be fixed first.
+  // palette mutations from re-serializing and clobbering unsaved text.
   disabled?: boolean;
+  disabledReason?: string | undefined;
   // Optional undo-coalescing tag: edits with the same tag in quick
   // succession merge into one history entry. Color edits pass one because
   // <input type="color"> fires onChange continuously while the user drags
   // inside the OS picker.
-  onChange: (next: Cvox, tag?: string) => void;
+  onChange: (next: Palette, tag?: string) => void;
+  // Deleting a color shifts every higher index in every affected voxel —
+  // a cross-file transaction the parent owns.
+  onDeleteColor: (index: number) => void;
+  // Move the inline palette out to palette.json and bind it (undefined =
+  // not available, e.g. no manifest / already external).
+  onExternalize?: (() => void) | undefined;
+  // Copy the bound palette back into the primary file's inline
+  // declaration and drop the binding (the file is kept).
+  onInline?: (() => void) | undefined;
 }
 
-// Palette editing as a panel — lives in the right sidebar so it's
-// visible from any main-pane tab (Preview / cvox / manifest). All
-// edits route through onChange; the parent recomposes Cvox into text
-// and updates the loaded source.
+// Palette editing as a panel. All edits route through the callbacks;
+// the parent writes them to where the palette LIVES (palette.json or
+// the primary .cvox).
 //
 // Delete behavior:
 //   - Unused color: silent delete.
 //   - In-use color: disabled. The "auto-replace cells with AIR" path
 //     surprised users — "delete color" should mean "tidy the palette,"
-//     not "make voxels disappear." Users who really want to shrink
-//     the palette under in-use indices have two escapes:
-//       (a) Hand-edit the source view (the format's source-of-truth).
-//       (b) Repaint the cells via the future voxel painter (A2-rig-6),
-//           which drops usage to 0 and naturally re-enables delete.
-//     The tooltip on the disabled × button names both.
+//     not "make voxels disappear."
 
 export const MAX_PALETTE = 62; // SPEC §7.4
 
-export function PalettePanel({ cvox, disabled = false, onChange }: Props) {
-  const usage = computePaletteUsage(cvox);
+export function PalettePanel({
+  palette,
+  parts,
+  target,
+  disabled = false,
+  disabledReason,
+  onChange,
+  onDeleteColor,
+  onExternalize,
+  onInline,
+}: Props) {
+  const usage = computePaletteUsage(palette, parts);
 
   const handleEditColor = (index: number, hex: string) => {
     if (disabled) return;
     const rgb = hexToRgb(hex);
-    const newPalette = cvox.palette.map((c, i) =>
-      i === index ? { ...c, ...rgb } : c,
+    onChange(
+      palette.map((c, i) => (i === index ? { ...c, ...rgb } : c)),
+      `palette:color:${index}`,
     );
-    onChange({ ...cvox, palette: newPalette }, `palette:color:${index}`);
   };
 
   const handleAddColor = () => {
     if (disabled) return;
-    if (cvox.palette.length >= MAX_PALETTE) return;
-    const newPalette: Color[] = [
-      ...cvox.palette,
-      { r: 255, g: 255, b: 255, a: 255 },
-    ];
-    onChange({ ...cvox, palette: newPalette });
-  };
-
-  // Only valid for an unused index — the button is disabled for in-use
-  // colors (see the design note at the top of this file).
-  const handleDeleteColor = (index: number) => {
-    if (disabled) return;
-    if ((usage[index] ?? 0) > 0) return;
-    const newPalette = cvox.palette.filter((_, i) => i !== index);
-    // Remap voxels: deleted index is unused so no AIR conversion is
-    // needed; only the index shift for higher entries applies.
-    const newParts: Part[] = cvox.parts.map((p) => ({
-      ...p,
-      voxels: p.voxels.map((layer) =>
-        layer.map((row) =>
-          row.map((idx) => (idx === AIR || idx < index ? idx : idx - 1)),
-        ),
-      ),
-    }));
-    onChange({ ...cvox, palette: newPalette, parts: newParts });
+    if (palette.length >= MAX_PALETTE) return;
+    onChange([...palette, { r: 255, g: 255, b: 255, a: 255 }]);
   };
 
   return (
     <section className={`palette-panel${disabled ? ' disabled' : ''}`}>
-      <div className="palette-count">
-        {cvox.palette.length} / {MAX_PALETTE}
+      <div className="palette-header">
+        <span
+          className="palette-target"
+          title={
+            target.kind === 'external'
+              ? `Editing the manifest-bound palette (${target.path}) — applies to every geometry file`
+              : `Editing the inline palette declared in ${target.file}`
+          }
+        >
+          {target.kind === 'external' ? target.path : `${target.file} (inline)`}
+        </span>
+        <span className="palette-count">
+          {palette.length} / {MAX_PALETTE}
+        </span>
       </div>
       {disabled && (
         <p className="panel-note">
-          Source has syntax errors — fix to enable palette editing.
+          {disabledReason ??
+            'Source has syntax errors — fix to enable palette editing.'}
         </p>
       )}
       <div className="palette-grid">
-        {cvox.palette.map((color, i) => (
+        {palette.map((color, i) => (
           <PaletteSwatch
             key={i}
             index={i}
@@ -92,10 +107,12 @@ export function PalettePanel({ cvox, disabled = false, onChange }: Props) {
             usage={usage[i] ?? 0}
             disabled={disabled}
             onEdit={(hex) => handleEditColor(i, hex)}
-            onDelete={() => handleDeleteColor(i)}
+            onDelete={() => {
+              if (!disabled && (usage[i] ?? 0) === 0) onDeleteColor(i);
+            }}
           />
         ))}
-        {cvox.palette.length < MAX_PALETTE && !disabled && (
+        {palette.length < MAX_PALETTE && !disabled && (
           <button
             type="button"
             className="palette-add"
@@ -106,6 +123,26 @@ export function PalettePanel({ cvox, disabled = false, onChange }: Props) {
           </button>
         )}
       </div>
+      {!disabled && target.kind === 'inline' && onExternalize !== undefined && (
+        <button
+          type="button"
+          className="btn btn-create btn-sm palette-storage-action"
+          title="Move this palette out to palette.json and bind it in the manifest (shareable across files and skins)"
+          onClick={onExternalize}
+        >
+          Externalize palette
+        </button>
+      )}
+      {!disabled && target.kind === 'external' && onInline !== undefined && (
+        <button
+          type="button"
+          className="btn btn-sm palette-storage-action"
+          title={`Copy the bound palette into the primary geometry file and drop the binding (${target.path} is kept)`}
+          onClick={onInline}
+        >
+          Inline palette
+        </button>
+      )}
     </section>
   );
 }
@@ -167,9 +204,12 @@ function PaletteSwatch({
   );
 }
 
-function computePaletteUsage(cvox: Cvox): number[] {
-  const usage = cvox.palette.map(() => 0);
-  for (const part of cvox.parts) {
+function computePaletteUsage(
+  palette: Palette,
+  parts: readonly Part[],
+): number[] {
+  const usage = palette.map(() => 0);
+  for (const part of parts) {
     for (const layer of part.voxels) {
       for (const row of layer) {
         for (const idx of row) {

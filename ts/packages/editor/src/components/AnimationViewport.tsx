@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
-import type { Cvox, Manifest } from '@cuboidy/core';
+import type { Cvox, Manifest, Palette } from '@cuboidy/core';
 import {
   buildRigTree,
   computeSceneCenter,
@@ -16,6 +16,8 @@ interface Props {
   hiddenParts: ReadonlySet<string>;
   session: AnimationSession;
   manifestEditsDisabled: boolean;
+  // Per-part palette override (SPEC §6.10) — see VoxelScene.
+  partPalettes?: ReadonlyMap<string, Palette> | undefined;
   onCreateClip: () => void;
 }
 
@@ -29,6 +31,7 @@ export function AnimationViewport({
   hiddenParts,
   session,
   manifestEditsDisabled,
+  partPalettes,
   onCreateClip,
 }: Props) {
   const {
@@ -96,6 +99,7 @@ export function AnimationViewport({
             palette={cvox.palette}
             poses={poses}
             hiddenParts={hiddenParts}
+            partPalettes={partPalettes}
           />
           <OrbitControls target={center} makeDefault />
         </Canvas>
