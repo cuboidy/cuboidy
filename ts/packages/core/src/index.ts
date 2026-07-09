@@ -27,6 +27,9 @@ export type {
   Pose,
 } from './animation.js';
 
+export { EASING_NAMES, DEFAULT_EASING, applyEasing } from './easing.js';
+export type { EasingName } from './easing.js';
+
 export {
   formatTimeKey,
   nearestExistingKey,

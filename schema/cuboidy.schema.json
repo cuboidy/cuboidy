@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://cuboidy.com/schema/cuboidy.schema.json",
   "title": "Cuboidy Manifest",
-  "description": "Schema for cuboidy.json — the manifest file of a Cuboidy v0.7 model package (geometry list, palette binding, rig hierarchy + animation references). Generated from the Zod ManifestSchema in @cuboidy/core. Note: SPEC §8 reference-path rules on geometry/palette entries are runtime-only (Zod refinements) and appear here as plain strings.",
+  "description": "Schema for cuboidy.json — the manifest file of a Cuboidy v0.8 model package (geometry list, palette binding, rig hierarchy + animation references). Generated from the Zod ManifestSchema in @cuboidy/core. Note: SPEC §8 reference-path rules on geometry/palette entries are runtime-only (Zod refinements) and appear here as plain strings.",
   "type": "object",
   "properties": {
     "name": {
@@ -183,6 +183,31 @@
                       },
                       "visible": {
                         "type": "boolean"
+                      },
+                      "ease": {
+                        "type": "string",
+                        "enum": [
+                          "linear",
+                          "step",
+                          "in-sine",
+                          "out-sine",
+                          "in-out-sine",
+                          "in-quad",
+                          "out-quad",
+                          "in-out-quad",
+                          "in-cubic",
+                          "out-cubic",
+                          "in-out-cubic",
+                          "in-back",
+                          "out-back",
+                          "in-out-back",
+                          "in-elastic",
+                          "out-elastic",
+                          "in-out-elastic",
+                          "in-bounce",
+                          "out-bounce",
+                          "in-out-bounce"
+                        ]
                       }
                     },
                     "additionalProperties": false

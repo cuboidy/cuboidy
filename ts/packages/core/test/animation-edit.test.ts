@@ -117,6 +117,16 @@ describe('deleteAttrAtKey', () => {
     const next = deleteAttrAtKey(track, '0.0', 'rot');
     expect(Object.keys(next)).toEqual([]);
   });
+
+  it('drops an entry left holding only ease (no invisible flattening key)', () => {
+    const track: AnimationTrack = {
+      '0.0': { rot: [0, 0, 0] },
+      '0.5': { rot: [0, 9, 0], ease: 'in-quad' },
+      '1.0': { rot: [0, 0, 0] },
+    };
+    const next = deleteAttrAtKey(track, '0.5', 'rot');
+    expect('0.5' in next).toBe(false);
+  });
 });
 
 describe('moveAttrKey', () => {
@@ -151,6 +161,40 @@ describe('moveAttrKey', () => {
     const track: AnimationTrack = { '0.0': { rot: [0, 0, 0] }, '0.5': { rot: [0, 9, 0] } };
     const { track: next } = moveAttrKey(track, '0.5', 0.8, 'rot');
     expect('0.5' in next).toBe(false);
+  });
+
+  it('carries ease to the target when the move renames the whole keyframe', () => {
+    const track: AnimationTrack = {
+      '0.0': { rot: [0, 0, 0] },
+      '0.5': { rot: [0, 9, 0], ease: 'out-bounce' },
+    };
+    const { track: next } = moveAttrKey(track, '0.5', 0.8, 'rot');
+    expect('0.5' in next).toBe(false);
+    expect(next['0.8']).toEqual({ rot: [0, 9, 0], ease: 'out-bounce' });
+  });
+
+  it('leaves ease at the source when other attrs survive there', () => {
+    const track: AnimationTrack = {
+      '0.0': { rot: [0, 0, 0] },
+      '0.5': { rot: [0, 9, 0], pos: [1, 0, 0], ease: 'in-quad' },
+    };
+    const { track: next } = moveAttrKey(track, '0.5', 0.8, 'rot');
+    expect(next['0.5']).toEqual({ pos: [1, 0, 0], ease: 'in-quad' });
+    expect(next['0.8']).toEqual({ rot: [0, 9, 0] });
+  });
+
+  it('keeps the target’s own ease when merging into an eased entry', () => {
+    const track: AnimationTrack = {
+      '0.0': {},
+      '0.5': { rot: [0, 9, 0], ease: 'in-quad' },
+      '1.0': { pos: [0, 2, 0], ease: 'out-sine' },
+    };
+    const { track: next } = moveAttrKey(track, '0.5', 1.0, 'rot');
+    expect(next['1.0']).toEqual({
+      pos: [0, 2, 0],
+      rot: [0, 9, 0],
+      ease: 'out-sine',
+    });
   });
 
   it('does not seed rot at 0.0 when 0.0 exists without that attr (pure rename)', () => {

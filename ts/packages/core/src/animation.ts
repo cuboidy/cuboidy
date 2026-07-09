@@ -13,11 +13,19 @@
 
 import { z } from 'zod';
 import { Identifier } from './identifier-schema.js';
+import {
+  DEFAULT_EASING,
+  EASING_NAMES,
+  applyEasing,
+  type EasingName,
+} from './easing.js';
 
 const Vec3Tuple = z.tuple([z.number(), z.number(), z.number()]);
 
 // SPEC §6.5: a single keyframe. Every field is optional — an omitted field
 // inherits from the previous keyframe (carryover, resolved in resolveTrack).
+// `ease` names the interpolation curve of the OUTGOING segment (this
+// keyframe → the next, §6.7) and carries over like the value fields.
 // `.strict()` rejects typo'd field names (matches the manifest's strictness).
 export const KeyframeSchema = z
   .object({
@@ -25,6 +33,7 @@ export const KeyframeSchema = z
     pos: Vec3Tuple.optional(),
     scale: Vec3Tuple.optional(),
     visible: z.boolean().optional(),
+    ease: z.enum(EASING_NAMES).optional(),
   })
   .strict();
 
@@ -80,12 +89,14 @@ export function isInlineAnimation(a: Animation): a is InlineAnimation {
 
 interface ResolvedKey extends Pose {
   t: number; // time key parsed to seconds
+  ease: EasingName; // §6.7 curve of the segment LEAVING this key
 }
 
 // SPEC §6.5 carryover + §6.6 ordering: parse the time keys to numbers, drop
 // non-numeric keys defensively, sort ascending, then fill each keyframe's
 // omitted fields from the previous resolved keyframe (the first from the
-// §6.5 defaults). The result is a dense, time-sorted pose list.
+// §6.5 defaults; `ease` seeds as "linear"). The result is a dense,
+// time-sorted pose list.
 function resolveTrack(track: AnimationTrack): ResolvedKey[] {
   const sorted = Object.keys(track)
     .map((k) => ({ k, t: Number(k) }))
@@ -94,6 +105,7 @@ function resolveTrack(track: AnimationTrack): ResolvedKey[] {
 
   const out: ResolvedKey[] = [];
   let prev = defaultPose();
+  let prevEase: EasingName = DEFAULT_EASING;
   for (const { k, t } of sorted) {
     const kf = track[k]!;
     const resolved: Pose = {
@@ -102,8 +114,10 @@ function resolveTrack(track: AnimationTrack): ResolvedKey[] {
       scale: kf.scale ?? prev.scale,
       visible: kf.visible ?? prev.visible,
     };
-    out.push({ t, ...resolved });
+    const ease = kf.ease ?? prevEase;
+    out.push({ t, ease, ...resolved });
     prev = resolved;
+    prevEase = ease;
   }
   return out;
 }
@@ -131,7 +145,8 @@ function stepVisible(keys: readonly ResolvedKey[], t: number): boolean {
 }
 
 // SPEC §6.7: sample one part's track at `time` (seconds). `rot`/`pos`/`scale`
-// linearly interpolate; `visible` steps. Out-of-range handling:
+// interpolate along the segment's easing curve (the OUTGOING key's resolved
+// `ease`, default linear); `visible` always steps. Out-of-range handling:
 //   - loop: time wraps modulo duration; the tail interval (last key →
 //     duration) interpolates toward the "0.0" keyframe (§6.7)
 //   - no loop: time clamps to [0, duration]; values hold past the last key
@@ -165,9 +180,10 @@ export function samplePart(
     scale = first.scale;
   } else if (t >= last.t) {
     if (loop && last.t < duration) {
-      // §6.7 wrap interval: interpolate last → first across [last.t, duration].
+      // §6.7 wrap interval: interpolate last → first across [last.t, duration]
+      // along the last key's ease (it is the segment's outgoing key).
       const span = duration - last.t;
-      const u = span > 0 ? (t - last.t) / span : 0;
+      const u = span > 0 ? applyEasing(last.ease, (t - last.t) / span) : 0;
       rot = lerp3(last.rot, first.rot, u);
       pos = lerp3(last.pos, first.pos, u);
       scale = lerp3(last.scale, first.scale, u);
@@ -181,7 +197,8 @@ export function samplePart(
     while (i < keys.length - 1 && keys[i + 1]!.t < t) i++;
     const a = keys[i]!;
     const b = keys[i + 1]!;
-    const u = b.t > a.t ? (t - a.t) / (b.t - a.t) : 0;
+    const u =
+      b.t > a.t ? applyEasing(a.ease, (t - a.t) / (b.t - a.t)) : 0;
     rot = lerp3(a.rot, b.rot, u);
     pos = lerp3(a.pos, b.pos, u);
     scale = lerp3(a.scale, b.scale, u);

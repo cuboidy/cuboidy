@@ -14,6 +14,18 @@ import type { AnimationTrack, Keyframe, Vec3Tuple } from './animation.js';
 export type KeyAttr = 'rot' | 'pos' | 'scale' | 'visible';
 export type AttrValue = Vec3Tuple | boolean;
 
+const ATTR_FIELDS: readonly KeyAttr[] = ['rot', 'pos', 'scale', 'visible'];
+
+// A time-key entry justifies its existence only by carrying at least one
+// attribute field. `ease` (SPEC §6.5) is segment metadata, not an attribute:
+// an entry left holding ONLY `ease` would render no marker in the editor yet
+// still pin every attribute to its carried-over value at that time (resolve
+// is dense) — an invisible flattening. So removal paths treat such an entry
+// as empty and drop it, letting the ease die with its keyframe.
+function hasAttrField(kf: Keyframe): boolean {
+  return ATTR_FIELDS.some((a) => a in kf);
+}
+
 // SPEC §6.5 first-keyframe defaults, by attribute. Used to seed the
 // mandatory "0.0" key (§6.6) so a freshly-keyed attribute interpolates from
 // rest rather than snapping.
@@ -138,8 +150,9 @@ export function addAttrAtTime(
   return { track: sortTrackKeys(ensureZeroKey(withKey, attr)), timeKey };
 }
 
-// Remove one attribute field from a time-key. Drops the entry entirely if it
-// becomes empty (never serialize `"0.5": {}`). If removing it leaves the
+// Remove one attribute field from a time-key. Drops the entry entirely if no
+// attribute field remains (never serialize `"0.5": {}` — nor an ease-only
+// entry, see hasAttrField). If removing it leaves the
 // attribute with surviving keys but no "0.0" entry, re-seed "0.0" with the
 // attribute's rest value so the part keeps a §6.6 start key and doesn't snap
 // at t=0. If the attribute is fully gone, no re-seed (it rests everywhere).
@@ -152,7 +165,7 @@ export function deleteAttrAtKey(
   if (entry === undefined) return track;
   const { [attr]: _drop, ...rest } = entry;
   const out: AnimationTrack = { ...track };
-  if (Object.keys(rest).length === 0) delete out[timeKey];
+  if (!hasAttrField(rest)) delete out[timeKey];
   else out[timeKey] = rest;
 
   if (out[ZERO_KEY] === undefined) {
@@ -178,6 +191,12 @@ export function deleteAttrAtKey(
 // field — the UI blocks same-attribute collisions; this helper stays
 // mechanical like setAttrAtKey.
 //
+// When the move empties the source entry of attribute fields, the entry is
+// the keyframe being renamed — its `ease` travels to the target (a drag must
+// not silently drop the segment's easing). A target entry that already has
+// its own `ease` keeps it; if attribute fields survive at the source, the
+// ease stays there (it is keyframe-level metadata, not the moved attr's).
+//
 // Returns the (possibly unchanged) track plus the resolved time-key so the
 // caller can keep the moved key selected.
 export function moveAttrKey(
@@ -196,9 +215,18 @@ export function moveAttrKey(
   const value = entry[attr] as AttrValue;
   const { [attr]: _drop, ...rest } = entry;
   const out: AnimationTrack = { ...track };
-  if (Object.keys(rest).length === 0) delete out[fromTimeKey];
-  else out[fromTimeKey] = rest;
-  out[toKey] = withAttr(out[toKey] ?? {}, attr, value);
+  let carriedEase: Keyframe['ease'];
+  if (!hasAttrField(rest)) {
+    carriedEase = rest.ease;
+    delete out[fromTimeKey];
+  } else {
+    out[fromTimeKey] = rest;
+  }
+  const target = withAttr(out[toKey] ?? {}, attr, value);
+  if (carriedEase !== undefined && target.ease === undefined) {
+    target.ease = carriedEase;
+  }
+  out[toKey] = target;
   return { track: sortTrackKeys(out), timeKey: toKey };
 }
 

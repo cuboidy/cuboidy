@@ -1,9 +1,11 @@
 # Cuboidy Format Specification
 
-**Version:** 0.7 (draft)
+**Version:** 0.8 (draft)
 **Status:** Early draft. Subject to change before v1.0.
 
-**Changes in this draft revision (v0.7):** The package generalizes from the fixed two-file layout to **manifest-anchored references**. (1) **Multiple geometry files**: the manifest gains an optional top-level `geometry` array (§6.9) listing the package's `.cvox` files by reference path (§8); absent → the previous fixed `["voxels.cvox"]`, so existing models are unchanged. Part names remain unique across the whole model (§5) — a name defined in two geometry files is a cross-file `duplicate` error. (2) **Shareable palettes**: the cvox `palette` declaration is relaxed from "exactly one" to **"at most one"** (§7.4); a new external palette file (`{ "colors": [...] }`, §6.10) can be bound model-wide via the manifest's optional top-level `palette` reference. The binding **takes precedence over inline palettes** (enabling palette swapping / skins; a shadowed inline palette lints as hint **H03**), and a palette-less file's voxel index-range validation moves from parse time to cross-file validation. (3) New lint **W07**: a `.cvox` file present in the package but not referenced by `geometry`. `cuboidy.json` remains the package's only fixed filename (the load anchor); every other file is named freely and found by reference. External animation files were already specified in v0.6 (§6.3, §8) and are unchanged.
+**Changes in this draft revision (v0.8):** Added **keyframe easing** (§6.5, §6.7). A keyframe gains an optional `ease` field naming the interpolation curve of its **outgoing** segment (this keyframe → the next). The value is one of 20 named presets — `linear` (default), `step`, and `in` / `out` / `in-out` variants of `sine` / `quad` / `cubic` / `back` / `elastic` / `bounce` — applied as a remap of normalized segment progress before linear interpolation of `rot` / `pos` / `scale` (`visible` always steps). `ease` participates in §6.5 carryover like the value fields, so a single `ease` on the `"0.0"` keyframe shapes an entire track. Custom cubic-bezier curves remain reserved for a future revision.
+
+**Changes in v0.7:** The package generalizes from the fixed two-file layout to **manifest-anchored references**. (1) **Multiple geometry files**: the manifest gains an optional top-level `geometry` array (§6.9) listing the package's `.cvox` files by reference path (§8); absent → the previous fixed `["voxels.cvox"]`, so existing models are unchanged. Part names remain unique across the whole model (§5) — a name defined in two geometry files is a cross-file `duplicate` error. (2) **Shareable palettes**: the cvox `palette` declaration is relaxed from "exactly one" to **"at most one"** (§7.4); a new external palette file (`{ "colors": [...] }`, §6.10) can be bound model-wide via the manifest's optional top-level `palette` reference. The binding **takes precedence over inline palettes** (enabling palette swapping / skins; a shadowed inline palette lints as hint **H03**), and a palette-less file's voxel index-range validation moves from parse time to cross-file validation. (3) New lint **W07**: a `.cvox` file present in the package but not referenced by `geometry`. `cuboidy.json` remains the package's only fixed filename (the load anchor); every other file is named freely and found by reference. External animation files were already specified in v0.6 (§6.3, §8) and are unchanged.
 
 **Changes in v0.6:** Added **part reuse** (§7.5.1). A part header may carry a reuse-clause instead of a body: `clone <ref>` reuses another part's geometry verbatim, and `mirror <ref> [x|y|z]` reuses it reflected across a local axis (default `x`) — eliminating the verbatim duplication of bilateral (l/r) and repeated parts. `clone` and `mirror` join the reserved keywords (now **9**, §7.3.1). It is a declarative reference (like SVG `<use>`), **not** a function: no chaining, no composition, a closed transform set, one-pass resolution to plain voxel data. A reuse part carries no body and round-trips as its one-line clause (the default mirror axis is omitted on write). A companion lint rule **W06** (§11.6) flags an `l`/`r` manifest pair whose positions are not X-symmetric. AST: `Part` gains an optional `from?: { part, mirror? }`.
 
@@ -51,7 +53,7 @@ Cuboidy is **not** a triangle-mesh format. It does not specify skin weights, UV 
 | **Manifest** | `cuboidy.json` — the package's fixed-name anchor: rig hierarchy, animations, and references to every other file (geometry list, palette binding) |
 | **Geometry file** | A `.cvox` file — shape, optional inline palette, pivot, sockets. Default (when the manifest lists none): `voxels.cvox` |
 | **Palette file** | A `.json` file of shareable colors (§6.10), bound model-wide via the manifest |
-| **Packed Cuboidy** | `<name>.cuboidy` — ZIP archive of the package (reserved; not specified in v0.7) |
+| **Packed Cuboidy** | `<name>.cuboidy` — ZIP archive of the package (reserved; not specified in v0.8) |
 | **Part** | A rigid voxel sub-object, optionally parented in the hierarchy |
 | **Socket** | A named attachment point on a part |
 | **Keyframe** | A time-indexed pose snapshot for an animated part |
@@ -141,7 +143,7 @@ The manifest is a standard JSON document (no comments, no trailing commas).
 ```json
 {
   "name": "<identifier>",
-  "version": "0.7",
+  "version": "0.8",
   "geometry": ["body.cvox", "gear/hat.cvox"],
   "palette": "palette.json",
   "parts": [ ... ],
@@ -152,7 +154,7 @@ The manifest is a standard JSON document (no comments, no trailing commas).
 | Field | Required | Type | Notes |
 |---|---|---|---|
 | `name` | **yes** | string (identifier) | Model identifier |
-| `version` | no | string | Spec version this model targets. Absent → the current spec version (`"0.7"` in this draft) |
+| `version` | no | string | Spec version this model targets. Absent → the current spec version (`"0.8"` in this draft) |
 | `geometry` | no | array of reference paths | The model's geometry files (§6.9). Absent → `["voxels.cvox"]` |
 | `palette` | no | reference path | Model-wide external palette binding (§6.10). Absent → each geometry file's inline palette |
 | `parts` | **yes** | array (non-empty) | At least one part |
@@ -208,7 +210,7 @@ Per-part shape, pivot, and sockets live in `voxels.cvox`, not here. See §7.
   "loop": <bool>,
   "parts": {
     "<part-name>": {
-      "<time-key>": { "rot": [...], "pos": [...], "scale": [...], "visible": ... },
+      "<time-key>": { "rot": [...], "pos": [...], "scale": [...], "visible": ..., "ease": "..." },
       ...
     },
     ...
@@ -230,6 +232,7 @@ Per-part shape, pivot, and sockets live in `voxels.cvox`, not here. See §7.
 | `pos` | `[dx, dy, dz]` voxel units | **Delta** added to `part.position` | `[0, 0, 0]` |
 | `scale` | `[sx, sy, sz]` multipliers | **Multiplier** from rest scale (`[1,1,1]`). Per-axis, non-uniform allowed. Applied around the same pivot point as `rot` | `[1, 1, 1]` |
 | `visible` | bool | Visibility toggle | `true` |
+| `ease` | string | Named easing preset for the **outgoing** segment (this keyframe → the next); see §6.7. Shapes `rot` / `pos` / `scale`; `visible` always steps | `"linear"` |
 
 #### Carryover
 
@@ -259,17 +262,36 @@ Here `pos`, `scale`, and `visible` are constant across all keyframes (`[0,0,0]`,
 
 Between consecutive keyframes:
 
-- `rot`, `pos`, `scale` are **linearly interpolated**
+- `rot`, `pos`, `scale` interpolate along the segment's **easing curve** (below); with the default `linear` ease this is plain linear interpolation
 - `visible` uses **step** interpolation: the value at the later keyframe takes effect at that keyframe's time
+
+#### Easing
+
+Each segment's curve is named by the `ease` field of its **outgoing** keyframe (the earlier of the pair) — the same convention as CSS `@keyframes`. `ease` carries over like the value fields (§6.5): an omitted `ease` inherits the previous keyframe's, and the first keyframe defaults to `"linear"` — so one `ease` on `"0.0"` shapes the whole track, and any later keyframe can switch curves mid-track.
+
+An easing is a pure remap `u → u'` of normalized segment progress (`u = 0` at the outgoing keyframe, `u = 1` at the next), applied before linear interpolation of the value fields. Every preset maps `0 → 0` and `1 → 1`, so keyed values are always hit exactly at their keyframes. The presets and their formulas follow the de-facto standard set popularized by easings.net:
+
+| Preset | Variants | Character |
+|---|---|---|
+| `linear` | — | Constant rate (default) |
+| `step` | — | Holds the outgoing value across the whole interval; the next keyframe's value lands at its time (same rule as `visible`) |
+| `sine` | `in-sine`, `out-sine`, `in-out-sine` | Gentle |
+| `quad` | `in-quad`, `out-quad`, `in-out-quad` | Moderate |
+| `cubic` | `in-cubic`, `out-cubic`, `in-out-cubic` | Strong |
+| `back` | `in-back`, `out-back`, `in-out-back` | Overshoots past the target, then settles |
+| `elastic` | `in-elastic`, `out-elastic`, `in-out-elastic` | Springy oscillation |
+| `bounce` | `in-bounce`, `out-bounce`, `in-out-bounce` | Bounces like a dropped ball |
+
+`back` and `elastic` produce `u'` values outside `[0, 1]`; the interpolation simply extrapolates beyond the segment's endpoint values. An unknown `ease` name is a **parse error** (the field is a closed enum, like the keyframe field names themselves).
 
 Sampling outside the explicitly keyed intervals is defined as follows:
 
 - For `loop: false`, values after the last keyframe are held until `duration`; sampling after `duration` clamps to `duration`
 - For `loop: true`, sampling time wraps modulo `duration`
-- If `loop: true` and a part's last keyframe time is less than `duration`, the interval from that last keyframe to `duration` interpolates toward the `"0.0"` keyframe
+- If `loop: true` and a part's last keyframe time is less than `duration`, the interval from that last keyframe to `duration` interpolates toward the `"0.0"` keyframe, along the **last keyframe's** ease (it is that segment's outgoing keyframe)
 - If `loop: true` and a part has a keyframe exactly at `duration`, that keyframe is the end value of the final interval before wrap; authors SHOULD make it equal to `"0.0"` for a continuous loop. Sampling exactly at `duration` is equivalent to sampling at `"0.0"`
 
-Custom easing curves are reserved for future spec versions.
+Custom easing curves (cubic-bezier control points) are reserved for future spec versions.
 
 ### 6.8 Missing parts
 
@@ -366,7 +388,7 @@ The framework generalizes naturally: each block-introducing keyword (currently `
 
 ### 7.1.1 Token table
 
-Every token has a **kind**: `bare` (whitespace-delimited; covers all cvox identifier slots and value slots) or `string` (a `"..."` literal). The string-kind is preserved at the lexer level for future extensibility, but no v0.7 production accepts it — every identifier, number, and color slot expects bare. Encountering a string-kind token in any slot surfaces as `invalid-value`. The patterns below describe the *text* of a token after kind-classification.
+Every token has a **kind**: `bare` (whitespace-delimited; covers all cvox identifier slots and value slots) or `string` (a `"..."` literal). The string-kind is preserved at the lexer level for future extensibility, but no v0.8 production accepts it — every identifier, number, and color slot expects bare. Encountering a string-kind token in any slot surfaces as `invalid-value`. The patterns below describe the *text* of a token after kind-classification.
 
 | Token | Kind | Pattern | Example |
 |---|---|---|---|
@@ -376,7 +398,7 @@ Every token has a **kind**: `bare` (whitespace-delimited; covers all cvox identi
 | **Number** | bare | integer or decimal, optional leading `-` (no exponent, no leading `.`) | `3`, `1.5`, `-2` |
 | **Voxel row** | bare | `[.0-9a-zA-Z]+` (only inside `voxels { … }`; length must equal `W`) | `000`, `0.0`, `101` |
 | **Identifier** | bare | §5 identifier rule (regex + not a reserved keyword); used for part/socket names | `head`, `leg-fl` |
-| **String literal** | string | `"` … `"` on a single line, content `[^"\n]*`. Text excludes the surrounding quotes. No v0.7 production accepts string-kind — reserved at the lexer layer for future use. | `"reserved"` |
+| **String literal** | string | `"` … `"` on a single line, content `[^"\n]*`. Text excludes the surrounding quotes. No v0.8 production accepts string-kind — reserved at the lexer layer for future use. | `"reserved"` |
 
 The `"..."` literal must open and close on the same physical line; the lexer does not match a `"` across a newline. An unmatched opening `"` is a **lexical error** — the tokenizer returns `invalid-value` immediately with a location pointing at the unmatched `"`, rather than producing an ambiguous partial token stream.
 
@@ -673,7 +695,7 @@ voxels {
 }
 ```
 
-- A `//` sequence anywhere on a line starts a comment; the comment extends to the end of that line. This rule is applied before string-kind token recognition, so `"foo // bar"` is treated as an unterminated string after comment stripping in v0.7. Future versions that assign semantics to strings MUST define string-aware comment handling before enabling such strings in grammar productions
+- A `//` sequence anywhere on a line starts a comment; the comment extends to the end of that line. This rule is applied before string-kind token recognition, so `"foo // bar"` is treated as an unterminated string after comment stripping in v0.8. Future versions that assign semantics to strings MUST define string-aware comment handling before enabling such strings in grammar productions
 - **Universal scope** (§7.1 Layer 1): comments work in every scope, including inside `voxels { … }` blocks. They are stripped by the tokenizer before any scope-aware parsing
 - No whitespace context is required around `//`; the `/` character does not appear in any valid Cuboidy token, so `//` cannot collide with data
 - Note: color literals (`#FFFFFF`) use `#`, not `//`, and are unrelated to comments
@@ -780,7 +802,7 @@ part demo
     }
 ```
 
-All four are valid Cuboidy v0.7 input. (Note: a part literally named after a reserved keyword like `part part` is not expressible — v0.4 allowed this via quoting, but v0.5's strengthened identifier rule rejects reserved keywords in identifier slots. Pick a non-reserved name.)
+All four are valid Cuboidy v0.8 input. (Note: a part literally named after a reserved keyword like `part part` is not expressible — v0.4 allowed this via quoting, but v0.5's strengthened identifier rule rejects reserved keywords in identifier slots. Pick a non-reserved name.)
 
 ---
 
@@ -826,7 +848,7 @@ Reference cycles (a → b → a) are an error.
 | `cuboidy.json` | `geometry` | absent → `["voxels.cvox"]` |
 | `cuboidy.json` | `palette` | absent → each geometry file's inline palette |
 | `cuboidy.json` | `animations` | absent → no animations |
-| `cuboidy.json` | `version` | absent → current spec version (`"0.7"` in this draft) |
+| `cuboidy.json` | `version` | absent → current spec version (`"0.8"` in this draft) |
 | Keyframe (first) | `rot` | `[0, 0, 0]` |
 | Keyframe (first) | `pos` | `[0, 0, 0]` |
 | Keyframe (first) | `scale` | `[1, 1, 1]` |
@@ -966,14 +988,14 @@ All reference examples pass the current lint rules at error level.
 
 ---
 
-## 13. Future extensions (out of scope for v0.7)
+## 13. Future extensions (out of scope for v0.8)
 
 - **Packed format**: `<name>.cuboidy` (ZIP archive of the package)
 - **Per-geometry-file palette bindings**: a palette per `geometry` entry (v0.7 bindings are model-wide; §6.10)
 - **Named palette colors / metadata**: the palette file's object form (§6.10) reserves the room
 - **Multi-character palette encoding**: 2-character indices for palettes larger than 62
 - **Animation blending**: simultaneous animations with weighted contribution
-- **Animation easing**: per-keyframe interpolation curves beyond linear
+- **Custom easing curves**: cubic-bezier control points beyond the §6.7 named presets
 - **Standardized rig vocabularies**: humanoid / quadruped / biped contracts (analogous to VRM humanoid spec)
 - **Inverse kinematics**: solver-driven part chains
 - **Per-attachment overrides**: rotation / scale offsets when attaching accessories to sockets

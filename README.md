@@ -2,7 +2,7 @@
 
 An open text-based file format for voxel character models, rigs, and animations.
 
-**Status: v0.7 draft. See [SPEC.md](SPEC.md) for the formal specification.**
+**Status: v0.8 draft. See [SPEC.md](SPEC.md) for the formal specification.**
 
 ## What it is
 
@@ -127,8 +127,8 @@ Full methodology, dataset, and per-model numbers in
 
 ## Roadmap
 
-- [x] Spec document (`SPEC.md`) — v0.7 draft (multi-file geometry, shareable external palettes)
-- [x] Reference parser (TypeScript) — `ts/packages/core/`, full v0.7 grammar (432 tests)
+- [x] Spec document (`SPEC.md`) — v0.8 draft (multi-file geometry, shareable external palettes, keyframe easing)
+- [x] Reference parser (TypeScript) — `ts/packages/core/`, full v0.8 grammar (473 tests)
 - [x] Cross-file lint — project-shaped validation (`validateProject`): manifest↔geometry part matching, cross-file duplicate names, palette resolution/range, W07 unreferenced `.cvox`, H03 shadowed inline palette
 - [x] Shared parity fixtures — `fixtures/cvox/<code>/` and `fixtures/json/<code>/`, contract for cross-implementation conformance
 - [x] JSON Schema for `cuboidy.json` — `schema/cuboidy.schema.json` (Draft 2020-12, derived from the Zod ManifestSchema; reference via `"$schema": "https://cuboidy.com/schema/cuboidy.schema.json"` or the GitHub raw URL)
