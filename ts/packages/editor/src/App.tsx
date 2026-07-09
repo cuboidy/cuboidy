@@ -20,9 +20,11 @@ import {
   serializeColor,
   serializeCvox,
   setAttrAtKey,
+  setEaseAtKey,
   trimTrackKeys,
   type AttrValue,
   type Cvox,
+  type EasingName,
   type InlineAnimation,
   type KeyAttr,
   type Manifest,
@@ -1570,6 +1572,26 @@ export function App() {
     [mutateManifestAnimation],
   );
 
+  // Set or clear (undefined) the keyframe-level ease at an existing key.
+  // Discrete dropdown change — always its own undo entry (tag null).
+  const handleSetAnimEase = useCallback(
+    (
+      animName: string,
+      part: string,
+      timeKey: string,
+      ease: EasingName | undefined,
+    ) => {
+      mutateManifestAnimation(null, animName, (anim) => {
+        const track = anim.parts[part];
+        if (track === undefined) return anim;
+        const nextTrack = setEaseAtKey(track, timeKey, ease);
+        if (nextTrack === track) return anim;
+        return { ...anim, parts: { ...anim.parts, [part]: nextTrack } };
+      });
+    },
+    [mutateManifestAnimation],
+  );
+
   // Add (or merge) a key for `attr` at `time`; the helper seeds the §6.6 0.0
   // key and creates the part's track if absent.
   const handleAddAnimKey = useCallback(
@@ -2368,6 +2390,7 @@ export function App() {
               onExternalizeClip={handleExternalizeClip}
               onInlineClip={handleInlineClip}
               onSetAnimField={handleSetAnimField}
+              onSetAnimEase={handleSetAnimEase}
               onDeleteAnimKey={handleDeleteAnimKey}
               onTrimClip={handleTrimClip}
               onSetClipDuration={handleSetClipDuration}

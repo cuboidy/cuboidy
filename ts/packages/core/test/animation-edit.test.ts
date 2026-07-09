@@ -5,7 +5,9 @@ import {
   formatTimeKey,
   moveAttrKey,
   nearestExistingKey,
+  resolveTrackEase,
   setAttrAtKey,
+  setEaseAtKey,
   sortTrackKeys,
   trimTrackKeys,
 } from '../src/animation-edit.js';
@@ -277,6 +279,51 @@ describe('moveAttrKey', () => {
     const { track: next, timeKey } = moveAttrKey(track, '0.5', 0.75, 'rot');
     const pose = samplePart(next, Number(timeKey), 1.0, false);
     expect(pose.rot).toEqual([0, 40, 0]);
+  });
+});
+
+describe('setEaseAtKey', () => {
+  it('sets ease on an existing entry, preserving other fields', () => {
+    const track: AnimationTrack = { '0.0': { rot: [0, 0, 0] }, '0.5': { rot: [0, 9, 0] } };
+    const next = setEaseAtKey(track, '0.5', 'in-quad');
+    expect(next['0.5']).toEqual({ rot: [0, 9, 0], ease: 'in-quad' });
+    expect(track['0.5']).toEqual({ rot: [0, 9, 0] }); // input untouched
+  });
+
+  it('clears ease with undefined (reverts to carryover)', () => {
+    const track: AnimationTrack = { '0.0': { rot: [0, 0, 0], ease: 'out-back' } };
+    const next = setEaseAtKey(track, '0.0', undefined);
+    expect(next['0.0']).toEqual({ rot: [0, 0, 0] });
+  });
+
+  it('no-ops (same reference) on an absent key or an unchanged value', () => {
+    const track: AnimationTrack = { '0.0': { rot: [0, 0, 0], ease: 'in-sine' } };
+    expect(setEaseAtKey(track, '0.5', 'in-quad')).toBe(track);
+    expect(setEaseAtKey(track, '0.0', 'in-sine')).toBe(track);
+    const noEase: AnimationTrack = { '0.0': { rot: [0, 0, 0] } };
+    expect(setEaseAtKey(noEase, '0.0', undefined)).toBe(noEase);
+  });
+});
+
+describe('resolveTrackEase', () => {
+  it('carries the explicit ease forward and resets on a later explicit one', () => {
+    const track: AnimationTrack = {
+      '0.0': { rot: [0, 0, 0], ease: 'out-elastic' },
+      '0.5': { rot: [0, 25, 0] },
+      '1.0': { rot: [0, 0, 0], ease: 'linear' },
+      '1.5': { rot: [0, -25, 0] },
+    };
+    expect(resolveTrackEase(track)).toEqual({
+      '0.0': 'out-elastic',
+      '0.5': 'out-elastic',
+      '1.0': 'linear',
+      '1.5': 'linear',
+    });
+  });
+
+  it('defaults every key to linear when no ease is authored', () => {
+    const track: AnimationTrack = { '0.0': { rot: [0, 0, 0] }, '1.0': { rot: [0, 9, 0] } };
+    expect(resolveTrackEase(track)).toEqual({ '0.0': 'linear', '1.0': 'linear' });
   });
 });
 

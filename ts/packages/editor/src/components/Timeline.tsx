@@ -9,7 +9,9 @@ import {
 } from 'react';
 import {
   formatTimeKey,
+  resolveTrackEase,
   type AnimationTrack,
+  type EasingName,
   type InlineAnimation,
   type KeyAttr,
 } from '@cuboidy/core';
@@ -96,6 +98,9 @@ interface PartMarkers {
   scale: Marker[];
   visible: Marker[];
   all: Marker[];
+  // §6.5-resolved outgoing ease per time-key — every lane's marker at that
+  // key shows the same badge (ease is keyframe-level, not per-attribute).
+  ease: Record<string, EasingName>;
 }
 
 interface Props {
@@ -326,6 +331,7 @@ const TimelineLanes = memo(function TimelineLanes({
         scale: markerTimes(track, 'scale'),
         visible: markerTimes(track, 'visible'),
         all: markerTimes(track, null),
+        ease: track !== undefined ? resolveTrackEase(track) : {},
       });
     }
     return m;
@@ -417,6 +423,10 @@ const TimelineLanes = memo(function TimelineLanes({
                           timeKey={timeKey}
                           t={t}
                           duration={duration}
+                          ease={rec?.ease[timeKey] ?? 'linear'}
+                          easeExplicit={
+                            inline.parts[part]?.[timeKey]?.ease !== undefined
+                          }
                           prevT={arr[i - 1]?.t ?? null}
                           nextT={arr[i + 1]?.t ?? null}
                           selected={
@@ -449,6 +459,10 @@ interface MarkerProps {
   timeKey: string;
   t: number;
   duration: number;
+  // Resolved outgoing ease of this time-key's keyframe (§6.5 carryover
+  // applied) and whether the entry sets it explicitly. Non-linear → badge.
+  ease: EasingName;
+  easeExplicit: boolean;
   // Sorted same-attribute neighbors — the drag clamp bounds. null at the
   // lane's edges.
   prevT: number | null;
@@ -479,6 +493,8 @@ function TimelineMarker({
   timeKey,
   t,
   duration,
+  ease,
+  easeExplicit,
   prevT,
   nextT,
   selected,
@@ -592,6 +608,13 @@ function TimelineMarker({
   const frac = (x: number): number => (duration > 0 ? clamp01(x / duration) : 0);
   const shown = dragT ?? t;
   const outOfRange = t > duration;
+  // Badge only when the segment actually deviates from the default — an
+  // explicit "linear" (a carryover reset) behaves like no ease and stays
+  // unbadged; the inspector still shows it.
+  const eased = ease !== 'linear';
+  const easeSuffix = eased
+    ? ` · ease ${ease}${easeExplicit ? '' : ' (inherited)'}`
+    : '';
 
   const className = [
     'timeline-marker',
@@ -599,6 +622,7 @@ function TimelineMarker({
     locked ? 'locked' : '',
     dragT !== null ? 'dragging' : '',
     outOfRange ? 'out-of-range' : '',
+    eased ? 'eased' : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -616,11 +640,12 @@ function TimelineMarker({
         className={className}
         style={{ left: `${frac(shown) * 100}%` }}
         title={
-          locked
+          (locked
             ? `${label} @ ${timeKey}s — start key (locked, SPEC §6.6)`
             : outOfRange
               ? `${label} @ ${timeKey}s — beyond duration`
-              : `${label} @ ${dragT !== null ? formatTimeKey(dragT) : timeKey}s`
+              : `${label} @ ${dragT !== null ? formatTimeKey(dragT) : timeKey}s`) +
+          easeSuffix
         }
         aria-label={`${part} ${label} key at ${timeKey}s`}
         disabled={disabled}

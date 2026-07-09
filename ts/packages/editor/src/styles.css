@@ -2155,6 +2155,21 @@ pre {
   background: #d66;
 }
 
+/* Non-linear outgoing ease (SPEC §6.7): an amber dot riding the marker.
+   The marker is rotated 45°, so its local top-right corner reads visually
+   as the diamond's top point; the dot is round, so the rotation is moot. */
+.timeline-marker.eased::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #fa5;
+  border: 1px solid #1a1a1a;
+}
+
 /* Faded origin shown while its marker is being dragged. */
 .timeline-marker-ghost {
   position: absolute;
@@ -2250,6 +2265,41 @@ pre {
   gap: 0.4rem;
   font-size: 0.8rem;
   color: #cde;
+}
+
+/* Keyframe-level ease selector. Same skeleton as the time field; the select
+   reuses the property-field select look (shared rule below). */
+.anim-inspector-ease {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: #cde;
+}
+
+.anim-inspector-ease-label {
+  flex-shrink: 0;
+}
+
+.anim-inspector-ease select {
+  flex: 1;
+  min-width: 0;
+  background: #2a2a2a;
+  color: #e0e0e0;
+  border: 1px solid #3a3a3a;
+  border-radius: 3px;
+  padding: 0.15rem 0.3rem;
+  font: inherit;
+  font-family:
+    ui-monospace,
+    'SF Mono',
+    Menlo,
+    Consolas,
+    monospace;
+}
+
+.anim-inspector-ease select:disabled {
+  cursor: not-allowed;
 }
 
 .anim-inspector-delete {

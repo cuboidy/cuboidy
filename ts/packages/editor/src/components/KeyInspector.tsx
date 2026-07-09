@@ -1,4 +1,10 @@
-import { formatTimeKey, type AttrValue, type Keyframe } from '@cuboidy/core';
+import {
+  EASING_NAMES,
+  formatTimeKey,
+  type AttrValue,
+  type EasingName,
+  type Keyframe,
+} from '@cuboidy/core';
 import type { SelectedKey } from '../lib/types.js';
 import { NumberInput } from './NumberInput.js';
 
@@ -6,14 +12,24 @@ interface Props {
   selectedKey: SelectedKey;
   // The keyframe entry at selectedKey.timeKey (carries the attribute value).
   keyframe: Keyframe;
+  // What §6.5 carryover would give this key if it has no explicit ease (the
+  // previous key's resolved ease; linear at the first key) — the meaning of
+  // the "inherit" option, including what an explicit ease would revert to.
+  inheritedEase: EasingName;
   disabled: boolean;
   // Retime the selected key. The handler clamps like a marker drag (grid,
   // same-attr neighbors, clip range); the field commits on blur/Enter so
   // mid-typing values are never clamped out from under the user.
   onSetTime: (t: number) => void;
   onSetField: (value: AttrValue) => void;
+  // Set the keyframe-level ease; undefined clears it back to carryover.
+  onSetEase: (ease: EasingName | undefined) => void;
   onDelete: () => void;
 }
+
+// The <option> value for "no explicit ease" (carryover). Not a valid
+// EasingName, so it can never collide with a preset.
+const INHERIT = '';
 
 type Vec3 = [number, number, number];
 
@@ -34,9 +50,11 @@ function restVec(attr: SelectedKey['attr']): Vec3 {
 export function KeyInspector({
   selectedKey,
   keyframe,
+  inheritedEase,
   disabled,
   onSetTime,
   onSetField,
+  onSetEase,
   onDelete,
 }: Props) {
   const { part, attr, timeKey } = selectedKey;
@@ -98,6 +116,35 @@ export function KeyInspector({
           })()}
         </div>
       )}
+
+      <label
+        className="anim-inspector-ease"
+        title={
+          'Easing of the segment from this keyframe to the next (SPEC §6.7). ' +
+          'Applies to the whole keyframe at this time, across all attributes. ' +
+          '"inherit" follows the previous keyframe (§6.5 carryover).'
+        }
+      >
+        <span className="anim-inspector-ease-label">ease</span>
+        <select
+          value={keyframe.ease ?? INHERIT}
+          disabled={disabled}
+          onChange={(e) =>
+            onSetEase(
+              e.target.value === INHERIT
+                ? undefined
+                : (e.target.value as EasingName),
+            )
+          }
+        >
+          <option value={INHERIT}>inherit ({inheritedEase})</option>
+          {EASING_NAMES.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+      </label>
 
       <button
         type="button"

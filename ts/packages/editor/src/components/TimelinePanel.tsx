@@ -1,6 +1,10 @@
 import {
+  DEFAULT_EASING,
   isIdentifier,
+  resolveTrackEase,
+  type AnimationTrack,
   type AttrValue,
+  type EasingName,
   type KeyAttr,
   type Manifest,
 } from '@cuboidy/core';
@@ -24,6 +28,13 @@ interface Props {
     attr: KeyAttr,
     value: AttrValue,
   ) => void;
+  // Set (or clear with undefined → carryover) the keyframe-level ease.
+  onSetAnimEase: (
+    animName: string,
+    part: string,
+    timeKey: string,
+    ease: EasingName | undefined,
+  ) => void;
   onDeleteAnimKey: (
     animName: string,
     part: string,
@@ -43,6 +54,23 @@ interface Props {
   onInlineClip: (name: string) => void;
 }
 
+// What §6.5 carryover would give `timeKey` if it carried no explicit ease:
+// the resolved ease of the nearest earlier key, linear before the first.
+function inheritedEaseAt(track: AnimationTrack, timeKey: string): EasingName {
+  const resolved = resolveTrackEase(track);
+  const t = Number(timeKey);
+  let best: EasingName = DEFAULT_EASING;
+  let bestT = -Infinity;
+  for (const [k, ease] of Object.entries(resolved)) {
+    const kt = Number(k);
+    if (kt < t && kt > bestT) {
+      bestT = kt;
+      best = ease;
+    }
+  }
+  return best;
+}
+
 // The keyframe editor as its own dock panel: the per-clip toolbar (name /
 // duration / loop / trim / delete) over the per-attribute lane timeline and
 // the selected-key inspector. Reads the shared session; its lanes are always
@@ -54,6 +82,7 @@ export function TimelinePanel({
   hasManifest,
   manifestEditsDisabled,
   onSetAnimField,
+  onSetAnimEase,
   onDeleteAnimKey,
   onTrimClip,
   onSetClipDuration,
@@ -110,6 +139,20 @@ export function TimelinePanel({
     effectiveSelectedKey !== null
       ? inline.parts[effectiveSelectedKey.part]?.[effectiveSelectedKey.timeKey]
       : undefined;
+
+  // What the inspector's "inherit" option means for the selected key: the
+  // §6.5 carryover value it would take with no explicit ease (the nearest
+  // EARLIER key's resolved ease — not the key's own, which for an explicit
+  // key is what clearing would leave behind). Tracks are small; the
+  // per-render walk is negligible next to the manifest writeback.
+  const selectedTrack =
+    effectiveSelectedKey !== null
+      ? inline.parts[effectiveSelectedKey.part]
+      : undefined;
+  const selectedInheritedEase =
+    effectiveSelectedKey !== null && selectedTrack !== undefined
+      ? inheritedEaseAt(selectedTrack, effectiveSelectedKey.timeKey)
+      : DEFAULT_EASING;
 
   return (
     <div className="timeline-panel">
@@ -223,7 +266,16 @@ export function TimelinePanel({
           <KeyInspector
             selectedKey={effectiveSelectedKey}
             keyframe={selectedKeyframe}
+            inheritedEase={selectedInheritedEase}
             disabled={manifestEditsDisabled}
+            onSetEase={(ease) =>
+              onSetAnimEase(
+                activeName,
+                effectiveSelectedKey.part,
+                effectiveSelectedKey.timeKey,
+                ease,
+              )
+            }
             onSetTime={(t) =>
               retimeKey(
                 effectiveSelectedKey.part,

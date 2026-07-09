@@ -40,6 +40,8 @@ export {
   moveAttrKey,
   trimTrackKeys,
   restValue,
+  setEaseAtKey,
+  resolveTrackEase,
 } from './animation-edit.js';
 export type { KeyAttr, AttrValue } from './animation-edit.js';
 

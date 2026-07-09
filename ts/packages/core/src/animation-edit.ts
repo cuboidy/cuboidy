@@ -10,6 +10,7 @@
 // touches that field of that time-key entry.
 
 import type { AnimationTrack, Keyframe, Vec3Tuple } from './animation.js';
+import { DEFAULT_EASING, type EasingName } from './easing.js';
 
 export type KeyAttr = 'rot' | 'pos' | 'scale' | 'visible';
 export type AttrValue = Vec3Tuple | boolean;
@@ -228,6 +229,47 @@ export function moveAttrKey(
   }
   out[toKey] = target;
   return { track: sortTrackKeys(out), timeKey: toKey };
+}
+
+// Set or clear the keyframe-level `ease` (SPEC §6.5) at an EXISTING
+// time-key. `undefined` removes the field, reverting the key to carryover.
+// No-op (input reference returned) when the entry is absent — minting an
+// attr-less entry here would create an invisible flattening key (see
+// hasAttrField) — or when the value already matches.
+export function setEaseAtKey(
+  track: AnimationTrack,
+  timeKey: string,
+  ease: EasingName | undefined,
+): AnimationTrack {
+  const entry = track[timeKey];
+  if (entry === undefined || entry.ease === ease) return track;
+  if (ease === undefined) {
+    const { ease: _drop, ...rest } = entry;
+    return { ...track, [timeKey]: rest };
+  }
+  return { ...track, [timeKey]: { ...entry, ease } };
+}
+
+// SPEC §6.5 carryover resolved for `ease` alone: the effective outgoing
+// easing at every time-key of a track (explicit value, else the nearest
+// earlier explicit one, else the "linear" default). The editor uses this for
+// the inspector's inherit label and the timeline's eased-segment badges;
+// non-numeric keys are skipped defensively like the sampler's resolveTrack.
+export function resolveTrackEase(
+  track: AnimationTrack,
+): Record<string, EasingName> {
+  const sorted = Object.keys(track)
+    .map((k) => ({ k, t: Number(k) }))
+    .filter((e) => Number.isFinite(e.t))
+    .sort((a, b) => a.t - b.t);
+
+  const out: Record<string, EasingName> = {};
+  let cur: EasingName = DEFAULT_EASING;
+  for (const { k } of sorted) {
+    cur = track[k]!.ease ?? cur;
+    out[k] = cur;
+  }
+  return out;
 }
 
 // Drop every time-key entry beyond `duration` (cleanup after the user
