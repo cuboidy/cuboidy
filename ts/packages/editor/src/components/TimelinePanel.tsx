@@ -102,6 +102,7 @@ export function TimelinePanel({
     effectiveSelectedKey,
     overrunCount,
     partNames,
+    keyClipboard,
     setSelectedClip,
     setSelectedKey,
     scrub,
@@ -110,6 +111,8 @@ export function TimelinePanel({
     moveKey,
     retimeKey,
     clearPart,
+    copySelectedKey,
+    pasteAtPlayhead,
   } = session;
   const animations = manifest?.animations ?? {};
 
@@ -153,6 +156,15 @@ export function TimelinePanel({
     effectiveSelectedKey !== null && selectedTrack !== undefined
       ? inheritedEaseAt(selectedTrack, effectiveSelectedKey.timeKey)
       : DEFAULT_EASING;
+
+  // Human summary of the copied keyframe for the Paste button's tooltip,
+  // e.g. "tail @ 0.5s (rot, pos, ease)".
+  const clipboardSummary =
+    keyClipboard !== null
+      ? `${keyClipboard.part} @ ${keyClipboard.timeKey}s (${Object.keys(
+          keyClipboard.kf,
+        ).join(', ')})`
+      : null;
 
   return (
     <div className="timeline-panel">
@@ -276,6 +288,9 @@ export function TimelinePanel({
                 ease,
               )
             }
+            clipboardSummary={clipboardSummary}
+            onCopy={copySelectedKey}
+            onPaste={pasteAtPlayhead}
             onSetTime={(t) =>
               retimeKey(
                 effectiveSelectedKey.part,

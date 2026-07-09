@@ -231,6 +231,32 @@ export function moveAttrKey(
   return { track: sortTrackKeys(out), timeKey: toKey };
 }
 
+// Paste helper: field-wise merge of `kf` into the entry at (or minted at)
+// `t` — the data-model half of keyframe copy/paste. Present fields
+// overwrite the target's; absent fields leave it untouched (carryover holes
+// stay holes). Composed from addAttrAtTime per attribute so the §6.6 "0.0"
+// seed and nearest-key merge rules hold, plus setEaseAtKey when `kf`
+// carries an explicit ease (an absent source ease never stamps the target).
+// Returns the resolved time-key so the caller can select the pasted key;
+// an attribute-less `kf` is a no-op (input reference returned).
+export function mergeKeyframeAtTime(
+  track: AnimationTrack,
+  t: number,
+  kf: Keyframe,
+): { track: AnimationTrack; timeKey: string } {
+  let out = track;
+  let timeKey = nearestExistingKey(track, t) ?? formatTimeKey(t);
+  for (const attr of ATTR_FIELDS) {
+    const value = kf[attr];
+    if (value === undefined) continue;
+    const r = addAttrAtTime(out, t, attr, value);
+    out = r.track;
+    timeKey = r.timeKey;
+  }
+  if (kf.ease !== undefined) out = setEaseAtKey(out, timeKey, kf.ease);
+  return { track: out, timeKey };
+}
+
 // Set or clear the keyframe-level `ease` (SPEC §6.5) at an EXISTING
 // time-key. `undefined` removes the field, reverting the key to carryover.
 // No-op (input reference returned) when the entry is absent — minting an

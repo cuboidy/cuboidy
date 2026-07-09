@@ -42,6 +42,7 @@ export {
   restValue,
   setEaseAtKey,
   resolveTrackEase,
+  mergeKeyframeAtTime,
 } from './animation-edit.js';
 export type { KeyAttr, AttrValue } from './animation-edit.js';
 

@@ -13,6 +13,7 @@ import {
   deleteAttrAtKey,
   isIdentifier,
   manifestGeometry,
+  mergeKeyframeAtTime,
   moveAttrKey,
   parseCvox,
   parseManifest,
@@ -27,6 +28,7 @@ import {
   type EasingName,
   type InlineAnimation,
   type KeyAttr,
+  type Keyframe,
   type Manifest,
   type ManifestPart,
   type Palette,
@@ -1621,6 +1623,20 @@ export function App() {
     [mutateManifestAnimation],
   );
 
+  // Paste a copied keyframe: field-wise merge at `time` on `part`. One
+  // discrete undo entry per paste (tag null).
+  const handlePasteAnimKeyframe = useCallback(
+    (animName: string, part: string, time: number, kf: Keyframe) => {
+      mutateManifestAnimation(null, animName, (anim) => {
+        const track = anim.parts[part] ?? {};
+        const { track: nextTrack } = mergeKeyframeAtTime(track, time, kf);
+        if (nextTrack === track) return anim;
+        return { ...anim, parts: { ...anim.parts, [part]: nextTrack } };
+      });
+    },
+    [mutateManifestAnimation],
+  );
+
   // Retime one attribute key (timeline marker drag). The helper is a pure
   // rename; same-attr collisions are blocked by the drag clamp in the UI.
   const handleMoveAnimKey = useCallback(
@@ -2289,6 +2305,7 @@ export function App() {
     onDeleteAnimKey: handleDeleteAnimKey,
     onMoveAnimKey: handleMoveAnimKey,
     onClearPartTrack: handleClearPartTrack,
+    onPasteAnimKeyframe: handlePasteAnimKeyframe,
   });
   // Any panel not currently placed anywhere — offered by each leaf's + menu so
   // a closed panel can be reopened (and by the empty-dock state, where the set

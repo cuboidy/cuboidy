@@ -24,6 +24,11 @@ interface Props {
   onSetField: (value: AttrValue) => void;
   // Set the keyframe-level ease; undefined clears it back to carryover.
   onSetEase: (ease: EasingName | undefined) => void;
+  // Keyframe clipboard: copy this whole time-key entry / merge the copied
+  // one at the playhead on this part. null summary = nothing copied yet.
+  clipboardSummary: string | null;
+  onCopy: () => void;
+  onPaste: () => void;
   onDelete: () => void;
 }
 
@@ -55,6 +60,9 @@ export function KeyInspector({
   onSetTime,
   onSetField,
   onSetEase,
+  clipboardSummary,
+  onCopy,
+  onPaste,
   onDelete,
 }: Props) {
   const { part, attr, timeKey } = selectedKey;
@@ -145,6 +153,31 @@ export function KeyInspector({
           ))}
         </select>
       </label>
+
+      <div className="anim-inspector-clipboard">
+        <button
+          type="button"
+          className="btn btn-sm"
+          disabled={disabled}
+          title={`Copy this keyframe — every attribute at ${timeKey}s plus its ease (Ctrl+C)`}
+          onClick={onCopy}
+        >
+          Copy
+        </button>
+        <button
+          type="button"
+          className="btn btn-sm"
+          disabled={disabled || clipboardSummary === null}
+          title={
+            clipboardSummary !== null
+              ? `Paste ${clipboardSummary} at the playhead on ${part} (Ctrl+V). Existing fields at that time are overwritten; others kept.`
+              : 'Nothing copied yet (Ctrl+C on a selected key)'
+          }
+          onClick={onPaste}
+        >
+          Paste
+        </button>
+      </div>
 
       <button
         type="button"

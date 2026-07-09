@@ -3,6 +3,7 @@ import {
   addAttrAtTime,
   deleteAttrAtKey,
   formatTimeKey,
+  mergeKeyframeAtTime,
   moveAttrKey,
   nearestExistingKey,
   resolveTrackEase,
@@ -324,6 +325,79 @@ describe('resolveTrackEase', () => {
   it('defaults every key to linear when no ease is authored', () => {
     const track: AnimationTrack = { '0.0': { rot: [0, 0, 0] }, '1.0': { rot: [0, 9, 0] } };
     expect(resolveTrackEase(track)).toEqual({ '0.0': 'linear', '1.0': 'linear' });
+  });
+});
+
+describe('mergeKeyframeAtTime', () => {
+  it('mints a new key carrying every copied field (ease included)', () => {
+    const track: AnimationTrack = { '0.0': { rot: [0, 0, 0] } };
+    const { track: next, timeKey } = mergeKeyframeAtTime(track, 1.5, {
+      rot: [0, 25, 0],
+      pos: [1, 0, 0],
+      ease: 'out-bounce',
+    });
+    expect(timeKey).toBe('1.5');
+    expect(next['1.5']).toEqual({
+      rot: [0, 25, 0],
+      pos: [1, 0, 0],
+      ease: 'out-bounce',
+    });
+  });
+
+  it('field-wise merges into an existing key, preserving untouched fields', () => {
+    const track: AnimationTrack = {
+      '0.0': { rot: [0, 0, 0] },
+      '0.5': { rot: [0, 9, 0], scale: [2, 2, 2], ease: 'in-quad' },
+    };
+    const { track: next, timeKey } = mergeKeyframeAtTime(track, 0.5, {
+      rot: [0, 25, 0],
+      pos: [1, 0, 0],
+    });
+    expect(timeKey).toBe('0.5');
+    // rot overwritten, pos added; scale and the target's own ease survive
+    // (the copied entry had no explicit ease to stamp).
+    expect(next['0.5']).toEqual({
+      rot: [0, 25, 0],
+      pos: [1, 0, 0],
+      scale: [2, 2, 2],
+      ease: 'in-quad',
+    });
+  });
+
+  it('overwrites the target ease when the copied entry has one', () => {
+    const track: AnimationTrack = {
+      '0.0': { rot: [0, 0, 0] },
+      '0.5': { rot: [0, 9, 0], ease: 'in-quad' },
+    };
+    const { track: next } = mergeKeyframeAtTime(track, 0.5, {
+      rot: [0, 25, 0],
+      ease: 'linear',
+    });
+    expect(next['0.5']).toEqual({ rot: [0, 25, 0], ease: 'linear' });
+  });
+
+  it('seeds the §6.6 "0.0" key when pasting onto an empty track', () => {
+    const { track: next, timeKey } = mergeKeyframeAtTime({}, 1.0, {
+      rot: [0, 25, 0],
+    });
+    expect(timeKey).toBe('1.0');
+    expect(next['0.0']).toEqual({ rot: [0, 0, 0] });
+    expect(next['1.0']).toEqual({ rot: [0, 25, 0] });
+  });
+
+  it('merges into an eps-coincident existing key (no near-duplicate)', () => {
+    const track: AnimationTrack = { '0.0': {}, '0.5': { pos: [0, 1, 0] } };
+    const { timeKey } = mergeKeyframeAtTime(track, 0.5004, { rot: [0, 9, 0] });
+    expect(timeKey).toBe('0.5');
+  });
+
+  it('no-ops (same reference) for an attribute-less keyframe', () => {
+    const track: AnimationTrack = { '0.0': { rot: [0, 0, 0] } };
+    expect(mergeKeyframeAtTime(track, 0.5, {}).track).toBe(track);
+    // An ease-only copy never stamps ease onto a nonexistent entry either.
+    expect(mergeKeyframeAtTime(track, 0.5, { ease: 'in-quad' }).track).toBe(
+      track,
+    );
   });
 });
 

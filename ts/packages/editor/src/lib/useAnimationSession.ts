@@ -9,6 +9,7 @@ import {
   type Cvox,
   type InlineAnimation,
   type KeyAttr,
+  type Keyframe,
   type Manifest,
   type Pose,
 } from '@cuboidy/core';
@@ -20,6 +21,19 @@ import { SNAP_STEP } from '../components/Timeline.js';
 // panel (playhead + lane editing). It used to live privately inside
 // AnimationView; lifting it into a hook that App owns lets the two surfaces be
 // separate dock panels reading the same state (panel-system design §4).
+// A copied keyframe: the sparse entry snapshot plus where it came from (for
+// the paste button's tooltip). Entries are immutable transforms, so holding
+// the reference is a true snapshot — later edits can't mutate it.
+export interface KeyClipboard {
+  kf: Keyframe;
+  part: string;
+  timeKey: string;
+}
+
+// The clipboard's attribute order, for choosing which lane to select after a
+// paste when the current selection's attribute wasn't part of the copy.
+const CLIP_ATTRS: readonly KeyAttr[] = ['rot', 'pos', 'scale', 'visible'];
+
 export interface AnimationSession {
   // Active inline clip.
   activeName: string;
@@ -35,6 +49,8 @@ export interface AnimationSession {
   effectiveSelectedKey: SelectedKey | null;
   overrunCount: number;
   partNames: string[];
+  // Keyframe clipboard (Ctrl+C / Ctrl+V and the inspector buttons).
+  keyClipboard: KeyClipboard | null;
   // Commands.
   setSelectedClip: (name: string) => void;
   setPlaying: (next: boolean | ((p: boolean) => boolean)) => void;
@@ -45,6 +61,10 @@ export interface AnimationSession {
   moveKey: (part: string, attr: KeyAttr, fromTimeKey: string, toTime: number) => void;
   retimeKey: (part: string, attr: KeyAttr, fromTimeKey: string, toTime: number) => void;
   clearPart: (part: string) => void;
+  // Copy the selected key's whole time-key entry (all attributes + ease).
+  copySelectedKey: () => void;
+  // Merge the clipboard into the selected key's PART at the playhead time.
+  pasteAtPlayhead: () => void;
 }
 
 interface Params {
@@ -78,6 +98,12 @@ interface Params {
     attr: KeyAttr,
   ) => void;
   onClearPartTrack: (animName: string, part: string) => void;
+  onPasteAnimKeyframe: (
+    animName: string,
+    part: string,
+    time: number,
+    kf: Keyframe,
+  ) => void;
 }
 
 export function useAnimationSession({
@@ -89,6 +115,7 @@ export function useAnimationSession({
   onDeleteAnimKey,
   onMoveAnimKey,
   onClearPartTrack,
+  onPasteAnimKeyframe,
 }: Params): AnimationSession {
   const animations = manifest?.animations ?? {};
   const inlineNames = useMemo(
@@ -293,17 +320,54 @@ export function useAnimationSession({
   const selectedKeyRef = useRef(effectiveSelectedKey);
   selectedKeyRef.current = effectiveSelectedKey;
 
+  // Keyframe clipboard. State (not just a ref) so the inspector's Paste
+  // button enables the moment something is copied; the ref mirror feeds the
+  // keyboard handler without re-installing it.
+  const [keyClipboard, setKeyClipboard] = useState<KeyClipboard | null>(null);
+  const keyClipboardRef = useRef(keyClipboard);
+  keyClipboardRef.current = keyClipboard;
+
+  // Copy the selected key's whole time-key entry — every attribute present
+  // at that time plus its explicit ease, i.e. exactly what serializes.
+  const copySelectedKey = useCallback(() => {
+    const sel = selectedKeyRef.current;
+    if (sel === null) return;
+    const entry = inlineRef.current?.parts[sel.part]?.[sel.timeKey];
+    if (entry === undefined) return;
+    setKeyClipboard({ kf: entry, part: sel.part, timeKey: sel.timeKey });
+  }, []);
+
+  // Paste = field-wise merge at the playhead on the SELECTED key's part (the
+  // selection is the paste target: copy from one part, select a key on
+  // another, paste → cross-part transplant). Selects the pasted key like
+  // addKey — preferring the currently selected attribute when it was copied.
+  const pasteAtPlayhead = useCallback(() => {
+    const clip = keyClipboardRef.current;
+    const sel = selectedKeyRef.current;
+    if (clip === null || sel === null) return;
+    const t = timeRef.current;
+    onPasteAnimKeyframe(activeNameRef.current, sel.part, t, clip.kf);
+    const track = inlineRef.current?.parts[sel.part] ?? {};
+    const timeKey = nearestExistingKey(track, t) ?? formatTimeKey(t);
+    const attr =
+      sel.attr in clip.kf ? sel.attr : CLIP_ATTRS.find((a) => a in clip.kf);
+    if (attr !== undefined) setSelectedKey({ part: sel.part, attr, timeKey });
+    setPlaying(false);
+  }, [onPasteAnimKeyframe]);
+
   // Timeline keyboard shortcuts:
   //   Space             play / pause      (while the anim viewport is shown)
   //   Delete/Backspace  remove the selected key   (while the timeline is shown)
   //   ← / →             nudge the selected key one snap step (Alt = fine 1e-3)
-  // Guarded for IME and text fields; Ctrl/Meta combos are left alone. Space is
-  // skipped when a button is focused so it doesn't double-fire.
+  //   Ctrl/Cmd+C / +V   copy the selected keyframe / paste it at the playhead
+  // Guarded for IME and text fields (before the modifier branch, so native
+  // copy/paste in inputs is never hijacked); other Ctrl/Meta combos are left
+  // alone (global undo/redo, browser). Space is skipped when a button is
+  // focused so it doesn't double-fire.
   useEffect(() => {
     if (!clockEnabled && !editKeysEnabled) return;
     const onKey = (e: KeyboardEvent): void => {
       if (e.isComposing || e.keyCode === 229) return;
-      if (e.ctrlKey || e.metaKey) return;
       const target = e.target;
       if (
         target instanceof Element &&
@@ -311,6 +375,26 @@ export function useAnimationSession({
           'textarea, input, select, [contenteditable=""], [contenteditable="true"]',
         ) !== null
       ) {
+        return;
+      }
+
+      if (e.ctrlKey || e.metaKey) {
+        if (!e.altKey && !e.shiftKey && editKeysEnabled) {
+          if (e.key === 'c' && selectedKeyRef.current !== null) {
+            e.preventDefault();
+            copySelectedKey();
+            return;
+          }
+          if (
+            e.key === 'v' &&
+            selectedKeyRef.current !== null &&
+            keyClipboardRef.current !== null
+          ) {
+            e.preventDefault();
+            pasteAtPlayhead();
+            return;
+          }
+        }
         return;
       }
 
@@ -349,7 +433,15 @@ export function useAnimationSession({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [clockEnabled, editKeysEnabled, hasTimeline, onDeleteAnimKey, retimeKey]);
+  }, [
+    clockEnabled,
+    editKeysEnabled,
+    hasTimeline,
+    onDeleteAnimKey,
+    retimeKey,
+    copySelectedKey,
+    pasteAtPlayhead,
+  ]);
 
   return {
     activeName,
@@ -363,6 +455,7 @@ export function useAnimationSession({
     effectiveSelectedKey,
     overrunCount,
     partNames,
+    keyClipboard,
     setSelectedClip: setSelected,
     setPlaying,
     setSelectedKey,
@@ -372,5 +465,7 @@ export function useAnimationSession({
     moveKey,
     retimeKey,
     clearPart,
+    copySelectedKey,
+    pasteAtPlayhead,
   };
 }
