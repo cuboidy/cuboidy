@@ -1463,6 +1463,22 @@ pre {
   animation: text-input-invalid 0.45s ease-out;
 }
 
+/* Target-file picker on the new-part draft row (multi-cvox models
+   only). Compact sibling of the name input; option text is the full
+   package-relative path so same-named files in different folders stay
+   distinguishable. */
+.part-tree-draft-file {
+  flex-shrink: 0;
+  max-width: 45%;
+  background: #2a2a2a;
+  color: #e0e0e0;
+  border: 1px solid #3a3a3a;
+  border-radius: 3px;
+  padding: 0.05rem 0.15rem;
+  font: inherit;
+  font-size: 0.75rem;
+}
+
 .part-tree-name {
   flex: 1;
   font-family:

@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState, type DragEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+} from 'react';
 import { InlineNameInput } from './InlineNameInput.js';
 import {
   buildPartTree,
@@ -25,6 +31,11 @@ interface Props {
   // creates the part on confirm.
   creating: { parent: string | null } | null;
   createSuggested: string;
+  // Geometry files a new part may be created in, geometry-list order
+  // (first = primary). Present only when the model spans more than one
+  // file — the draft row then shows a target-file picker, defaulting to
+  // the parent part's defining file (root drafts: the primary).
+  geometryFiles?: readonly string[] | undefined;
   validateNewName: (name: string) => boolean;
   // Inline rename is disabled while cvox/manifest have syntax errors (a rewrite
   // would clobber the in-progress text).
@@ -32,7 +43,9 @@ interface Props {
   onToggleVisibility: (name: string) => void;
   onSelectPart: (name: string | null) => void;
   onChangeParent: (name: string, parent: string | null) => void;
-  onConfirmCreate: (name: string) => void;
+  // `file` is the picker choice (undefined = single-file model; the
+  // caller falls back to the primary).
+  onConfirmCreate: (name: string, file?: string) => void;
   onCancelCreate: () => void;
   onRenamePart: (oldName: string, newName: string) => void;
 }
@@ -53,6 +66,7 @@ export function PartTree({
   dndEnabled,
   creating,
   createSuggested,
+  geometryFiles,
   validateNewName,
   renameEnabled,
   onToggleVisibility,
@@ -145,6 +159,7 @@ export function PartTree({
             collapsed={collapsed}
             creating={creating}
             createSuggested={createSuggested}
+            geometryFiles={geometryFiles}
             validateNewName={validateNewName}
             renaming={renaming}
             onToggleExpand={toggleExpand}
@@ -177,6 +192,8 @@ export function PartTree({
             depth={0}
             suggested={createSuggested}
             validate={validateNewName}
+            files={geometryFiles}
+            defaultFile={geometryFiles?.[0]}
             onConfirm={onConfirmCreate}
             onCancel={onCancelCreate}
           />
@@ -222,12 +239,13 @@ interface BranchProps {
   collapsed: ReadonlySet<string>;
   creating: { parent: string | null } | null;
   createSuggested: string;
+  geometryFiles?: readonly string[] | undefined;
   validateNewName: (name: string) => boolean;
   renaming: string | null;
   onToggleExpand: (name: string) => void;
   onToggleVisibility: (name: string) => void;
   onSelectPart: (name: string | null) => void;
-  onConfirmCreate: (name: string) => void;
+  onConfirmCreate: (name: string, file?: string) => void;
   onCancelCreate: () => void;
   onStartRename: (name: string) => void;
   onCancelRename: () => void;
@@ -252,6 +270,7 @@ function PartTreeBranch(props: BranchProps) {
     collapsed,
     creating,
     createSuggested,
+    geometryFiles,
     validateNewName,
     renaming,
     onToggleExpand,
@@ -396,6 +415,8 @@ function PartTreeBranch(props: BranchProps) {
               depth={depth + 1}
               suggested={createSuggested}
               validate={validateNewName}
+              files={geometryFiles}
+              defaultFile={partFiles?.get(node.name) ?? geometryFiles?.[0]}
               onConfirm={onConfirmCreate}
               onCancel={onCancelCreate}
             />
@@ -407,35 +428,113 @@ function PartTreeBranch(props: BranchProps) {
 }
 
 // Draft row for creating a part — a caret spacer keeps its input aligned with
-// the other rows' names.
+// the other rows' names. Owns its name field instead of reusing
+// InlineNameInput because the row is a composite (name + optional
+// target-file picker): focus moving BETWEEN the two must not cancel,
+// only focus leaving the whole row. Enter commits from either field,
+// Escape cancels; the commit/cancel semantics otherwise mirror
+// InlineNameInput (empty commits cancel, invalid names flash and stay).
 function DraftPartRow({
   depth,
   suggested,
   validate,
+  files,
+  defaultFile,
   onConfirm,
   onCancel,
 }: {
   depth: number;
   suggested: string;
   validate: (name: string) => boolean;
-  onConfirm: (name: string) => void;
+  // Target-file choices, geometry-list order. undefined = single-file
+  // model; no picker is shown and the commit passes file = undefined.
+  files?: readonly string[] | undefined;
+  defaultFile?: string | undefined;
+  onConfirm: (name: string, file?: string) => void;
   onCancel: () => void;
 }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [text, setText] = useState(suggested);
+  const [invalid, setInvalid] = useState(false);
+  const [file, setFile] = useState(defaultFile);
+  const done = useRef(false);
+
+  useEffect(() => {
+    const el = inputRef.current;
+    if (el !== null) {
+      el.focus();
+      el.select();
+    }
+  }, []);
+
+  const finish = (commit: boolean): void => {
+    if (done.current) return;
+    const next = text.trim();
+    if (!commit || next === '') {
+      done.current = true;
+      onCancel();
+      return;
+    }
+    if (!validate(next)) {
+      setInvalid(true);
+      inputRef.current?.focus();
+      return;
+    }
+    done.current = true;
+    onConfirm(next, file);
+  };
+
   return (
     <li className="part-tree-node" role="treeitem">
       <div
         className="part-tree-row part-tree-draft"
         style={{ paddingLeft: `${0.5 + depth * 0.9}rem` }}
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            finish(true);
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            finish(false);
+          }
+        }}
+        onBlur={(e) => {
+          // focusout whose relatedTarget is still inside the row is just
+          // the user moving between name and file picker — not a cancel.
+          if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+          finish(false);
+        }}
       >
         <span className="part-tree-caret-spacer" aria-hidden="true" />
-        <InlineNameInput
-          initial={suggested}
-          ariaLabel="New part name"
-          validate={validate}
-          onCommit={onConfirm}
-          onCancel={onCancel}
+        <input
+          ref={inputRef}
+          type="text"
+          className={`part-tree-name-input${invalid ? ' invalid' : ''}`}
+          value={text}
+          aria-label="New part name"
+          spellCheck={false}
+          onChange={(e) => {
+            setText(e.target.value);
+            setInvalid(false);
+          }}
+          onAnimationEnd={() => setInvalid(false)}
         />
+        {files !== undefined && (
+          <select
+            className="part-tree-draft-file"
+            value={file}
+            aria-label="File to create the part in"
+            title="Which geometry file the new part is written to"
+            onChange={(e) => setFile(e.target.value)}
+          >
+            {files.map((f) => (
+              <option key={f} value={f}>
+                {f}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
     </li>
   );

@@ -1131,7 +1131,7 @@ export function App() {
   // so it's a single atomic undo step. Re-guards uniqueness (the UI validates,
   // but a race could sneak a dup in). Then selects the new part.
   const handleConfirmCreatePart = useCallback(
-    (name: string, parent: string | null) => {
+    (name: string, parent: string | null, file?: string) => {
       cancelPendingCvoxReparse();
       cancelPendingManifestReparse();
       setCvoxParseError(null);
@@ -1139,11 +1139,23 @@ export function App() {
         if (current?.source === undefined) return current;
         const src = current.source;
         // Uniqueness is model-wide (§5): guard against a name defined in
-        // ANY geometry file. New parts are created in the primary file.
+        // ANY geometry file.
         if (mergeGeometries(src).parts.some((p) => p.name === name)) {
           return current;
         }
-        const seed = src.cvox.palette.length > 0 ? 0 : AIR;
+        // Target geometry file: the draft row's picker choice, as long
+        // as it's still a loaded geometry file; else the primary.
+        const target =
+          file !== undefined &&
+          src.kind === 'folder' &&
+          src.geometries?.has(file) === true
+            ? file
+            : src.cvoxFile.name;
+        const targetCvox =
+          src.kind === 'folder' && target !== src.cvoxFile.name
+            ? (src.geometries?.get(target) ?? src.cvox)
+            : src.cvox;
+        const seed = targetCvox.palette.length > 0 ? 0 : AIR;
         const newPart: Part = {
           name,
           size: { w: 1, h: 1, d: 1 },
@@ -1152,7 +1164,7 @@ export function App() {
           voxels: [[[seed]]],
         };
         const nextSrc = mapGeometryFiles(src, (cvox, path) =>
-          path === src.cvoxFile.name
+          path === target
             ? { ...cvox, parts: [...cvox.parts, newPart] }
             : null,
         );
@@ -2555,6 +2567,13 @@ export function App() {
         let n = 1;
         while (existingNames.has(`part${n}`)) n += 1;
         const createSuggested = `part${n}`;
+        // Multi-cvox: the create draft offers a target-file picker.
+        // Insertion order of `geometries` is geometry-list order, so the
+        // first entry is the primary (the single-file default).
+        const geometryPaths =
+          source.kind === 'folder' && (source.geometries?.size ?? 0) > 1
+            ? [...(source.geometries?.keys() ?? [])]
+            : undefined;
         return {
           title: 'Parts',
           body: (
@@ -2563,9 +2582,11 @@ export function App() {
                 <button
                   type="button"
                   className="btn btn-sm"
-                  disabled={cvoxParseError !== null}
+                  disabled={
+                    cvoxParseError !== null || fileParseErrors.size > 0
+                  }
                   title={
-                    cvoxParseError !== null
+                    cvoxParseError !== null || fileParseErrors.size > 0
                       ? 'Fix cvox syntax errors to add parts'
                       : 'New part (child of the selected part)'
                   }
@@ -2604,6 +2625,7 @@ export function App() {
                 dndEnabled={manifest !== undefined}
                 creating={creating}
                 createSuggested={createSuggested}
+                geometryFiles={geometryPaths}
                 validateNewName={(name) =>
                   isIdentifier(name) && !existingNames.has(name)
                 }
@@ -2615,8 +2637,8 @@ export function App() {
                 onToggleVisibility={handleToggle}
                 onSelectPart={setSelectedPartName}
                 onChangeParent={handleChangePartParent}
-                onConfirmCreate={(name) =>
-                  handleConfirmCreatePart(name, creating?.parent ?? null)
+                onConfirmCreate={(name, file) =>
+                  handleConfirmCreatePart(name, creating?.parent ?? null, file)
                 }
                 onCancelCreate={handleCancelCreatePart}
                 onRenamePart={handleRenamePart}
