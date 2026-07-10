@@ -113,6 +113,43 @@ function mergeGeometries(src: LoadedSource): {
   return { parts, files };
 }
 
+// Rewrite a part's voxel indices from one inline palette to another,
+// appending colors the target palette lacks (exact rgba match). AIR and
+// out-of-range indices pass through unchanged (the latter are lint
+// errors either way). Used when moving a part between UNBOUND files,
+// where each file's inline palette gives indices their meaning (§6.10)
+// — without the remap the moved part would silently change color.
+function remapPartPalette(
+  part: Part,
+  from: Palette,
+  to: Palette,
+): { part: Part; palette: Palette } {
+  const palette = [...to];
+  const map = new Map<number, number>();
+  for (const layer of part.voxels) {
+    for (const row of layer) {
+      for (const v of row) {
+        if (v < 0 || v >= from.length || map.has(v)) continue;
+        const c = from[v]!;
+        let j = palette.findIndex(
+          (t) => t.r === c.r && t.g === c.g && t.b === c.b && t.a === c.a,
+        );
+        if (j === -1) {
+          j = palette.length;
+          palette.push(c);
+        }
+        map.set(v, j);
+      }
+    }
+  }
+  const identity = [...map].every(([a, b]) => a === b);
+  if (identity && palette.length === to.length) return { part, palette: to };
+  const voxels = part.voxels.map((layer) =>
+    layer.map((row) => row.map((v) => map.get(v) ?? v)),
+  );
+  return { part: { ...part, voxels }, palette };
+}
+
 // Apply `fn` to every geometry file's AST (or the single cvox for
 // cvox-only / synthetic sources). Returns the source with each CHANGED
 // file kept fully in sync: geometries map, the files snapshot (so
@@ -1191,6 +1228,64 @@ export function App() {
       setCreating(null);
     },
     [dispatchEdit, cancelPendingCvoxReparse, cancelPendingManifestReparse],
+  );
+
+  // Move a part's declaration to another geometry file, atomically (one
+  // dispatchEdit = one undo). The manifest is untouched — part names,
+  // not paths, are the cross-file join key — and clone/mirror referents
+  // resolve model-wide (§6.9), so no references need fixing up. Palette:
+  // with a manifest binding the shared palette makes indices portable;
+  // WITHOUT one each file's inline palette gives them meaning, so the
+  // moved voxels are remapped (missing colors appended to the target
+  // palette). Parts with `from` carry derived voxels — the declaration
+  // moves verbatim.
+  const handleMovePart = useCallback(
+    (name: string, targetPath: string) => {
+      cancelPendingCvoxReparse();
+      setCvoxParseError(null);
+      dispatchEdit(null, (current) => {
+        const src = current?.source;
+        if (
+          src === undefined ||
+          src.kind !== 'folder' ||
+          src.geometries === undefined ||
+          !src.geometries.has(targetPath)
+        ) {
+          return current;
+        }
+        const fromPath = mergeGeometries(src).files.get(name);
+        if (fromPath === undefined || fromPath === targetPath) return current;
+        const fromCvox =
+          fromPath === src.cvoxFile.name
+            ? src.cvox
+            : src.geometries.get(fromPath);
+        const toCvox =
+          targetPath === src.cvoxFile.name
+            ? src.cvox
+            : src.geometries.get(targetPath);
+        if (fromCvox === undefined || toCvox === undefined) return current;
+        const part = fromCvox.parts.find((p) => p.name === name);
+        if (part === undefined) return current;
+        let moved = part;
+        let toPalette = toCvox.palette;
+        if (src.externalPalette === undefined && part.from === undefined) {
+          const remapped = remapPartPalette(part, fromCvox.palette, toPalette);
+          moved = remapped.part;
+          toPalette = remapped.palette;
+        }
+        const nextSrc = mapGeometryFiles(src, (cvox, path) => {
+          if (path === fromPath) {
+            return { ...cvox, parts: cvox.parts.filter((p) => p.name !== name) };
+          }
+          if (path === targetPath) {
+            return { ...cvox, palette: toPalette, parts: [...cvox.parts, moved] };
+          }
+          return null;
+        });
+        return { ...current, source: nextSrc };
+      });
+    },
+    [dispatchEdit, cancelPendingCvoxReparse],
   );
 
   // Rename a part everywhere it's referenced, atomically (one dispatchEdit =
@@ -2647,7 +2742,13 @@ export function App() {
           ),
         };
       }
-      case 'properties':
+      case 'properties': {
+        // Multi-cvox: the inspector shows a defining-file field whose
+        // change moves the part. Same source as the parts panel picker.
+        const movePaths =
+          source.kind === 'folder' && (source.geometries?.size ?? 0) > 1
+            ? [...(source.geometries?.keys() ?? [])]
+            : undefined;
         return {
           title: 'Properties',
           body:
@@ -2662,11 +2763,17 @@ export function App() {
                   fileParseErrors.size > 0 ||
                   (manifest !== undefined && manifestParseError !== null)
                 }
+                geometryFiles={movePaths}
+                partFile={partFiles?.get(effectiveSelectedPart)}
+                moveDisabled={
+                  cvoxParseError !== null || fileParseErrors.size > 0
+                }
                 onChangeParent={handleChangePartParent}
                 onChangePosition={handleChangePartPosition}
                 onRenamePart={handleRenamePart}
                 onDeletePart={handleDeletePart}
                 onCreateManifest={handleCreateManifest}
+                onMovePart={handleMovePart}
               />
             ) : (
               <p className="panel-empty">
@@ -2674,6 +2781,7 @@ export function App() {
               </p>
             ),
         };
+      }
       case 'palette': {
         const target =
           paletteTarget ?? ({ kind: 'inline', file: source.cvoxFile.name } as const);

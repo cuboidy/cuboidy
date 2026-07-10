@@ -15,11 +15,21 @@ interface Props {
   // Renaming rewrites cvox (always) and the manifest (if present), so it's
   // blocked while either source has syntax errors.
   renameDisabled: boolean;
+  // Defining-file field (v0.7 multi-cvox): all geometry files in
+  // geometry-list order, and the selected part's current file. Both
+  // present only when the model spans more than one file — changing the
+  // select moves the part's declaration.
+  geometryFiles?: readonly string[] | undefined;
+  partFile?: string | undefined;
+  // A move re-serializes two cvox files, so it's blocked while any has
+  // syntax errors (a rewrite would clobber the in-progress text).
+  moveDisabled: boolean;
   onChangeParent: (partName: string, parent: string | null) => void;
   onChangePosition: (partName: string, axis: 0 | 1 | 2, value: number) => void;
   onRenamePart: (oldName: string, newName: string) => void;
   onDeletePart: (name: string) => void;
   onCreateManifest: () => void;
+  onMovePart: (name: string, targetFile: string) => void;
 }
 
 const NONE_VALUE = '__none__';
@@ -34,11 +44,15 @@ export function PartProperties({
   manifest,
   manifestEditsDisabled,
   renameDisabled,
+  geometryFiles,
+  partFile,
+  moveDisabled,
   onChangeParent,
   onChangePosition,
   onRenamePart,
   onDeletePart,
   onCreateManifest,
+  onMovePart,
 }: Props) {
   const cvoxPart = cvox.parts.find((p) => p.name === selectedPart);
   if (cvoxPart === undefined) {
@@ -91,6 +105,32 @@ export function PartProperties({
           {cvoxPart.size.w}×{cvoxPart.size.h}×{cvoxPart.size.d}
         </span>
       </div>
+
+      {geometryFiles !== undefined && partFile !== undefined && (
+        <label className="property-field">
+          <span className="property-field-label">file</span>
+          <select
+            value={partFile}
+            disabled={moveDisabled}
+            title={
+              moveDisabled
+                ? 'Fix cvox syntax errors to move parts between files'
+                : 'Geometry file this part is declared in — change to move it'
+            }
+            onChange={(e) => {
+              if (e.target.value !== partFile) {
+                onMovePart(selectedPart, e.target.value);
+              }
+            }}
+          >
+            {geometryFiles.map((f) => (
+              <option key={f} value={f}>
+                {f}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       <div className={`property-group${rigDisabled ? ' disabled' : ''}`}>
         <div className="property-group-header">
