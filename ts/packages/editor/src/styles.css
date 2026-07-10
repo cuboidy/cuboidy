@@ -1342,7 +1342,13 @@ pre {
 }
 
 .part-tree {
-  padding-bottom: 0.25rem;
+  /* Generous end-of-list space (VS Code-style): keeps the last row off
+     the panel edge — Win11 overlay scrollbars float OVER content and
+     steal clicks from a flush row — and reserves the strip the root
+     dropzone (absolute, below) appears in, so its display toggle never
+     shifts rows and its hit area never covers one. */
+  position: relative;
+  padding-bottom: 3rem;
   min-height: 0;
 }
 
@@ -1516,18 +1522,27 @@ pre {
   color: #9ab;
 }
 
-/* Root drop zone for unparenting via D&D. Hidden when not dragging
-   (the .visible class is added by PartTree while a drag is in flight)
-   so it doesn't take up sidebar space in the idle state. */
+/* Root drop zone for unparenting via D&D, shown only while a drag is
+   in flight. Absolutely positioned into .part-tree's reserved bottom
+   padding — out of flow on purpose, twice over: as in-flow content its
+   appearance at dragstart grew the tree and shifted rows, and Chrome
+   aborts a native drag whose source element moves during the dragstart
+   frame (the "bottom part can't be dragged" bug); and pinned to the
+   PANEL bottom instead it covered real rows, eating their dragover
+   events. In the reserved strip it can do neither. */
 .part-tree-root-dropzone {
-  margin: 0.25rem 0.75rem 0.5rem;
+  display: none;
+  position: absolute;
+  left: 0.5rem;
+  right: 0.5rem;
+  bottom: 0.25rem;
   padding: 0.5rem;
   border: 1px dashed #3a4a6a;
   border-radius: 4px;
+  background: #20242e;
   color: #6a8aca;
   font-size: 0.75rem;
   text-align: center;
-  display: none;
 }
 
 .part-tree-root-dropzone.visible {
