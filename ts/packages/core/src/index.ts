@@ -47,6 +47,7 @@ export {
 export type { KeyAttr, AttrValue, EaseAttr } from './animation-edit.js';
 
 export { parseCvox } from './cvox/parse.js';
+export type { ParseCvoxOptions } from './cvox/parse.js';
 export { serializeColor, serializeCvox } from './cvox/serialize.js';
 
 export { AIR } from './cvox/voxel-row.js';
@@ -55,11 +56,26 @@ export type {
   Cvox,
   Palette,
   Part,
+  PartRef,
+  PendingReuse,
   Pivot,
   Size,
   Socket,
   Vec3,
 } from './cvox/types.js';
+
+export {
+  normalizeRefPath,
+  projectFilePaths,
+  resolveCrossFileReuse,
+  resolveProject,
+} from './project.js';
+export type {
+  GeometryFile,
+  ProjectDiagnostic,
+  ProjectPaths,
+  ResolvedProject,
+} from './project.js';
 
 export { buildMesh } from './mesh.js';
 export type { MeshData } from './mesh.js';

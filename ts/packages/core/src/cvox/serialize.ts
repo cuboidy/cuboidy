@@ -1,4 +1,13 @@
-import type { Color, Cvox, Part, Pivot, Size, Socket, Vec3 } from './types.js';
+import type {
+  Color,
+  Cvox,
+  Part,
+  PartRef,
+  Pivot,
+  Size,
+  Socket,
+  Vec3,
+} from './types.js';
 import { indexToChar } from './voxel-row.js';
 
 // SPEC §7.1.1 (writer rule): canonical cvox emission. The serializer is
@@ -31,12 +40,36 @@ export function serializeCvox(cvox: Cvox): string {
   if (cvox.palette.length > 0) {
     blocks.push(serializePalette(cvox.palette));
   }
-  for (const part of cvox.parts) {
+  // Unresolved cross-file reuse parts (SPEC §6.9, `Cvox.pending`) are
+  // re-interleaved at their recorded declaration positions so a deferred
+  // parse still round-trips even before project resolution.
+  const pending = cvox.pending ?? [];
+  let pi = 0;
+  let ci = 0;
+  for (let slot = 0; ci < cvox.parts.length || pi < pending.length; slot++) {
+    if (
+      pi < pending.length &&
+      (pending[pi]!.index === slot || ci >= cvox.parts.length)
+    ) {
+      const p = pending[pi]!;
+      blocks.push(reuseClauseLine(p.name, p.from));
+      pi++;
+      continue;
+    }
     const lines: string[] = [];
-    appendPart(lines, part);
+    appendPart(lines, cvox.parts[ci]!);
     blocks.push(lines.join('\n'));
+    ci++;
   }
   return blocks.join('\n\n') + '\n';
+}
+
+// SPEC §7.5.1 canonical reuse-clause. The default mirror axis (x) is
+// omitted, matching the writer's canonical-default rule.
+function reuseClauseLine(name: string, from: PartRef): string {
+  if (from.mirror === undefined) return `part ${name} clone ${from.part}`;
+  const axis = from.mirror === 'x' ? '' : ` ${from.mirror}`;
+  return `part ${name} mirror ${from.part}${axis}`;
 }
 
 function serializePalette(palette: readonly Color[]): string {
@@ -59,16 +92,9 @@ function hex2(n: number): string {
 
 function appendPart(lines: string[], part: Part): void {
   // SPEC §7.5.1: a reuse part emits only its one-line reuse-clause; its
-  // geometry is derived from the referent and is NOT expanded. The default
-  // mirror axis (x) is omitted, matching the writer's canonical-default rule.
+  // geometry is derived from the referent and is NOT expanded.
   if (part.from !== undefined) {
-    const { part: ref, mirror } = part.from;
-    if (mirror === undefined) {
-      lines.push(`part ${part.name} clone ${ref}`);
-    } else {
-      const axis = mirror === 'x' ? '' : ` ${mirror}`;
-      lines.push(`part ${part.name} mirror ${ref}${axis}`);
-    }
+    lines.push(reuseClauseLine(part.name, part.from));
     return;
   }
 

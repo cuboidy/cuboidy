@@ -76,7 +76,7 @@ export async function runQuery(
   const out: string[] = [];
   out.push(`model: ${asm.manifest.name}`);
   out.push(formatBBox(asm));
-  out.push(formatPalette(asm.cvox.palette));
+  out.push(formatPalette(asm.palette));
   out.push('');
   for (const q of opts.queries) {
     out.push(executeQuery(asm, q));

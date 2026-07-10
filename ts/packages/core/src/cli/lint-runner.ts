@@ -1,10 +1,8 @@
 import { readdir, readFile } from 'node:fs/promises';
-import { join, posix, resolve } from 'node:path';
-import { parseCvox } from '../cvox/parse.js';
-import type { Cvox, Palette } from '../cvox/types.js';
-import { manifestGeometry, parseManifest } from '../manifest.js';
+import { join, resolve } from 'node:path';
+import { parseManifest } from '../manifest.js';
 import type { Manifest } from '../manifest.js';
-import { parsePaletteFile } from '../palette-file.js';
+import { projectFilePaths, resolveProject } from '../project.js';
 import { validateProject } from '../lint/cross-file.js';
 import { lintCvox } from '../lint/voxel-rules.js';
 import type { Diagnostic } from '../diagnostic.js';
@@ -43,7 +41,6 @@ export interface RunResult {
   exitCode: 0 | 1 | 2;
 }
 
-const VOXELS_FILE = 'voxels.cvox';
 const MANIFEST_FILE = 'cuboidy.json';
 // Pseudo-file label for diagnostics that span files (cross-file lint).
 // Cross-file rules don't belong to a single source location, so we tag
@@ -92,112 +89,59 @@ export async function runLint(
     }
   }
 
-  // Geometry files: the manifest's list (§6.9) or the pre-v0.7 default.
-  // Paths are normalized (./a.cvox → a.cvox) so W07 set-comparison against
-  // the package enumeration is stable.
-  const geometryRefs = (
-    manifest !== null ? manifestGeometry(manifest) : [VOXELS_FILE]
-  ).map((ref) => posix.normalize(ref));
-  const geometries: Array<{ path: string; cvox: Cvox }> = [];
-  let anyGeometryRead = false;
-  for (const ref of geometryRefs) {
-    const filePath = join(root, ref);
-    const text = await tryReadText(filePath);
-    if (text === null) {
-      diagnostics.push({
-        file: filePath,
-        diag: {
-          code: 'missing',
-          severity: 'error',
-          message: `cannot read ${ref}`,
-        },
-      });
-      continue;
-    }
-    anyGeometryRead = true;
-    const r = parseCvox(text);
-    if (!r.ok) {
-      diagnostics.push({
-        file: filePath,
-        diag: { code: r.code, severity: 'error', message: r.message },
-      });
-      continue;
-    }
-    geometries.push({ path: ref, cvox: r.value });
-    for (const d of lintCvox(r.value)) {
-      diagnostics.push({ file: filePath, diag: d });
-    }
+  // Referenced files (§6.9 geometry list with default, §6.10 palette)
+  // are read here and resolved through the shared project layer — the
+  // same layer view/query/snap and the editor use, so lint agrees with
+  // them about what the model contains. Unreadable files stay OUT of the
+  // map; resolveProject reports them as `missing` diagnostics.
+  const paths = projectFilePaths(manifest);
+  const refs =
+    paths.palette !== undefined
+      ? [...paths.geometry, paths.palette]
+      : paths.geometry;
+  const files = new Map<string, string>();
+  for (const ref of refs) {
+    const text = await tryReadText(join(root, ref));
+    if (text !== null) files.set(ref, text);
   }
 
   // Nothing to lint at all: no manifest and no readable voxels.cvox is a
   // setup failure (exit 2), not a model error.
+  const anyGeometryRead = paths.geometry.some((ref) => files.has(ref));
   if (manifestText === null && !anyGeometryRead) {
-    return { diagnostics, exitCode: 2 };
-  }
-
-  // External palette binding (§6.10). A bound-but-unloadable palette is
-  // reported and suppresses cross-file validation (parse errors dominate;
-  // validating against a half-known palette would only add noise).
-  let externalPalette: Palette | undefined;
-  let paletteLoadFailed = false;
-  if (manifest?.palette !== undefined) {
-    const ref = posix.normalize(manifest.palette);
-    const filePath = join(root, ref);
-    const text = await tryReadText(filePath);
-    if (text === null) {
-      paletteLoadFailed = true;
+    for (const ref of paths.geometry) {
       diagnostics.push({
-        file: filePath,
+        file: join(root, ref),
         diag: {
           code: 'missing',
           severity: 'error',
           message: `cannot read ${ref}`,
         },
       });
-    } else {
-      let json: unknown = null;
-      let jsonOk = false;
-      try {
-        json = JSON.parse(text);
-        jsonOk = true;
-      } catch (e) {
-        paletteLoadFailed = true;
-        diagnostics.push({
-          file: filePath,
-          diag: {
-            code: 'invalid-value',
-            severity: 'error',
-            message: `JSON parse: ${(e as Error).message}`,
-          },
-        });
-      }
-      if (jsonOk) {
-        const pR = parsePaletteFile(json);
-        if (!pR.ok) {
-          paletteLoadFailed = true;
-          diagnostics.push({
-            file: filePath,
-            diag: { code: pR.code, severity: 'error', message: pR.message },
-          });
-        } else {
-          externalPalette = pR.value;
-        }
-      }
+    }
+    return { diagnostics, exitCode: 2 };
+  }
+
+  const project = resolveProject(manifest, files);
+  for (const d of project.diagnostics) {
+    diagnostics.push({ file: join(root, d.file), diag: d.diag });
+  }
+  for (const g of project.geometries) {
+    for (const d of lintCvox(g.cvox)) {
+      diagnostics.push({ file: join(root, g.path), diag: d });
     }
   }
 
-  // Cross-file validation runs only when every input parsed cleanly —
-  // running it on partially-parsed projects would just emit noise on top
-  // of the existing parse errors.
-  if (
-    manifest !== null &&
-    geometries.length === geometryRefs.length &&
-    !paletteLoadFailed
-  ) {
+  // Cross-file validation runs only when every input loaded, parsed and
+  // resolved cleanly — running it on partially-resolved projects would
+  // just emit noise on top of the existing diagnostics.
+  if (manifest !== null && project.complete) {
     for (const d of validateProject({
       manifest,
-      geometries,
-      ...(externalPalette !== undefined && { externalPalette }),
+      geometries: project.geometries,
+      ...(project.externalPalette !== undefined && {
+        externalPalette: project.externalPalette,
+      }),
       packageCvoxPaths: await enumerateCvoxFiles(root),
     })) {
       diagnostics.push({ file: CROSS_FILE_LABEL, diag: d });

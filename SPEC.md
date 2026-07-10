@@ -567,6 +567,14 @@ This is a **declarative reference** (akin to SVG `<use>` or glTF instancing), **
 - **No self-reference.** A part MUST NOT `clone` / `mirror` itself → `invalid-value`.
 - **Free order.** `<ref>` may be declared before or after the reuse part (resolved in a second pass, like `palette`). An unknown `<ref>` → `missing`.
 
+**Model-wide resolution (§6.9).** `<ref>` resolves against the union of all manifest-listed geometry files, so a part may reuse one defined in another file. Self-reference and same-file chains are reported at parse time; everything else is resolved at the project level, per geometry file in manifest list order, per reuse-clause in declaration order, with this error precedence per reference:
+
+1. `duplicate` — the referent name is defined in more than one geometry file (ambiguous; the duplicate itself is also a §11.6 error)
+2. `invalid-value` — the referent is itself a reuse part, wherever it is defined (no chains)
+3. `missing` — the referent is not defined in any geometry file
+
+Colors travel with the geometry: a cross-file reuse part's voxel indices resolve against the **referent** file's palette (moot under a §6.10 binding, which applies to every file).
+
 **Reflection rules** for `mirror <ref> <axis>` (axis `a` ∈ {x, y, z}; `dim` is the referent's size along `a`):
 
 | Element | Transform |

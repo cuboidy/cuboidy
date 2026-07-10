@@ -139,3 +139,44 @@ describe('runSnap — filesystem', () => {
     expect(r.exitCode).toBe(2);
   });
 });
+
+describe('renderSnapshots — v0.7 project shapes', () => {
+  it('renders a palette-less model with a §6.10 bound palette', async () => {
+    const dir = await makeModel({
+      'voxels.cvox': 'part p\nsize 2 1 1\npivot 0 0 0\nvoxels { 01 }',
+      'palette.json': JSON.stringify({ colors: ['#F00', '#0F0'] }),
+      'cuboidy.json': JSON.stringify({
+        name: 'bound',
+        palette: 'palette.json',
+        parts: [{ name: 'p' }],
+      }),
+    });
+    const loaded = await loadAndAssemble(dir);
+    expect(loaded.ok).toBe(true);
+    if (!loaded.ok) return;
+    const out = renderSnapshots(loaded.assembly, opts());
+    expect(out.tiles).toHaveLength(DEFAULT_ANGLES.length);
+    for (const tile of out.tiles) expect(isPng(tile.png)).toBe(true);
+  });
+
+  it('renders a multi-geometry model with a cross-file mirror', async () => {
+    const dir = await makeModel({
+      'body.cvox':
+        'palette #F00 #0F0\npart arm\nsize 2 1 1\npivot 0 0 0\nvoxels { 01 }',
+      'arms.cvox': 'part arm_r mirror arm',
+      'cuboidy.json': JSON.stringify({
+        name: 'multi',
+        geometry: ['body.cvox', 'arms.cvox'],
+        parts: [
+          { name: 'arm', position: [-2, 0, 0] },
+          { name: 'arm_r', position: [2, 0, 0] },
+        ],
+      }),
+    });
+    const loaded = await loadAndAssemble(dir);
+    expect(loaded.ok).toBe(true);
+    if (!loaded.ok) return;
+    const out = renderSnapshots(loaded.assembly, opts());
+    for (const tile of out.tiles) expect(isPng(tile.png)).toBe(true);
+  });
+});

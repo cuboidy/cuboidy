@@ -1,0 +1,16 @@
+// Right-side limbs reuse the left side via mirror. arm-l is defined in
+// body.cvox, so arm-r resolves CROSS-FILE (SPEC §6.9: clone/mirror
+// referents resolve model-wide); leg-r mirrors within this file.
+
+part arm-r mirror arm-l
+
+part leg-l
+    size 2 2 1
+    pivot 1 2 0
+    voxels {
+        33
+        ,
+        00
+    }
+
+part leg-r mirror leg-l

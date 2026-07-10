@@ -61,7 +61,7 @@ export interface RenderedSnapshots {
 
 export function renderSnapshots(asm: Assembly, opts: SnapOptions): RenderedSnapshots {
   const voxels = gridToVoxels(asm);
-  const scene = buildScene(voxels, asm.cvox.palette);
+  const scene = buildScene(voxels, asm.palette);
   const scale = computeGlobalScale(scene, opts.angles, opts);
 
   const tiles: { id: string; label: string; png: Buffer }[] = [];
@@ -170,7 +170,7 @@ function summary(
     out.push('note: half-voxel offsets present (geometry rendered at true position; use cuboidy-query for exact lookups)');
   }
   out.push('');
-  out.push(formatPalette(asm.cvox.palette));
+  out.push(formatPalette(asm.palette));
   out.push('');
   out.push('angles rendered:');
   for (const angle of opts.angles) {

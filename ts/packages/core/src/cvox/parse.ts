@@ -4,7 +4,16 @@ import { extractHeader } from './header.js';
 import { PaletteParser } from './palette.js';
 import { assemblePart, PartParser, reusePart, type ParsedPart } from './part.js';
 import { tokenize } from './tokenize.js';
-import type { Cvox, Palette, Part } from './types.js';
+import type { Cvox, Palette, Part, PendingReuse } from './types.js';
+
+export interface ParseCvoxOptions {
+  // SPEC §6.9: clone/mirror referents resolve model-wide. When true, a
+  // reuse reference whose referent is not defined in THIS file is not a
+  // parse error — it is recorded in `Cvox.pending` for the project layer
+  // (resolveCrossFileReuse) to resolve against all geometry files.
+  // Default false: an unresolved referent errors (single-file behavior).
+  deferUnresolvedReuse?: boolean;
+}
 
 // SPEC §7.2: top-level parser. Holds file-scope state in private fields
 // (palette, parts, partNames) and dispatches each file-scope token to its
@@ -22,7 +31,10 @@ export class CvoxParser {
   private parts: ParsedPart[] = [];
   private partNames = new Set<string>();
 
-  constructor(private readonly cursor: TokenCursor) {}
+  constructor(
+    private readonly cursor: TokenCursor,
+    private readonly options: ParseCvoxOptions = {},
+  ) {}
 
   // Read-only accessors for sub-parsers.
   hasPalette(): boolean { return this.palette !== null; }
@@ -134,7 +146,8 @@ export class CvoxParser {
 
     // Phase 2: produce final parts in source order, resolving reuse refs.
     const finalParts: Part[] = [];
-    for (const parsed of this.parts) {
+    const pending: PendingReuse[] = [];
+    for (const [index, parsed] of this.parts.entries()) {
       const from = parsed.from;
       if (from === undefined) {
         finalParts.push(concrete.get(parsed.name)!);
@@ -143,9 +156,9 @@ export class CvoxParser {
       const ref = concrete.get(from.part);
       const verb = from.mirror !== undefined ? 'mirror' : 'clone';
       if (ref === undefined) {
-        // Referent is not a concrete part: either it doesn't exist, or it is
-        // itself a reuse part (chains are forbidden — resolution stays a
-        // single leaf reference per SPEC §7.5.1).
+        // Referent is not a concrete part in this file: either it is a
+        // same-file reuse part (chains are forbidden — resolution stays a
+        // single leaf reference per SPEC §7.5.1), or it isn't defined here.
         const isReuse = this.parts.some(
           (p) => p.name === from.part && p.from !== undefined,
         );
@@ -155,6 +168,13 @@ export class CvoxParser {
             `part "${parsed.name}" ${verb}s "${from.part}", which is itself a clone/mirror (reuse chains are not allowed)`,
           );
         }
+        // SPEC §6.9: not defined in this file. In deferred mode the project
+        // layer resolves it against the other geometry files; standalone
+        // parsing keeps this a hard error.
+        if (this.options.deferUnresolvedReuse === true) {
+          pending.push({ name: parsed.name, from, index });
+          continue;
+        }
         return err(
           'missing',
           `part "${parsed.name}" ${verb}s unknown part "${from.part}"`,
@@ -162,11 +182,18 @@ export class CvoxParser {
       }
       finalParts.push(reusePart(parsed.name, from, ref));
     }
-    return ok({ palette, parts: finalParts });
+    return ok({
+      palette,
+      parts: finalParts,
+      ...(pending.length > 0 && { pending }),
+    });
   }
 }
 
-export function parseCvox(text: string): Result<Cvox> {
+export function parseCvox(
+  text: string,
+  options: ParseCvoxOptions = {},
+): Result<Cvox> {
   // SPEC §7.X: the file header is a pure pre-pass over raw text. It runs
   // before tokenize/parse and never affects either — comment lines are
   // already silent-stripped by tokenize, so capturing the header
@@ -174,7 +201,7 @@ export function parseCvox(text: string): Result<Cvox> {
   const header = extractHeader(text);
   const tokensR = tokenize(text);
   if (!tokensR.ok) return tokensR;
-  const r = new CvoxParser(new TokenCursor(tokensR.value)).parse();
+  const r = new CvoxParser(new TokenCursor(tokensR.value), options).parse();
   if (!r.ok) return r;
   if (header.length === 0) return r;
   return ok({ ...r.value, header });

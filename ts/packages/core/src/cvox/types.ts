@@ -63,6 +63,19 @@ export interface Part {
   voxels: readonly (readonly (readonly number[])[])[];
 }
 
+// SPEC §6.9: a reuse part whose referent is not defined in the same file.
+// Only produced when parsing with `deferUnresolvedReuse` — the project
+// layer (resolveCrossFileReuse) resolves it against every geometry file
+// and splices the derived Part back into `Cvox.parts`.
+export interface PendingReuse {
+  name: string;
+  from: PartRef;
+  // The part's position in the file's declaration order, counting BOTH
+  // resolved parts and pending ones. resolveCrossFileReuse / the
+  // serializer use it to restore source order.
+  index: number;
+}
+
 export interface Cvox {
   // SPEC §7.X file header: comment lines appearing before the first
   // declaration are captured verbatim (including their leading `//`).
@@ -79,4 +92,9 @@ export interface Cvox {
   // line for an empty array (round-trips to absent).
   palette: Palette;
   parts: Part[];
+  // Unresolved cross-file reuse references (SPEC §6.9), in declaration
+  // order. Present only when parsed with `deferUnresolvedReuse` and the
+  // file references parts it does not define; absent otherwise. These
+  // parts are NOT in `parts` until resolveCrossFileReuse splices them in.
+  pending?: readonly PendingReuse[];
 }

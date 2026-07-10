@@ -93,12 +93,13 @@ function renderModel(asm: Assembly, opts: ViewOptions): RunResult {
     );
   }
   out.push('');
-  if (asm.cvox.header) {
-    out.push('header (from voxels.cvox):');
-    for (const line of asm.cvox.header) out.push('  ' + line);
+  const primary = asm.geometries[0];
+  if (primary !== undefined && primary.cvox.header) {
+    out.push(`header (from ${primary.path}):`);
+    for (const line of primary.cvox.header) out.push('  ' + line);
     out.push('');
   }
-  out.push(formatPalette(asm.cvox.palette));
+  out.push(formatPalette(asm.palette));
   out.push('');
   out.push('voxel cell legend: each character is the palette index of the front-most voxel along the view direction; `.` = empty');
   out.push('');
