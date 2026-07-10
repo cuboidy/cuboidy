@@ -40,6 +40,7 @@ import { Dock, type PanelContent } from './components/Dock.js';
 import { ExportMenu } from './components/ExportMenu.js';
 import { FileDropZone } from './components/FileDropZone.js';
 import { FileTree } from './components/FileTree.js';
+import { KeyInspectorPanel } from './components/KeyInspectorPanel.js';
 import { PalettePanel } from './components/PalettePanel.js';
 import { PartProperties } from './components/PartProperties.js';
 import { PartTree } from './components/PartTree.js';
@@ -2185,6 +2186,8 @@ export function App() {
           return 'Properties';
         case 'palette':
           return 'Palette';
+        case 'inspector':
+          return 'Key Inspector';
         case 'preview':
           return 'Preview';
         case 'timeline':
@@ -2406,15 +2409,25 @@ export function App() {
               clipRefs={clipRefs}
               onExternalizeClip={handleExternalizeClip}
               onInlineClip={handleInlineClip}
-              onSetAnimField={handleSetAnimField}
-              onSetAnimEase={handleSetAnimEase}
-              onDeleteAnimKey={handleDeleteAnimKey}
               onTrimClip={handleTrimClip}
               onSetClipDuration={handleSetClipDuration}
               onSetClipLoop={handleSetClipLoop}
               onCreateClip={handleCreateAnimationClip}
               onRenameClip={handleRenameClip}
               onDeleteClip={handleDeleteClip}
+            />
+          ),
+        };
+      case 'inspector':
+        return {
+          title,
+          body: (
+            <KeyInspectorPanel
+              session={animSession}
+              manifestEditsDisabled={manifestParseError !== null}
+              onSetAnimField={handleSetAnimField}
+              onSetAnimEase={handleSetAnimEase}
+              onDeleteAnimKey={handleDeleteAnimKey}
             />
           ),
         };

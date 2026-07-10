@@ -1,15 +1,5 @@
-import {
-  DEFAULT_EASING,
-  isIdentifier,
-  resolveTrackEase,
-  type AnimationTrack,
-  type AttrValue,
-  type EasingName,
-  type KeyAttr,
-  type Manifest,
-} from '@cuboidy/core';
+import { isIdentifier, type Manifest } from '@cuboidy/core';
 import type { AnimationSession } from '../lib/useAnimationSession.js';
-import { KeyInspector } from './KeyInspector.js';
 import { NumberInput } from './NumberInput.js';
 import { TextInput } from './TextInput.js';
 import { Timeline } from './Timeline.js';
@@ -21,26 +11,6 @@ interface Props {
   // A rig manifest is loaded, so a first clip can be created here.
   hasManifest: boolean;
   manifestEditsDisabled: boolean;
-  onSetAnimField: (
-    animName: string,
-    part: string,
-    timeKey: string,
-    attr: KeyAttr,
-    value: AttrValue,
-  ) => void;
-  // Set (or clear with undefined → carryover) the keyframe-level ease.
-  onSetAnimEase: (
-    animName: string,
-    part: string,
-    timeKey: string,
-    ease: EasingName | undefined,
-  ) => void;
-  onDeleteAnimKey: (
-    animName: string,
-    part: string,
-    timeKey: string,
-    attr: KeyAttr,
-  ) => void;
   onTrimClip: (animName: string) => void;
   onSetClipDuration: (animName: string, duration: number) => void;
   onSetClipLoop: (animName: string, loop: boolean) => void;
@@ -54,36 +24,17 @@ interface Props {
   onInlineClip: (name: string) => void;
 }
 
-// What §6.5 carryover would give `timeKey` if it carried no explicit ease:
-// the resolved ease of the nearest earlier key, linear before the first.
-function inheritedEaseAt(track: AnimationTrack, timeKey: string): EasingName {
-  const resolved = resolveTrackEase(track);
-  const t = Number(timeKey);
-  let best: EasingName = DEFAULT_EASING;
-  let bestT = -Infinity;
-  for (const [k, ease] of Object.entries(resolved)) {
-    const kt = Number(k);
-    if (kt < t && kt > bestT) {
-      bestT = kt;
-      best = ease;
-    }
-  }
-  return best;
-}
-
 // The keyframe editor as its own dock panel: the per-clip toolbar (name /
-// duration / loop / trim / delete) over the per-attribute lane timeline and
-// the selected-key inspector. Reads the shared session; its lanes are always
-// interactive (there is no separate "edit mode" — opening this panel is the
-// edit surface). Shows an empty state when there is no inline clip.
+// duration / loop / trim / delete) over the per-attribute lane timeline.
+// Reads the shared session; its lanes are always interactive (there is no
+// separate "edit mode" — opening this panel is the edit surface). Shows an
+// empty state when there is no inline clip. The selected key's detail lives
+// in the separate Key Inspector panel (M4).
 export function TimelinePanel({
   session,
   manifest,
   hasManifest,
   manifestEditsDisabled,
-  onSetAnimField,
-  onSetAnimEase,
-  onDeleteAnimKey,
   onTrimClip,
   onSetClipDuration,
   onSetClipLoop,
@@ -102,17 +53,12 @@ export function TimelinePanel({
     effectiveSelectedKey,
     overrunCount,
     partNames,
-    keyClipboard,
     setSelectedClip,
-    setSelectedKey,
     scrub,
     selectKey,
     addKey,
     moveKey,
-    retimeKey,
     clearPart,
-    copySelectedKey,
-    pasteAtPlayhead,
   } = session;
   const animations = manifest?.animations ?? {};
 
@@ -137,34 +83,6 @@ export function TimelinePanel({
       </div>
     );
   }
-
-  const selectedKeyframe =
-    effectiveSelectedKey !== null
-      ? inline.parts[effectiveSelectedKey.part]?.[effectiveSelectedKey.timeKey]
-      : undefined;
-
-  // What the inspector's "inherit" option means for the selected key: the
-  // §6.5 carryover value it would take with no explicit ease (the nearest
-  // EARLIER key's resolved ease — not the key's own, which for an explicit
-  // key is what clearing would leave behind). Tracks are small; the
-  // per-render walk is negligible next to the manifest writeback.
-  const selectedTrack =
-    effectiveSelectedKey !== null
-      ? inline.parts[effectiveSelectedKey.part]
-      : undefined;
-  const selectedInheritedEase =
-    effectiveSelectedKey !== null && selectedTrack !== undefined
-      ? inheritedEaseAt(selectedTrack, effectiveSelectedKey.timeKey)
-      : DEFAULT_EASING;
-
-  // Human summary of the copied keyframe for the Paste button's tooltip,
-  // e.g. "tail @ 0.5s (rot, pos, ease)".
-  const clipboardSummary =
-    keyClipboard !== null
-      ? `${keyClipboard.part} @ ${keyClipboard.timeKey}s (${Object.keys(
-          keyClipboard.kf,
-        ).join(', ')})`
-      : null;
 
   return (
     <div className="timeline-panel">
@@ -274,51 +192,6 @@ export function TimelinePanel({
           onMoveKey={moveKey}
           onClearPart={clearPart}
         />
-        {effectiveSelectedKey !== null && selectedKeyframe !== undefined && (
-          <KeyInspector
-            selectedKey={effectiveSelectedKey}
-            keyframe={selectedKeyframe}
-            inheritedEase={selectedInheritedEase}
-            disabled={manifestEditsDisabled}
-            onSetEase={(ease) =>
-              onSetAnimEase(
-                activeName,
-                effectiveSelectedKey.part,
-                effectiveSelectedKey.timeKey,
-                ease,
-              )
-            }
-            clipboardSummary={clipboardSummary}
-            onCopy={copySelectedKey}
-            onPaste={pasteAtPlayhead}
-            onSetTime={(t) =>
-              retimeKey(
-                effectiveSelectedKey.part,
-                effectiveSelectedKey.attr,
-                effectiveSelectedKey.timeKey,
-                t,
-              )
-            }
-            onSetField={(value) =>
-              onSetAnimField(
-                activeName,
-                effectiveSelectedKey.part,
-                effectiveSelectedKey.timeKey,
-                effectiveSelectedKey.attr,
-                value,
-              )
-            }
-            onDelete={() => {
-              onDeleteAnimKey(
-                activeName,
-                effectiveSelectedKey.part,
-                effectiveSelectedKey.timeKey,
-                effectiveSelectedKey.attr,
-              );
-              setSelectedKey(null);
-            }}
-          />
-        )}
       </div>
     </div>
   );
