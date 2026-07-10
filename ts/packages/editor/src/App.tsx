@@ -25,6 +25,7 @@ import {
   trimTrackKeys,
   type AttrValue,
   type Cvox,
+  type EaseAttr,
   type EasingName,
   type InlineAnimation,
   type KeyAttr,
@@ -1575,19 +1576,20 @@ export function App() {
     [mutateManifestAnimation],
   );
 
-  // Set or clear (undefined) the keyframe-level ease at an existing key.
+  // Set or clear (undefined) one attribute's ease at an existing key.
   // Discrete dropdown change — always its own undo entry (tag null).
   const handleSetAnimEase = useCallback(
     (
       animName: string,
       part: string,
       timeKey: string,
+      attr: EaseAttr,
       ease: EasingName | undefined,
     ) => {
       mutateManifestAnimation(null, animName, (anim) => {
         const track = anim.parts[part];
         if (track === undefined) return anim;
-        const nextTrack = setEaseAtKey(track, timeKey, ease);
+        const nextTrack = setEaseAtKey(track, timeKey, attr, ease);
         if (nextTrack === track) return anim;
         return { ...anim, parts: { ...anim.parts, [part]: nextTrack } };
       });

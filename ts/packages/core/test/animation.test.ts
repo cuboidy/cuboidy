@@ -156,9 +156,9 @@ describe('animation schema — parses real manifests with animations', () => {
 });
 
 describe('samplePart — easing (SPEC §6.7)', () => {
-  it('shapes the segment by the OUTGOING key’s ease', () => {
+  it('shapes the segment by the OUTGOING key’s ease for that attribute', () => {
     const track: AnimationTrack = {
-      '0.0': { rot: [0, 0, 0], ease: 'in-quad' },
+      '0.0': { rot: [0, 0, 0], ease: { rot: 'in-quad' } },
       '1.0': { rot: [0, 40, 0] },
     };
     // u=0.5 → in-quad 0.25 → y = 40·0.25.
@@ -166,32 +166,41 @@ describe('samplePart — easing (SPEC §6.7)', () => {
     expect(p.rot[1]).toBeCloseTo(10, 6);
   });
 
+  it('eases each attribute independently across the same segment', () => {
+    const track: AnimationTrack = {
+      '0.0': { rot: [0, 0, 0], pos: [0, 0, 0], ease: { rot: 'in-quad' } },
+      '1.0': { rot: [0, 40, 0], pos: [0, 4, 0] },
+    };
+    const p = samplePart(track, 0.5, 1.0, false);
+    expect(p.rot[1]).toBeCloseTo(10, 6); // in-quad
+    expect(p.pos[1]).toBeCloseTo(2, 6); // linear — untouched by rot's ease
+  });
+
+  it('never propagates ease to later keyframes (no carryover)', () => {
+    const track: AnimationTrack = {
+      '0.0': { pos: [0, 0, 0], ease: { pos: 'in-quad' } },
+      '1.0': { pos: [0, 4, 0] },
+      '2.0': { pos: [0, 8, 0] },
+    };
+    // Segment [0,1] eased: u=0.5 → 0.25 → y = 1.
+    expect(samplePart(track, 0.5, 2.0, false).pos[1]).toBeCloseTo(1, 6);
+    // Segment [1,2] is plain linear — 1.0 carries no ease of its own.
+    expect(samplePart(track, 1.5, 2.0, false).pos[1]).toBeCloseTo(6, 6);
+  });
+
   it('still hits keyed values exactly at their keyframes', () => {
     const track: AnimationTrack = {
-      '0.0': { rot: [0, 0, 0], ease: 'out-elastic' },
+      '0.0': { rot: [0, 0, 0], ease: { rot: 'out-elastic' } },
       '1.0': { rot: [0, 40, 0] },
     };
     expect(samplePart(track, 0, 1.0, false).rot[1]).toBeCloseTo(0, 6);
     expect(samplePart(track, 1.0, 1.0, false).rot[1]).toBeCloseTo(40, 6);
   });
 
-  it('carries ease over omitted keyframes and resets on an explicit one', () => {
-    const track: AnimationTrack = {
-      '0.0': { pos: [0, 0, 0], ease: 'in-quad' },
-      '1.0': { pos: [0, 4, 0] }, // ease omitted → carries in-quad
-      '2.0': { pos: [0, 8, 0], ease: 'linear' },
-      '3.0': { pos: [0, 12, 0] },
-    };
-    // Segment [1,2] inherits in-quad: u=0.5 → 0.25 → y = 4 + 4·0.25 = 5.
-    expect(samplePart(track, 1.5, 3.0, false).pos[1]).toBeCloseTo(5, 6);
-    // Segment [2,3] is explicitly linear again: midpoint y = 10.
-    expect(samplePart(track, 2.5, 3.0, false).pos[1]).toBeCloseTo(10, 6);
-  });
-
   it('applies the last key’s ease to the loop wrap interval', () => {
     const track: AnimationTrack = {
       '0.0': { rot: [0, 0, 0] },
-      '1.0': { rot: [0, 40, 0], ease: 'in-quad' },
+      '1.0': { rot: [0, 40, 0], ease: { rot: 'in-quad' } },
     };
     // Wrap [1.0, 2.0] toward the "0.0" key: u=0.5 → 0.25 → 40 → 30.
     const p = samplePart(track, 1.5, 2.0, true);
@@ -200,7 +209,7 @@ describe('samplePart — easing (SPEC §6.7)', () => {
 
   it('step ease holds the outgoing value across the open interval', () => {
     const track: AnimationTrack = {
-      '0.0': { rot: [0, 0, 0], ease: 'step' },
+      '0.0': { rot: [0, 0, 0], ease: { rot: 'step' } },
       '1.0': { rot: [0, 40, 0] },
     };
     expect(samplePart(track, 0.999, 1.0, false).rot[1]).toBeCloseTo(0, 6);
@@ -209,8 +218,8 @@ describe('samplePart — easing (SPEC §6.7)', () => {
 
   it('does not disturb visible’s step semantics', () => {
     const track: AnimationTrack = {
-      '0.0': { visible: true, ease: 'out-quad' },
-      '1.0': { visible: false },
+      '0.0': { rot: [0, 0, 0], visible: true, ease: { rot: 'out-quad' } },
+      '1.0': { rot: [0, 40, 0], visible: false },
     };
     expect(samplePart(track, 0.999, 1.0, false).visible).toBe(true);
     expect(samplePart(track, 1.0, 1.0, false).visible).toBe(false);
@@ -218,7 +227,7 @@ describe('samplePart — easing (SPEC §6.7)', () => {
 });
 
 describe('animation schema — ease field (SPEC §6.5)', () => {
-  const withEase = (ease: string) => ({
+  const withEase = (ease: unknown) => ({
     name: 'wolf',
     parts: [{ name: 'body' }],
     animations: {
@@ -230,13 +239,23 @@ describe('animation schema — ease field (SPEC §6.5)', () => {
     },
   });
 
-  it('accepts every preset name', () => {
-    expect(parseManifest(withEase('in-out-bounce')).ok).toBe(true);
-    expect(parseManifest(withEase('linear')).ok).toBe(true);
+  it('accepts a per-attribute map of preset names', () => {
+    expect(
+      parseManifest(withEase({ rot: 'in-out-bounce', pos: 'linear' })).ok,
+    ).toBe(true);
+    expect(parseManifest(withEase({ scale: 'out-back' })).ok).toBe(true);
   });
 
-  it('rejects an unknown ease name', () => {
-    expect(parseManifest(withEase('zigzag')).ok).toBe(false);
+  it('rejects an unknown preset name', () => {
+    expect(parseManifest(withEase({ rot: 'zigzag' })).ok).toBe(false);
+  });
+
+  it('rejects the retired keyframe-level string form', () => {
+    expect(parseManifest(withEase('out-elastic')).ok).toBe(false);
+  });
+
+  it('rejects non-interpolating attributes in the map', () => {
+    expect(parseManifest(withEase({ visible: 'linear' })).ok).toBe(false);
   });
 });
 

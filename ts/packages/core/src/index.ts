@@ -24,6 +24,7 @@ export type {
   InlineAnimation,
   AnimationTrack,
   Keyframe,
+  EaseMap,
   Pose,
 } from './animation.js';
 
@@ -41,10 +42,9 @@ export {
   trimTrackKeys,
   restValue,
   setEaseAtKey,
-  resolveTrackEase,
   mergeKeyframeAtTime,
 } from './animation-edit.js';
-export type { KeyAttr, AttrValue } from './animation-edit.js';
+export type { KeyAttr, AttrValue, EaseAttr } from './animation-edit.js';
 
 export { parseCvox } from './cvox/parse.js';
 export { serializeColor, serializeCvox } from './cvox/serialize.js';

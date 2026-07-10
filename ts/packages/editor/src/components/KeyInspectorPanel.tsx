@@ -1,10 +1,8 @@
-import {
-  DEFAULT_EASING,
-  resolveTrackEase,
-  type AnimationTrack,
-  type AttrValue,
-  type EasingName,
-  type KeyAttr,
+import type {
+  AttrValue,
+  EaseAttr,
+  EasingName,
+  KeyAttr,
 } from '@cuboidy/core';
 import type { AnimationSession } from '../lib/useAnimationSession.js';
 import { KeyInspector } from './KeyInspector.js';
@@ -23,6 +21,7 @@ interface Props {
     animName: string,
     part: string,
     timeKey: string,
+    attr: EaseAttr,
     ease: EasingName | undefined,
   ) => void;
   onDeleteAnimKey: (
@@ -31,23 +30,6 @@ interface Props {
     timeKey: string,
     attr: KeyAttr,
   ) => void;
-}
-
-// What §6.5 carryover would give `timeKey` if it carried no explicit ease:
-// the resolved ease of the nearest earlier key, linear before the first.
-function inheritedEaseAt(track: AnimationTrack, timeKey: string): EasingName {
-  const resolved = resolveTrackEase(track);
-  const t = Number(timeKey);
-  let best: EasingName = DEFAULT_EASING;
-  let bestT = -Infinity;
-  for (const [k, ease] of Object.entries(resolved)) {
-    const kt = Number(k);
-    if (kt < t && kt > bestT) {
-      bestT = kt;
-      best = ease;
-    }
-  }
-  return best;
 }
 
 // The Key Inspector as its own dock panel (M4): the selection detail of the
@@ -91,12 +73,6 @@ export function KeyInspectorPanel({
     );
   }
 
-  const selectedTrack = inline.parts[effectiveSelectedKey.part];
-  const inheritedEase =
-    selectedTrack !== undefined
-      ? inheritedEaseAt(selectedTrack, effectiveSelectedKey.timeKey)
-      : DEFAULT_EASING;
-
   // Human summary of the copied keyframe for the Paste button's tooltip,
   // e.g. "tail @ 0.5s (rot, pos, ease)".
   const clipboardSummary =
@@ -110,7 +86,6 @@ export function KeyInspectorPanel({
     <KeyInspector
       selectedKey={effectiveSelectedKey}
       keyframe={selectedKeyframe}
-      inheritedEase={inheritedEase}
       disabled={manifestEditsDisabled}
       onSetTime={(t) =>
         retimeKey(
@@ -129,14 +104,20 @@ export function KeyInspectorPanel({
           value,
         )
       }
-      onSetEase={(ease) =>
-        onSetAnimEase(
-          activeName,
-          effectiveSelectedKey.part,
-          effectiveSelectedKey.timeKey,
-          ease,
-        )
-      }
+      onSetEase={(ease) => {
+        // KeyInspector only surfaces the ease editor for interpolating
+        // attributes, so the narrowing guard here never actually skips.
+        const { attr } = effectiveSelectedKey;
+        if (attr !== 'visible') {
+          onSetAnimEase(
+            activeName,
+            effectiveSelectedKey.part,
+            effectiveSelectedKey.timeKey,
+            attr,
+            ease,
+          );
+        }
+      }}
       clipboardSummary={clipboardSummary}
       onCopy={copySelectedKey}
       onPaste={pasteAtPlayhead}

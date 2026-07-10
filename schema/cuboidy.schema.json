@@ -185,29 +185,85 @@
                         "type": "boolean"
                       },
                       "ease": {
-                        "type": "string",
-                        "enum": [
-                          "linear",
-                          "step",
-                          "in-sine",
-                          "out-sine",
-                          "in-out-sine",
-                          "in-quad",
-                          "out-quad",
-                          "in-out-quad",
-                          "in-cubic",
-                          "out-cubic",
-                          "in-out-cubic",
-                          "in-back",
-                          "out-back",
-                          "in-out-back",
-                          "in-elastic",
-                          "out-elastic",
-                          "in-out-elastic",
-                          "in-bounce",
-                          "out-bounce",
-                          "in-out-bounce"
-                        ]
+                        "type": "object",
+                        "properties": {
+                          "rot": {
+                            "type": "string",
+                            "enum": [
+                              "linear",
+                              "step",
+                              "in-sine",
+                              "out-sine",
+                              "in-out-sine",
+                              "in-quad",
+                              "out-quad",
+                              "in-out-quad",
+                              "in-cubic",
+                              "out-cubic",
+                              "in-out-cubic",
+                              "in-back",
+                              "out-back",
+                              "in-out-back",
+                              "in-elastic",
+                              "out-elastic",
+                              "in-out-elastic",
+                              "in-bounce",
+                              "out-bounce",
+                              "in-out-bounce"
+                            ]
+                          },
+                          "pos": {
+                            "type": "string",
+                            "enum": [
+                              "linear",
+                              "step",
+                              "in-sine",
+                              "out-sine",
+                              "in-out-sine",
+                              "in-quad",
+                              "out-quad",
+                              "in-out-quad",
+                              "in-cubic",
+                              "out-cubic",
+                              "in-out-cubic",
+                              "in-back",
+                              "out-back",
+                              "in-out-back",
+                              "in-elastic",
+                              "out-elastic",
+                              "in-out-elastic",
+                              "in-bounce",
+                              "out-bounce",
+                              "in-out-bounce"
+                            ]
+                          },
+                          "scale": {
+                            "type": "string",
+                            "enum": [
+                              "linear",
+                              "step",
+                              "in-sine",
+                              "out-sine",
+                              "in-out-sine",
+                              "in-quad",
+                              "out-quad",
+                              "in-out-quad",
+                              "in-cubic",
+                              "out-cubic",
+                              "in-out-cubic",
+                              "in-back",
+                              "out-back",
+                              "in-out-back",
+                              "in-elastic",
+                              "out-elastic",
+                              "in-out-elastic",
+                              "in-bounce",
+                              "out-bounce",
+                              "in-out-bounce"
+                            ]
+                          }
+                        },
+                        "additionalProperties": false
                       }
                     },
                     "additionalProperties": false

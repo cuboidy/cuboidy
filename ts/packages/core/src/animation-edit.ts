@@ -10,10 +10,13 @@
 // touches that field of that time-key entry.
 
 import type { AnimationTrack, Keyframe, Vec3Tuple } from './animation.js';
-import { DEFAULT_EASING, type EasingName } from './easing.js';
+import type { EasingName } from './easing.js';
 
 export type KeyAttr = 'rot' | 'pos' | 'scale' | 'visible';
 export type AttrValue = Vec3Tuple | boolean;
+// The attributes that interpolate — the only ones an `ease` entry can name
+// (SPEC §6.5; `visible` steps and has none).
+export type EaseAttr = Exclude<KeyAttr, 'visible'>;
 
 const ATTR_FIELDS: readonly KeyAttr[] = ['rot', 'pos', 'scale', 'visible'];
 
@@ -25,6 +28,19 @@ const ATTR_FIELDS: readonly KeyAttr[] = ['rot', 'pos', 'scale', 'visible'];
 // as empty and drop it, letting the ease die with its keyframe.
 function hasAttrField(kf: Keyframe): boolean {
   return ATTR_FIELDS.some((a) => a in kf);
+}
+
+// Remove `attr` from an entry ALONG WITH its `ease` entry — the easing
+// belongs to the attribute (SPEC §6.5), so it never outlives the field. An
+// emptied ease map is dropped entirely (never serialize `"ease": {}`).
+function withoutAttr(entry: Keyframe, attr: KeyAttr): Keyframe {
+  const { [attr]: _drop, ...rest } = entry;
+  if (attr === 'visible' || rest.ease?.[attr] === undefined) return rest;
+  const { [attr]: _dropEase, ...restEase } = rest.ease;
+  const out: Keyframe = { ...rest };
+  if (Object.keys(restEase).length === 0) delete out.ease;
+  else out.ease = restEase;
+  return out;
 }
 
 // SPEC §6.5 first-keyframe defaults, by attribute. Used to seed the
@@ -151,9 +167,10 @@ export function addAttrAtTime(
   return { track: sortTrackKeys(ensureZeroKey(withKey, attr)), timeKey };
 }
 
-// Remove one attribute field from a time-key. Drops the entry entirely if no
-// attribute field remains (never serialize `"0.5": {}` — nor an ease-only
-// entry, see hasAttrField). If removing it leaves the
+// Remove one attribute field from a time-key (its ease entry goes with it,
+// see withoutAttr). Drops the entry entirely if no attribute field remains
+// (never serialize `"0.5": {}` — nor an ease-only entry, see hasAttrField).
+// If removing it leaves the
 // attribute with surviving keys but no "0.0" entry, re-seed "0.0" with the
 // attribute's rest value so the part keeps a §6.6 start key and doesn't snap
 // at t=0. If the attribute is fully gone, no re-seed (it rests everywhere).
@@ -164,7 +181,7 @@ export function deleteAttrAtKey(
 ): AnimationTrack {
   const entry = track[timeKey];
   if (entry === undefined) return track;
-  const { [attr]: _drop, ...rest } = entry;
+  const rest = withoutAttr(entry, attr);
   const out: AnimationTrack = { ...track };
   if (!hasAttrField(rest)) delete out[timeKey];
   else out[timeKey] = rest;
@@ -192,11 +209,10 @@ export function deleteAttrAtKey(
 // field — the UI blocks same-attribute collisions; this helper stays
 // mechanical like setAttrAtKey.
 //
-// When the move empties the source entry of attribute fields, the entry is
-// the keyframe being renamed — its `ease` travels to the target (a drag must
-// not silently drop the segment's easing). A target entry that already has
-// its own `ease` keeps it; if attribute fields survive at the source, the
-// ease stays there (it is keyframe-level metadata, not the moved attr's).
+// The moved attribute's `ease` entry travels with it (SPEC §6.5: easing is
+// per-attribute) — a drag must not silently drop the segment's curve. It
+// overwrites the target's entry for that attribute, exactly like the value
+// does; the source's OTHER ease entries stay with their attributes.
 //
 // Returns the (possibly unchanged) track plus the resolved time-key so the
 // caller can keep the moved key selected.
@@ -214,18 +230,14 @@ export function moveAttrKey(
   if (toKey === fromTimeKey) return { track, timeKey: fromTimeKey };
 
   const value = entry[attr] as AttrValue;
-  const { [attr]: _drop, ...rest } = entry;
+  const movedEase = attr !== 'visible' ? entry.ease?.[attr] : undefined;
+  const rest = withoutAttr(entry, attr);
   const out: AnimationTrack = { ...track };
-  let carriedEase: Keyframe['ease'];
-  if (!hasAttrField(rest)) {
-    carriedEase = rest.ease;
-    delete out[fromTimeKey];
-  } else {
-    out[fromTimeKey] = rest;
-  }
-  const target = withAttr(out[toKey] ?? {}, attr, value);
-  if (carriedEase !== undefined && target.ease === undefined) {
-    target.ease = carriedEase;
+  if (!hasAttrField(rest)) delete out[fromTimeKey];
+  else out[fromTimeKey] = rest;
+  let target = withAttr(out[toKey] ?? {}, attr, value);
+  if (movedEase !== undefined && attr !== 'visible') {
+    target = { ...target, ease: { ...target.ease, [attr]: movedEase } };
   }
   out[toKey] = target;
   return { track: sortTrackKeys(out), timeKey: toKey };
@@ -235,10 +247,11 @@ export function moveAttrKey(
 // `t` — the data-model half of keyframe copy/paste. Present fields
 // overwrite the target's; absent fields leave it untouched (carryover holes
 // stay holes). Composed from addAttrAtTime per attribute so the §6.6 "0.0"
-// seed and nearest-key merge rules hold, plus setEaseAtKey when `kf`
-// carries an explicit ease (an absent source ease never stamps the target).
-// Returns the resolved time-key so the caller can select the pasted key;
-// an attribute-less `kf` is a no-op (input reference returned).
+// seed and nearest-key merge rules hold; each pasted attribute also brings
+// its own ease entry when the source has one (an absent source ease never
+// clears the target's). Returns the resolved time-key so the caller can
+// select the pasted key; an attribute-less `kf` is a no-op (input reference
+// returned).
 export function mergeKeyframeAtTime(
   track: AnimationTrack,
   t: number,
@@ -252,50 +265,39 @@ export function mergeKeyframeAtTime(
     const r = addAttrAtTime(out, t, attr, value);
     out = r.track;
     timeKey = r.timeKey;
+    if (attr !== 'visible') {
+      const ease = kf.ease?.[attr];
+      if (ease !== undefined) out = setEaseAtKey(out, timeKey, attr, ease);
+    }
   }
-  if (kf.ease !== undefined) out = setEaseAtKey(out, timeKey, kf.ease);
   return { track: out, timeKey };
 }
 
-// Set or clear the keyframe-level `ease` (SPEC §6.5) at an EXISTING
-// time-key. `undefined` removes the field, reverting the key to carryover.
+// Set or clear one attribute's `ease` entry (SPEC §6.5) at an EXISTING
+// time-key. `undefined` removes the entry — the segment reverts to linear —
+// dropping an emptied ease map entirely (never serialize `"ease": {}`).
 // No-op (input reference returned) when the entry is absent — minting an
 // attr-less entry here would create an invisible flattening key (see
 // hasAttrField) — or when the value already matches.
 export function setEaseAtKey(
   track: AnimationTrack,
   timeKey: string,
+  attr: EaseAttr,
   ease: EasingName | undefined,
 ): AnimationTrack {
   const entry = track[timeKey];
-  if (entry === undefined || entry.ease === ease) return track;
+  if (entry === undefined || entry.ease?.[attr] === ease) return track;
   if (ease === undefined) {
-    const { ease: _drop, ...rest } = entry;
-    return { ...track, [timeKey]: rest };
+    const { [attr]: _drop, ...restEase } = entry.ease ?? {};
+    const next: Keyframe = { ...entry };
+    if (Object.keys(restEase).length === 0) delete next.ease;
+    else next.ease = restEase;
+    return { ...track, [timeKey]: next };
   }
-  return { ...track, [timeKey]: { ...entry, ease } };
-}
-
-// SPEC §6.5 carryover resolved for `ease` alone: the effective outgoing
-// easing at every time-key of a track (explicit value, else the nearest
-// earlier explicit one, else the "linear" default). The editor uses this for
-// the inspector's inherit label and the timeline's eased-segment badges;
-// non-numeric keys are skipped defensively like the sampler's resolveTrack.
-export function resolveTrackEase(
-  track: AnimationTrack,
-): Record<string, EasingName> {
-  const sorted = Object.keys(track)
-    .map((k) => ({ k, t: Number(k) }))
-    .filter((e) => Number.isFinite(e.t))
-    .sort((a, b) => a.t - b.t);
-
-  const out: Record<string, EasingName> = {};
-  let cur: EasingName = DEFAULT_EASING;
-  for (const { k } of sorted) {
-    cur = track[k]!.ease ?? cur;
-    out[k] = cur;
-  }
-  return out;
+  return {
+    ...track,
+    [timeKey]: { ...entry, ease: { ...entry.ease, [attr]: ease } },
+  };
 }
 
 // Drop every time-key entry beyond `duration` (cleanup after the user

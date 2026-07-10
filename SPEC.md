@@ -3,7 +3,7 @@
 **Version:** 0.8 (draft)
 **Status:** Early draft. Subject to change before v1.0.
 
-**Changes in this draft revision (v0.8):** Added **keyframe easing** (§6.5, §6.7). A keyframe gains an optional `ease` field naming the interpolation curve of its **outgoing** segment (this keyframe → the next). The value is one of 20 named presets — `linear` (default), `step`, and `in` / `out` / `in-out` variants of `sine` / `quad` / `cubic` / `back` / `elastic` / `bounce` — applied as a remap of normalized segment progress before linear interpolation of `rot` / `pos` / `scale` (`visible` always steps). `ease` participates in §6.5 carryover like the value fields, so a single `ease` on the `"0.0"` keyframe shapes an entire track. Custom cubic-bezier curves remain reserved for a future revision.
+**Changes in this draft revision (v0.8):** Added **per-attribute keyframe easing** (§6.5, §6.7). A keyframe gains an optional `ease` object mapping an attribute (`rot` / `pos` / `scale`) to the interpolation curve of that attribute's **outgoing** segment (this keyframe → the next). Curves are 20 named presets — `linear` (default), `step`, and `in` / `out` / `in-out` variants of `sine` / `quad` / `cubic` / `back` / `elastic` / `bounce` — applied as a remap of normalized segment progress before linear interpolation (`visible` always steps and cannot be eased). `ease` is deliberately **exempt from §6.5 carryover**: a curve applies only where it is written, and only to its own attribute — it never propagates to later keyframes or leaks onto other attributes. Custom cubic-bezier curves remain reserved for a future revision.
 
 **Changes in v0.7:** The package generalizes from the fixed two-file layout to **manifest-anchored references**. (1) **Multiple geometry files**: the manifest gains an optional top-level `geometry` array (§6.9) listing the package's `.cvox` files by reference path (§8); absent → the previous fixed `["voxels.cvox"]`, so existing models are unchanged. Part names remain unique across the whole model (§5) — a name defined in two geometry files is a cross-file `duplicate` error. (2) **Shareable palettes**: the cvox `palette` declaration is relaxed from "exactly one" to **"at most one"** (§7.4); a new external palette file (`{ "colors": [...] }`, §6.10) can be bound model-wide via the manifest's optional top-level `palette` reference. The binding **takes precedence over inline palettes** (enabling palette swapping / skins; a shadowed inline palette lints as hint **H03**), and a palette-less file's voxel index-range validation moves from parse time to cross-file validation. (3) New lint **W07**: a `.cvox` file present in the package but not referenced by `geometry`. `cuboidy.json` remains the package's only fixed filename (the load anchor); every other file is named freely and found by reference. External animation files were already specified in v0.6 (§6.3, §8) and are unchanged.
 
@@ -210,7 +210,7 @@ Per-part shape, pivot, and sockets live in `voxels.cvox`, not here. See §7.
   "loop": <bool>,
   "parts": {
     "<part-name>": {
-      "<time-key>": { "rot": [...], "pos": [...], "scale": [...], "visible": ..., "ease": "..." },
+      "<time-key>": { "rot": [...], "pos": [...], "scale": [...], "visible": ..., "ease": { "rot": "..." } },
       ...
     },
     ...
@@ -232,11 +232,13 @@ Per-part shape, pivot, and sockets live in `voxels.cvox`, not here. See §7.
 | `pos` | `[dx, dy, dz]` voxel units | **Delta** added to `part.position` | `[0, 0, 0]` |
 | `scale` | `[sx, sy, sz]` multipliers | **Multiplier** from rest scale (`[1,1,1]`). Per-axis, non-uniform allowed. Applied around the same pivot point as `rot` | `[1, 1, 1]` |
 | `visible` | bool | Visibility toggle | `true` |
-| `ease` | string | Named easing preset for the **outgoing** segment (this keyframe → the next); see §6.7. Shapes `rot` / `pos` / `scale`; `visible` always steps | `"linear"` |
+| `ease` | object | Map from attribute name (`rot` / `pos` / `scale`) to a named easing preset for that attribute's **outgoing** segment (this keyframe → the next); see §6.7. `visible` always steps and is not a valid key | `{}` (every attribute `linear`) |
 
 #### Carryover
 
-In a part's keyframe sequence, **any field omitted from a keyframe inherits its value from the previous keyframe** for that part. The first keyframe's defaults are listed above.
+In a part's keyframe sequence, **any value field omitted from a keyframe inherits its value from the previous keyframe** for that part. The first keyframe's defaults are listed above.
+
+**`ease` is exempt from carryover.** An omitted `ease` (or an attribute missing from the map) means **linear** for that keyframe's outgoing segment — easing applies only where it is written and never propagates to later keyframes. (Rationale: easing describes one segment's shape, not part state; inheriting it would let a curve set on one key silently reshape unrelated segments.)
 
 Example:
 
@@ -267,9 +269,9 @@ Between consecutive keyframes:
 
 #### Easing
 
-Each segment's curve is named by the `ease` field of its **outgoing** keyframe (the earlier of the pair) — the same convention as CSS `@keyframes`. `ease` carries over like the value fields (§6.5): an omitted `ease` inherits the previous keyframe's, and the first keyframe defaults to `"linear"` — so one `ease` on `"0.0"` shapes the whole track, and any later keyframe can switch curves mid-track.
+Each attribute's curve over a segment is named by the `ease` map of the segment's **outgoing** keyframe (the earlier of the pair): `"ease": { "rot": "out-elastic" }` shapes **only** `rot`, **only** across the segment leaving that keyframe. There is no carryover (§6.5) and no cross-attribute effect — an attribute absent from the map interpolates linearly, so a curve can never leak onto later segments or onto other attributes that happen to cross the same span. To ease several consecutive segments, name the curve on each of their outgoing keyframes.
 
-An easing is a pure remap `u → u'` of normalized segment progress (`u = 0` at the outgoing keyframe, `u = 1` at the next), applied before linear interpolation of the value fields. Every preset maps `0 → 0` and `1 → 1`, so keyed values are always hit exactly at their keyframes. The presets and their formulas follow the de-facto standard set popularized by easings.net:
+An easing is a pure remap `u → u'` of normalized segment progress (`u = 0` at the outgoing keyframe, `u = 1` at the next), applied before linear interpolation of that attribute's values. Every preset maps `0 → 0` and `1 → 1`, so keyed values are always hit exactly at their keyframes. The presets and their formulas follow the de-facto standard set popularized by easings.net:
 
 | Preset | Variants | Character |
 |---|---|---|
@@ -282,13 +284,13 @@ An easing is a pure remap `u → u'` of normalized segment progress (`u = 0` at 
 | `elastic` | `in-elastic`, `out-elastic`, `in-out-elastic` | Springy oscillation |
 | `bounce` | `in-bounce`, `out-bounce`, `in-out-bounce` | Bounces like a dropped ball |
 
-`back` and `elastic` produce `u'` values outside `[0, 1]`; the interpolation simply extrapolates beyond the segment's endpoint values. An unknown `ease` name is a **parse error** (the field is a closed enum, like the keyframe field names themselves).
+`back` and `elastic` produce `u'` values outside `[0, 1]`; the interpolation simply extrapolates beyond the segment's endpoint values. An unknown preset name, or an `ease` key other than `rot` / `pos` / `scale`, is a **parse error** (both are closed enums, like the keyframe field names themselves).
 
 Sampling outside the explicitly keyed intervals is defined as follows:
 
 - For `loop: false`, values after the last keyframe are held until `duration`; sampling after `duration` clamps to `duration`
 - For `loop: true`, sampling time wraps modulo `duration`
-- If `loop: true` and a part's last keyframe time is less than `duration`, the interval from that last keyframe to `duration` interpolates toward the `"0.0"` keyframe, along the **last keyframe's** ease (it is that segment's outgoing keyframe)
+- If `loop: true` and a part's last keyframe time is less than `duration`, the interval from that last keyframe to `duration` interpolates toward the `"0.0"` keyframe, along the **last keyframe's** per-attribute ease (it is that segment's outgoing keyframe)
 - If `loop: true` and a part has a keyframe exactly at `duration`, that keyframe is the end value of the final interval before wrap; authors SHOULD make it equal to `"0.0"` for a continuous loop. Sampling exactly at `duration` is equivalent to sampling at `"0.0"`
 
 Custom easing curves (cubic-bezier control points) are reserved for future spec versions.

@@ -6,7 +6,6 @@ import {
   mergeKeyframeAtTime,
   moveAttrKey,
   nearestExistingKey,
-  resolveTrackEase,
   setAttrAtKey,
   setEaseAtKey,
   sortTrackKeys,
@@ -124,11 +123,24 @@ describe('deleteAttrAtKey', () => {
   it('drops an entry left holding only ease (no invisible flattening key)', () => {
     const track: AnimationTrack = {
       '0.0': { rot: [0, 0, 0] },
-      '0.5': { rot: [0, 9, 0], ease: 'in-quad' },
+      '0.5': { rot: [0, 9, 0], ease: { rot: 'in-quad' } },
       '1.0': { rot: [0, 0, 0] },
     };
     const next = deleteAttrAtKey(track, '0.5', 'rot');
     expect('0.5' in next).toBe(false);
+  });
+
+  it('removes the attribute’s ease entry with it, keeping siblings’', () => {
+    const track: AnimationTrack = {
+      '0.0': { rot: [0, 0, 0] },
+      '0.5': {
+        rot: [0, 9, 0],
+        pos: [1, 0, 0],
+        ease: { rot: 'in-quad', pos: 'out-sine' },
+      },
+    };
+    const next = deleteAttrAtKey(track, '0.5', 'rot');
+    expect(next['0.5']).toEqual({ pos: [1, 0, 0], ease: { pos: 'out-sine' } });
   });
 });
 
@@ -166,37 +178,43 @@ describe('moveAttrKey', () => {
     expect('0.5' in next).toBe(false);
   });
 
-  it('carries ease to the target when the move renames the whole keyframe', () => {
+  it('moves the attribute’s ease entry with it', () => {
     const track: AnimationTrack = {
       '0.0': { rot: [0, 0, 0] },
-      '0.5': { rot: [0, 9, 0], ease: 'out-bounce' },
+      '0.5': { rot: [0, 9, 0], ease: { rot: 'out-bounce' } },
     };
     const { track: next } = moveAttrKey(track, '0.5', 0.8, 'rot');
     expect('0.5' in next).toBe(false);
-    expect(next['0.8']).toEqual({ rot: [0, 9, 0], ease: 'out-bounce' });
+    expect(next['0.8']).toEqual({ rot: [0, 9, 0], ease: { rot: 'out-bounce' } });
   });
 
-  it('leaves ease at the source when other attrs survive there', () => {
+  it('leaves the siblings’ ease entries at the source', () => {
     const track: AnimationTrack = {
       '0.0': { rot: [0, 0, 0] },
-      '0.5': { rot: [0, 9, 0], pos: [1, 0, 0], ease: 'in-quad' },
+      '0.5': {
+        rot: [0, 9, 0],
+        pos: [1, 0, 0],
+        ease: { rot: 'out-bounce', pos: 'in-quad' },
+      },
     };
     const { track: next } = moveAttrKey(track, '0.5', 0.8, 'rot');
-    expect(next['0.5']).toEqual({ pos: [1, 0, 0], ease: 'in-quad' });
-    expect(next['0.8']).toEqual({ rot: [0, 9, 0] });
+    expect(next['0.5']).toEqual({ pos: [1, 0, 0], ease: { pos: 'in-quad' } });
+    expect(next['0.8']).toEqual({ rot: [0, 9, 0], ease: { rot: 'out-bounce' } });
   });
 
-  it('keeps the target’s own ease when merging into an eased entry', () => {
+  it('merges ease into the target map, overwriting only its own attribute', () => {
     const track: AnimationTrack = {
       '0.0': {},
-      '0.5': { rot: [0, 9, 0], ease: 'in-quad' },
-      '1.0': { pos: [0, 2, 0], ease: 'out-sine' },
+      '0.5': { rot: [0, 9, 0], ease: { rot: 'in-quad' } },
+      '1.0': { pos: [0, 2, 0], ease: { rot: 'out-back', pos: 'out-sine' } },
     };
     const { track: next } = moveAttrKey(track, '0.5', 1.0, 'rot');
+    // The moved rot brings its own curve (overwrites the target's rot
+    // entry, like the value does); pos's stays.
     expect(next['1.0']).toEqual({
       pos: [0, 2, 0],
       rot: [0, 9, 0],
-      ease: 'out-sine',
+      ease: { rot: 'in-quad', pos: 'out-sine' },
     });
   });
 
@@ -284,47 +302,39 @@ describe('moveAttrKey', () => {
 });
 
 describe('setEaseAtKey', () => {
-  it('sets ease on an existing entry, preserving other fields', () => {
-    const track: AnimationTrack = { '0.0': { rot: [0, 0, 0] }, '0.5': { rot: [0, 9, 0] } };
-    const next = setEaseAtKey(track, '0.5', 'in-quad');
-    expect(next['0.5']).toEqual({ rot: [0, 9, 0], ease: 'in-quad' });
-    expect(track['0.5']).toEqual({ rot: [0, 9, 0] }); // input untouched
+  it('sets one attribute’s ease, preserving other fields and entries', () => {
+    const track: AnimationTrack = {
+      '0.0': { rot: [0, 0, 0] },
+      '0.5': { rot: [0, 9, 0], pos: [1, 0, 0], ease: { pos: 'out-sine' } },
+    };
+    const next = setEaseAtKey(track, '0.5', 'rot', 'in-quad');
+    expect(next['0.5']).toEqual({
+      rot: [0, 9, 0],
+      pos: [1, 0, 0],
+      ease: { rot: 'in-quad', pos: 'out-sine' },
+    });
+    // input untouched
+    expect(track['0.5']!.ease).toEqual({ pos: 'out-sine' });
   });
 
-  it('clears ease with undefined (reverts to carryover)', () => {
-    const track: AnimationTrack = { '0.0': { rot: [0, 0, 0], ease: 'out-back' } };
-    const next = setEaseAtKey(track, '0.0', undefined);
-    expect(next['0.0']).toEqual({ rot: [0, 0, 0] });
+  it('clears one entry with undefined; an emptied map is dropped', () => {
+    const track: AnimationTrack = {
+      '0.0': { rot: [0, 0, 0], ease: { rot: 'out-back', pos: 'in-sine' } },
+    };
+    const once = setEaseAtKey(track, '0.0', 'rot', undefined);
+    expect(once['0.0']).toEqual({ rot: [0, 0, 0], ease: { pos: 'in-sine' } });
+    const twice = setEaseAtKey(once, '0.0', 'pos', undefined);
+    expect(twice['0.0']).toEqual({ rot: [0, 0, 0] });
   });
 
   it('no-ops (same reference) on an absent key or an unchanged value', () => {
-    const track: AnimationTrack = { '0.0': { rot: [0, 0, 0], ease: 'in-sine' } };
-    expect(setEaseAtKey(track, '0.5', 'in-quad')).toBe(track);
-    expect(setEaseAtKey(track, '0.0', 'in-sine')).toBe(track);
-    const noEase: AnimationTrack = { '0.0': { rot: [0, 0, 0] } };
-    expect(setEaseAtKey(noEase, '0.0', undefined)).toBe(noEase);
-  });
-});
-
-describe('resolveTrackEase', () => {
-  it('carries the explicit ease forward and resets on a later explicit one', () => {
     const track: AnimationTrack = {
-      '0.0': { rot: [0, 0, 0], ease: 'out-elastic' },
-      '0.5': { rot: [0, 25, 0] },
-      '1.0': { rot: [0, 0, 0], ease: 'linear' },
-      '1.5': { rot: [0, -25, 0] },
+      '0.0': { rot: [0, 0, 0], ease: { rot: 'in-sine' } },
     };
-    expect(resolveTrackEase(track)).toEqual({
-      '0.0': 'out-elastic',
-      '0.5': 'out-elastic',
-      '1.0': 'linear',
-      '1.5': 'linear',
-    });
-  });
-
-  it('defaults every key to linear when no ease is authored', () => {
-    const track: AnimationTrack = { '0.0': { rot: [0, 0, 0] }, '1.0': { rot: [0, 9, 0] } };
-    expect(resolveTrackEase(track)).toEqual({ '0.0': 'linear', '1.0': 'linear' });
+    expect(setEaseAtKey(track, '0.5', 'rot', 'in-quad')).toBe(track);
+    expect(setEaseAtKey(track, '0.0', 'rot', 'in-sine')).toBe(track);
+    const noEase: AnimationTrack = { '0.0': { rot: [0, 0, 0] } };
+    expect(setEaseAtKey(noEase, '0.0', 'rot', undefined)).toBe(noEase);
   });
 });
 
@@ -334,20 +344,20 @@ describe('mergeKeyframeAtTime', () => {
     const { track: next, timeKey } = mergeKeyframeAtTime(track, 1.5, {
       rot: [0, 25, 0],
       pos: [1, 0, 0],
-      ease: 'out-bounce',
+      ease: { rot: 'out-bounce' },
     });
     expect(timeKey).toBe('1.5');
     expect(next['1.5']).toEqual({
       rot: [0, 25, 0],
       pos: [1, 0, 0],
-      ease: 'out-bounce',
+      ease: { rot: 'out-bounce' },
     });
   });
 
   it('field-wise merges into an existing key, preserving untouched fields', () => {
     const track: AnimationTrack = {
       '0.0': { rot: [0, 0, 0] },
-      '0.5': { rot: [0, 9, 0], scale: [2, 2, 2], ease: 'in-quad' },
+      '0.5': { rot: [0, 9, 0], scale: [2, 2, 2], ease: { rot: 'in-quad' } },
     };
     const { track: next, timeKey } = mergeKeyframeAtTime(track, 0.5, {
       rot: [0, 25, 0],
@@ -355,25 +365,33 @@ describe('mergeKeyframeAtTime', () => {
     });
     expect(timeKey).toBe('0.5');
     // rot overwritten, pos added; scale and the target's own ease survive
-    // (the copied entry had no explicit ease to stamp).
+    // (the copied entry had no ease of its own to stamp).
     expect(next['0.5']).toEqual({
       rot: [0, 25, 0],
       pos: [1, 0, 0],
       scale: [2, 2, 2],
-      ease: 'in-quad',
+      ease: { rot: 'in-quad' },
     });
   });
 
-  it('overwrites the target ease when the copied entry has one', () => {
+  it('each pasted attribute brings its own ease entry, leaving others', () => {
     const track: AnimationTrack = {
       '0.0': { rot: [0, 0, 0] },
-      '0.5': { rot: [0, 9, 0], ease: 'in-quad' },
+      '0.5': {
+        rot: [0, 9, 0],
+        scale: [2, 2, 2],
+        ease: { rot: 'in-quad', scale: 'out-back' },
+      },
     };
     const { track: next } = mergeKeyframeAtTime(track, 0.5, {
       rot: [0, 25, 0],
-      ease: 'linear',
+      ease: { rot: 'linear', pos: 'in-sine' }, // pos not pasted → its ease ignored
     });
-    expect(next['0.5']).toEqual({ rot: [0, 25, 0], ease: 'linear' });
+    expect(next['0.5']).toEqual({
+      rot: [0, 25, 0],
+      scale: [2, 2, 2],
+      ease: { rot: 'linear', scale: 'out-back' },
+    });
   });
 
   it('seeds the §6.6 "0.0" key when pasting onto an empty track', () => {
@@ -395,9 +413,9 @@ describe('mergeKeyframeAtTime', () => {
     const track: AnimationTrack = { '0.0': { rot: [0, 0, 0] } };
     expect(mergeKeyframeAtTime(track, 0.5, {}).track).toBe(track);
     // An ease-only copy never stamps ease onto a nonexistent entry either.
-    expect(mergeKeyframeAtTime(track, 0.5, { ease: 'in-quad' }).track).toBe(
-      track,
-    );
+    expect(
+      mergeKeyframeAtTime(track, 0.5, { ease: { rot: 'in-quad' } }).track,
+    ).toBe(track);
   });
 });
 

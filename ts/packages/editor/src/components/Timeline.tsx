@@ -9,7 +9,6 @@ import {
 } from 'react';
 import {
   formatTimeKey,
-  resolveTrackEase,
   type AnimationTrack,
   type EasingName,
   type InlineAnimation,
@@ -98,9 +97,6 @@ interface PartMarkers {
   scale: Marker[];
   visible: Marker[];
   all: Marker[];
-  // §6.5-resolved outgoing ease per time-key — every lane's marker at that
-  // key shows the same badge (ease is keyframe-level, not per-attribute).
-  ease: Record<string, EasingName>;
 }
 
 interface Props {
@@ -331,7 +327,6 @@ const TimelineLanes = memo(function TimelineLanes({
         scale: markerTimes(track, 'scale'),
         visible: markerTimes(track, 'visible'),
         all: markerTimes(track, null),
-        ease: track !== undefined ? resolveTrackEase(track) : {},
       });
     }
     return m;
@@ -423,9 +418,10 @@ const TimelineLanes = memo(function TimelineLanes({
                           timeKey={timeKey}
                           t={t}
                           duration={duration}
-                          ease={rec?.ease[timeKey] ?? 'linear'}
-                          easeExplicit={
-                            inline.parts[part]?.[timeKey]?.ease !== undefined
+                          ease={
+                            key !== 'visible'
+                              ? inline.parts[part]?.[timeKey]?.ease?.[key]
+                              : undefined
                           }
                           prevT={arr[i - 1]?.t ?? null}
                           nextT={arr[i + 1]?.t ?? null}
@@ -459,10 +455,9 @@ interface MarkerProps {
   timeKey: string;
   t: number;
   duration: number;
-  // Resolved outgoing ease of this time-key's keyframe (§6.5 carryover
-  // applied) and whether the entry sets it explicitly. Non-linear → badge.
-  ease: EasingName;
-  easeExplicit: boolean;
+  // This ATTRIBUTE's outgoing ease at this key (§6.5 per-attribute map;
+  // undefined = linear). Non-linear → badge on this lane's marker only.
+  ease: EasingName | undefined;
   // Sorted same-attribute neighbors — the drag clamp bounds. null at the
   // lane's edges.
   prevT: number | null;
@@ -494,7 +489,6 @@ function TimelineMarker({
   t,
   duration,
   ease,
-  easeExplicit,
   prevT,
   nextT,
   selected,
@@ -608,13 +602,10 @@ function TimelineMarker({
   const frac = (x: number): number => (duration > 0 ? clamp01(x / duration) : 0);
   const shown = dragT ?? t;
   const outOfRange = t > duration;
-  // Badge only when the segment actually deviates from the default — an
-  // explicit "linear" (a carryover reset) behaves like no ease and stays
-  // unbadged; the inspector still shows it.
-  const eased = ease !== 'linear';
-  const easeSuffix = eased
-    ? ` · ease ${ease}${easeExplicit ? '' : ' (inherited)'}`
-    : '';
+  // Badge only when this attribute's segment actually deviates from the
+  // default (an authored "linear" entry behaves like none).
+  const eased = ease !== undefined && ease !== 'linear';
+  const easeSuffix = eased ? ` · ease ${ease}` : '';
 
   const className = [
     'timeline-marker',
