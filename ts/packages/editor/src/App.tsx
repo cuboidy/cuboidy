@@ -833,6 +833,67 @@ export function App() {
     [dispatchEdit],
   );
 
+  // Reference an existing-but-unreferenced .cvox from the manifest's
+  // geometry list so its parts join the model (the fix-it for lint W07:
+  // files outside the list are ignored). Re-resolves the derived maps in
+  // the same edit, so one undo both drops the reference and unloads the
+  // parts again.
+  const handleAddFileToModel = useCallback(
+    (path: string) => {
+      dispatchEdit(null, (current) => {
+        const src = current?.source;
+        if (
+          src === undefined ||
+          src.kind !== 'folder' ||
+          src.files === undefined ||
+          src.manifest === undefined
+        ) {
+          return current;
+        }
+        const norm = normalizePath(path);
+        if (!src.files.has(norm)) return current;
+        const geometry = manifestGeometry(src.manifest).map(normalizePath);
+        if (geometry.includes(norm)) return current;
+        geometry.push(norm);
+        const nextManifest: Manifest = { ...src.manifest, geometry };
+        const refs = resolveProjectRefs(
+          nextManifest,
+          (p) => src.files?.get(p)?.text,
+          { path: src.cvoxFile.name, cvox: src.cvox },
+        );
+        const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
+        const {
+          externalPalette: _pal,
+          externalAnims: _anims,
+          projectErrors: _proj,
+          ...rest
+        } = src;
+        return {
+          ...current,
+          source: {
+            ...rest,
+            manifest: nextManifest,
+            manifestFile: {
+              ...baseFile,
+              text: JSON.stringify(nextManifest, null, 2) + '\n',
+            },
+            geometries: refs.geometries,
+            ...(refs.externalPalette !== undefined && {
+              externalPalette: refs.externalPalette,
+            }),
+            ...(refs.externalAnims !== undefined && {
+              externalAnims: refs.externalAnims,
+            }),
+            ...(refs.projectErrors.length > 0 && {
+              projectErrors: refs.projectErrors,
+            }),
+          },
+        };
+      });
+    },
+    [dispatchEdit],
+  );
+
   const handleRenameFile = useCallback(
     (oldPath: string, newPath: string) => {
       const from = normalizePath(oldPath);
@@ -2483,6 +2544,7 @@ export function App() {
               onCreateFile={handleCreateFile}
               onRenameFile={handleRenameFile}
               onDeleteFile={handleDeleteFile}
+              onAddFileToModel={handleAddFileToModel}
             />
           ),
         };

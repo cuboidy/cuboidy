@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
+import { manifestGeometry } from '@cuboidy/core';
 import { InlineNameInput } from './InlineNameInput.js';
+import { normalizePath } from '../lib/load-model.js';
 import type { LoadedSource } from '../lib/types.js';
 
 interface Props {
@@ -14,6 +16,9 @@ interface Props {
   onCreateFile: (path: string) => void;
   onRenameFile: (oldPath: string, newPath: string) => void;
   onDeleteFile: (path: string) => void;
+  // Append an unreferenced .cvox to the manifest geometry list so its
+  // parts load (the tree's "not loaded" rows).
+  onAddFileToModel: (path: string) => void;
 }
 
 // Files the loader reads as text (and therefore the only ones worth
@@ -43,6 +48,7 @@ export function FileTree({
   onCreateFile,
   onRenameFile,
   onDeleteFile,
+  onAddFileToModel,
 }: Props) {
   // Directory path ('' = package root) that has an open new-file draft,
   // or null. Folder "+" buttons target their own directory.
@@ -124,8 +130,31 @@ export function FileTree({
   const hasManifest = isFolder && source.manifest !== undefined;
   const hasManifestFile = isFolder && source.manifestFile !== undefined;
 
+  // Normalized refs the manifest's geometry list loads (default = the
+  // primary alone). A package .cvox outside this set is inert — lint
+  // W07 — so its row is dimmed with a "not loaded" badge and a hover
+  // "+" that references it.
+  const loadedGeometry = useMemo(() => {
+    if (source.kind !== 'folder') return null;
+    const refs =
+      source.manifest !== undefined
+        ? manifestGeometry(source.manifest)
+        : [source.cvoxFile.name];
+    return new Set(refs.map(normalizePath));
+  }, [source]);
+  const isUnreferenced = (path: string): boolean =>
+    loadedGeometry !== null &&
+    path.toLowerCase().endsWith('.cvox') &&
+    !loadedGeometry.has(normalizePath(path));
+
   const rowOps = (path: string): RowOps => {
-    if (!canEdit) return { renameReason: 'hidden', deleteReason: 'hidden' };
+    if (!canEdit) {
+      return {
+        renameReason: 'hidden',
+        deleteReason: 'hidden',
+        addReason: 'hidden',
+      };
+    }
     const renameReason =
       path === anchor
         ? 'cuboidy.json is the fixed anchor file and cannot be renamed'
@@ -138,7 +167,12 @@ export function FileTree({
         : path === primary
           ? "The primary geometry file can't be deleted"
           : null;
-    return { renameReason, deleteReason };
+    const addReason = !isUnreferenced(path)
+      ? 'hidden'
+      : hasManifest
+        ? null
+        : 'Create a manifest first — the geometry list lives in cuboidy.json';
+    return { renameReason, deleteReason, addReason };
   };
 
   const validNewSegments = (name: string): boolean =>
@@ -252,6 +286,7 @@ export function FileTree({
               selectedDir={selectedDirForHighlight}
               selectedFile={selectedFileForHighlight}
               renamingPath={renamingPath}
+              isUnreferenced={isUnreferenced}
               rowOps={rowOps}
               validateNewPath={validateNewPath}
               validateNewFolderIn={validateNewFolderIn}
@@ -275,6 +310,7 @@ export function FileTree({
               }}
               onCancelRename={() => setRenamingPath(null)}
               onDeleteFile={onDeleteFile}
+              onAddFileToModel={onAddFileToModel}
             />
             {!hasManifestFile && (
               <ul className="tree-children">
@@ -324,6 +360,8 @@ export function FileTree({
 interface RowOps {
   renameReason: string | null;
   deleteReason: string | null;
+  // Add-to-model "+": 'hidden' unless the file is an unreferenced .cvox.
+  addReason: string | null;
 }
 
 // ── directory tree model ─────────────────────────────────────────────
@@ -376,6 +414,7 @@ interface DirChildrenProps {
   selectedDir: string | null;
   selectedFile: string | null;
   renamingPath: string | null;
+  isUnreferenced: (path: string) => boolean;
   rowOps: (path: string) => RowOps;
   validateNewPath: (path: string) => boolean;
   validateNewFolderIn: (dir: string) => (name: string) => boolean;
@@ -392,6 +431,7 @@ interface DirChildrenProps {
   onCommitRename: (oldPath: string, name: string) => void;
   onCancelRename: () => void;
   onDeleteFile: (path: string) => void;
+  onAddFileToModel: (path: string) => void;
 }
 
 function DirChildren(props: DirChildrenProps) {
@@ -468,6 +508,7 @@ function DirChildren(props: DirChildrenProps) {
           selected={props.selectedFile === f.path}
           error={props.fileErrors.get(f.path)}
           isNew={f.path === props.newBadgePath}
+          unreferenced={props.isUnreferenced(f.path)}
           renaming={props.renamingPath === f.path}
           ops={props.rowOps(f.path)}
           validateRename={props.validateRename(f.path)}
@@ -481,6 +522,7 @@ function DirChildren(props: DirChildrenProps) {
           onCommitRename={props.onCommitRename}
           onCancelRename={props.onCancelRename}
           onDeleteFile={props.onDeleteFile}
+          onAddFileToModel={props.onAddFileToModel}
         />
       ))}
     </ul>
@@ -493,6 +535,7 @@ function FileNode({
   selected,
   error,
   isNew,
+  unreferenced,
   renaming,
   ops,
   validateRename,
@@ -501,12 +544,14 @@ function FileNode({
   onCommitRename,
   onCancelRename,
   onDeleteFile,
+  onAddFileToModel,
 }: {
   path: string;
   name: string;
   selected?: boolean;
   error?: string | undefined;
   isNew?: boolean;
+  unreferenced?: boolean;
   renaming: boolean;
   ops: RowOps;
   validateRename: (name: string) => boolean;
@@ -515,6 +560,7 @@ function FileNode({
   onCommitRename: (oldPath: string, name: string) => void;
   onCancelRename: () => void;
   onDeleteFile: (path: string) => void;
+  onAddFileToModel: (path: string) => void;
 }) {
   if (renaming) {
     return (
@@ -534,7 +580,7 @@ function FileNode({
   }
   return (
     <li
-      className={`tree-node file${selected === true ? ' selected' : ''}${error !== undefined ? ' error' : ''}`}
+      className={`tree-node file${selected === true ? ' selected' : ''}${error !== undefined ? ' error' : ''}${unreferenced === true ? ' unreferenced' : ''}`}
       title={error !== undefined ? `Syntax error: ${error}` : path}
     >
       <button
@@ -548,6 +594,32 @@ function FileNode({
         <span className="icon">📄</span>
         <span className="name">{name}</span>
         {isNew === true && <span className="badge">new</span>}
+        {unreferenced === true && (
+          <span
+            className="badge"
+            title="Not in the manifest geometry list — its parts are not loaded into the model"
+          >
+            not loaded
+          </span>
+        )}
+        {ops.addReason !== 'hidden' && (
+          <span
+            className="btn-icon file-add"
+            role="button"
+            aria-disabled={ops.addReason !== null}
+            aria-label={`Load ${path} into the model`}
+            title={
+              ops.addReason ??
+              `Add ${path} to the manifest geometry list so its parts load`
+            }
+            onClick={(e) => {
+              e.stopPropagation();
+              if (ops.addReason === null) onAddFileToModel(path);
+            }}
+          >
+            +
+          </span>
+        )}
         {ops.deleteReason !== 'hidden' && (
           <span
             className="btn-icon file-delete"
