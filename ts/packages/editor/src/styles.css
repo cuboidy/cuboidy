@@ -1323,8 +1323,11 @@ pre {
 
 /* ─── Parts list ──────────────────────────────────────────────────── */
 
-/* Parts panel toolbar: New part / Show all / Hide all on one row, pinned to
-   the top of the scrolling tree. (TODO: swap these for VS Code-style icons.) */
+/* Panel toolbar row (New part / Show all / Hide all; the Files tree
+   reuses it for New file / New folder). In the PARTS panel it sits
+   outside the scroller (fill panel + .parts-scroll below), so sticky is
+   inert there; the FILES tree still scrolls as one unit and relies on
+   it. (TODO: swap these for VS Code-style icons.) */
 .parts-toolbar {
   position: sticky;
   top: 0;
@@ -1334,6 +1337,16 @@ pre {
   padding: 0.4rem 0.75rem;
   background: #232323;
   border-bottom: 1px solid #3a3a3a;
+}
+
+/* The Parts panel's own scroller, below its pinned toolbar. With the
+   toolbar inside the scroll container, the drag auto-scroll zone at the
+   container's top edge sat behind the sticky toolbar — dragging a part
+   upward only started scrolling once the pointer cleared the toolbar. */
+.parts-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 
 .parts-toolbar button {

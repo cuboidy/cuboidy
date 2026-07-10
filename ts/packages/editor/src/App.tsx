@@ -2671,6 +2671,11 @@ export function App() {
             : undefined;
         return {
           title: 'Parts',
+          // Fill panel: the toolbar sits OUTSIDE the scroller (only the
+          // tree scrolls). Inside it, the drag auto-scroll zone at the
+          // scroller's top edge hid behind the sticky toolbar — an
+          // upward drag only scrolled once the pointer cleared it.
+          fill: true,
           body: (
             <>
               <div className="parts-toolbar">
@@ -2706,38 +2711,40 @@ export function App() {
                   Hide all
                 </button>
               </div>
-              <PartTree
-                parts={modelParts}
-                partFiles={
-                  source.kind === 'folder' &&
-                  (source.geometries?.size ?? 0) > 1
-                    ? partFiles
-                    : undefined
-                }
-                manifest={manifest}
-                hiddenParts={hiddenParts}
-                selectedPart={effectiveSelectedPart}
-                dndEnabled={manifest !== undefined}
-                creating={creating}
-                createSuggested={createSuggested}
-                geometryFiles={geometryPaths}
-                validateNewName={(name) =>
-                  isIdentifier(name) && !existingNames.has(name)
-                }
-                renameEnabled={
-                  cvoxParseError === null &&
-                  fileParseErrors.size === 0 &&
-                  !(manifest !== undefined && manifestParseError !== null)
-                }
-                onToggleVisibility={handleToggle}
-                onSelectPart={setSelectedPartName}
-                onChangeParent={handleChangePartParent}
-                onConfirmCreate={(name, file) =>
-                  handleConfirmCreatePart(name, creating?.parent ?? null, file)
-                }
-                onCancelCreate={handleCancelCreatePart}
-                onRenamePart={handleRenamePart}
-              />
+              <div className="parts-scroll">
+                <PartTree
+                  parts={modelParts}
+                  partFiles={
+                    source.kind === 'folder' &&
+                    (source.geometries?.size ?? 0) > 1
+                      ? partFiles
+                      : undefined
+                  }
+                  manifest={manifest}
+                  hiddenParts={hiddenParts}
+                  selectedPart={effectiveSelectedPart}
+                  dndEnabled={manifest !== undefined}
+                  creating={creating}
+                  createSuggested={createSuggested}
+                  geometryFiles={geometryPaths}
+                  validateNewName={(name) =>
+                    isIdentifier(name) && !existingNames.has(name)
+                  }
+                  renameEnabled={
+                    cvoxParseError === null &&
+                    fileParseErrors.size === 0 &&
+                    !(manifest !== undefined && manifestParseError !== null)
+                  }
+                  onToggleVisibility={handleToggle}
+                  onSelectPart={setSelectedPartName}
+                  onChangeParent={handleChangePartParent}
+                  onConfirmCreate={(name, file) =>
+                    handleConfirmCreatePart(name, creating?.parent ?? null, file)
+                  }
+                  onCancelCreate={handleCancelCreatePart}
+                  onRenamePart={handleRenamePart}
+                />
+              </div>
             </>
           ),
         };
