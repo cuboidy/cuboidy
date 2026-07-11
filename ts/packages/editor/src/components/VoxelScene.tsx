@@ -4,11 +4,12 @@ import { Canvas } from '@react-three/fiber';
 import type { Cvox, Manifest, Palette } from '@cuboidy/core';
 import type { ViewMode } from '../lib/types.js';
 import {
-  computePartPositions,
+  buildRigTree,
   computeSceneCenter,
   computeSceneSpan,
 } from '../lib/rig.js';
 import { PartMesh } from './PartMesh.js';
+import { RiggedParts } from './RiggedParts.js';
 
 interface Props {
   cvox: Cvox;
@@ -28,12 +29,13 @@ interface Props {
 //   - Cvox view: every part sits at world origin [0,0,0], the literal
 //     .cvox-local convention. Multi-part files overlap; the sidebar
 //     visibility toggles are the way to peel layers.
-//   - Rig view: parts are positioned per the manifest's parent chain
-//     and position offsets. The assembled model takes shape — e.g.
-//     wolf's head sits above-and-behind body instead of overlapping.
+//   - Rig view: the rest pose through the SAME RiggedParts transform
+//     tree the animation view uses (poses = null), so both views agree
+//     on §7.7 semantics — pivot.rot included. Previously this view
+//     applied translations only, silently ignoring rest rotations.
 // Rig view requires a manifest; the view toggle disables rig when
 // none is loaded. The animation view (parts in motion) lives in its own
-// AnimationView component — this one renders the rest pose only.
+// AnimationViewport component — this one renders the rest pose only.
 //
 // Camera target / radius are computed from the full cvox bounding box,
 // not the visible subset, so toggling visibility doesn't make the camera
@@ -46,13 +48,10 @@ export function VoxelScene({
   hiddenParts,
   partPalettes,
 }: Props) {
+  const rigMode = viewMode !== 'cvox' && manifest !== undefined;
   const visibleParts = cvox.parts.filter((p) => !hiddenParts.has(p.name));
 
-  const positions = useMemo(() => computePartPositions(cvox, manifest, viewMode), [
-    cvox,
-    manifest,
-    viewMode,
-  ]);
+  const roots = useMemo(() => buildRigTree(cvox, manifest), [cvox, manifest]);
 
   const target = useMemo<[number, number, number]>(
     () => computeSceneCenter(cvox, manifest, viewMode),
@@ -83,17 +82,25 @@ export function VoxelScene({
         args={[gridSize, gridSize]}
         position={[gridSize / 2, 0, gridSize / 2]}
       />
-      {visibleParts.map((part) => {
-        const pos = positions.get(part.name) ?? [0, 0, 0];
-        return (
-          <group key={part.name} position={pos}>
+      {rigMode ? (
+        <RiggedParts
+          roots={roots}
+          palette={cvox.palette}
+          poses={null}
+          hiddenParts={hiddenParts}
+          partPalettes={partPalettes}
+        />
+      ) : (
+        // Cvox view: origin-stacked, no rig transforms by design.
+        visibleParts.map((part) => (
+          <group key={part.name} position={[0, 0, 0]}>
             <PartMesh
               part={part}
               palette={partPalettes?.get(part.name) ?? cvox.palette}
             />
           </group>
-        );
-      })}
+        ))
+      )}
       <OrbitControls target={target} makeDefault />
     </Canvas>
   );

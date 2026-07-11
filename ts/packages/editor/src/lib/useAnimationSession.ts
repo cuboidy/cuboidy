@@ -137,6 +137,7 @@ export function useAnimationSession({
     active !== undefined && isInlineAnimation(active) ? active : undefined;
   const duration = inline?.duration ?? 0;
   const hasTimeline = duration > 0;
+  const loop = inline?.loop ?? true;
 
   const [playing, setPlaying] = useState(true);
   const [time, setTime] = useState(0);
@@ -153,9 +154,10 @@ export function useAnimationSession({
     if (!inlineNames.includes(selected)) setSelected(inlineNames[0] ?? '');
   }, [inlineNames, selected]);
 
-  // rAF clock: advance `time`, wrapping at duration (auto-loop). Paused when
-  // `playing` is false, while scrubbing/editing, or when the anim viewport is
-  // off screen (`clockEnabled` is false).
+  // rAF clock: advance `time`. A looping clip wraps at duration; a
+  // non-looping one clamps there (SPEC §6.7 — values hold at the end).
+  // Paused when `playing` is false, while scrubbing/editing, or when the
+  // anim viewport is off screen (`clockEnabled` is false).
   useEffect(() => {
     if (!playing || duration <= 0 || !clockEnabled) return;
     let raf = 0;
@@ -165,7 +167,8 @@ export function useAnimationSession({
         const dt = (ts - last) / 1000;
         setTime((prev) => {
           const next = prev + dt;
-          return next - Math.floor(next / duration) * duration;
+          if (loop) return next - Math.floor(next / duration) * duration;
+          return Math.min(next, duration);
         });
       }
       last = ts;
@@ -173,7 +176,17 @@ export function useAnimationSession({
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, duration, clockEnabled]);
+  }, [playing, duration, clockEnabled, loop]);
+
+  // A non-looping clip stops the transport when the playhead reaches the
+  // end — previously the clock wrapped unconditionally, which made
+  // `loop: false` clips visually indistinguishable from looping ones
+  // (the core sampler's §6.7 clamp never saw a time past duration).
+  useEffect(() => {
+    if (!loop && playing && duration > 0 && time >= duration) {
+      setPlaying(false);
+    }
+  }, [loop, playing, duration, time]);
 
   const poses = useMemo<Map<string, Pose> | null>(
     () => (inline ? sampleAnimation(inline, time) : null),
@@ -187,10 +200,12 @@ export function useAnimationSession({
   const posesRef = useRef(poses);
   const inlineRef = useRef(inline);
   const activeNameRef = useRef(activeName);
+  const playingRef = useRef(playing);
   timeRef.current = time;
   posesRef.current = poses;
   inlineRef.current = inline;
   activeNameRef.current = activeName;
+  playingRef.current = playing;
 
   const partNames = useMemo(
     () => (cvox ? cvox.parts.map((p) => p.name) : []),
@@ -211,6 +226,31 @@ export function useAnimationSession({
     }
     return n;
   }, [inline]);
+
+  // Play/pause with §6.7-aware resume: pressing play on a FINISHED
+  // non-loop clip restarts it from 0 — the playhead holds at duration,
+  // so a bare "play" would stop again on the very next frame. Reads the
+  // latest values through refs, so the callback stays identity-stable
+  // (it feeds the Space shortcut's keydown effect).
+  const requestPlaying = useCallback(
+    (next: boolean | ((p: boolean) => boolean)) => {
+      const prev = playingRef.current;
+      const value = typeof next === 'function' ? next(prev) : next;
+      const anim = inlineRef.current;
+      if (
+        value &&
+        !prev &&
+        anim !== undefined &&
+        !anim.loop &&
+        anim.duration > 0 &&
+        timeRef.current >= anim.duration
+      ) {
+        setTime(0);
+      }
+      setPlaying(value);
+    },
+    [],
+  );
 
   // Scrubbing / selecting pauses playback. addKey is stable (reads refs) so
   // the memoized timeline isn't re-created each frame.
@@ -402,7 +442,7 @@ export function useAnimationSession({
         if (target instanceof Element && target.closest('button') !== null) return;
         if (!clockEnabled || !hasTimeline) return;
         e.preventDefault();
-        setPlaying((p) => !p);
+        requestPlaying((p) => !p);
         return;
       }
 
@@ -441,6 +481,7 @@ export function useAnimationSession({
     retimeKey,
     copySelectedKey,
     pasteAtPlayhead,
+    requestPlaying,
   ]);
 
   return {
@@ -457,7 +498,7 @@ export function useAnimationSession({
     partNames,
     keyClipboard,
     setSelectedClip: setSelected,
-    setPlaying,
+    setPlaying: requestPlaying,
     setSelectedKey,
     scrub,
     selectKey,
