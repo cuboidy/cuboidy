@@ -207,6 +207,42 @@ function mapGeometryFiles<S extends LoadedSource>(
   });
 }
 
+// Rewrite every resolved external animation (§6.3) with `fn`, updating
+// BOTH the externalAnims map and the referenced file's text in the same
+// source patch — so a part rename/delete is one undo across manifest,
+// geometry AND external animation files. `fn` returns null for "no
+// change to this clip". Two clips may reference one file; they carry
+// the same parsed object, so `fn` rewrites the shared file identically.
+function rewriteExternalAnims<S extends LoadedSource>(
+  src: S,
+  fn: (anim: InlineAnimation) => InlineAnimation | null,
+): S {
+  if (src.kind !== 'folder' || src.externalAnims === undefined) return src;
+  const folder: Extract<LoadedSource, { kind: 'folder' }> = src;
+  let anims: Map<string, { path: string; anim: InlineAnimation }> | null = null;
+  let files: Map<string, FileEntry> | null = null;
+  for (const [clip, rec] of folder.externalAnims!) {
+    const built = fn(rec.anim);
+    if (built === null || built === rec.anim) continue;
+    if (anims === null) anims = new Map(folder.externalAnims);
+    anims.set(clip, { path: rec.path, anim: built });
+    if (folder.files !== undefined) {
+      if (files === null) files = new Map(folder.files);
+      files.set(rec.path, {
+        name: rec.path,
+        text: JSON.stringify(built, null, 2) + '\n',
+      });
+    }
+  }
+  if (anims === null) return src;
+  const next: Extract<LoadedSource, { kind: 'folder' }> = {
+    ...folder,
+    externalAnims: anims,
+    ...(files !== null && { files }),
+  };
+  return next as S;
+}
+
 export function App() {
   // The loaded document plus its undo/redo history, in one pure reducer.
   // Every structural mutation goes through `dispatchEdit` (recorded, with
@@ -1003,6 +1039,16 @@ export function App() {
         if (isBoundPalette && !to.toLowerCase().endsWith('.json')) {
           return current;
         }
+        // An external animation reference keeps its §8 .json extension,
+        // same rule as the palette binding.
+        const isAnimRef =
+          src.manifest?.animations !== undefined &&
+          Object.values(src.manifest.animations).some(
+            (a) => typeof a === 'string' && normalizePath(a) === from,
+          );
+        if (isAnimRef && !to.toLowerCase().endsWith('.json')) {
+          return current;
+        }
 
         const files = new Map(src.files);
         files.delete(from);
@@ -1021,6 +1067,21 @@ export function App() {
         }
         if (isPrimary) {
           next = { ...next, cvoxFile: { ...src.cvoxFile, name: to } };
+        }
+        // Keep the resolved externalAnims records pointing at the new
+        // path — timeline edits write through `rec.path`, so a stale one
+        // would resurrect the old file and orphan the manifest's ref.
+        if (src.externalAnims !== undefined) {
+          let anims: Map<
+            string,
+            { path: string; anim: InlineAnimation }
+          > | null = null;
+          for (const [clip, rec] of src.externalAnims) {
+            if (rec.path !== from) continue;
+            if (anims === null) anims = new Map(src.externalAnims);
+            anims.set(clip, { path: to, anim: rec.anim });
+          }
+          if (anims !== null) next = { ...next, externalAnims: anims };
         }
 
         if (src.manifest !== undefined) {
@@ -1106,6 +1167,25 @@ export function App() {
           geometries.delete(p);
           next = { ...next, geometries };
         }
+        if (src.externalAnims !== undefined) {
+          let anims: Map<
+            string,
+            { path: string; anim: InlineAnimation }
+          > | null = null;
+          for (const [clip, rec] of src.externalAnims) {
+            if (rec.path !== p) continue;
+            if (anims === null) anims = new Map(src.externalAnims);
+            anims.delete(clip);
+          }
+          if (anims !== null) {
+            if (anims.size > 0) {
+              next = { ...next, externalAnims: anims };
+            } else {
+              const { externalAnims: _drop, ...rest } = next;
+              next = rest;
+            }
+          }
+        }
         if (src.manifest !== undefined) {
           let m = src.manifest;
           let changed = false;
@@ -1127,6 +1207,30 @@ export function App() {
             changed = true;
             const { externalPalette: _x, ...srcRest } = next;
             next = srcRest;
+          }
+          // Deleting an external animation file removes the clips that
+          // referenced it (same rationale as the palette binding —
+          // a dangling ref is a guaranteed load error), and their
+          // resolved records, in this same undo step.
+          if (m.animations !== undefined) {
+            const rebuilt: NonNullable<Manifest['animations']> = {};
+            let animChanged = false;
+            for (const [aName, anim] of Object.entries(m.animations)) {
+              if (typeof anim === 'string' && normalizePath(anim) === p) {
+                animChanged = true;
+                continue;
+              }
+              rebuilt[aName] = anim;
+            }
+            if (animChanged) {
+              if (Object.keys(rebuilt).length > 0) {
+                m = { ...m, animations: rebuilt };
+              } else {
+                const { animations: _drop, ...rest } = m;
+                m = rest;
+              }
+              changed = true;
+            }
           }
           if (changed) {
             const baseFile =
@@ -1333,8 +1437,8 @@ export function App() {
   //   cvox     — the part's `name`, and any part cloning/mirroring it (from.part)
   //   manifest — the entry `name`, any `parent` pointing at it, and every inline
   //              animation track keyed by the old name (re-keyed, order kept)
-  // External string-ref animation files live outside the manifest and can't be
-  // rewritten here — a part they reference by name would break (known limit).
+  //   external — every resolved §6.3 animation file whose tracks key the old
+  //              name (files map + externalAnims, same undo step)
   const handleRenamePart = useCallback(
     (oldName: string, newName: string) => {
       if (oldName === newName || !isIdentifier(newName)) return;
@@ -1349,7 +1453,7 @@ export function App() {
         const allParts = mergeGeometries(src).parts;
         if (!allParts.some((p) => p.name === oldName)) return current;
         if (allParts.some((p) => p.name === newName)) return current;
-        const nextSrc = mapGeometryFiles(src, (cvox) => {
+        let nextSrc = mapGeometryFiles(src, (cvox) => {
           let changed = false;
           const parts: Part[] = cvox.parts.map((p) => {
             let np: Part = p;
@@ -1364,6 +1468,15 @@ export function App() {
             return np;
           });
           return changed ? { ...cvox, parts } : null;
+        });
+        // §6.3 external animation files reference the part by name too.
+        nextSrc = rewriteExternalAnims(nextSrc, (anim) => {
+          if (!Object.hasOwn(anim.parts, oldName)) return null;
+          const nextTracks: InlineAnimation['parts'] = {};
+          for (const [pName, track] of Object.entries(anim.parts)) {
+            nextTracks[pName === oldName ? newName : pName] = track;
+          }
+          return { ...anim, parts: nextTracks };
         });
         if (src.kind === 'folder' && src.manifest !== undefined) {
           const m = src.manifest;
@@ -1423,9 +1536,10 @@ export function App() {
   // Delete a part, cleaning up its references atomically (one undo). Removes
   // the cvox part; in the manifest drops its entry, re-parents its children to
   // its own parent (grandparent, or root if none), and drops its animation
-  // tracks. BLOCKS (no-op) if another part clones/mirrors it — the UI disables
-  // the action in that case, so this guard is just defensive. No confirmation:
-  // undo is the safety net (same as clip delete).
+  // tracks (inline AND resolved external files). BLOCKS (no-op) if another
+  // part clones/mirrors it — the UI disables the action in that case, so this
+  // guard is just defensive. No confirmation: undo is the safety net (same as
+  // clip delete).
   const handleDeletePart = useCallback(
     (name: string) => {
       cancelPendingCvoxReparse();
@@ -1442,11 +1556,16 @@ export function App() {
         if (allParts.some((p) => p.name !== name && p.from?.part === name)) {
           return current;
         }
-        const nextSrc = mapGeometryFiles(src, (cvox) =>
+        let nextSrc = mapGeometryFiles(src, (cvox) =>
           cvox.parts.some((p) => p.name === name)
             ? { ...cvox, parts: cvox.parts.filter((p) => p.name !== name) }
             : null,
         );
+        nextSrc = rewriteExternalAnims(nextSrc, (anim) => {
+          if (!Object.hasOwn(anim.parts, name)) return null;
+          const { [name]: _dropped, ...restTracks } = anim.parts;
+          return { ...anim, parts: restTracks };
+        });
         if (src.kind === 'folder' && src.manifest !== undefined) {
           const m = src.manifest;
           const grandparent = m.parts.find((mp) => mp.name === name)?.parent;
