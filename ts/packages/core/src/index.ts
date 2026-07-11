@@ -67,6 +67,7 @@ export type {
 export {
   normalizeRefPath,
   projectFilePaths,
+  refreshProjectReuse,
   resolveCrossFileReuse,
   resolveProject,
 } from './project.js';

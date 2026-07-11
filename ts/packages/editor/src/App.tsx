@@ -51,7 +51,11 @@ import { TimelinePanel } from './components/TimelinePanel.js';
 import { ViewModeToggle } from './components/ViewModeToggle.js';
 import { VoxelScene } from './components/VoxelScene.js';
 import { historyReducer, makeHistory } from './lib/history.js';
-import { normalizePath, resolveProjectRefs } from './lib/load-model.js';
+import {
+  normalizePath,
+  refreshSourceReuse,
+  resolveProjectRefs,
+} from './lib/load-model.js';
 import {
   addPanelAt,
   closePanelAt,
@@ -193,12 +197,14 @@ function mapGeometryFiles<S extends LoadedSource>(
     }
   }
   if (geometries === null) return src;
-  return {
+  // Structural edits can change reuse referents (rename, voxel edits),
+  // so re-derive every clone/mirror model-wide before publishing.
+  return refreshSourceReuse({
     ...src,
     geometries,
     ...(files !== null && { files }),
     ...(primaryPatch !== null && primaryPatch),
-  };
+  });
 }
 
 export function App() {
@@ -212,6 +218,7 @@ export function App() {
     makeHistory<LoadResult | null>,
   );
   const loaded = history.present;
+  const sourceKind = loaded?.source?.kind;
   const dispatchEdit = useCallback(
     (tag: string | null, apply: (c: LoadResult | null) => LoadResult | null) => {
       dispatch({ type: 'edit', tag, at: Date.now(), apply });
@@ -290,7 +297,8 @@ export function App() {
         (result.source.droppedInlineComments > 0 ||
           (result.source.kind === 'folder' &&
             (result.source.manifestError !== undefined ||
-              (result.source.projectErrors?.length ?? 0) > 0)))
+              (result.source.projectErrors?.length ?? 0) > 0 ||
+              (result.source.reuseErrors?.length ?? 0) > 0)))
       ) {
         setLayout((l) => openPanelById(l, 'console'));
       }
@@ -355,28 +363,45 @@ export function App() {
       cancelPendingCvoxReparse();
       reparseCvoxTimer.current = window.setTimeout(() => {
         reparseCvoxTimer.current = null;
-        const result = parseCvox(nextText);
-        if (result.ok) {
-          setCvoxParseError(null);
-          // The AST half of the already-recorded text edit — amend, don't
-          // push (an entry whose undo changed only the invisible AST would
-          // be a dead Ctrl+Z step).
-          dispatch({
-            type: 'amend',
-            apply: (current) => {
-              if (current?.source === undefined) return current;
-              return {
-                ...current,
-                source: { ...current.source, cvox: result.value },
-              };
-            },
-          });
-        } else {
+        // Deferred reuse (SPEC §6.9): in a folder source a clone/mirror
+        // referent may live in a sibling geometry file, so an unresolved
+        // one is not a parse error — refreshSourceReuse resolves (or
+        // reports) it. A cvox-only source has no siblings: pending refs
+        // stay the same hard error strict parsing used to give.
+        const result = parseCvox(nextText, { deferUnresolvedReuse: true });
+        if (!result.ok) {
           setCvoxParseError(result.message);
+          return;
         }
+        const pending = result.value.pending ?? [];
+        if (sourceKind !== 'folder' && pending.length > 0) {
+          const p = pending[0]!;
+          const verb = p.from.mirror !== undefined ? 'mirror' : 'clone';
+          setCvoxParseError(
+            `part "${p.name}" ${verb}s unknown part "${p.from.part}"`,
+          );
+          return;
+        }
+        setCvoxParseError(null);
+        // The AST half of the already-recorded text edit — amend, don't
+        // push (an entry whose undo changed only the invisible AST would
+        // be a dead Ctrl+Z step).
+        dispatch({
+          type: 'amend',
+          apply: (current) => {
+            if (current?.source === undefined) return current;
+            return {
+              ...current,
+              source: refreshSourceReuse({
+                ...current.source,
+                cvox: result.value,
+              }),
+            };
+          },
+        });
       }, REPARSE_DEBOUNCE_MS);
     },
-    [dispatchEdit, cancelPendingCvoxReparse],
+    [dispatchEdit, cancelPendingCvoxReparse, sourceKind],
   );
 
   // Per-file source editing for the dynamic file tabs (v0.7 packages).
@@ -428,7 +453,10 @@ export function App() {
         window.setTimeout(() => {
           timers.delete(path);
           if (path.endsWith('.cvox')) {
-            const r = parseCvox(nextText);
+            // Deferred reuse: geometry files are always part of a folder
+            // source, so unresolved referents go through the model-wide
+            // refresh instead of erroring the file tab.
+            const r = parseCvox(nextText, { deferUnresolvedReuse: true });
             if (!r.ok) {
               setFileParseError(path, r.message);
               return;
@@ -447,7 +475,10 @@ export function App() {
                 }
                 const geometries = new Map(src.geometries);
                 geometries.set(path, r.value);
-                return { ...current, source: { ...src, geometries } };
+                return {
+                  ...current,
+                  source: refreshSourceReuse({ ...src, geometries }),
+                };
               },
             });
           } else if (path.endsWith('.json')) {
@@ -903,8 +934,12 @@ export function App() {
           externalPalette: _pal,
           externalAnims: _anims,
           projectErrors: _proj,
+          reuseErrors: _reuse,
           ...rest
         } = src;
+        // The newly-referenced file may define referents the primary's
+        // pending reuse parts were waiting for — read the refreshed AST.
+        const primaryNext = refs.geometries.get(src.cvoxFile.name);
         return {
           ...current,
           source: {
@@ -915,6 +950,7 @@ export function App() {
               text: JSON.stringify(nextManifest, null, 2) + '\n',
             },
             geometries: refs.geometries,
+            ...(primaryNext !== undefined && { cvox: primaryNext }),
             ...(refs.externalPalette !== undefined && {
               externalPalette: refs.externalPalette,
             }),
@@ -923,6 +959,9 @@ export function App() {
             }),
             ...(refs.projectErrors.length > 0 && {
               projectErrors: refs.projectErrors,
+            }),
+            ...(refs.reuseErrors.length > 0 && {
+              reuseErrors: refs.reuseErrors,
             }),
           },
         };
@@ -1516,14 +1555,19 @@ export function App() {
                 externalPalette: _pal,
                 externalAnims: _anims,
                 projectErrors: _proj,
+                reuseErrors: _reuse,
                 ...rest
               } = src;
+              // A changed geometry list can (un)resolve cross-file reuse
+              // in the primary too — read its refreshed AST back.
+              const primaryNext = refs.geometries.get(src.cvoxFile.name);
               return {
                 ...current,
                 source: {
                   ...rest,
                   manifest: result.value,
                   geometries: refs.geometries,
+                  ...(primaryNext !== undefined && { cvox: primaryNext }),
                   ...(refs.externalPalette !== undefined && {
                     externalPalette: refs.externalPalette,
                   }),
@@ -1532,6 +1576,9 @@ export function App() {
                   }),
                   ...(refs.projectErrors.length > 0 && {
                     projectErrors: refs.projectErrors,
+                  }),
+                  ...(refs.reuseErrors.length > 0 && {
+                    reuseErrors: refs.reuseErrors,
                   }),
                 },
               };
@@ -2110,7 +2157,11 @@ export function App() {
       setManifestParseError(null);
       return;
     }
-    const cvoxR = parseCvox(src.cvoxFile.text);
+    // Folder sources tolerate pending cross-file referents (§6.9);
+    // cvox-only keeps them as the hard error strict parsing gives.
+    const cvoxR = parseCvox(src.cvoxFile.text, {
+      deferUnresolvedReuse: src.kind === 'folder',
+    });
     setCvoxParseError(cvoxR.ok ? null : cvoxR.message);
     if (src.kind === 'folder' && src.manifestFile !== undefined) {
       let err: string | null = null;
@@ -2447,6 +2498,7 @@ export function App() {
     if (source === undefined) return m;
     if (source.kind === 'folder') {
       for (const pe of source.projectErrors ?? []) m.set(pe.file, pe.message);
+      for (const pe of source.reuseErrors ?? []) m.set(pe.file, pe.message);
     }
     for (const [p, msg] of fileParseErrors) m.set(p, msg);
     const mErr =
@@ -2889,6 +2941,15 @@ export function App() {
         }
         if (source.kind === 'folder' && source.projectErrors !== undefined) {
           for (const pe of source.projectErrors) {
+            entries.push({
+              severity: 'error',
+              source: pe.file,
+              message: pe.message,
+            });
+          }
+        }
+        if (source.kind === 'folder' && source.reuseErrors !== undefined) {
+          for (const pe of source.reuseErrors) {
             entries.push({
               severity: 'error',
               source: pe.file,

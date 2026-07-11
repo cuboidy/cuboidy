@@ -6,6 +6,7 @@ import type { Manifest } from '../src/manifest.js';
 import {
   normalizeRefPath,
   projectFilePaths,
+  refreshProjectReuse,
   resolveCrossFileReuse,
   resolveProject,
   type GeometryFile,
@@ -190,6 +191,67 @@ describe('resolveCrossFileReuse', () => {
     const dup = r.diagnostics.find((d) => d.file === 'arms.cvox');
     expect(dup?.diag.code).toBe('duplicate');
     expect(dup?.diag.message).toMatch(/one\.cvox, two\.cvox/);
+  });
+});
+
+describe('refreshProjectReuse', () => {
+  const BODY = `${PAL}\npart arm\n    size 2 1 1\n    pivot 0 0 0\n    voxels { 01 }`;
+
+  it('re-derives a cross-file mirror when the referent changed', () => {
+    const first = resolveCrossFileReuse([
+      geo('body.cvox', BODY),
+      geo('arms.cvox', 'part arm_r mirror arm'),
+    ]);
+    // Simulate editing arm's voxels in body.cvox (reparse of that file).
+    const editedBody = geo(
+      'body.cvox',
+      `${PAL}\npart arm\n    size 2 1 1\n    pivot 0 0 0\n    voxels { 21 }`,
+    );
+    const r = refreshProjectReuse([editedBody, first.geometries[1]!]);
+    expect(r.diagnostics).toEqual([]);
+    const armR = r.geometries[1]!.cvox.parts[0]!;
+    expect(armR.voxels[0]![0]).toEqual([1, 2]); // mirrored fresh data
+  });
+
+  it('keeps object identity for files whose derivations are unchanged', () => {
+    const first = resolveCrossFileReuse([
+      geo('body.cvox', BODY),
+      geo('arms.cvox', 'part arm_r mirror arm'),
+    ]);
+    const r = refreshProjectReuse(first.geometries);
+    expect(r.geometries[1]).toBe(first.geometries[1]);
+  });
+
+  it('keeps the last derived geometry when the referent disappears', () => {
+    const first = resolveCrossFileReuse([
+      geo('body.cvox', BODY),
+      geo('arms.cvox', 'part arm_r mirror arm'),
+    ]);
+    // body.cvox re-parsed without the arm part.
+    const gutted = geo(
+      'body.cvox',
+      `${PAL}\npart torso\n    size 1 1 1\n    voxels { 0 }`,
+    );
+    const r = refreshProjectReuse([gutted, first.geometries[1]!]);
+    expect(r.diagnostics).toHaveLength(1);
+    expect(r.diagnostics[0]!.diag.code).toBe('missing');
+    const armR = r.geometries[1]!.cvox.parts[0]!;
+    expect(armR.name).toBe('arm_r'); // still present, stale geometry
+    expect(armR.voxels[0]![0]).toEqual([1, 0]);
+  });
+
+  it('resolves a pending once its referent appears', () => {
+    const broken = resolveCrossFileReuse([
+      geo('arms.cvox', 'part arm_r mirror arm'),
+    ]);
+    expect(broken.diagnostics).toHaveLength(1);
+    const r = refreshProjectReuse([
+      geo('body.cvox', BODY),
+      broken.geometries[0]!,
+    ]);
+    expect(r.diagnostics).toEqual([]);
+    expect(r.geometries[1]!.cvox.parts.map((p) => p.name)).toEqual(['arm_r']);
+    expect(r.geometries[1]!.cvox.pending).toBeUndefined();
   });
 });
 

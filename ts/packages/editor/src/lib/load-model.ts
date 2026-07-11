@@ -4,7 +4,9 @@ import {
   parseCvox,
   parseManifest,
   parsePaletteFile,
+  refreshProjectReuse,
   type Cvox,
+  type GeometryFile,
   type InlineAnimation,
   type Manifest,
   type Palette,
@@ -193,7 +195,10 @@ function buildFolderResult(
   }
 
   const droppedInlineComments = countInlineComments(primaryText);
-  const cvoxR = parseCvox(primaryText);
+  // Deferred reuse (SPEC §6.9): a clone/mirror whose referent lives in a
+  // sibling geometry file is not a parse error — resolveProjectRefs
+  // resolves it model-wide below.
+  const cvoxR = parseCvox(primaryText, { deferUnresolvedReuse: true });
   if (!cvoxR.ok) {
     return { error: cvoxR.message, cvoxFileName: primary };
   }
@@ -203,6 +208,7 @@ function buildFolderResult(
     cvox: cvoxR.value,
   });
   const { geometries, externalPalette, externalAnims, projectErrors } = refs;
+  const resolvedPrimary = geometries.get(primary) ?? cvoxR.value;
 
   const files = new Map<string, FileEntry>();
   for (const [path, text] of fileTexts) {
@@ -214,7 +220,7 @@ function buildFolderResult(
     folderName,
     synthetic: false,
     ...(opts.handle !== undefined && { handle: opts.handle }),
-    cvox: cvoxR.value,
+    cvox: resolvedPrimary,
     cvoxFile: { name: primary, text: primaryText },
     ...(manifest !== undefined && { manifest }),
     ...(manifestFile !== undefined && { manifestFile }),
@@ -225,6 +231,7 @@ function buildFolderResult(
     ...(externalPalette !== undefined && { externalPalette }),
     ...(externalAnims !== undefined && { externalAnims }),
     ...(projectErrors.length > 0 && { projectErrors }),
+    ...(refs.reuseErrors.length > 0 && { reuseErrors: refs.reuseErrors }),
   };
   return { source, cvoxFileName: primary };
 }
@@ -232,10 +239,15 @@ function buildFolderResult(
 // ── reference resolution ─────────────────────────────────────────────
 
 export interface ResolvedProjectRefs {
+  // Geometry ASTs with cross-file clone/mirror resolved (SPEC §6.9) —
+  // including the primary's entry, so callers replacing the live cvox
+  // should read it back from here.
   geometries: Map<string, Cvox>;
   externalPalette?: Palette;
   externalAnims?: Map<string, { path: string; anim: InlineAnimation }>;
   projectErrors: Array<{ file: string; message: string }>;
+  // Unresolved reuse references — recomputed wholesale on every resolve.
+  reuseErrors: Array<{ file: string; message: string }>;
 }
 
 // Resolve the manifest's references — §6.9 geometry list, §6.10 palette
@@ -270,9 +282,25 @@ export function resolveProjectRefs(
       });
       continue;
     }
-    const r = parseCvox(text);
+    const r = parseCvox(text, { deferUnresolvedReuse: true });
     if (!r.ok) projectErrors.push({ file: ref, message: r.message });
     else geometries.set(ref, r.value);
+  }
+
+  // Cross-file clone/mirror (SPEC §6.9): derive reuse parts model-wide,
+  // in geometry-list order. Failures keep the reference pending (or its
+  // last derived geometry) and land in reuseErrors.
+  const reuseErrors: Array<{ file: string; message: string }> = [];
+  {
+    const entries: GeometryFile[] = [...geometries].map(([path, cvox]) => ({
+      path,
+      cvox,
+    }));
+    const refreshed = refreshProjectReuse(entries);
+    for (const g of refreshed.geometries) geometries.set(g.path, g.cvox);
+    for (const d of refreshed.diagnostics) {
+      reuseErrors.push({ file: d.file, message: d.diag.message });
+    }
   }
 
   let externalPalette: Palette | undefined;
@@ -343,7 +371,66 @@ export function resolveProjectRefs(
     ...(externalPalette !== undefined && { externalPalette }),
     ...(externalAnims.size > 0 && { externalAnims }),
     projectErrors,
+    reuseErrors,
   };
+}
+
+// Re-derive cross-file reuse across a source's CURRENT geometry ASTs
+// (the primary's live `cvox` overriding its map snapshot) and write the
+// results back: geometries map, the live cvox when the primary changed,
+// and the recomputed reuseErrors. Called after any geometry AST update
+// (reparse, structural edit) so parts derived from an edited referent
+// never go stale. Derived geometry is not textual, so file texts are
+// untouched. No-op for cvox-only sources.
+export function refreshSourceReuse<S extends LoadedSource>(src: S): S {
+  if (src.kind !== 'folder') return src;
+  const folder: Extract<LoadedSource, { kind: 'folder' }> = src;
+  const primaryPath = folder.cvoxFile.name;
+  const entries: GeometryFile[] = [];
+  if (folder.geometries !== undefined) {
+    for (const [path, g] of folder.geometries) {
+      entries.push({
+        path,
+        cvox: path === primaryPath ? folder.cvox : g,
+      });
+    }
+  }
+  if (!entries.some((e) => e.path === primaryPath)) {
+    entries.unshift({ path: primaryPath, cvox: folder.cvox });
+  }
+  const refreshed = refreshProjectReuse(entries);
+  const reuseErrors = refreshed.diagnostics.map((d) => ({
+    file: d.file,
+    message: d.diag.message,
+  }));
+
+  let geometries: Map<string, Cvox> | null = null;
+  let primaryNext: Cvox | null = null;
+  for (const [i, g] of refreshed.geometries.entries()) {
+    if (g === entries[i]) continue;
+    if (geometries === null) {
+      geometries = new Map(folder.geometries ?? [[primaryPath, folder.cvox]]);
+    }
+    geometries.set(g.path, g.cvox);
+    if (g.path === primaryPath) primaryNext = g.cvox;
+  }
+
+  const prevErrors = folder.reuseErrors;
+  const errorsChanged =
+    reuseErrors.length !== (prevErrors?.length ?? 0) ||
+    reuseErrors.some(
+      (e, i) =>
+        prevErrors?.[i]?.file !== e.file ||
+        prevErrors?.[i]?.message !== e.message,
+    );
+  if (geometries === null && !errorsChanged) return src;
+
+  const next: Extract<LoadedSource, { kind: 'folder' }> = { ...folder };
+  if (geometries !== null) next.geometries = geometries;
+  if (primaryNext !== null) next.cvox = primaryNext;
+  if (reuseErrors.length > 0) next.reuseErrors = reuseErrors;
+  else delete next.reuseErrors;
+  return next as S;
 }
 
 // ── path helpers ─────────────────────────────────────────────────────

@@ -68,6 +68,11 @@ export type LoadedSource =
       // (missing/unparsable geometry refs, palette issues). Surfaced in
       // the Console panel.
       projectErrors?: ReadonlyArray<{ file: string; message: string }>;
+      // Unresolved cross-file clone/mirror references (SPEC §6.9), fully
+      // recomputed by every refreshSourceReuse pass — unlike
+      // projectErrors these track the CURRENT ASTs, not the load
+      // snapshot. Surfaced alongside projectErrors.
+      reuseErrors?: ReadonlyArray<{ file: string; message: string }>;
       // Paths deleted (or renamed away) in the editor since load. Save
       // removes them from disk (ignoring already-gone ones, so the set
       // never needs clearing); ZIP export omits them naturally. Part of
