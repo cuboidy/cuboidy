@@ -59,9 +59,9 @@ my-model.cuboidy        packed package (ZIP of the folder above)
 
 | File | Role | Format | Validation |
 |---|---|---|---|
-| `cuboidy.json` | manifest (fixed name) | JSON | `parseManifest()` (TS reference impl); shared JSON Schema is planned (see roadmap) |
-| `voxels.cvox` | voxel definition | custom text | `parseCvox()` (TS reference impl); standalone `cuboidy-lint` CLI is planned |
-| `anims/*.json` | optional shared animations | JSON | not yet validated; planned alongside `cuboidy.schema.json` |
+| `cuboidy.json` | manifest (fixed name) | JSON | `parseManifest()` (TS reference impl) + shared JSON Schema (`schema/cuboidy.schema.json`) |
+| `voxels.cvox` | voxel definition | custom text | `parseCvox()` (TS reference impl) + `cuboidy-lint` CLI |
+| `anims/*.json` | optional shared animations | JSON | same inline-animation schema + semantic rules (§6.6), resolved and checked by lint and the inspection CLIs |
 | `*.cuboidy` | packed package | ZIP | both, after extraction (packed format is reserved for a future spec version) |
 
 ## Examples
@@ -72,6 +72,7 @@ Models live under `models/`:
 - `models/cat/` — quadruped with pointy ears, vertical tail, and belly markings; idle tail-twitch animation
 - `models/crown/` — single-part static accessory, designed to attach to wolf's `hat` socket
 - `models/boy/`, `models/girl/` — humanoid rigs (head / body / arms / legs) in standard, `-chibi`, and `-mini` proportions
+- `models/robo-mini/` — v0.7+ project-feature demo: manifest `geometry` list (two `.cvox` files), external `palette.json` binding, and cross-file `mirror` reuse (§6.9/§6.10)
 
 ## Inspecting models
 
@@ -128,8 +129,9 @@ Full methodology, dataset, and per-model numbers in
 ## Roadmap
 
 - [x] Spec document (`SPEC.md`) — v0.8 draft (multi-file geometry, shareable external palettes, keyframe easing)
-- [x] Reference parser (TypeScript) — `ts/packages/core/`, full v0.8 grammar (473 tests)
-- [x] Cross-file lint — project-shaped validation (`validateProject`): manifest↔geometry part matching, cross-file duplicate names, palette resolution/range, W07 unreferenced `.cvox`, H03 shadowed inline palette
+- [x] Reference parser (TypeScript) — `ts/packages/core/`, full v0.8 grammar (555 tests)
+- [x] Shared project loader — `resolveProject()`: manifest geometry list, external palette, external animations, model-wide clone/mirror resolution; used by lint, the inspection CLIs and the editor
+- [x] Cross-file lint — project-shaped validation (`validateProject`): manifest↔geometry part matching, cross-file duplicate names, palette resolution/range, animation target checks, W06 geometric l/r symmetry, W07 unreferenced `.cvox`, H03 shadowed inline palette
 - [x] Shared parity fixtures — `fixtures/cvox/<code>/` and `fixtures/json/<code>/`, contract for cross-implementation conformance
 - [x] JSON Schema for `cuboidy.json` — `schema/cuboidy.schema.json` (Draft 2020-12, derived from the Zod ManifestSchema; reference via `"$schema": "https://cuboidy.com/schema/cuboidy.schema.json"` or the GitHub raw URL)
 - [x] Canonical serializer (reader-tolerant / writer-strict) — `serializeCvox(cvox)` produces canonical text; round-trip with `parseCvox` verified. **File header preserved** (SPEC §7.11.1); inline comments are advisory and intentionally not preserved (v0.6+ policy)
@@ -137,7 +139,7 @@ Full methodology, dataset, and per-model numbers in
 - [x] Model inspection CLIs — `cuboidy-view` (ASCII projection), `cuboidy-query` (exact coordinate lookup), and `cuboidy-snap` (multi-angle PNG renders; contact sheet + per-angle, dependency-free) for human / multimodal review
 - [x] Image snapshots — `cuboidy-snap <dir>` renders a model to PNG from several angles, the raster counterpart to `cuboidy-view`, for visual review and AI-assisted editing
 - [ ] Reference parser (C#)
-- [~] Web-based editor (`ts/packages/editor/`) — Stage A1 viewer scaffolded (Vite + React + react-three-fiber); drop a `.cvox` file, see voxels in 3D with orbit camera. Edit features deferred to Stage A2+. Run locally with `cd ts/packages/editor && npm run dev`
+- [~] Web-based editor (`ts/packages/editor/`) — loads folders / `.cvox` / `.cuboidy` ZIPs; Cvox / Rig / Anim views; part, palette and keyframe-animation editing with undo/redo; project-aware save/export (FSA writeback or ZIP); Playwright E2E suite. Run locally with `cd ts/packages/editor && npm run dev`
 - [ ] Rig vocabulary docs (quadruped / biped / winged / ...)
 - [ ] Packed format spec (`.cuboidy` ZIP)
 

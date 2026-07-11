@@ -1,7 +1,7 @@
 {
   "name": "@cuboidy/core",
   "version": "0.0.0",
-  "description": "Cuboidy reference parser and lint (TypeScript). Serializer and full manifest validation are in progress.",
+  "description": "Cuboidy reference implementation (TypeScript): parser, canonical serializer, manifest validation, shared project loader, lint, and inspection CLIs (view/query/snap).",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
