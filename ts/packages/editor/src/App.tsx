@@ -255,6 +255,10 @@ export function App() {
   );
   const loaded = history.present;
   const sourceKind = loaded?.source?.kind;
+  // Latest-value ref so the synchronous flush helpers (below) can read
+  // the CURRENT text without re-binding every callback on each edit.
+  const loadedRef = useRef(loaded);
+  loadedRef.current = loaded;
   const dispatchEdit = useCallback(
     (tag: string | null, apply: (c: LoadResult | null) => LoadResult | null) => {
       dispatch({ type: 'edit', tag, at: Date.now(), apply });
@@ -301,6 +305,142 @@ export function App() {
       reparseManifestTimer.current = null;
     }
   }, []);
+
+  // Parse cvox text and land the outcome — error state plus (on success)
+  // the AST amend with a model-wide reuse refresh. The single
+  // implementation behind BOTH the debounced timer and the synchronous
+  // flush below, so the two paths can't drift. Returns true when the
+  // text parsed and the AST landed.
+  const landCvoxReparse = useCallback(
+    (text: string, kind: LoadedSource['kind'] | undefined): boolean => {
+      // Deferred reuse (SPEC §6.9): in a folder source a clone/mirror
+      // referent may live in a sibling geometry file, so an unresolved
+      // one is not a parse error — refreshSourceReuse resolves (or
+      // reports) it. A cvox-only source has no siblings: pending refs
+      // stay the hard error strict parsing used to give.
+      const result = parseCvox(text, { deferUnresolvedReuse: true });
+      if (!result.ok) {
+        setCvoxParseError(result.message);
+        return false;
+      }
+      const pending = result.value.pending ?? [];
+      if (kind !== 'folder' && pending.length > 0) {
+        const p = pending[0]!;
+        const verb = p.from.mirror !== undefined ? 'mirror' : 'clone';
+        setCvoxParseError(
+          `part "${p.name}" ${verb}s unknown part "${p.from.part}"`,
+        );
+        return false;
+      }
+      setCvoxParseError(null);
+      dispatch({
+        type: 'amend',
+        apply: (current) => {
+          if (current?.source === undefined) return current;
+          return {
+            ...current,
+            source: refreshSourceReuse({
+              ...current.source,
+              cvox: result.value,
+            }),
+          };
+        },
+      });
+      return true;
+    },
+    [],
+  );
+
+  // Flush (not discard) a pending debounced cvox reparse: parse the
+  // CURRENT text synchronously and land the amend / error now. Returns
+  // false when the text doesn't parse — a structural edit must abort
+  // rather than serialize from the stale AST, which would silently
+  // overwrite what was just typed (audit A-6).
+  const flushPendingCvoxReparse = useCallback((): boolean => {
+    if (reparseCvoxTimer.current === null) return true;
+    window.clearTimeout(reparseCvoxTimer.current);
+    reparseCvoxTimer.current = null;
+    const src = loadedRef.current?.source;
+    if (src === undefined) return true;
+    return landCvoxReparse(src.cvoxFile.text, src.kind);
+  }, [landCvoxReparse]);
+
+  // Manifest counterpart of landCvoxReparse: parse + amend with a full
+  // reference re-resolve (geometry ASTs, bound palette, external
+  // animations, project/reuse errors track the edited manifest).
+  const landManifestReparse = useCallback((text: string): boolean => {
+    let json: unknown;
+    try {
+      json = JSON.parse(text);
+    } catch (e) {
+      setManifestParseError(`JSON parse: ${(e as Error).message}`);
+      return false;
+    }
+    const result = parseManifest(json);
+    if (!result.ok) {
+      setManifestParseError(result.message);
+      return false;
+    }
+    setManifestParseError(null);
+    dispatch({
+      type: 'amend',
+      apply: (current) => {
+        if (current?.source?.kind !== 'folder') return current;
+        const src = current.source;
+        const refs = resolveProjectRefs(
+          result.value,
+          (p) => src.files?.get(p)?.text,
+          { path: src.cvoxFile.name, cvox: src.cvox },
+        );
+        // Destructure away the maybe-now-absent keys (a successful
+        // reparse also clears any stale load-time manifest error).
+        const {
+          manifestError: _err,
+          externalPalette: _pal,
+          externalAnims: _anims,
+          projectErrors: _proj,
+          reuseErrors: _reuse,
+          ...rest
+        } = src;
+        // A changed geometry list can (un)resolve cross-file reuse in
+        // the primary too — read its refreshed AST back.
+        const primaryNext = refs.geometries.get(src.cvoxFile.name);
+        return {
+          ...current,
+          source: {
+            ...rest,
+            manifest: result.value,
+            geometries: refs.geometries,
+            ...(primaryNext !== undefined && { cvox: primaryNext }),
+            ...(refs.externalPalette !== undefined && {
+              externalPalette: refs.externalPalette,
+            }),
+            ...(refs.externalAnims !== undefined && {
+              externalAnims: refs.externalAnims,
+            }),
+            ...(refs.projectErrors.length > 0 && {
+              projectErrors: refs.projectErrors,
+            }),
+            ...(refs.reuseErrors.length > 0 && {
+              reuseErrors: refs.reuseErrors,
+            }),
+          },
+        };
+      },
+    });
+    return true;
+  }, []);
+
+  const flushPendingManifestReparse = useCallback((): boolean => {
+    if (reparseManifestTimer.current === null) return true;
+    window.clearTimeout(reparseManifestTimer.current);
+    reparseManifestTimer.current = null;
+    const src = loadedRef.current?.source;
+    if (src === undefined || src.kind !== 'folder') return true;
+    const text = src.manifestFile?.text;
+    if (text === undefined) return true;
+    return landManifestReparse(text);
+  }, [landManifestReparse]);
 
   const handleLoad = useCallback(
     (result: LoadResult) => {
@@ -399,45 +539,13 @@ export function App() {
       cancelPendingCvoxReparse();
       reparseCvoxTimer.current = window.setTimeout(() => {
         reparseCvoxTimer.current = null;
-        // Deferred reuse (SPEC §6.9): in a folder source a clone/mirror
-        // referent may live in a sibling geometry file, so an unresolved
-        // one is not a parse error — refreshSourceReuse resolves (or
-        // reports) it. A cvox-only source has no siblings: pending refs
-        // stay the same hard error strict parsing used to give.
-        const result = parseCvox(nextText, { deferUnresolvedReuse: true });
-        if (!result.ok) {
-          setCvoxParseError(result.message);
-          return;
-        }
-        const pending = result.value.pending ?? [];
-        if (sourceKind !== 'folder' && pending.length > 0) {
-          const p = pending[0]!;
-          const verb = p.from.mirror !== undefined ? 'mirror' : 'clone';
-          setCvoxParseError(
-            `part "${p.name}" ${verb}s unknown part "${p.from.part}"`,
-          );
-          return;
-        }
-        setCvoxParseError(null);
-        // The AST half of the already-recorded text edit — amend, don't
-        // push (an entry whose undo changed only the invisible AST would
-        // be a dead Ctrl+Z step).
-        dispatch({
-          type: 'amend',
-          apply: (current) => {
-            if (current?.source === undefined) return current;
-            return {
-              ...current,
-              source: refreshSourceReuse({
-                ...current.source,
-                cvox: result.value,
-              }),
-            };
-          },
-        });
+        // The AST half of the already-recorded text edit — landCvoxReparse
+        // amends, doesn't push (an entry whose undo changed only the
+        // invisible AST would be a dead Ctrl+Z step).
+        landCvoxReparse(nextText, sourceKind);
       }, REPARSE_DEBOUNCE_MS);
     },
-    [dispatchEdit, cancelPendingCvoxReparse, sourceKind],
+    [dispatchEdit, cancelPendingCvoxReparse, landCvoxReparse, sourceKind],
   );
 
   // Per-file source editing for the dynamic file tabs (v0.7 packages).
@@ -464,6 +572,95 @@ export function App() {
     });
   }, []);
 
+  // Parse one non-primary file's text and land the outcome (error state
+  // + derived-state amend). Shared by the per-file debounce timer and
+  // the synchronous flush. Returns true when the text is well-formed.
+  const reparseFileNow = useCallback(
+    (path: string, text: string): boolean => {
+      if (path.endsWith('.cvox')) {
+        // Deferred reuse: geometry files are always part of a folder
+        // source, so unresolved referents go through the model-wide
+        // refresh instead of erroring the file tab.
+        const r = parseCvox(text, { deferUnresolvedReuse: true });
+        if (!r.ok) {
+          setFileParseError(path, r.message);
+          return false;
+        }
+        setFileParseError(path, null);
+        dispatch({
+          type: 'amend',
+          apply: (current) => {
+            const src = current?.source;
+            if (
+              src === undefined ||
+              src.kind !== 'folder' ||
+              src.geometries?.has(path) !== true
+            ) {
+              return current;
+            }
+            const geometries = new Map(src.geometries);
+            geometries.set(path, r.value);
+            return {
+              ...current,
+              source: refreshSourceReuse({ ...src, geometries }),
+            };
+          },
+        });
+        return true;
+      }
+      if (path.endsWith('.json')) {
+        let json: unknown;
+        try {
+          json = JSON.parse(text);
+        } catch (e) {
+          setFileParseError(path, `JSON parse: ${(e as Error).message}`);
+          return false;
+        }
+        setFileParseError(path, null);
+        // If this file is the manifest-bound palette or an external
+        // animation, re-derive that state. A schema-invalid edit
+        // keeps the last good value (a reload surfaces it as a
+        // project error).
+        dispatch({
+          type: 'amend',
+          apply: (current) => {
+            const src = current?.source;
+            if (src === undefined || src.kind !== 'folder') {
+              return current;
+            }
+            let next = src;
+            if (
+              src.manifest?.palette !== undefined &&
+              normalizePath(src.manifest.palette) === path
+            ) {
+              const pR = parsePaletteFile(json);
+              if (pR.ok) next = { ...next, externalPalette: pR.value };
+            }
+            if (src.externalAnims !== undefined) {
+              let anims: Map<
+                string,
+                { path: string; anim: InlineAnimation }
+              > | null = null;
+              for (const [clip, rec] of src.externalAnims) {
+                if (rec.path !== path) continue;
+                const parsed = InlineAnimationSchema.safeParse(json);
+                if (!parsed.success) break; // keep last good
+                if (anims === null) anims = new Map(src.externalAnims);
+                anims.set(clip, { path, anim: parsed.data });
+              }
+              if (anims !== null) next = { ...next, externalAnims: anims };
+            }
+            return next === src ? current : { ...current, source: next };
+          },
+        });
+        return true;
+      }
+      setFileParseError(path, null);
+      return true;
+    },
+    [setFileParseError],
+  );
+
   const handleEditFileText = useCallback(
     (path: string, nextText: string) => {
       dispatchEdit(`text:${path}`, (current) => {
@@ -488,88 +685,49 @@ export function App() {
         path,
         window.setTimeout(() => {
           timers.delete(path);
-          if (path.endsWith('.cvox')) {
-            // Deferred reuse: geometry files are always part of a folder
-            // source, so unresolved referents go through the model-wide
-            // refresh instead of erroring the file tab.
-            const r = parseCvox(nextText, { deferUnresolvedReuse: true });
-            if (!r.ok) {
-              setFileParseError(path, r.message);
-              return;
-            }
-            setFileParseError(path, null);
-            dispatch({
-              type: 'amend',
-              apply: (current) => {
-                const src = current?.source;
-                if (
-                  src === undefined ||
-                  src.kind !== 'folder' ||
-                  src.geometries?.has(path) !== true
-                ) {
-                  return current;
-                }
-                const geometries = new Map(src.geometries);
-                geometries.set(path, r.value);
-                return {
-                  ...current,
-                  source: refreshSourceReuse({ ...src, geometries }),
-                };
-              },
-            });
-          } else if (path.endsWith('.json')) {
-            let json: unknown;
-            try {
-              json = JSON.parse(nextText);
-            } catch (e) {
-              setFileParseError(path, `JSON parse: ${(e as Error).message}`);
-              return;
-            }
-            setFileParseError(path, null);
-            // If this file is the manifest-bound palette or an external
-            // animation, re-derive that state. A schema-invalid edit
-            // keeps the last good value (a reload surfaces it as a
-            // project error).
-            dispatch({
-              type: 'amend',
-              apply: (current) => {
-                const src = current?.source;
-                if (src === undefined || src.kind !== 'folder') {
-                  return current;
-                }
-                let next = src;
-                if (
-                  src.manifest?.palette !== undefined &&
-                  normalizePath(src.manifest.palette) === path
-                ) {
-                  const pR = parsePaletteFile(json);
-                  if (pR.ok) next = { ...next, externalPalette: pR.value };
-                }
-                if (src.externalAnims !== undefined) {
-                  let anims: Map<
-                    string,
-                    { path: string; anim: InlineAnimation }
-                  > | null = null;
-                  for (const [clip, rec] of src.externalAnims) {
-                    if (rec.path !== path) continue;
-                    const parsed = InlineAnimationSchema.safeParse(json);
-                    if (!parsed.success) break; // keep last good
-                    if (anims === null) anims = new Map(src.externalAnims);
-                    anims.set(clip, { path, anim: parsed.data });
-                  }
-                  if (anims !== null) next = { ...next, externalAnims: anims };
-                }
-                return next === src ? current : { ...current, source: next };
-              },
-            });
-          } else {
-            setFileParseError(path, null);
-          }
+          reparseFileNow(path, nextText);
         }, REPARSE_DEBOUNCE_MS),
       );
     },
-    [dispatchEdit, setFileParseError],
+    [dispatchEdit, reparseFileNow],
   );
+
+  // Flush every pending per-file reparse against the CURRENT file texts
+  // (a debounce closure's text can be superseded by a structural edit —
+  // the state text is authoritative). False when any flushed file is
+  // currently unparseable.
+  const flushPendingFileReparse = useCallback((): boolean => {
+    const timers = fileReparseTimers.current;
+    if (timers.size === 0) return true;
+    const paths = [...timers.keys()];
+    for (const t of timers.values()) window.clearTimeout(t);
+    timers.clear();
+    const src = loadedRef.current?.source;
+    if (src === undefined || src.kind !== 'folder') return true;
+    let ok = true;
+    for (const path of paths) {
+      const text = src.files?.get(path)?.text;
+      if (text === undefined) continue;
+      if (!reparseFileNow(path, text)) ok = false;
+    }
+    return ok;
+  }, [reparseFileNow]);
+
+  // Structural-edit gates (audit A-6). Every structural editor lands the
+  // pending reparses it depends on BEFORE mutating, and aborts when the
+  // corresponding text is mid-edit unparseable — serializing from the
+  // last good AST would overwrite what the user just typed.
+  const flushGeometryReparse = useCallback((): boolean => {
+    const cvoxOk = flushPendingCvoxReparse();
+    const filesOk = flushPendingFileReparse();
+    return cvoxOk && filesOk;
+  }, [flushPendingCvoxReparse, flushPendingFileReparse]);
+
+  const flushAllReparse = useCallback((): boolean => {
+    const geomOk = flushGeometryReparse();
+    const manifestOk = flushPendingManifestReparse();
+    return geomOk && manifestOk;
+  }, [flushGeometryReparse, flushPendingManifestReparse]);
 
   // ── Palette editing (Phase F). The panel edits the EFFECTIVE palette
   // (§6.10): a manifest binding routes writes to palette.json, else to
@@ -609,8 +767,7 @@ export function App() {
   // primary only (other files resolve against their own palettes).
   const handleDeletePaletteColor = useCallback(
     (index: number) => {
-      cancelPendingCvoxReparse();
-      setCvoxParseError(null);
+      if (!flushGeometryReparse()) return;
       dispatchEdit(null, (current) => {
         const src = current?.source;
         if (src === undefined) return current;
@@ -698,7 +855,7 @@ export function App() {
   // (Externalize / Inline do that). One undo.
   const handleChangePaletteBinding = useCallback(
     (path: string | null) => {
-      cancelPendingManifestReparse();
+      if (!flushPendingManifestReparse()) return;
       dispatchEdit(null, (current) => {
         const src = current?.source;
         if (
@@ -768,9 +925,7 @@ export function App() {
   // (§6.10) — the inline declaration is dropped (the binding would
   // shadow it anyway, H03). One undo.
   const handleExternalizePalette = useCallback(() => {
-    cancelPendingCvoxReparse();
-    cancelPendingManifestReparse();
-    setCvoxParseError(null);
+    if (!flushAllReparse()) return;
     dispatchEdit(null, (current) => {
       const src = current?.source;
       if (
@@ -821,9 +976,7 @@ export function App() {
   // declaration and drop the binding. The palette.json file is kept
   // (it may be shared) — delete it from the Files tree if orphaned.
   const handleInlinePalette = useCallback(() => {
-    cancelPendingCvoxReparse();
-    cancelPendingManifestReparse();
-    setCvoxParseError(null);
+    if (!flushAllReparse()) return;
     dispatchEdit(null, (current) => {
       const src = current?.source;
       if (
@@ -1010,6 +1163,10 @@ export function App() {
     (oldPath: string, newPath: string) => {
       const from = normalizePath(oldPath);
       const to = normalizePath(newPath);
+      // Land any pending reparses first: the rename re-keys the file's
+      // AST/geometry entry, and a timer firing later (keyed to the OLD
+      // path) would no-op, leaving a stale AST under the new name.
+      flushPendingFileReparse();
       dispatchEdit(null, (current) => {
         const src = current?.source;
         if (
@@ -1139,12 +1296,19 @@ export function App() {
         return next;
       });
     },
-    [dispatchEdit],
+    [dispatchEdit, flushPendingFileReparse],
   );
 
   const handleDeleteFile = useCallback(
     (path: string) => {
       const p = normalizePath(path);
+      // A pending reparse for the deleted path must not fire afterwards
+      // (its error/amend would resurrect state for a gone file).
+      const t = fileReparseTimers.current.get(p);
+      if (t !== undefined) {
+        window.clearTimeout(t);
+        fileReparseTimers.current.delete(p);
+      }
       dispatchEdit(null, (current) => {
         const src = current?.source;
         if (
@@ -1263,8 +1427,7 @@ export function App() {
   // is cleared too).
   const handleEditCvox = useCallback(
     (nextCvox: Cvox, tag?: string) => {
-      cancelPendingCvoxReparse();
-      setCvoxParseError(null);
+      if (!flushGeometryReparse()) return;
       // Optional coalescing tag from the caller (the color picker fires
       // continuously while dragging inside the OS dialog).
       dispatchEdit(tag ?? null, (current) => {
@@ -1312,9 +1475,7 @@ export function App() {
   // but a race could sneak a dup in). Then selects the new part.
   const handleConfirmCreatePart = useCallback(
     (name: string, parent: string | null, file?: string) => {
-      cancelPendingCvoxReparse();
-      cancelPendingManifestReparse();
-      setCvoxParseError(null);
+      if (!flushAllReparse()) return;
       dispatchEdit(null, (current) => {
         if (current?.source === undefined) return current;
         const src = current.source;
@@ -1384,8 +1545,7 @@ export function App() {
   // moves verbatim.
   const handleMovePart = useCallback(
     (name: string, targetPath: string) => {
-      cancelPendingCvoxReparse();
-      setCvoxParseError(null);
+      if (!flushGeometryReparse()) return;
       dispatchEdit(null, (current) => {
         const src = current?.source;
         if (
@@ -1442,9 +1602,7 @@ export function App() {
   const handleRenamePart = useCallback(
     (oldName: string, newName: string) => {
       if (oldName === newName || !isIdentifier(newName)) return;
-      cancelPendingCvoxReparse();
-      cancelPendingManifestReparse();
-      setCvoxParseError(null);
+      if (!flushAllReparse()) return;
       dispatchEdit(null, (current) => {
         if (current?.source === undefined) return current;
         const src = current.source;
@@ -1542,9 +1700,7 @@ export function App() {
   // clip delete).
   const handleDeletePart = useCallback(
     (name: string) => {
-      cancelPendingCvoxReparse();
-      cancelPendingManifestReparse();
-      setCvoxParseError(null);
+      if (!flushAllReparse()) return;
       dispatchEdit(null, (current) => {
         if (current?.source === undefined) return current;
         const src = current.source;
@@ -1642,73 +1798,13 @@ export function App() {
       cancelPendingManifestReparse();
       reparseManifestTimer.current = window.setTimeout(() => {
         reparseManifestTimer.current = null;
-        let json: unknown;
-        try {
-          json = JSON.parse(nextText);
-        } catch (e) {
-          setManifestParseError(`JSON parse: ${(e as Error).message}`);
-          return;
-        }
-        const result = parseManifest(json);
-        if (result.ok) {
-          setManifestParseError(null);
-          dispatch({
-            type: 'amend',
-            apply: (current) => {
-              if (current?.source?.kind !== 'folder') return current;
-              const src = current.source;
-              // Re-run reference resolution so the derived maps
-              // (geometry ASTs, bound palette, external animations,
-              // project errors) track the edited manifest — otherwise a
-              // direct cuboidy.json edit leaves them stale (e.g. a
-              // renamed clip key still resolving to the old file).
-              const refs = resolveProjectRefs(
-                result.value,
-                (p) => src.files?.get(p)?.text,
-                { path: src.cvoxFile.name, cvox: src.cvox },
-              );
-              // Destructure away the maybe-now-absent keys (a successful
-              // reparse also clears any stale load-time manifest error).
-              const {
-                manifestError: _err,
-                externalPalette: _pal,
-                externalAnims: _anims,
-                projectErrors: _proj,
-                reuseErrors: _reuse,
-                ...rest
-              } = src;
-              // A changed geometry list can (un)resolve cross-file reuse
-              // in the primary too — read its refreshed AST back.
-              const primaryNext = refs.geometries.get(src.cvoxFile.name);
-              return {
-                ...current,
-                source: {
-                  ...rest,
-                  manifest: result.value,
-                  geometries: refs.geometries,
-                  ...(primaryNext !== undefined && { cvox: primaryNext }),
-                  ...(refs.externalPalette !== undefined && {
-                    externalPalette: refs.externalPalette,
-                  }),
-                  ...(refs.externalAnims !== undefined && {
-                    externalAnims: refs.externalAnims,
-                  }),
-                  ...(refs.projectErrors.length > 0 && {
-                    projectErrors: refs.projectErrors,
-                  }),
-                  ...(refs.reuseErrors.length > 0 && {
-                    reuseErrors: refs.reuseErrors,
-                  }),
-                },
-              };
-            },
-          });
-        } else {
-          setManifestParseError(result.message);
-        }
+        // Re-runs reference resolution on success so the derived maps
+        // (geometry ASTs, bound palette, external animations, project
+        // errors) track the edited manifest.
+        landManifestReparse(nextText);
       }, REPARSE_DEBOUNCE_MS);
     },
-    [dispatchEdit, cancelPendingManifestReparse],
+    [dispatchEdit, cancelPendingManifestReparse, landManifestReparse],
   );
 
   // Single-part edits coming from PartTree (D&D parent change) and
@@ -1726,6 +1822,7 @@ export function App() {
       partName: string,
       build: (entry: ManifestPart) => ManifestPart,
     ) => {
+      if (!flushPendingManifestReparse()) return;
       dispatchEdit(tag, (current) => {
         if (current?.source?.kind !== 'folder') return current;
         const src = current.source;
@@ -1748,10 +1845,9 @@ export function App() {
           },
         };
       });
-      cancelPendingManifestReparse();
       setManifestParseError(null);
     },
-    [dispatchEdit, cancelPendingManifestReparse],
+    [dispatchEdit, flushPendingManifestReparse],
   );
 
   const handleChangePartParent = useCallback(
@@ -1783,8 +1879,7 @@ export function App() {
   );
 
   const handleCreateManifest = useCallback(() => {
-    cancelPendingManifestReparse();
-    setManifestParseError(null);
+    if (!flushAllReparse()) return;
     dispatchEdit(null, (current) => {
       if (current?.source === undefined) return current;
       const src = current.source;
@@ -1815,7 +1910,7 @@ export function App() {
     // safe even if the edit no-opped.
     setViewMode('rig');
     setLayout((l) => openPanelById(l, 'preview'));
-  }, [dispatchEdit, cancelPendingManifestReparse]);
+  }, [dispatchEdit, flushAllReparse]);
 
   // ─── Animation (keyframe editor) edits ──────────────────────────────
   //
@@ -1831,6 +1926,7 @@ export function App() {
       animName: string,
       build: (anim: InlineAnimation) => InlineAnimation,
     ) => {
+      if (!flushPendingManifestReparse()) return;
       dispatchEdit(tag, (current) => {
         if (current?.source?.kind !== 'folder') return current;
         const src = current.source;
@@ -1877,10 +1973,9 @@ export function App() {
           },
         };
       });
-      cancelPendingManifestReparse();
       setManifestParseError(null);
     },
-    [dispatchEdit, cancelPendingManifestReparse],
+    [dispatchEdit, flushPendingManifestReparse],
   );
 
   // Overwrite an existing key's attribute value. Vec3 fields commit per
@@ -2033,8 +2128,7 @@ export function App() {
   // the anim view. Can't go through mutateManifestAnimation since the entry
   // doesn't exist yet.
   const handleCreateAnimationClip = useCallback(() => {
-    cancelPendingManifestReparse();
-    setManifestParseError(null);
+    if (!flushPendingManifestReparse()) return;
     dispatchEdit(null, (current) => {
       if (current?.source?.kind !== 'folder') return current;
       const src = current.source;
@@ -2063,7 +2157,7 @@ export function App() {
     // Outside the apply closure for reducer purity (see handleCreateManifest).
     setViewMode('anim');
     setLayout((l) => openPanelById(l, 'preview'));
-  }, [dispatchEdit, cancelPendingManifestReparse]);
+  }, [dispatchEdit, flushPendingManifestReparse]);
 
   // Rename a clip, preserving its position in the animations map (rebuild
   // entries in insertion order, swapping the key) so the JSON diff is one
@@ -2073,6 +2167,7 @@ export function App() {
   const handleRenameClip = useCallback(
     (oldName: string, newName: string) => {
       if (oldName === newName || !isIdentifier(newName)) return;
+      if (!flushPendingManifestReparse()) return;
       dispatchEdit(null, (current) => {
         if (current?.source?.kind !== 'folder') return current;
         const src = current.source;
@@ -2109,10 +2204,9 @@ export function App() {
           },
         };
       });
-      cancelPendingManifestReparse();
       setManifestParseError(null);
     },
-    [dispatchEdit, cancelPendingManifestReparse],
+    [dispatchEdit, flushPendingManifestReparse],
   );
 
   // Delete a clip. No confirmation — undo is the safety net. Deleting the
@@ -2120,6 +2214,7 @@ export function App() {
   // animations; cleaner authored JSON).
   const handleDeleteClip = useCallback(
     (name: string) => {
+      if (!flushPendingManifestReparse()) return;
       dispatchEdit(null, (current) => {
         if (current?.source?.kind !== 'folder') return current;
         const src = current.source;
@@ -2157,10 +2252,9 @@ export function App() {
           },
         };
       });
-      cancelPendingManifestReparse();
       setManifestParseError(null);
     },
-    [dispatchEdit, cancelPendingManifestReparse],
+    [dispatchEdit, flushPendingManifestReparse],
   );
 
   // Move an inline clip out to its own file (§6.3): write
@@ -2168,6 +2262,7 @@ export function App() {
   // value to the reference path. One dispatchEdit = one undo.
   const handleExternalizeClip = useCallback(
     (name: string) => {
+      if (!flushPendingManifestReparse()) return;
       dispatchEdit(null, (current) => {
         if (current?.source?.kind !== 'folder') return current;
         const src = current.source;
@@ -2203,10 +2298,9 @@ export function App() {
           },
         };
       });
-      cancelPendingManifestReparse();
       setManifestParseError(null);
     },
-    [dispatchEdit, cancelPendingManifestReparse],
+    [dispatchEdit, flushPendingManifestReparse],
   );
 
   // The reverse: copy an external clip's object back into the manifest.
@@ -2214,6 +2308,7 @@ export function App() {
   // unreferenced; delete it from the Files tree if it's orphaned.
   const handleInlineClip = useCallback(
     (name: string) => {
+      if (!flushPendingManifestReparse()) return;
       dispatchEdit(null, (current) => {
         if (current?.source?.kind !== 'folder') return current;
         const src = current.source;
@@ -2240,10 +2335,9 @@ export function App() {
           },
         };
       });
-      cancelPendingManifestReparse();
       setManifestParseError(null);
     },
-    [dispatchEdit, cancelPendingManifestReparse],
+    [dispatchEdit, flushPendingManifestReparse],
   );
 
   // Remove a part's whole track from a clip (the timeline's per-part ×).
@@ -2294,6 +2388,29 @@ export function App() {
     } else {
       setManifestParseError(null);
     }
+    // Per-file (non-primary) parse errors need the same re-derivation:
+    // the restored snapshot can predate or postdate the text a live
+    // error was computed from. Mirrors the per-file typing pipeline —
+    // .cvox parses, .json checks JSON well-formedness.
+    setFileParseErrors(() => {
+      const next = new Map<string, string>();
+      if (src.kind !== 'folder' || src.files === undefined) return next;
+      for (const [path, entry] of src.files) {
+        if (path === src.cvoxFile.name) continue; // covered by cvoxParseError
+        if (path === src.manifestFile?.name) continue;
+        if (path.endsWith('.cvox')) {
+          const r = parseCvox(entry.text, { deferUnresolvedReuse: true });
+          if (!r.ok) next.set(path, r.message);
+        } else if (path.endsWith('.json')) {
+          try {
+            JSON.parse(entry.text);
+          } catch (e) {
+            next.set(path, `JSON parse: ${(e as Error).message}`);
+          }
+        }
+      }
+      return next;
+    });
   }, []);
 
   // React flushes discrete events synchronously, so consecutive Ctrl+Z
@@ -2301,8 +2418,13 @@ export function App() {
   const performUndo = useCallback(() => {
     if (history.past.length === 0) return;
     const target = history.past[history.past.length - 1]!;
+    // Discard (don't flush) every pending reparse — their closures hold
+    // pre-undo text; firing after the restore would graft a post-edit
+    // AST onto the restored text (audit A-6). revalidateRestored
+    // re-derives the error gates from the restored text synchronously.
     cancelPendingCvoxReparse();
     cancelPendingManifestReparse();
+    cancelAllFileReparse();
     dispatch({ type: 'undo' });
     revalidateRestored(target);
   }, [
@@ -2317,6 +2439,7 @@ export function App() {
     const target = history.future[0]!;
     cancelPendingCvoxReparse();
     cancelPendingManifestReparse();
+    cancelAllFileReparse();
     dispatch({ type: 'redo' });
     revalidateRestored(target);
   }, [
