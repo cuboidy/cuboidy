@@ -72,6 +72,137 @@ describe('cuboidy.schema.json — validation parity with parseManifest', () => {
   });
 });
 
+describe('cuboidy.schema.json — parity corpus (runtime-invalid inputs)', () => {
+  // The audit-2026-07-10 A-4 cases: inputs parseManifest rejects that the
+  // schema previously accepted. Both validators must now agree.
+  function expectBothReject(name: string, manifest: unknown) {
+    const ajvOk = validate(manifest);
+    const zodOk = parseManifest(manifest).ok;
+    expect(zodOk, `${name}: zod should reject`).toBe(false);
+    expect(ajvOk, `${name}: ajv should reject (parity)`).toBe(false);
+  }
+
+  const base = { name: 'm', parts: [{ name: 'body' }] };
+
+  it('rejects wrong-arity position tuples', () => {
+    expectBothReject('empty position', {
+      ...base,
+      parts: [{ name: 'body', position: [] }],
+    });
+    expectBothReject('2-elem position', {
+      ...base,
+      parts: [{ name: 'body', position: [1, 2] }],
+    });
+    expectBothReject('4-elem position', {
+      ...base,
+      parts: [{ name: 'body', position: [1, 2, 3, 4] }],
+    });
+  });
+
+  it('rejects wrong-arity keyframe tuples', () => {
+    expectBothReject('2-elem rot', {
+      ...base,
+      animations: {
+        walk: {
+          duration: 1,
+          loop: true,
+          parts: { body: { '0.0': { rot: [1, 2] } } },
+        },
+      },
+    });
+  });
+
+  it('rejects duplicate geometry entries', () => {
+    expectBothReject('dup geometry', {
+      ...base,
+      geometry: ['voxels.cvox', 'voxels.cvox'],
+    });
+  });
+
+  it('rejects §8-violating geometry refs', () => {
+    for (const bad of [
+      '/absolute.cvox',
+      'a\\b.cvox',
+      'x.txt',
+      'a//b.cvox',
+      'http://x/a.cvox',
+      '.cvox',
+    ]) {
+      expectBothReject(`geometry ${bad}`, { ...base, geometry: [bad] });
+    }
+  });
+
+  it('rejects §8-violating palette and animation refs', () => {
+    expectBothReject('palette x.txt', { ...base, palette: 'x.txt' });
+    expectBothReject('palette /abs.json', { ...base, palette: '/abs.json' });
+    expectBothReject('anim /abs.json', {
+      ...base,
+      animations: { walk: '/abs.json' },
+    });
+    expectBothReject('anim walk.txt', {
+      ...base,
+      animations: { walk: 'walk.txt' },
+    });
+  });
+
+  it('accepts robo-mini (geometry list + palette + valid refs)', async () => {
+    const json = await readFixtureJson('models/robo-mini/cuboidy.json');
+    expect(parseManifest(json).ok).toBe(true);
+    expect(validate(json)).toBe(true);
+  });
+});
+
+describe('cuboidy.schema.json — documented runtime-only rules', () => {
+  // These SPEC §11.5 rules are Zod superRefines that JSON Schema cannot
+  // express; the schema description names them. This test pins the gap
+  // intentionally — if the schema ever starts rejecting one, update the
+  // description and move the case into the parity corpus above.
+  function expectSchemaOnlyAccepts(name: string, manifest: unknown) {
+    expect(validate(manifest), `${name}: ajv accepts (documented gap)`).toBe(true);
+    expect(parseManifest(manifest).ok, `${name}: zod rejects`).toBe(false);
+  }
+
+  it('duplicate part names', () => {
+    expectSchemaOnlyAccepts('dup part', {
+      name: 'm',
+      parts: [{ name: 'body' }, { name: 'body' }],
+    });
+  });
+
+  it('dangling parent / parent cycle', () => {
+    expectSchemaOnlyAccepts('dangling parent', {
+      name: 'm',
+      parts: [{ name: 'body', parent: 'ghost' }],
+    });
+    expectSchemaOnlyAccepts('cycle', {
+      name: 'm',
+      parts: [
+        { name: 'a', parent: 'b' },
+        { name: 'b', parent: 'a' },
+      ],
+    });
+  });
+
+  it('animation semantic rules', () => {
+    expectSchemaOnlyAccepts('non-positive duration', {
+      name: 'm',
+      parts: [{ name: 'body' }],
+      animations: { walk: { duration: 0, loop: true, parts: {} } },
+    });
+    expectSchemaOnlyAccepts('track not starting at 0.0', {
+      name: 'm',
+      parts: [{ name: 'body' }],
+      animations: {
+        walk: {
+          duration: 1,
+          loop: true,
+          parts: { body: { '0.5': { rot: [0, 0, 0] } } },
+        },
+      },
+    });
+  });
+});
+
 describe('cuboidy.schema.json — reserved-keyword rejection', () => {
   it.each(RESERVED_KEYWORDS)(
     'rejects manifest with name="%s" (matches Zod refine behavior)',

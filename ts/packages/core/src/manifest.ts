@@ -27,6 +27,9 @@ export const ManifestSchema = z
       .refine((a) => new Set(a).size === a.length, {
         message: 'duplicate geometry entry',
       })
+      // The refine is runtime-only; `.meta()` carries the equivalent
+      // constraint into the generated JSON Schema.
+      .meta({ uniqueItems: true })
       .optional(),
     // SPEC §6.10 (v0.7): external palette binding. When present it applies
     // to every geometry file and takes precedence over inline palettes.

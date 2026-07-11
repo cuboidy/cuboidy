@@ -36,9 +36,34 @@ function injectReservedRejection(node: unknown): unknown {
   return result;
 }
 
+// Zod emits tuples (Vec3 positions, keyframe rot/pos/scale) as
+// `prefixItems` WITHOUT length bounds, so a JSON Schema validator would
+// accept [1,2] or [1,2,3,4] that parseManifest rejects. Pin every tuple
+// to exactly its prefix length.
+function constrainTuples(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(constrainTuples);
+  if (node === null || typeof node !== 'object') return node;
+  const result: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(node)) {
+    result[k] = constrainTuples(v);
+  }
+  if (
+    result.type === 'array' &&
+    Array.isArray(result.prefixItems) &&
+    result.minItems === undefined &&
+    result.maxItems === undefined
+  ) {
+    result.minItems = result.prefixItems.length;
+    result.maxItems = result.prefixItems.length;
+  }
+  return result;
+}
+
 export function buildManifestJsonSchema(): Record<string, unknown> {
   const baseSchema = z.toJSONSchema(ManifestSchema, { target: 'draft-2020-12' });
-  const constrained = injectReservedRejection(baseSchema) as Record<string, unknown>;
+  const constrained = constrainTuples(
+    injectReservedRejection(baseSchema),
+  ) as Record<string, unknown>;
   // Merge metadata on top of Zod's output. $id is cuboidy.com (owned
   // domain, future-proof); until cuboidy.com hosts the file, consumers
   // can still reference it from the GitHub raw URL.
@@ -47,7 +72,7 @@ export function buildManifestJsonSchema(): Record<string, unknown> {
     $id: 'https://cuboidy.com/schema/cuboidy.schema.json',
     title: 'Cuboidy Manifest',
     description:
-      'Schema for cuboidy.json — the manifest file of a Cuboidy v0.8 model package (geometry list, palette binding, rig hierarchy + animation references). Generated from the Zod ManifestSchema in @cuboidy/core. Note: SPEC §8 reference-path rules on geometry/palette entries are runtime-only (Zod refinements) and appear here as plain strings.',
+      'Schema for cuboidy.json — the manifest file of a Cuboidy v0.8 model package (geometry list, palette binding, rig hierarchy + animation references). Generated from the Zod ManifestSchema in @cuboidy/core. SPEC §8 reference paths, tuple arity and geometry uniqueness are encoded; the remaining runtime-only rules (SPEC §11.5: duplicate part names, parent existence/cycles, animation duration/time-key semantics) need parseManifest or an equivalent validator.',
     ...constrained,
   };
 }
