@@ -98,14 +98,16 @@ export async function loadAndAssemble(dir: string): Promise<LoadResult | LoadErr
   }
   const manifest = mR.value;
 
-  // Read every referenced file (§6.9 geometry list + §6.10 palette). An
-  // unreadable reference is a setup failure (exit 2) — same policy the
-  // fixed voxels.cvox had before the manifest could name other files.
+  // Read every referenced file (§6.9 geometry list, §6.10 palette, §6.3
+  // external animations). An unreadable reference is a setup failure
+  // (exit 2) — same policy the fixed voxels.cvox had before the manifest
+  // could name other files.
   const paths = projectFilePaths(manifest);
-  const refs =
-    paths.palette !== undefined
-      ? [...paths.geometry, paths.palette]
-      : paths.geometry;
+  const refs = [
+    ...paths.geometry,
+    ...(paths.palette !== undefined ? [paths.palette] : []),
+    ...paths.animations,
+  ];
   const files = new Map<string, string>();
   for (const ref of refs) {
     const text = await tryReadText(join(root, ref));

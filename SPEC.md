@@ -921,10 +921,10 @@ Manifest errors use the same five structural codes (§11.2). The TS reference im
 | `missing` | Top-level `name` is absent; top-level `parts` is absent or empty; palette file's `colors` is absent (§6.10) |
 | `duplicate` | Duplicate part name; duplicate animation name (planned) |
 | `unknown` | A field other than `name` / `version` / `geometry` / `palette` / `parts` / `animations` is present at the top level; a field other than `name` / `parent` / `position` is present inside a part; a field other than `colors` in a palette file |
-| `invalid-value` | Wrong type for a field (e.g. `name` is a number); identifier failing the §5 regex; a `geometry` / `palette` reference path violating §8 (wrong extension, backslash, absolute, URL/URI, empty segment); duplicate or empty `geometry` list; malformed color string in a palette file; `parent` references a non-existent part (planned); parent chain contains a cycle (planned); animation reference path malformed (planned); animation `duration` less than the largest time key (planned); time keys not strictly increasing or not starting at `"0.0"` (planned) |
+| `invalid-value` | Wrong type for a field (e.g. `name` is a number); identifier failing the §5 regex; a `geometry` / `palette` / animation reference path violating §8 (wrong extension, backslash, absolute, URL/URI, empty segment); duplicate or empty `geometry` list; malformed color string in a palette file; `parent` references a non-existent part; parent chain contains a cycle; animation `duration` non-positive, non-finite, or less than the largest time key; time keys not decimal-number strings, not strictly increasing, or not starting at `"0.0"` |
 | `wrong-arity` | Palette file's `colors` is empty or exceeds 62 entries (§6.10) |
 
-Items marked "planned" are not yet implemented in the TS reference; the catch-all `invalid-value` may surface generic Zod messages for those cases until then.
+Items marked "planned" are not yet implemented in the TS reference; the catch-all `invalid-value` may surface generic Zod messages for those cases until then. External animation files (§6.3 string refs) are validated with the same inline-animation rules when the project is resolved (lint, inspection CLIs, editor); a missing or invalid referenced file is an error there.
 
 ### 11.6 Cross-file rules
 
@@ -940,7 +940,7 @@ Cross-file validation operates on the **project**: the manifest plus its referen
 | `invalid-value` | warning | **[W06]** an `<x>-l` / `<x>-r` manifest part pair (same parent) whose positions are not X-symmetric (`pos_l.x = −pos_r.x`, y/z equal). A cvox `mirror` (§7.5.1) reflects voxels but not the manifest position, so the hand-written mirror position is where bilateral rigs drift asymmetric |
 | `invalid-value` | warning | **[W07]** a `.cvox` file exists in the package but is not referenced by the manifest `geometry` list (usually a forgotten entry — §6.9) |
 | `invalid-value` | hint | **[H03]** a geometry file's inline palette is shadowed by the manifest `palette` binding (§6.10) |
-| `unknown` | warning | Animation targets a part not present in `cuboidy.json` `parts` (cross-rig sharing; planned) |
+| `unknown` | warning | Animation targets a part not present in `cuboidy.json` `parts` (cross-rig sharing, §6.8) |
 | `unknown` | runtime error | Attempt to attach to a socket name not declared on the host part (planned) |
 
 ### 11.7 Diagnostic format

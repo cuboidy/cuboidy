@@ -1,34 +1,10 @@
 import { z } from 'zod';
 import { AnimationsSchema } from './animation.js';
 import { Identifier } from './identifier-schema.js';
+import { refPath } from './ref-path.js';
 import { err, ok, type CuboidyErrorCode, type Result } from './result.js';
 
 const Vec3 = z.tuple([z.number(), z.number(), z.number()]);
-
-// SPEC §8 reference path, parameterized by the required extension
-// (`.cvox` for geometry entries, `.json` for the palette binding and
-// animation references). Syntax-only: whether the target exists — and
-// whether a `../` path is loadable at all — is the consuming tool's
-// concern.
-function refPath(ext: string) {
-  return z
-    .string()
-    .refine((s) => s.endsWith(ext) && s.length > ext.length, {
-      message: `must be a relative path ending in ${ext}`,
-    })
-    .refine((s) => !s.includes('\\'), {
-      message: 'must use forward slashes',
-    })
-    .refine((s) => !s.startsWith('/'), {
-      message: 'absolute paths are forbidden',
-    })
-    .refine((s) => !s.includes(':'), {
-      message: 'URLs and namespace:key URIs are forbidden',
-    })
-    .refine((s) => !s.split('/').includes(''), {
-      message: 'empty path segment',
-    });
-}
 
 export const ManifestPartSchema = z
   .object({
@@ -58,7 +34,56 @@ export const ManifestSchema = z
     parts: z.array(ManifestPartSchema).min(1),
     animations: AnimationsSchema.optional(),
   })
-  .strict();
+  .strict()
+  // SPEC §11.5 hierarchy rules: duplicate part names, parents that name
+  // no part, and parent cycles are manifest errors. `params.cuboidyCode`
+  // carries the structural code (§11.2) so parseManifest can map custom
+  // issues to `duplicate` where the SPEC calls for it.
+  .superRefine((m, ctx) => {
+    const names = new Set<string>();
+    for (const [i, p] of m.parts.entries()) {
+      if (names.has(p.name)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['parts', i, 'name'],
+          message: `duplicate part name "${p.name}"`,
+          params: { cuboidyCode: 'duplicate' },
+        });
+      }
+      names.add(p.name);
+    }
+    for (const [i, p] of m.parts.entries()) {
+      if (p.parent !== undefined && !names.has(p.parent)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['parts', i, 'parent'],
+          message: `parent "${p.parent}" is not a part in this manifest`,
+        });
+      }
+    }
+    // Cycle check: walk each part's parent chain. With duplicate names
+    // the chain is ambiguous, so only run on a clean name set.
+    if (names.size !== m.parts.length) return;
+    const parentOf = new Map(m.parts.map((p) => [p.name, p.parent]));
+    const cleared = new Set<string>();
+    for (const [i, p] of m.parts.entries()) {
+      const seen = new Set<string>();
+      let cur: string | undefined = p.name;
+      while (cur !== undefined && !cleared.has(cur)) {
+        if (seen.has(cur)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['parts', i, 'parent'],
+            message: `parent chain of "${p.name}" contains a cycle`,
+          });
+          return; // one report per manifest is enough
+        }
+        seen.add(cur);
+        cur = parentOf.get(cur);
+      }
+      for (const s of seen) cleared.add(s);
+    }
+  });
 
 // SPEC §6.9: `geometry` with its default applied.
 export function manifestGeometry(m: Manifest): readonly string[] {
@@ -112,6 +137,11 @@ function mapIssueToCode(
   issue: ZodIssueLike,
   isMissing: boolean,
 ): CuboidyErrorCode {
+  // Custom (superRefine) issues carry their structural code explicitly.
+  const custom = (issue as { params?: { cuboidyCode?: CuboidyErrorCode } })
+    .params?.cuboidyCode;
+  if (custom !== undefined) return custom;
+
   // Genuinely missing required top-level field (name or parts).
   if (
     isMissing &&

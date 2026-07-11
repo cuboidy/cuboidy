@@ -89,16 +89,18 @@ export async function runLint(
     }
   }
 
-  // Referenced files (§6.9 geometry list with default, §6.10 palette)
-  // are read here and resolved through the shared project layer — the
-  // same layer view/query/snap and the editor use, so lint agrees with
-  // them about what the model contains. Unreadable files stay OUT of the
-  // map; resolveProject reports them as `missing` diagnostics.
+  // Referenced files (§6.9 geometry list with default, §6.10 palette,
+  // §6.3 external animations) are read here and resolved through the
+  // shared project layer — the same layer view/query/snap and the editor
+  // use, so lint agrees with them about what the model contains.
+  // Unreadable files stay OUT of the map; resolveProject reports them as
+  // `missing` diagnostics.
   const paths = projectFilePaths(manifest);
-  const refs =
-    paths.palette !== undefined
-      ? [...paths.geometry, paths.palette]
-      : paths.geometry;
+  const refs = [
+    ...paths.geometry,
+    ...(paths.palette !== undefined ? [paths.palette] : []),
+    ...paths.animations,
+  ];
   const files = new Map<string, string>();
   for (const ref of refs) {
     const text = await tryReadText(join(root, ref));
@@ -142,6 +144,7 @@ export async function runLint(
       ...(project.externalPalette !== undefined && {
         externalPalette: project.externalPalette,
       }),
+      externalAnims: project.externalAnims,
       packageCvoxPaths: await enumerateCvoxFiles(root),
     })) {
       diagnostics.push({ file: CROSS_FILE_LABEL, diag: d });

@@ -169,3 +169,161 @@ describe('parseManifest — geometry & palette (v0.7)', () => {
     if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 });
+
+describe('parseManifest - hierarchy rules (SPEC ss11.5)', () => {
+  const base = { name: 'm' };
+
+  it('rejects a duplicate part name (duplicate)', () => {
+    const r = parseManifest({
+      ...base,
+      parts: [{ name: 'body' }, { name: 'body' }],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.code).toBe('duplicate');
+      expect(r.message).toMatch(/duplicate part name "body"/);
+    }
+  });
+
+  it('rejects a parent that names no part (invalid-value)', () => {
+    const r = parseManifest({
+      ...base,
+      parts: [{ name: 'body', parent: 'ghost' }],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.code).toBe('invalid-value');
+      expect(r.message).toMatch(/parent "ghost"/);
+    }
+  });
+
+  it('rejects a parent cycle (invalid-value)', () => {
+    const r = parseManifest({
+      ...base,
+      parts: [
+        { name: 'a', parent: 'b' },
+        { name: 'b', parent: 'a' },
+      ],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.code).toBe('invalid-value');
+      expect(r.message).toMatch(/cycle/);
+    }
+  });
+
+  it('accepts a self-rooted valid hierarchy', () => {
+    const r = parseManifest({
+      ...base,
+      parts: [{ name: 'body' }, { name: 'head', parent: 'body' }],
+    });
+    expect(r.ok).toBe(true);
+  });
+});
+
+describe('parseManifest - animation validation (SPEC ss6.4/ss6.6/ss11.5)', () => {
+  const withAnim = (anim: unknown) => ({
+    name: 'm',
+    parts: [{ name: 'body' }],
+    animations: { walk: anim },
+  });
+
+  it('rejects an animation reference path violating ss8', () => {
+    for (const bad of ['/abs.json', 'walk.txt', 'a\\b.json', 'http://x/a.json']) {
+      const r = parseManifest(withAnim(bad));
+      expect(r.ok).toBe(false);
+    }
+  });
+
+  it('accepts a valid relative .json animation reference', () => {
+    const r = parseManifest(withAnim('anims/walk.json'));
+    expect(r.ok).toBe(true);
+  });
+
+  it('rejects a non-positive duration', () => {
+    for (const d of [0, -1]) {
+      const r = parseManifest(
+        withAnim({ duration: d, loop: true, parts: {} }),
+      );
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.message).toMatch(/positive/);
+    }
+  });
+
+  it('rejects a track not starting at "0.0"', () => {
+    const r = parseManifest(
+      withAnim({
+        duration: 1,
+        loop: true,
+        parts: { body: { '0.5': { rot: [0, 0, 0] } } },
+      }),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.message).toMatch(/first time key/);
+  });
+
+  it('rejects non-increasing time keys', () => {
+    const r = parseManifest(
+      withAnim({
+        duration: 1,
+        loop: true,
+        parts: {
+          body: {
+            '0.0': { rot: [0, 0, 0] },
+            '0.5': { rot: [0, 1, 0] },
+            '0.25': { rot: [0, 2, 0] },
+          },
+        },
+      }),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.message).toMatch(/strictly increasing/);
+  });
+
+  it('rejects a time key beyond duration', () => {
+    const r = parseManifest(
+      withAnim({
+        duration: 1,
+        loop: true,
+        parts: {
+          body: { '0.0': { rot: [0, 0, 0] }, '1.5': { rot: [0, 1, 0] } },
+        },
+      }),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.message).toMatch(/exceeds duration/);
+  });
+
+  it('rejects a non-numeric time key', () => {
+    const r = parseManifest(
+      withAnim({
+        duration: 1,
+        loop: true,
+        parts: { body: { fast: { rot: [0, 0, 0] } } },
+      }),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.message).toMatch(/decimal number/);
+  });
+
+  it('still accepts the wolf idle animation shape', () => {
+    const r = parseManifest({
+      name: 'm',
+      parts: [{ name: 'tail' }],
+      animations: {
+        idle: {
+          duration: 2,
+          loop: true,
+          parts: {
+            tail: {
+              '0.0': { rot: [0, 0, 0] },
+              '1.0': { rot: [0, 25, 0] },
+              '2.0': { rot: [0, 0, 0] },
+            },
+          },
+        },
+      },
+    });
+    expect(r.ok).toBe(true);
+  });
+});

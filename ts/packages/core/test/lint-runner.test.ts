@@ -274,6 +274,84 @@ describe('runLint — cross-file clone/mirror (SPEC §6.9)', () => {
   });
 });
 
+describe('runLint — external animations (SPEC §6.3 / §11.5)', () => {
+  const GEO = 'palette #F00\npart body\nsize 1 1 1\nvoxels { 0 }';
+  const manifestWith = (animations: unknown) =>
+    JSON.stringify({ name: 'm', parts: [{ name: 'body' }], animations });
+
+  it('a missing external animation file is an error (exit 1)', async () => {
+    const dir = await makeModel({
+      'voxels.cvox': GEO,
+      'cuboidy.json': manifestWith({ walk: 'anims/missing.json' }),
+    });
+    const r = await runLint(dir);
+    expect(r.exitCode).toBe(1);
+    const diag = r.diagnostics.find((d) => d.diag.code === 'missing');
+    expect(diag?.diag.message).toMatch(/anims\/missing\.json/);
+  });
+
+  it('an unparsable external animation file is an error', async () => {
+    const dir = await makeModel({
+      'voxels.cvox': GEO,
+      'anims/walk.json': '{ broken',
+      'cuboidy.json': manifestWith({ walk: 'anims/walk.json' }),
+    });
+    const r = await runLint(dir);
+    expect(r.exitCode).toBe(1);
+  });
+
+  it('a schema-invalid external animation file is an error', async () => {
+    const dir = await makeModel({
+      'voxels.cvox': GEO,
+      'anims/walk.json': JSON.stringify({
+        duration: 1,
+        loop: true,
+        parts: { body: { '0.5': { rot: [0, 0, 0] } } }, // not starting at 0.0
+      }),
+      'cuboidy.json': manifestWith({ walk: 'anims/walk.json' }),
+    });
+    const r = await runLint(dir);
+    expect(r.exitCode).toBe(1);
+    expect(
+      r.diagnostics.some((d) => d.diag.message.includes('first time key')),
+    ).toBe(true);
+  });
+
+  it('a valid external animation lints clean', async () => {
+    const dir = await makeModel({
+      'voxels.cvox': GEO,
+      'anims/walk.json': JSON.stringify({
+        duration: 1,
+        loop: true,
+        parts: { body: { '0.0': { rot: [0, 0, 0] }, '1.0': { rot: [0, 5, 0] } } },
+      }),
+      'cuboidy.json': manifestWith({ walk: 'anims/walk.json' }),
+    });
+    const r = await runLint(dir);
+    expect(r.diagnostics).toEqual([]);
+    expect(r.exitCode).toBe(0);
+  });
+
+  it('warns when an animation targets a part missing from the manifest', async () => {
+    const dir = await makeModel({
+      'voxels.cvox': GEO,
+      'cuboidy.json': manifestWith({
+        walk: {
+          duration: 1,
+          loop: true,
+          parts: { ghost: { '0.0': { rot: [0, 0, 0] } } },
+        },
+      }),
+    });
+    const r = await runLint(dir);
+    expect(r.exitCode).toBe(0); // warning only
+    const warn = r.diagnostics.find(
+      (d) => d.diag.severity === 'warning' && d.diag.code === 'unknown',
+    );
+    expect(warn?.diag.message).toMatch(/animation 'walk' targets part 'ghost'/);
+  });
+});
+
 describe('formatDiagnostic — SPEC §11.7 format', () => {
   it('uses ruleId in brackets when present', () => {
     const line = formatDiagnostic({

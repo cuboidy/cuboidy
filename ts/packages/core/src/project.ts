@@ -1,4 +1,5 @@
 import type { Diagnostic } from './diagnostic.js';
+import { InlineAnimationSchema, type InlineAnimation } from './animation.js';
 import { parseCvox } from './cvox/parse.js';
 import { reusePart } from './cvox/part.js';
 import type {
@@ -37,6 +38,9 @@ export interface ProjectPaths {
   geometry: string[];
   // Normalized §6.10 palette binding, when the manifest has one.
   palette?: string;
+  // Normalized §6.3 external animation refs (deduped — two clips may
+  // share one file).
+  animations: string[];
 }
 
 // The package-relative files a project references. Callers read these
@@ -49,7 +53,14 @@ export function projectFilePaths(manifest: Manifest | null): ProjectPaths {
     manifest?.palette !== undefined
       ? normalizeRefPath(manifest.palette)
       : undefined;
-  return { geometry, ...(palette !== undefined && { palette }) };
+  const animations = [
+    ...new Set(
+      Object.values(manifest?.animations ?? {})
+        .filter((a): a is string => typeof a === 'string')
+        .map(normalizeRefPath),
+    ),
+  ];
+  return { geometry, ...(palette !== undefined && { palette }), animations };
 }
 
 export interface ResolvedProject {
@@ -64,6 +75,9 @@ export interface ResolvedProject {
   reuseOrigins: ReadonlyMap<string, string>;
   // Parsed §6.10 palette when the manifest binds one and it loaded.
   externalPalette?: Palette;
+  // Resolved §6.3 external animations, keyed by CLIP name (two clips may
+  // reference the same file). Only entries that loaded and validated.
+  externalAnims: Map<string, { path: string; anim: InlineAnimation }>;
   diagnostics: ProjectDiagnostic[];
   // True when every referenced file loaded + parsed and reuse fully
   // resolved. Callers gate downstream validation/assembly on this —
@@ -145,6 +159,59 @@ export function resolveProject(
     }
   }
 
+  // External animations (§6.3 string refs): each names a JSON file
+  // holding ONE inline-animation object, validated with the same schema
+  // (and semantic rules) as inline clips.
+  const externalAnims = new Map<
+    string,
+    { path: string; anim: InlineAnimation }
+  >();
+  for (const [clip, ref] of Object.entries(manifest?.animations ?? {})) {
+    if (typeof ref !== 'string') continue;
+    const path = normalizeRefPath(ref);
+    const text = files.get(path);
+    if (text === undefined) {
+      diagnostics.push({
+        file: path,
+        diag: {
+          code: 'missing',
+          severity: 'error',
+          message: `cannot read ${path} (animation '${clip}')`,
+        },
+      });
+      continue;
+    }
+    let json: unknown;
+    try {
+      json = JSON.parse(text);
+    } catch (e) {
+      diagnostics.push({
+        file: path,
+        diag: {
+          code: 'invalid-value',
+          severity: 'error',
+          message: `JSON parse: ${(e as Error).message}`,
+        },
+      });
+      continue;
+    }
+    const parsedAnim = InlineAnimationSchema.safeParse(json);
+    if (!parsedAnim.success) {
+      const issue = parsedAnim.error.issues[0]!;
+      const at = issue.path.length > 0 ? issue.path.join('.') : '<root>';
+      diagnostics.push({
+        file: path,
+        diag: {
+          code: 'invalid-value',
+          severity: 'error',
+          message: `animation '${clip}': ${at}: ${issue.message}`,
+        },
+      });
+      continue;
+    }
+    externalAnims.set(clip, { path, anim: parsedAnim.data });
+  }
+
   const loadClean = diagnostics.length === 0;
   const reuse = resolveCrossFileReuse(parsed);
   diagnostics.push(...reuse.diagnostics);
@@ -153,6 +220,7 @@ export function resolveProject(
     geometries: reuse.geometries,
     reuseOrigins: reuse.reuseOrigins,
     ...(externalPalette !== undefined && { externalPalette }),
+    externalAnims,
     diagnostics,
     complete: loadClean && reuse.diagnostics.length === 0,
   };

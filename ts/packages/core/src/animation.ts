@@ -13,6 +13,7 @@
 
 import { z } from 'zod';
 import { Identifier } from './identifier-schema.js';
+import { refPath } from './ref-path.js';
 import {
   DEFAULT_EASING,
   EASING_NAMES,
@@ -51,23 +52,81 @@ export const KeyframeSchema = z
   .strict();
 
 // SPEC §6.6: a part's keyframe sequence, keyed by decimal-string time keys
-// ("0.0", "0.5", …). Key ordering / start-at-0 / ≤ duration are SPEC
-// "planned" lint concerns (§11); the sampler tolerates unsorted input.
+// ("0.0", "0.5", …). Key format / ordering / start-at-0 / ≤ duration are
+// validated on the enclosing InlineAnimationSchema (they need `duration`);
+// the sampler still tolerates unsorted input defensively.
 export const AnimationTrackSchema = z.record(z.string(), KeyframeSchema);
 
-// SPEC §6.4: an inline animation object.
+// SPEC §6.4 / §6.6: an inline animation object, including the semantic
+// rules the schema shape alone can't express — duration must be a
+// positive finite number covering every time key, and each track's keys
+// must be decimal-number strings starting at 0 and strictly increasing.
 export const InlineAnimationSchema = z
   .object({
     duration: z.number(),
     loop: z.boolean(),
     parts: z.record(z.string(), AnimationTrackSchema),
   })
-  .strict();
+  .strict()
+  .superRefine((anim, ctx) => {
+    if (!Number.isFinite(anim.duration) || anim.duration <= 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['duration'],
+        message: 'duration must be a positive number of seconds',
+      });
+      return; // the per-key ≤ duration checks would only add noise
+    }
+    for (const [part, track] of Object.entries(anim.parts)) {
+      let prev = -Infinity;
+      let first = true;
+      for (const key of Object.keys(track)) {
+        const t = Number(key);
+        if (key.trim() !== key || key === '' || !Number.isFinite(t)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['parts', part, key],
+            message: `time key "${key}" is not a decimal number string`,
+          });
+          break;
+        }
+        if (first && t !== 0) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['parts', part, key],
+            message: `first time key must be "0.0" (got "${key}")`,
+          });
+          break;
+        }
+        if (!first && t <= prev) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['parts', part, key],
+            message: `time keys must be strictly increasing ("${key}" after ${prev})`,
+          });
+          break;
+        }
+        if (t > anim.duration) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['parts', part, key],
+            message: `time key "${key}" exceeds duration ${anim.duration}`,
+          });
+          break;
+        }
+        first = false;
+        prev = t;
+      }
+    }
+  });
 
 // SPEC §6.3: a value in the animation map is either an inline object or a
-// string path to an external animation JSON file (§8). The editor viewer
-// currently samples inline animations; string refs are carried but skipped.
-export const AnimationSchema = z.union([InlineAnimationSchema, z.string()]);
+// string path to an external animation JSON file — a §8 reference path
+// ending in .json, same rule as the palette binding.
+export const AnimationSchema = z.union([
+  InlineAnimationSchema,
+  refPath('.json'),
+]);
 
 // SPEC §5 / §6.3: animation names obey the identifier rule (regex + no
 // reserved keyword), like model / part names. Keys are validated at parse

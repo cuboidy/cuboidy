@@ -257,19 +257,24 @@ describe('refreshProjectReuse', () => {
 
 describe('projectFilePaths', () => {
   it('applies the voxels.cvox default without a manifest', () => {
-    expect(projectFilePaths(null)).toEqual({ geometry: ['voxels.cvox'] });
+    expect(projectFilePaths(null)).toEqual({
+      geometry: ['voxels.cvox'],
+      animations: [],
+    });
   });
 
-  it('normalizes geometry and palette refs', () => {
+  it('normalizes geometry, palette and animation refs', () => {
     const m = manifest({
       name: 'm',
       geometry: ['./body.cvox', 'gear/./hat.cvox'],
       palette: './palette.json',
       parts: [{ name: 'body' }],
+      animations: { walk: './anims/walk.json' },
     });
     expect(projectFilePaths(m)).toEqual({
       geometry: ['body.cvox', 'gear/hat.cvox'],
       palette: 'palette.json',
+      animations: ['anims/walk.json'],
     });
   });
 });

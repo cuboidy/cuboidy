@@ -1,4 +1,5 @@
 import type { Diagnostic } from '../diagnostic.js';
+import { isInlineAnimation, type InlineAnimation } from '../animation.js';
 import type { Cvox, Palette } from '../cvox/types.js';
 import { AIR } from '../cvox/voxel-row.js';
 import type { Manifest } from '../manifest.js';
@@ -14,6 +15,9 @@ export interface ProjectInput {
   geometries: ReadonlyArray<{ path: string; cvox: Cvox }>;
   // Parsed palette.json when the manifest binds one (§6.10) and it loaded.
   externalPalette?: Palette;
+  // Resolved §6.3 external animations by clip name, when the caller
+  // loaded them. Inline animations come from `manifest` directly.
+  externalAnims?: ReadonlyMap<string, { path: string; anim: InlineAnimation }>;
   // Every .cvox path present in the package (for the W07 unreferenced
   // check). Absent → the check is skipped (caller can't enumerate files).
   packageCvoxPaths?: readonly string[];
@@ -64,6 +68,28 @@ export function validateProject(input: ProjectInput): Diagnostic[] {
   }
 
   checkLrSymmetry(manifest, diags); // W06
+
+  // §6.8 / §11.6: an animation targeting a part that is not in the
+  // manifest is silently skipped at runtime (cross-rig sharing), so lint
+  // makes the skip visible as a warning.
+  const animsToCheck = new Map<string, InlineAnimation>();
+  for (const [clip, anim] of Object.entries(manifest.animations ?? {})) {
+    if (isInlineAnimation(anim)) animsToCheck.set(clip, anim);
+  }
+  for (const [clip, rec] of input.externalAnims ?? []) {
+    animsToCheck.set(clip, rec.anim);
+  }
+  for (const [clip, anim] of animsToCheck) {
+    for (const target of Object.keys(anim.parts)) {
+      if (!manifestParts.has(target)) {
+        diags.push({
+          code: 'unknown',
+          severity: 'warning',
+          message: `animation '${clip}' targets part '${target}', which is not in the manifest (skipped at runtime per §6.8)`,
+        });
+      }
+    }
+  }
 
   // §6.10 palette resolution, per geometry file: the manifest binding wins
   // over an inline palette; a file with neither can't use color indices.
