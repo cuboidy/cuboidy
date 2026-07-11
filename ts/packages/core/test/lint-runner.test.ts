@@ -42,6 +42,95 @@ describe('runLint — fixture parity (exit 0)', () => {
     expect(r.diagnostics).toEqual([]);
     expect(r.exitCode).toBe(0);
   });
+
+  // The audit's D-2 false positives: mirrored pivots make the matching
+  // positions non-sign-opposite, but the GEOMETRY is symmetric — the
+  // recommended `--strict` workflow must pass (W06 is geometric now).
+  it.each(['boy-mini', 'girl-mini'])(
+    '%s passes --strict (W06 checks geometry, not raw positions)',
+    async (model) => {
+      const r = await runLint(resolve(REPO_ROOT, `models/${model}`), {
+        strict: true,
+      });
+      expect(
+        r.diagnostics.filter((d) => d.diag.severity !== 'hint'),
+      ).toEqual([]);
+      expect(r.exitCode).toBe(0);
+    },
+  );
+});
+
+describe('runLint — W06 mirror symmetry (geometric)', () => {
+  const manifest = (positions: Record<string, [number, number, number]>) =>
+    JSON.stringify({
+      name: 'm',
+      parts: [
+        { name: 'body' },
+        { name: 'arm-l', parent: 'body', position: positions['arm-l'] },
+        { name: 'arm-r', parent: 'body', position: positions['arm-r'] },
+      ],
+    });
+  const BODY = 'part body\nsize 1 1 1\npivot 0 0 0\nvoxels { 0 }';
+
+  it('warns when an l/r pair is geometrically asymmetric', async () => {
+    // Same voxels, same pivot, positions NOT mirrored → truly lopsided.
+    const dir = await makeModel({
+      'voxels.cvox': [
+        'palette #F00',
+        BODY,
+        'part arm-l\nsize 2 1 1\npivot 0 0 0\nvoxels { 00 }',
+        'part arm-r\nsize 2 1 1\npivot 0 0 0\nvoxels { 00 }',
+      ].join('\n'),
+      'cuboidy.json': manifest({
+        'arm-l': [-2, 0, 0],
+        'arm-r': [1, 0, 0], // mirrored would be [0, 0, 0] here
+      }),
+    });
+    const r = await runLint(dir, { strict: true });
+    const w06 = r.diagnostics.find((d) => d.diag.ruleId === 'W06');
+    expect(w06?.diag.message).toMatch(/mirror-symmetric/);
+    expect(r.exitCode).toBe(1);
+  });
+
+  it('stays quiet for a symmetric pair whose positions are not sign-opposite', async () => {
+    // The audit's boy-mini/girl-mini shape: 1-wide legs straddling the
+    // parent plane at x = −1 and x = 0. The old positions-only rule
+    // (−1 ≠ −0) flagged this even though the geometry is symmetric.
+    const dir = await makeModel({
+      'voxels.cvox': [
+        'palette #F00',
+        BODY,
+        'part arm-l\nsize 1 2 1\npivot 0 0 0\nvoxels { 0 , 0 }',
+        'part arm-r clone arm-l',
+      ].join('\n'),
+      'cuboidy.json': manifest({
+        'arm-l': [-1, 0, 0],
+        'arm-r': [0, 0, 0],
+      }),
+    });
+    const r = await runLint(dir, { strict: true });
+    expect(r.diagnostics.filter((d) => d.diag.ruleId === 'W06')).toEqual([]);
+  });
+
+  it('warns when positions are sign-opposite but the voxels are not mirrored', async () => {
+    // Asymmetric voxel pattern cloned (not mirrored): the old
+    // positions-only rule was blind to this.
+    const dir = await makeModel({
+      'voxels.cvox': [
+        'palette #F00',
+        BODY,
+        'part arm-l\nsize 2 1 1\npivot 1 0 0\nvoxels { 0. }',
+        'part arm-r clone arm-l',
+      ].join('\n'),
+      'cuboidy.json': manifest({
+        'arm-l': [-2, 0, 0],
+        'arm-r': [2, 0, 0],
+      }),
+    });
+    const r = await runLint(dir, { strict: true });
+    const w06 = r.diagnostics.find((d) => d.diag.ruleId === 'W06');
+    expect(w06).toBeDefined();
+  });
 });
 
 describe('runLint — IO failures', () => {

@@ -1,6 +1,6 @@
 import type { Diagnostic } from '../diagnostic.js';
 import { isInlineAnimation, type InlineAnimation } from '../animation.js';
-import type { Cvox, Palette } from '../cvox/types.js';
+import type { Cvox, Palette, Part } from '../cvox/types.js';
 import { AIR } from '../cvox/voxel-row.js';
 import type { Manifest } from '../manifest.js';
 
@@ -67,7 +67,13 @@ export function validateProject(input: ProjectInput): Diagnostic[] {
     }
   }
 
-  checkLrSymmetry(manifest, diags); // W06
+  const partsByName = new Map<string, Part>();
+  for (const { cvox } of geometries) {
+    for (const part of cvox.parts) {
+      if (!partsByName.has(part.name)) partsByName.set(part.name, part);
+    }
+  }
+  checkLrSymmetry(manifest, partsByName, diags); // W06
 
   // §6.8 / §11.6: an animation targeting a part that is not in the
   // manifest is silently skipped at runtime (cross-rig sharing), so lint
@@ -169,12 +175,19 @@ function maxUsedIndex(cvox: Cvox): number {
   return max;
 }
 
-// W06 — an `<base>-l` / `<base>-r` (or `_l` / `_r`) manifest pair, sharing a
-// parent, whose positions are not X-symmetric (pos_l.x === -pos_r.x and y/z
-// equal). A cvox-side `mirror` reflects voxels but NOT the manifest position,
-// so the hand-written mirror position is exactly where bilateral rigs drift
-// asymmetric (SPEC §7.5.1). Advisory warning.
-function checkLrSymmetry(manifest: Manifest, out: Diagnostic[]): void {
+// W06 — an `<base>-l` / `<base>-r` (or `_l` / `_r`) pair, sharing a
+// parent, whose OCCUPIED VOXELS are not mirror images across the
+// parent's YZ plane. The check is geometric (position + pivot + voxel
+// occupancy in parent space), not positional: a mirrored pivot shifts
+// where the mirrored geometry sits, so hand-matched positions are often
+// legitimately NOT sign-opposite (the audit's boy-mini/girl-mini false
+// positives), while sign-opposite positions with unmirrored voxels ARE
+// asymmetric. Advisory warning.
+function checkLrSymmetry(
+  manifest: Manifest,
+  partsByName: ReadonlyMap<string, Part>,
+  out: Diagnostic[],
+): void {
   const byName = new Map(manifest.parts.map((p) => [p.name, p]));
   for (const p of manifest.parts) {
     const n = p.name;
@@ -185,15 +198,64 @@ function checkLrSymmetry(manifest: Manifest, out: Diagnostic[]): void {
     const r = byName.get(rName);
     if (r === undefined) continue;
     if ((p.parent ?? null) !== (r.parent ?? null)) continue; // different frames
-    const [lx, ly, lz] = p.position ?? [0, 0, 0];
-    const [rx, ry, rz] = r.position ?? [0, 0, 0];
-    if (!(lx === -rx && ly === ry && lz === rz)) {
+    const lPart = partsByName.get(n);
+    const rPart = partsByName.get(rName);
+    // A missing definition is already a cross-file `missing` error.
+    if (lPart === undefined || rPart === undefined) continue;
+    const lCells = parentSpaceCells(lPart, p.position ?? [0, 0, 0]);
+    const rCells = parentSpaceCells(rPart, r.position ?? [0, 0, 0]);
+    if (!mirroredEquals(lCells, rCells)) {
       out.push({
         code: 'invalid-value',
         severity: 'warning',
         ruleId: 'W06',
-        message: `l/r pair '${n}' / '${rName}' positions are not X-symmetric: [${lx}, ${ly}, ${lz}] vs [${rx}, ${ry}, ${rz}]`,
+        message: `l/r pair '${n}' / '${rName}' is not mirror-symmetric across the parent's YZ plane (check positions, pivots and voxel data)`,
       });
     }
   }
+}
+
+// Solid-cell coordinates in PARENT space: manifest position places the
+// pivot, so a cell's origin is position + local − pivot (SPEC §6.2 —
+// translation only; rest rotations don't participate in the bilateral
+// placement rule). Keys are rounded so fractional pivots (0.5 centers)
+// compare exactly.
+function parentSpaceCells(
+  part: Part,
+  position: readonly [number, number, number],
+): Set<string> {
+  const ox = position[0] - part.pivot.pos.x;
+  const oy = position[1] - part.pivot.pos.y;
+  const oz = position[2] - part.pivot.pos.z;
+  const cells = new Set<string>();
+  for (let y = 0; y < part.size.h; y++) {
+    const layer = part.voxels[y]!;
+    for (let z = 0; z < part.size.d; z++) {
+      const row = layer[z]!;
+      for (let x = 0; x < part.size.w; x++) {
+        if (row[x] === AIR) continue;
+        cells.add(cellKey(ox + x, oy + y, oz + z));
+      }
+    }
+  }
+  return cells;
+}
+
+// A cell [x, x+1) mirrored across x = 0 occupies [−x−1, −x) — i.e. the
+// cell whose origin is −x−1. Works for fractional origins too.
+function mirroredEquals(left: Set<string>, right: Set<string>): boolean {
+  if (left.size !== right.size) return false;
+  for (const key of left) {
+    const [x, y, z] = key.split(',').map(Number) as [number, number, number];
+    if (!right.has(cellKey(-x - 1, y, z))) return false;
+  }
+  return true;
+}
+
+function cellKey(x: number, y: number, z: number): string {
+  return `${round6(x)},${round6(y)},${round6(z)}`;
+}
+
+function round6(n: number): number {
+  return Math.round(n * 1e6) / 1e6;
 }

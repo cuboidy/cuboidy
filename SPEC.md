@@ -559,7 +559,7 @@ A reuse-clause may appear **immediately after the part name**, in place of a bod
 - **`clone <ref>`** — reuse `<ref>`'s `size`, `voxels`, `pivot`, and `sockets` **verbatim**.
 - **`mirror <ref> [axis]`** — reuse them **reflected** across the named **local** grid axis. `axis` is `x`, `y`, or `z`; omitted → `x` (the bilateral left/right axis, since +X is the model's right per §4).
 
-A reuse part **MUST NOT** declare a body (`size` / `pivot` / `socket` / `voxels`); its geometry is derived at assembly. The reflection is purely **local** (within the referent's `W×H×D` grid); placement in world space is still the manifest `position`'s job (§6.2). The companion lint **W06** (§11.6) flags an `<x>-l` / `<x>-r` manifest pair whose positions are not X-symmetric.
+A reuse part **MUST NOT** declare a body (`size` / `pivot` / `socket` / `voxels`); its geometry is derived at assembly. The reflection is purely **local** (within the referent's `W×H×D` grid); placement in world space is still the manifest `position`'s job (§6.2). The companion lint **W06** (§11.6) flags an `<x>-l` / `<x>-r` pair whose assembled voxels are not mirror-symmetric across the parent's YZ plane.
 
 This is a **declarative reference** (akin to SVG `<use>` or glTF instancing), **not** a function: there is no chaining, no composition, no expressions, and a closed transform set. Specifically:
 
@@ -937,7 +937,7 @@ Cross-file validation operates on the **project**: the manifest plus its referen
 | `unknown` | warning | A geometry file defines a part not listed in `cuboidy.json` `parts` |
 | `missing` | error | A geometry file's voxels use color indices while **neither** an inline palette **nor** a manifest palette binding exists (§6.10) |
 | `invalid-value` | error | A geometry file references a palette index outside the **bound** palette's range (the binding replaces a possibly-longer inline palette — §7.4) |
-| `invalid-value` | warning | **[W06]** an `<x>-l` / `<x>-r` manifest part pair (same parent) whose positions are not X-symmetric (`pos_l.x = −pos_r.x`, y/z equal). A cvox `mirror` (§7.5.1) reflects voxels but not the manifest position, so the hand-written mirror position is where bilateral rigs drift asymmetric |
+| `invalid-value` | warning | **[W06]** an `<x>-l` / `<x>-r` part pair (same parent) whose occupied voxels are not mirror images across the parent's YZ plane, computed from manifest position + pivot + voxel occupancy. The check is geometric, not positional: a `mirror` (§7.5.1) reflects the pivot too, so the matching hand-written position is often legitimately NOT the sign-opposite |
 | `invalid-value` | warning | **[W07]** a `.cvox` file exists in the package but is not referenced by the manifest `geometry` list (usually a forgotten entry — §6.9) |
 | `invalid-value` | hint | **[H03]** a geometry file's inline palette is shadowed by the manifest `palette` binding (§6.10) |
 | `unknown` | warning | Animation targets a part not present in `cuboidy.json` `parts` (cross-rig sharing, §6.8) |
