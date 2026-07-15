@@ -1265,8 +1265,9 @@ pre {
   padding: 0.25rem 1rem;
 }
 
-/* Hover-revealed per-file delete. A span styled as a button (nested
-   inside the row's real <button>, so it can't be one itself). */
+/* Hover-revealed delete, uniform across file AND folder rows (a span
+   styled as a button — on files it nests inside the row's real <button>,
+   so it can't be one itself). */
 .file-delete {
   width: 16px;
   height: 16px;
@@ -1276,7 +1277,8 @@ pre {
   opacity: 0;
 }
 
-.tree-node.file:hover .file-delete {
+.tree-node.file:hover .file-delete,
+.folder-row:hover .file-delete {
   opacity: 1;
 }
 
@@ -1290,55 +1292,39 @@ pre {
   opacity: 0;
 }
 
-.tree-node.file:hover .file-delete[aria-disabled='true'] {
+.tree-node.file:hover .file-delete[aria-disabled='true'],
+.folder-row:hover .file-delete[aria-disabled='true'] {
   opacity: 0.4;
 }
 
-/* Hover-revealed "add to model" on unreferenced .cvox rows — appends
-   the file to the manifest geometry list so its parts load. */
-.file-add {
-  width: 16px;
-  height: 16px;
-  color: #777;
-  font-size: 0.85rem;
-  opacity: 0;
-}
-
-.tree-node.file:hover .file-add {
-  opacity: 1;
-}
-
-.file-add:hover:not([aria-disabled='true']) {
-  background: #2a4a2a;
-  color: #9d9;
-}
-
-.file-add[aria-disabled='true'] {
-  cursor: not-allowed;
-  opacity: 0;
-}
-
-.tree-node.file:hover .file-add[aria-disabled='true'] {
-  opacity: 0.4;
-}
-
-/* Hover-revealed "new file in this folder" on folder rows. */
-.folder-add {
-  width: 16px;
-  height: 16px;
+/* "load" action on unreferenced .cvox rows — a small text button that
+   adds the file to the manifest geometry list so its parts load. Always
+   shown (it's the call to action paired with the "not loaded" badge);
+   the delete × still reveals on hover to its right. */
+.file-load {
   margin-left: auto;
-  color: #777;
-  font-size: 0.85rem;
-  opacity: 0;
+  padding: 0.05rem 0.35rem;
+  color: #9d9;
+  background: #2a3a2a;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
-.folder-row:hover .folder-add {
-  opacity: 1;
+/* The delete × follows the load button, so it no longer auto-pushes. */
+.file-load + .file-delete {
+  margin-left: 0.3rem;
 }
 
-.folder-add:hover {
-  background: #3a4a6a;
-  color: #cde;
+.file-load:hover:not([aria-disabled='true']) {
+  background: #2a4a2a;
+  color: #cfc;
+}
+
+.file-load[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 /* ─── Parts list ──────────────────────────────────────────────────── */

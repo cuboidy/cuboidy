@@ -22,6 +22,8 @@ interface Props {
   // under it. Double-click a folder row to trigger.
   onRenameFolder: (oldDir: string, newName: string) => void;
   onDeleteFile: (path: string) => void;
+  // Delete a folder and every file under it (one undo).
+  onDeleteFolder: (dir: string) => void;
   // Append an unreferenced .cvox to the manifest geometry list so its
   // parts load (the tree's "not loaded" rows).
   onAddFileToModel: (path: string) => void;
@@ -37,15 +39,16 @@ const CREATABLE_RE = /^[^\\:]+\.(cvox|json|md|txt)$/i;
 // geometry opens the classic cvox panel, cuboidy.json the manifest
 // panel, and any other file a dynamic `file:<path>` editor tab.
 //
-// CRUD: "+ New file" opens an inline draft whose name may contain `/`
-// (folders are implicit); hovering a folder row reveals a "+" that
-// drafts a file inside it. "+ New folder" drafts an empty folder —
-// session-only until a file lands in it (the package model is a file
-// map, so an empty folder has no on-disk representation). Double-click
-// renames a file or folder (its name only — moving between folders is
-// drag-and-drop, below); the hover × deletes. The manifest anchor is
-// never renamable/deletable; the primary geometry is renamable only
-// when a manifest records it, and never deletable.
+// CRUD: the toolbar "+ New file" / "+ New folder" create in the selected
+// folder (a New file name may contain `/`; folders are implicit). A
+// New folder draft is session-only until a file lands in it (the package
+// model is a file map, so an empty folder has no on-disk representation).
+// Double-click renames a file or folder (its name only — moving between
+// folders is drag-and-drop, below); the hover × deletes (a folder ×
+// deletes everything under it). An unreferenced .cvox row carries a
+// "load" button that adds it to the manifest geometry list. The manifest
+// anchor is never renamable/deletable; the primary geometry is renamable
+// only when a manifest records it, and never deletable.
 //
 // Drag-and-drop moves: drag a file onto a folder (or another file, to
 // land in its folder) or drag a whole folder onto another folder /
@@ -61,6 +64,7 @@ export function FileTree({
   onMoveFolder,
   onRenameFolder,
   onDeleteFile,
+  onDeleteFolder,
   onAddFileToModel,
 }: Props) {
   // Directory path ('' = package root) that has an open new-file draft,
@@ -368,6 +372,37 @@ export function FileTree({
     const parent = parentDir(oldPath);
     onRenameFile(oldPath, parent === '' ? name : `${parent}/${name}`);
   };
+  // null = the folder can be deleted; a string = disabled tooltip (it
+  // holds a file that can't be deleted, e.g. the primary geometry). An
+  // empty draft folder holds no files → always deletable.
+  const folderDeleteReason = (dir: string): string | null => {
+    const pinned = filesUnder(dir).find(
+      (p) => rowOps(p).deleteReason !== null,
+    );
+    return pinned === undefined
+      ? null
+      : `Can't delete — contains ${baseName(pinned)}, which can't be deleted`;
+  };
+  const commitDeleteFolder = (dir: string): void => {
+    if (folderDeleteReason(dir) !== null) return;
+    if (filesUnder(dir).length > 0) onDeleteFolder(dir);
+    // Prune the folder + any draft subfolders from the session state.
+    setDraftDirs((prev) => {
+      let nextSet: Set<string> | null = null;
+      for (const d of prev) {
+        if (d !== dir && !d.startsWith(`${dir}/`)) continue;
+        if (nextSet === null) nextSet = new Set(prev);
+        nextSet.delete(d);
+      }
+      return nextSet ?? prev;
+    });
+    // Drop the selection if it pointed into the deleted folder.
+    setSelected((prev) =>
+      prev !== null && (prev.path === dir || prev.path.startsWith(`${dir}/`))
+        ? null
+        : prev,
+    );
+  };
   // Drop-target handlers for a row. `target` drives which row highlights;
   // a drop always resolves to a directory (a file targets its folder).
   const dropHandlers = (target: { kind: 'file' | 'dir'; path: string }) => {
@@ -493,11 +528,6 @@ export function FileTree({
               onCommitRenameFolder={commitRenameFolder}
               onCancelRenameFolder={() => setRenamingDir(null)}
               onSelectFile={(p) => setSelected({ kind: 'file', path: p })}
-              onStartCreateIn={(dir) => {
-                setCreatingFolderIn(null);
-                setSelected({ kind: 'dir', path: dir });
-                setCreatingIn(dir);
-              }}
               onCommitCreate={commitCreateFile}
               onCommitCreateFolder={commitCreateFolder}
               onCancelCreateFolder={() => setCreatingFolderIn(null)}
@@ -505,6 +535,8 @@ export function FileTree({
               onStartRename={setRenamingPath}
               onCommitRename={commitRenameFile}
               onCancelRename={() => setRenamingPath(null)}
+              folderDeleteReason={folderDeleteReason}
+              onDeleteFolderRow={commitDeleteFolder}
               onDeleteFile={onDeleteFile}
               onAddFileToModel={onAddFileToModel}
             />
@@ -642,7 +674,6 @@ interface DirChildrenProps {
   onCommitRenameFolder: (dir: string, name: string) => void;
   onCancelRenameFolder: () => void;
   onSelectFile: (path: string) => void;
-  onStartCreateIn: (dirPath: string) => void;
   onCommitCreate: (dirPath: string, name: string) => void;
   onCancelCreate: () => void;
   onCommitCreateFolder: (dirPath: string, name: string) => void;
@@ -650,6 +681,8 @@ interface DirChildrenProps {
   onStartRename: (path: string) => void;
   onCommitRename: (oldPath: string, name: string) => void;
   onCancelRename: () => void;
+  folderDeleteReason: (dir: string) => string | null;
+  onDeleteFolderRow: (dir: string) => void;
   onDeleteFile: (path: string) => void;
   onAddFileToModel: (path: string) => void;
 }
@@ -700,20 +733,28 @@ function DirChildren(props: DirChildrenProps) {
             >
               <span className="icon">📁</span>
               <span className="name">{name}</span>
-              {props.canEdit && (
-                <span
-                  className="btn-icon folder-add"
-                  role="button"
-                  aria-label={`New file in ${childPath}`}
-                  title={`New file in ${childPath}/`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    props.onStartCreateIn(childPath);
-                  }}
-                >
-                  +
-                </span>
-              )}
+              {props.canEdit &&
+                (() => {
+                  const reason = props.folderDeleteReason(childPath);
+                  return (
+                    <span
+                      className="btn-icon file-delete"
+                      role="button"
+                      aria-disabled={reason !== null}
+                      aria-label={`Delete folder ${childPath}`}
+                      title={
+                        reason ??
+                        `Delete ${childPath}/ and everything in it (undo restores it)`
+                      }
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (reason === null) props.onDeleteFolderRow(childPath);
+                      }}
+                    >
+                      ×
+                    </span>
+                  );
+                })()}
             </div>
             <DirChildren {...props} node={child} dirPath={childPath} />
           </li>
@@ -866,30 +907,22 @@ function FileNode({
         <span className="icon">📄</span>
         <span className="name">{name}</span>
         {isNew === true && <span className="badge">new</span>}
-        {unreferenced === true && (
-          <span
-            className="badge"
-            title="Not in the manifest geometry list — its parts are not loaded into the model"
-          >
-            not loaded
-          </span>
-        )}
         {ops.addReason !== 'hidden' && (
           <span
-            className="btn-icon file-add"
+            className="file-load"
             role="button"
             aria-disabled={ops.addReason !== null}
             aria-label={`Load ${path} into the model`}
             title={
               ops.addReason ??
-              `Add ${path} to the manifest geometry list so its parts load`
+              `Load ${path} into the model (adds it to the manifest geometry list)`
             }
             onClick={(e) => {
               e.stopPropagation();
               if (ops.addReason === null) onAddFileToModel(path);
             }}
           >
-            +
+            load
           </span>
         )}
         {ops.deleteReason !== 'hidden' && (

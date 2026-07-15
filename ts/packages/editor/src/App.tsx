@@ -384,6 +384,100 @@ function moveFolderInSource(
   return next;
 }
 
+// Pure single-file delete over a folder source: drop the file, mark it
+// removed (Save deletes it from disk; undo restores it), and prune every
+// manifest reference to it (geometry list, bound palette + its resolved
+// record, external-anim clips). Returns null if the file is pinned (the
+// anchor or primary geometry) or already gone. Extracted from
+// handleDeleteFile so a folder delete can fold it over the subtree.
+function deleteFileInSource(src: FolderSource, p: string): FolderSource | null {
+  if (src.files === undefined) return null;
+  if (src.manifestFile?.name === p) return null; // the anchor
+  if (src.cvoxFile.name === p) return null; // primary geometry
+  if (!src.files.has(p)) return null;
+  const files = new Map(src.files);
+  files.delete(p);
+  const removedFiles = new Set(src.removedFiles ?? []);
+  removedFiles.add(p);
+  let next: FolderSource = { ...src, files, removedFiles };
+  if (src.geometries?.has(p) === true) {
+    const geometries = new Map(src.geometries);
+    geometries.delete(p);
+    next = { ...next, geometries };
+  }
+  if (src.externalAnims !== undefined) {
+    let anims: Map<string, { path: string; anim: InlineAnimation }> | null =
+      null;
+    for (const [clip, rec] of src.externalAnims) {
+      if (rec.path !== p) continue;
+      if (anims === null) anims = new Map(src.externalAnims);
+      anims.delete(clip);
+    }
+    if (anims !== null) {
+      if (anims.size > 0) {
+        next = { ...next, externalAnims: anims };
+      } else {
+        const { externalAnims: _drop, ...rest } = next;
+        next = rest;
+      }
+    }
+  }
+  if (src.manifest !== undefined) {
+    let m = src.manifest;
+    let changed = false;
+    if (
+      m.geometry !== undefined &&
+      m.geometry.some((g) => normalizePath(g) === p)
+    ) {
+      m = { ...m, geometry: m.geometry.filter((g) => normalizePath(g) !== p) };
+      changed = true;
+    }
+    if (m.palette !== undefined && normalizePath(m.palette) === p) {
+      // Deleting the bound palette drops the binding too — a dangling
+      // reference would just be a guaranteed load error.
+      const { palette: _dropped, ...rest } = m;
+      m = rest;
+      changed = true;
+      const { externalPalette: _x, ...srcRest } = next;
+      next = srcRest;
+    }
+    // Deleting an external animation file removes the clips that
+    // referenced it and their resolved records, in this same step.
+    if (m.animations !== undefined) {
+      const rebuilt: NonNullable<Manifest['animations']> = {};
+      let animChanged = false;
+      for (const [aName, anim] of Object.entries(m.animations)) {
+        if (typeof anim === 'string' && normalizePath(anim) === p) {
+          animChanged = true;
+          continue;
+        }
+        rebuilt[aName] = anim;
+      }
+      if (animChanged) {
+        if (Object.keys(rebuilt).length > 0) {
+          m = { ...m, animations: rebuilt };
+        } else {
+          const { animations: _drop, ...rest } = m;
+          m = rest;
+        }
+        changed = true;
+      }
+    }
+    if (changed) {
+      const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
+      next = {
+        ...next,
+        manifest: m,
+        manifestFile: {
+          ...baseFile,
+          text: JSON.stringify(m, null, 2) + '\n',
+        },
+      };
+    }
+  }
+  return next;
+}
+
 export function App() {
   // The loaded document plus its undo/redo history, in one pure reducer.
   // Every structural mutation goes through `dispatchEdit` (recorded, with
@@ -1417,104 +1511,63 @@ export function App() {
         ) {
           return current;
         }
-        if (src.manifestFile?.name === p) return current; // the anchor
-        if (src.cvoxFile.name === p) return current; // primary geometry
-        if (!src.files.has(p)) return current;
-        const files = new Map(src.files);
-        files.delete(p);
-        const removedFiles = new Set(src.removedFiles ?? []);
-        removedFiles.add(p);
-        let next: typeof src = { ...src, files, removedFiles };
-        if (src.geometries?.has(p) === true) {
-          const geometries = new Map(src.geometries);
-          geometries.delete(p);
-          next = { ...next, geometries };
-        }
-        if (src.externalAnims !== undefined) {
-          let anims: Map<
-            string,
-            { path: string; anim: InlineAnimation }
-          > | null = null;
-          for (const [clip, rec] of src.externalAnims) {
-            if (rec.path !== p) continue;
-            if (anims === null) anims = new Map(src.externalAnims);
-            anims.delete(clip);
-          }
-          if (anims !== null) {
-            if (anims.size > 0) {
-              next = { ...next, externalAnims: anims };
-            } else {
-              const { externalAnims: _drop, ...rest } = next;
-              next = rest;
-            }
-          }
-        }
-        if (src.manifest !== undefined) {
-          let m = src.manifest;
-          let changed = false;
-          if (
-            m.geometry !== undefined &&
-            m.geometry.some((g) => normalizePath(g) === p)
-          ) {
-            m = {
-              ...m,
-              geometry: m.geometry.filter((g) => normalizePath(g) !== p),
-            };
-            changed = true;
-          }
-          if (m.palette !== undefined && normalizePath(m.palette) === p) {
-            // Deleting the bound palette drops the binding too — a
-            // dangling reference would just be a guaranteed load error.
-            const { palette: _dropped, ...rest } = m;
-            m = rest;
-            changed = true;
-            const { externalPalette: _x, ...srcRest } = next;
-            next = srcRest;
-          }
-          // Deleting an external animation file removes the clips that
-          // referenced it (same rationale as the palette binding —
-          // a dangling ref is a guaranteed load error), and their
-          // resolved records, in this same undo step.
-          if (m.animations !== undefined) {
-            const rebuilt: NonNullable<Manifest['animations']> = {};
-            let animChanged = false;
-            for (const [aName, anim] of Object.entries(m.animations)) {
-              if (typeof anim === 'string' && normalizePath(anim) === p) {
-                animChanged = true;
-                continue;
-              }
-              rebuilt[aName] = anim;
-            }
-            if (animChanged) {
-              if (Object.keys(rebuilt).length > 0) {
-                m = { ...m, animations: rebuilt };
-              } else {
-                const { animations: _drop, ...rest } = m;
-                m = rest;
-              }
-              changed = true;
-            }
-          }
-          if (changed) {
-            const baseFile =
-              src.manifestFile ?? { name: 'cuboidy.json', text: '' };
-            next = {
-              ...next,
-              manifest: m,
-              manifestFile: {
-                ...baseFile,
-                text: JSON.stringify(m, null, 2) + '\n',
-              },
-            };
-          }
-        }
-        return { ...current, source: next };
+        const next = deleteFileInSource(src, p);
+        return next === null ? current : { ...current, source: next };
       });
       setFileParseErrors((prev) => {
         if (!prev.has(p)) return prev;
         const next = new Map(prev);
         next.delete(p);
         return next;
+      });
+    },
+    [dispatchEdit],
+  );
+
+  // Delete a whole folder — every file under it, atomically (one undo).
+  // Aborts if the folder holds a pinned file (the primary geometry); the
+  // Files tree only offers the affordance when it doesn't. Draft (empty)
+  // folders have no files here and are pruned in the tree's UI state.
+  const handleDeleteFolder = useCallback(
+    (dir: string) => {
+      const from = normalizePath(dir);
+      const prefix = `${from}/`;
+      // Cancel pending reparses for files about to vanish (a later timer
+      // would resurrect state for a gone file).
+      for (const key of [...fileReparseTimers.current.keys()]) {
+        if (!key.startsWith(prefix)) continue;
+        window.clearTimeout(fileReparseTimers.current.get(key)!);
+        fileReparseTimers.current.delete(key);
+      }
+      dispatchEdit(null, (current) => {
+        const src = current?.source;
+        if (
+          src === undefined ||
+          src.kind !== 'folder' ||
+          src.files === undefined
+        ) {
+          return current;
+        }
+        const targets = [...src.files.keys()]
+          .filter((k) => k.startsWith(prefix))
+          .sort();
+        if (targets.length === 0) return current;
+        let next: FolderSource = src;
+        for (const k of targets) {
+          const stepped = deleteFileInSource(next, k);
+          if (stepped === null) return current; // a pinned file aborts
+          next = stepped;
+        }
+        return { ...current, source: next };
+      });
+      setFileParseErrors((prev) => {
+        let next: Map<string, string> | null = null;
+        for (const key of prev.keys()) {
+          if (!key.startsWith(prefix)) continue;
+          if (next === null) next = new Map(prev);
+          next.delete(key);
+        }
+        return next ?? prev;
       });
     },
     [dispatchEdit],
@@ -3046,6 +3099,7 @@ export function App() {
               onMoveFolder={handleMoveFolder}
               onRenameFolder={handleRenameFolder}
               onDeleteFile={handleDeleteFile}
+              onDeleteFolder={handleDeleteFolder}
               onAddFileToModel={handleAddFileToModel}
             />
           ),
