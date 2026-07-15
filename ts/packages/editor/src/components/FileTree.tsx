@@ -15,6 +15,12 @@ interface Props {
   // files map; the tree hides the affordances otherwise.
   onCreateFile: (path: string) => void;
   onRenameFile: (oldPath: string, newPath: string) => void;
+  // Move a folder (and everything under it) into destDir ('' = root).
+  // Drag-and-drop only; folds the per-file rename atomically (one undo).
+  onMoveFolder: (srcDir: string, destDir: string) => void;
+  // Rename a folder in place (its last segment), re-prefixing every file
+  // under it. Double-click a folder row to trigger.
+  onRenameFolder: (oldDir: string, newName: string) => void;
   onDeleteFile: (path: string) => void;
   // Append an unreferenced .cvox to the manifest geometry list so its
   // parts load (the tree's "not loaded" rows).
@@ -47,6 +53,8 @@ export function FileTree({
   onCreateManifest,
   onCreateFile,
   onRenameFile,
+  onMoveFolder,
+  onRenameFolder,
   onDeleteFile,
   onAddFileToModel,
 }: Props) {
@@ -60,18 +68,29 @@ export function FileTree({
   // (buildFsTree already shows dirs that contain files).
   const [draftDirs, setDraftDirs] = useState<ReadonlySet<string>>(new Set());
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  // Folder path whose name is being edited inline (double-click), or null.
+  const [renamingDir, setRenamingDir] = useState<string | null>(null);
   // The selected NODE (VS Code-style single selection): a folder or a
   // file. Creation targets the selected folder, or a selected file's
   // containing folder.
   const [selected, setSelected] = useState<
     { kind: 'dir' | 'file'; path: string } | null
   >(null);
-  // Drag-and-drop move: the file path currently being dragged, and the
-  // folder path ('' = package root) under the cursor as a drop target.
-  // A drop reuses onRenameFile — a full-path rename IS a move (§8), so
-  // the manifest/extension guards all live in that one handler.
-  const [draggingPath, setDraggingPath] = useState<string | null>(null);
-  const [dropDir, setDropDir] = useState<string | null>(null);
+  // Drag-and-drop move: what's being dragged (a file, or a whole folder)
+  // and the folder path ('' = package root) under the cursor as a drop
+  // target. A file drop reuses onRenameFile and a folder drop
+  // onMoveFolder — a full-path rename IS a move (§8), so the
+  // manifest/extension guards all live in those handlers.
+  const [dragging, setDragging] = useState<
+    { kind: 'file' | 'dir'; path: string } | null
+  >(null);
+  // The row currently under the cursor as a drop target: a folder (drop
+  // INTO it) or a file (drop into the file's containing folder). A drop
+  // always resolves to a directory; the descriptor just drives which row
+  // highlights.
+  const [dropTarget, setDropTarget] = useState<
+    { kind: 'file' | 'dir'; path: string } | null
+  >(null);
 
   const allPaths = useMemo(() => {
     const paths = new Set<string>();
@@ -213,6 +232,18 @@ export function FileTree({
     return true;
   };
 
+  // A folder rename edits only the last path segment (no `/`), lands on a
+  // free sibling path, and — since it re-prefixes every contained file —
+  // requires all of them to be movable (same rule that gates a drag).
+  const validateRenameFolder = (dir: string) => (name: string) => {
+    if (name === baseName(dir)) return true;
+    if (name.includes('/') || !validNewSegments(name)) return false;
+    const parent = parentDir(dir);
+    const newDir = parent === '' ? name : `${parent}/${name}`;
+    if (allPaths.has(newDir) || allDirs.has(newDir)) return false;
+    return filesUnder(dir).every(isMovable);
+  };
+
   const commitCreateFile = (dirPath: string, name: string): void => {
     const path = dirPath === '' ? name : `${dirPath}/${name}`;
     onCreateFile(path);
@@ -243,39 +274,135 @@ export function FileTree({
     const i = p.lastIndexOf('/');
     return i === -1 ? p : p.slice(i + 1);
   };
+  const parentDir = (p: string): string => {
+    const i = p.lastIndexOf('/');
+    return i === -1 ? '' : p.slice(0, i);
+  };
   const moveTarget = (dir: string, path: string): string =>
     dir === '' ? baseName(path) : `${dir}/${baseName(path)}`;
   // A file is draggable when it's renamable — a move IS a rename, so the
   // manifest anchor and a manifest-less primary geometry stay pinned.
   const isMovable = (path: string): boolean =>
     canEdit && rowOps(path).renameReason === null;
-  // Would dropping the dragged file into `dir` ('' = root) be a real
-  // move? No for its own folder (a no-op) or a name clash in the target.
+  const filesUnder = (dir: string): string[] =>
+    [...allPaths].filter((p) => p.startsWith(`${dir}/`));
+  // A folder is draggable when it holds ≥1 file and every one is movable,
+  // so the whole subtree relocation can't be half-rejected downstream.
+  // (Root and empty draft folders hold no files → not draggable.)
+  const isDirMovable = (dir: string): boolean => {
+    const kids = filesUnder(dir);
+    return kids.length > 0 && kids.every(isMovable);
+  };
+  // Would dropping the current drag into `dir` ('' = root) be a real
+  // move? For a file: not its own folder, no name clash. For a folder:
+  // not into itself/a descendant/its own parent, and the destination
+  // folder path must be free (no merge into an existing folder).
   const canDropInto = (dir: string): boolean => {
-    if (draggingPath === null) return false;
-    const to = moveTarget(dir, draggingPath);
-    return to !== draggingPath && !allPaths.has(to);
+    if (dragging === null) return false;
+    if (dragging.kind === 'file') {
+      const to = moveTarget(dir, dragging.path);
+      return to !== dragging.path && !allPaths.has(to);
+    }
+    const src = dragging.path;
+    if (dir === src || dir.startsWith(`${src}/`)) return false;
+    const newDir = moveTarget(dir, src);
+    return newDir !== src && !allDirs.has(newDir) && !allPaths.has(newDir);
   };
   const endDrag = (): void => {
-    setDraggingPath(null);
-    setDropDir(null);
+    setDragging(null);
+    setDropTarget(null);
   };
-  // Shared drag props for a folder drop target (root row + child rows).
-  const folderDropProps = (dir: string) => ({
-    onDragOver: (e: DragEvent) => {
-      if (!canDropInto(dir)) return;
-      e.preventDefault();
+  // Carry session-only draft (empty) folders and the selection along when
+  // a folder relocates from `src` to `newDir` — the App handlers only
+  // touch real files, so this keeps UI-only state in sync.
+  const carryFolderState = (src: string, newDir: string): void => {
+    setDraftDirs((prev) => {
+      let nextSet: Set<string> | null = null;
+      for (const d of prev) {
+        if (d !== src && !d.startsWith(`${src}/`)) continue;
+        if (nextSet === null) nextSet = new Set(prev);
+        nextSet.delete(d);
+        nextSet.add(`${newDir}${d.slice(src.length)}`);
+      }
+      return nextSet ?? prev;
+    });
+    setSelected((prev) => {
+      if (prev === null) return prev;
+      if (prev.path !== src && !prev.path.startsWith(`${src}/`)) return prev;
+      return { kind: prev.kind, path: `${newDir}${prev.path.slice(src.length)}` };
+    });
+  };
+  const commitDrop = (dir: string): void => {
+    if (dragging === null || !canDropInto(dir)) return;
+    if (dragging.kind === 'file') {
+      onRenameFile(dragging.path, moveTarget(dir, dragging.path));
+      return;
+    }
+    const src = dragging.path;
+    onMoveFolder(src, dir);
+    carryFolderState(src, moveTarget(dir, src));
+  };
+  const commitRenameFolder = (dir: string, name: string): void => {
+    setRenamingDir(null);
+    const parent = parentDir(dir);
+    const newDir = parent === '' ? name : `${parent}/${name}`;
+    if (newDir === dir) return;
+    // Draft-only folders have no real files: skip the (no-op) App call
+    // and just re-key the UI state.
+    if (filesUnder(dir).length > 0) onRenameFolder(dir, name);
+    carryFolderState(dir, newDir);
+  };
+  // Drop-target handlers for a row. `target` drives which row highlights;
+  // a drop always resolves to a directory (a file targets its folder).
+  const dropHandlers = (target: { kind: 'file' | 'dir'; path: string }) => {
+    const dir = target.kind === 'dir' ? target.path : parentDir(target.path);
+    return {
+      onDragOver: (e: DragEvent) => {
+        if (!canDropInto(dir)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = 'move';
+        setDropTarget(target);
+      },
+      onDrop: (e: DragEvent) => {
+        if (!canDropInto(dir)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        commitDrop(dir);
+        endDrag();
+      },
+    };
+  };
+  // Props shared by every folder row (root + children): a drop target
+  // always, plus a drag source when the folder is movable.
+  const folderRowProps = (dir: string) => ({
+    draggable: isDirMovable(dir),
+    onDragStart: (e: DragEvent) => {
+      if (!isDirMovable(dir)) return;
       e.stopPropagation();
-      e.dataTransfer.dropEffect = 'move';
-      setDropDir(dir);
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', dir);
+      setDragging({ kind: 'dir', path: dir });
+      setDropTarget(null);
     },
-    onDrop: (e: DragEvent) => {
-      if (draggingPath === null || !canDropInto(dir)) return;
-      e.preventDefault();
+    onDragEnd: endDrag,
+    ...dropHandlers({ kind: 'dir', path: dir }),
+  });
+  // Props for a file row: a drag source AND a drop target (dropping onto
+  // a file moves the dragged item into that file's folder).
+  const fileRowProps = (path: string) => ({
+    draggable: isMovable(path),
+    onDragStart: (e: DragEvent) => {
+      if (!isMovable(path)) return;
       e.stopPropagation();
-      onRenameFile(draggingPath, moveTarget(dir, draggingPath));
-      endDrag();
+      e.dataTransfer.effectAllowed = 'move';
+      // Some browsers refuse to start a drag without a payload set.
+      e.dataTransfer.setData('text/plain', path);
+      setDragging({ kind: 'file', path });
+      setDropTarget(null);
     },
+    onDragEnd: endDrag,
+    ...dropHandlers({ kind: 'file', path }),
   });
 
   return (
@@ -310,10 +437,10 @@ export function FileTree({
         <ul className="tree-root">
           <li className="tree-node folder">
             <div
-              className={`folder-row${selectedDirForHighlight === '' ? ' selected' : ''}${dropDir === '' ? ' drop-target' : ''}`}
+              className={`folder-row${selectedDirForHighlight === '' ? ' selected' : ''}${dropTarget?.kind === 'dir' && dropTarget.path === '' ? ' drop-target' : ''}`}
               title="Package root — New file / New folder create here while selected"
               onClick={() => setSelected({ kind: 'dir', path: '' })}
-              {...folderDropProps('')}
+              {...folderRowProps('')}
             >
               <span className="icon">📁</span>
               <span className="name">{source.folderName}</span>
@@ -324,15 +451,10 @@ export function FileTree({
               dirPath=""
 
               fileErrors={fileErrors}
-              draggingPath={draggingPath}
-              dropDir={dropDir}
-              isMovable={isMovable}
-              folderDropProps={folderDropProps}
-              onFileDragStart={(path) => {
-                setDraggingPath(path);
-                setDropDir(null);
-              }}
-              onFileDragEnd={endDrag}
+              dragging={dragging}
+              dropTarget={dropTarget}
+              folderRowProps={folderRowProps}
+              fileRowProps={fileRowProps}
               newBadgePath={
                 source.synthetic ? source.manifestFile?.name : undefined
               }
@@ -342,13 +464,18 @@ export function FileTree({
               selectedDir={selectedDirForHighlight}
               selectedFile={selectedFileForHighlight}
               renamingPath={renamingPath}
+              renamingDir={renamingDir}
               isUnreferenced={isUnreferenced}
               rowOps={rowOps}
               validateNewPath={validateNewPath}
               validateNewFolderIn={validateNewFolderIn}
               validateRename={validateRename}
+              validateRenameFolder={validateRenameFolder}
               onOpenPath={onOpenPath}
               onSelectDir={(dir) => setSelected({ kind: 'dir', path: dir })}
+              onStartRenameDir={setRenamingDir}
+              onCommitRenameFolder={commitRenameFolder}
+              onCancelRenameFolder={() => setRenamingDir(null)}
               onSelectFile={(p) => setSelected({ kind: 'file', path: p })}
               onStartCreateIn={(dir) => {
                 setCreatingFolderIn(null);
@@ -461,16 +588,25 @@ interface DirChildrenProps {
   dirPath: string;
 
   fileErrors: ReadonlyMap<string, string>;
-  // Drag-and-drop move state + callbacks (threaded through the recursion).
-  draggingPath: string | null;
-  dropDir: string | null;
-  isMovable: (path: string) => boolean;
-  folderDropProps: (dir: string) => {
+  // Drag-and-drop move state + prop-builders (threaded through the
+  // recursion). Both builders carry drag-source AND drop-target handlers
+  // (dropping onto a file targets the file's folder).
+  dragging: { kind: 'file' | 'dir'; path: string } | null;
+  dropTarget: { kind: 'file' | 'dir'; path: string } | null;
+  folderRowProps: (dir: string) => {
+    draggable: boolean;
+    onDragStart: (e: DragEvent) => void;
+    onDragEnd: () => void;
     onDragOver: (e: DragEvent) => void;
     onDrop: (e: DragEvent) => void;
   };
-  onFileDragStart: (path: string) => void;
-  onFileDragEnd: () => void;
+  fileRowProps: (path: string) => {
+    draggable: boolean;
+    onDragStart: (e: DragEvent) => void;
+    onDragEnd: () => void;
+    onDragOver: (e: DragEvent) => void;
+    onDrop: (e: DragEvent) => void;
+  };
   newBadgePath?: string | undefined;
   canEdit: boolean;
   creatingIn: string | null;
@@ -480,13 +616,18 @@ interface DirChildrenProps {
   selectedDir: string | null;
   selectedFile: string | null;
   renamingPath: string | null;
+  renamingDir: string | null;
   isUnreferenced: (path: string) => boolean;
   rowOps: (path: string) => RowOps;
   validateNewPath: (path: string) => boolean;
   validateNewFolderIn: (dir: string) => (name: string) => boolean;
   validateRename: (oldPath: string) => (name: string) => boolean;
+  validateRenameFolder: (dir: string) => (name: string) => boolean;
   onOpenPath: (path: string) => void;
   onSelectDir: (dirPath: string) => void;
+  onStartRenameDir: (dir: string) => void;
+  onCommitRenameFolder: (dir: string, name: string) => void;
+  onCancelRenameFolder: () => void;
   onSelectFile: (path: string) => void;
   onStartCreateIn: (dirPath: string) => void;
   onCommitCreate: (dirPath: string, name: string) => void;
@@ -506,13 +647,43 @@ function DirChildren(props: DirChildrenProps) {
     <ul className="tree-children">
       {[...node.dirs.entries()].map(([name, child]) => {
         const childPath = dirPath === '' ? name : `${dirPath}/${name}`;
+        if (props.renamingDir === childPath) {
+          return (
+            <li className="tree-node folder" key={name}>
+              <div className="tree-node-draft">
+                <span className="icon">📁</span>
+                <InlineNameInput
+                  initial={name}
+                  ariaLabel={`Rename folder ${childPath}`}
+                  validate={props.validateRenameFolder(childPath)}
+                  onCommit={(next) =>
+                    props.onCommitRenameFolder(childPath, next)
+                  }
+                  onCancel={props.onCancelRenameFolder}
+                />
+              </div>
+              <DirChildren {...props} node={child} dirPath={childPath} />
+            </li>
+          );
+        }
+        const dropOnDir =
+          props.dropTarget?.kind === 'dir' &&
+          props.dropTarget.path === childPath;
         return (
           <li className="tree-node folder" key={name}>
             <div
-              className={`folder-row${props.selectedDir === childPath ? ' selected' : ''}${props.dropDir === childPath ? ' drop-target' : ''}`}
-              title={`${childPath}/ — New file / New folder create here while selected`}
+              className={`folder-row${props.selectedDir === childPath ? ' selected' : ''}${dropOnDir ? ' drop-target' : ''}${
+                props.dragging?.kind === 'dir' &&
+                props.dragging.path === childPath
+                  ? ' dragging'
+                  : ''
+              }`}
+              title={`${childPath}/ — double-click to rename; New file / New folder create here while selected`}
               onClick={() => props.onSelectDir(childPath)}
-              {...props.folderDropProps(childPath)}
+              onDoubleClick={() => {
+                if (props.canEdit) props.onStartRenameDir(childPath);
+              }}
+              {...props.folderRowProps(childPath)}
             >
               <span className="icon">📁</span>
               <span className="name">{name}</span>
@@ -578,10 +749,14 @@ function DirChildren(props: DirChildrenProps) {
           unreferenced={props.isUnreferenced(f.path)}
           renaming={props.renamingPath === f.path}
           ops={props.rowOps(f.path)}
-          draggable={props.isMovable(f.path)}
-          dragging={props.draggingPath === f.path}
-          onDragStartFile={props.onFileDragStart}
-          onDragEndFile={props.onFileDragEnd}
+          dragProps={props.fileRowProps(f.path)}
+          dragging={
+            props.dragging?.kind === 'file' && props.dragging.path === f.path
+          }
+          dropActive={
+            props.dropTarget?.kind === 'file' &&
+            props.dropTarget.path === f.path
+          }
           validateRename={props.validateRename(f.path)}
           onOpenPath={(p) => {
             // Opening a file retargets creation to its containing folder
@@ -609,10 +784,9 @@ function FileNode({
   unreferenced,
   renaming,
   ops,
-  draggable,
+  dragProps,
   dragging,
-  onDragStartFile,
-  onDragEndFile,
+  dropActive,
   validateRename,
   onOpenPath,
   onStartRename,
@@ -629,10 +803,15 @@ function FileNode({
   unreferenced?: boolean;
   renaming: boolean;
   ops: RowOps;
-  draggable: boolean;
+  dragProps: {
+    draggable: boolean;
+    onDragStart: (e: DragEvent) => void;
+    onDragEnd: () => void;
+    onDragOver: (e: DragEvent) => void;
+    onDrop: (e: DragEvent) => void;
+  };
   dragging: boolean;
-  onDragStartFile: (path: string) => void;
-  onDragEndFile: () => void;
+  dropActive: boolean;
   validateRename: (name: string) => boolean;
   onOpenPath: (path: string) => void;
   onStartRename: (path: string) => void;
@@ -659,17 +838,9 @@ function FileNode({
   }
   return (
     <li
-      className={`tree-node file${selected === true ? ' selected' : ''}${error !== undefined ? ' error' : ''}${unreferenced === true ? ' unreferenced' : ''}${dragging ? ' dragging' : ''}`}
+      className={`tree-node file${selected === true ? ' selected' : ''}${error !== undefined ? ' error' : ''}${unreferenced === true ? ' unreferenced' : ''}${dragging ? ' dragging' : ''}${dropActive ? ' drop-target' : ''}`}
       title={error !== undefined ? `Syntax error: ${error}` : path}
-      draggable={draggable}
-      onDragStart={(e) => {
-        if (!draggable) return;
-        e.dataTransfer.effectAllowed = 'move';
-        // Some browsers refuse to start a drag without a payload set.
-        e.dataTransfer.setData('text/plain', path);
-        onDragStartFile(path);
-      }}
-      onDragEnd={onDragEndFile}
+      {...dragProps}
     >
       <button
         type="button"

@@ -243,6 +243,147 @@ function rewriteExternalAnims<S extends LoadedSource>(
   return next as S;
 }
 
+type FolderSource = Extract<LoadedSource, { kind: 'folder' }>;
+
+// Pure per-file rename/move over a folder source: a full-path rename IS
+// a move (§8). Returns the updated source, or null if disallowed (the
+// manifest anchor, a name clash in the target, a manifest-less geometry
+// file, or a reference losing its §8 extension). Kept side-effect-free
+// so a folder move can fold it over every contained file, so the
+// manifest / palette / external-anim reference-following lives in ONE
+// place shared by single-file rename and whole-folder move.
+function renameFileInSource(
+  src: FolderSource,
+  from: string,
+  to: string,
+): FolderSource | null {
+  if (src.files === undefined) return null;
+  if (from === to || to === '' || to.startsWith('../')) return null;
+  if (src.manifestFile?.name === from) return null; // the anchor
+  if (src.files.has(to) || src.manifestFile?.name === to) return null;
+  const entry = src.files.get(from);
+  if (entry === undefined) return null;
+  const isPrimary = src.cvoxFile.name === from;
+  const inGeometry = src.geometries?.has(from) === true;
+  // Geometry renames must be recorded in the manifest — without one the
+  // loader can't find the file next time. And a reference keeps its §8
+  // extension.
+  if (isPrimary || inGeometry) {
+    if (src.manifest === undefined) return null;
+    if (!to.toLowerCase().endsWith('.cvox')) return null;
+  }
+  const isBoundPalette =
+    src.manifest?.palette !== undefined &&
+    normalizePath(src.manifest.palette) === from;
+  if (isBoundPalette && !to.toLowerCase().endsWith('.json')) return null;
+  const isAnimRef =
+    src.manifest?.animations !== undefined &&
+    Object.values(src.manifest.animations).some(
+      (a) => typeof a === 'string' && normalizePath(a) === from,
+    );
+  if (isAnimRef && !to.toLowerCase().endsWith('.json')) return null;
+
+  const files = new Map(src.files);
+  files.delete(from);
+  files.set(to, { name: to, text: entry.text });
+  const removedFiles = new Set(src.removedFiles ?? []);
+  removedFiles.add(from);
+  removedFiles.delete(to);
+  let next: FolderSource = { ...src, files, removedFiles };
+
+  if (src.geometries?.has(from) === true) {
+    const geometries = new Map(src.geometries);
+    const cvox = geometries.get(from)!;
+    geometries.delete(from);
+    geometries.set(to, cvox);
+    next = { ...next, geometries };
+  }
+  if (isPrimary) {
+    next = { ...next, cvoxFile: { ...src.cvoxFile, name: to } };
+  }
+  // Keep the resolved externalAnims records pointing at the new path —
+  // timeline edits write through `rec.path`, so a stale one would
+  // resurrect the old file and orphan the manifest's ref.
+  if (src.externalAnims !== undefined) {
+    let anims: Map<string, { path: string; anim: InlineAnimation }> | null =
+      null;
+    for (const [clip, rec] of src.externalAnims) {
+      if (rec.path !== from) continue;
+      if (anims === null) anims = new Map(src.externalAnims);
+      anims.set(clip, { path: to, anim: rec.anim });
+    }
+    if (anims !== null) next = { ...next, externalAnims: anims };
+  }
+
+  if (src.manifest !== undefined) {
+    let m = src.manifest;
+    let changed = false;
+    if (isPrimary || inGeometry) {
+      const geometry = manifestGeometry(m).map((g) =>
+        normalizePath(g) === from ? to : normalizePath(g),
+      );
+      m = { ...m, geometry };
+      changed = true;
+    }
+    if (isBoundPalette) {
+      m = { ...m, palette: to };
+      changed = true;
+    }
+    if (m.animations !== undefined) {
+      const rebuilt: NonNullable<Manifest['animations']> = {};
+      let animChanged = false;
+      for (const [aName, anim] of Object.entries(m.animations)) {
+        if (typeof anim === 'string' && normalizePath(anim) === from) {
+          rebuilt[aName] = to;
+          animChanged = true;
+        } else {
+          rebuilt[aName] = anim;
+        }
+      }
+      if (animChanged) {
+        m = { ...m, animations: rebuilt };
+        changed = true;
+      }
+    }
+    if (changed) {
+      const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
+      next = {
+        ...next,
+        manifest: m,
+        manifestFile: {
+          ...baseFile,
+          text: JSON.stringify(m, null, 2) + '\n',
+        },
+      };
+    }
+  }
+  return next;
+}
+
+// Relocate a whole folder: fold renameFileInSource over every file under
+// `from`, re-prefixing each to `newDir`. Backs both drag-move (newDir =
+// destination/name) and rename (newDir = parent/newName). Returns null
+// (whole-move aborts) if the folder holds no files or any file rejects.
+function moveFolderInSource(
+  src: FolderSource,
+  from: string,
+  newDir: string,
+): FolderSource | null {
+  if (src.files === undefined) return null;
+  if (newDir === from || newDir === '') return null;
+  if (newDir.startsWith(`${from}/`)) return null; // into itself
+  const prefix = `${from}/`;
+  const moving = [...src.files.keys()].filter((p) => p.startsWith(prefix)).sort();
+  if (moving.length === 0) return null;
+  let next: FolderSource = src;
+  for (const p of moving) {
+    const stepped = renameFileInSource(next, p, `${newDir}${p.slice(from.length)}`);
+    if (stepped === null) return null; // abort the whole move
+    next = stepped;
+  }
+  return next;
+}
+
 export function App() {
   // The loaded document plus its undo/redo history, in one pure reducer.
   // Every structural mutation goes through `dispatchEdit` (recorded, with
@@ -1176,115 +1317,8 @@ export function App() {
         ) {
           return current;
         }
-        if (from === to || to === '' || to.startsWith('../')) return current;
-        if (src.manifestFile?.name === from) return current; // the anchor
-        if (src.files.has(to) || src.manifestFile?.name === to) return current;
-        const entry = src.files.get(from);
-        if (entry === undefined) return current;
-        const isPrimary = src.cvoxFile.name === from;
-        const inGeometry = src.geometries?.has(from) === true;
-        // Geometry renames must be recorded in the manifest — without
-        // one the loader can't find the file next time. And a reference
-        // keeps its §8 extension.
-        if (isPrimary || inGeometry) {
-          if (src.manifest === undefined) return current;
-          if (!to.toLowerCase().endsWith('.cvox')) return current;
-        }
-        const isBoundPalette =
-          src.manifest?.palette !== undefined &&
-          normalizePath(src.manifest.palette) === from;
-        if (isBoundPalette && !to.toLowerCase().endsWith('.json')) {
-          return current;
-        }
-        // An external animation reference keeps its §8 .json extension,
-        // same rule as the palette binding.
-        const isAnimRef =
-          src.manifest?.animations !== undefined &&
-          Object.values(src.manifest.animations).some(
-            (a) => typeof a === 'string' && normalizePath(a) === from,
-          );
-        if (isAnimRef && !to.toLowerCase().endsWith('.json')) {
-          return current;
-        }
-
-        const files = new Map(src.files);
-        files.delete(from);
-        files.set(to, { name: to, text: entry.text });
-        const removedFiles = new Set(src.removedFiles ?? []);
-        removedFiles.add(from);
-        removedFiles.delete(to);
-        let next: typeof src = { ...src, files, removedFiles };
-
-        if (src.geometries?.has(from) === true) {
-          const geometries = new Map(src.geometries);
-          const cvox = geometries.get(from)!;
-          geometries.delete(from);
-          geometries.set(to, cvox);
-          next = { ...next, geometries };
-        }
-        if (isPrimary) {
-          next = { ...next, cvoxFile: { ...src.cvoxFile, name: to } };
-        }
-        // Keep the resolved externalAnims records pointing at the new
-        // path — timeline edits write through `rec.path`, so a stale one
-        // would resurrect the old file and orphan the manifest's ref.
-        if (src.externalAnims !== undefined) {
-          let anims: Map<
-            string,
-            { path: string; anim: InlineAnimation }
-          > | null = null;
-          for (const [clip, rec] of src.externalAnims) {
-            if (rec.path !== from) continue;
-            if (anims === null) anims = new Map(src.externalAnims);
-            anims.set(clip, { path: to, anim: rec.anim });
-          }
-          if (anims !== null) next = { ...next, externalAnims: anims };
-        }
-
-        if (src.manifest !== undefined) {
-          let m = src.manifest;
-          let changed = false;
-          if (isPrimary || inGeometry) {
-            const geometry = manifestGeometry(m).map((g) =>
-              normalizePath(g) === from ? to : normalizePath(g),
-            );
-            m = { ...m, geometry };
-            changed = true;
-          }
-          if (isBoundPalette) {
-            m = { ...m, palette: to };
-            changed = true;
-          }
-          if (m.animations !== undefined) {
-            const rebuilt: NonNullable<Manifest['animations']> = {};
-            let animChanged = false;
-            for (const [aName, anim] of Object.entries(m.animations)) {
-              if (typeof anim === 'string' && normalizePath(anim) === from) {
-                rebuilt[aName] = to;
-                animChanged = true;
-              } else {
-                rebuilt[aName] = anim;
-              }
-            }
-            if (animChanged) {
-              m = { ...m, animations: rebuilt };
-              changed = true;
-            }
-          }
-          if (changed) {
-            const baseFile =
-              src.manifestFile ?? { name: 'cuboidy.json', text: '' };
-            next = {
-              ...next,
-              manifest: m,
-              manifestFile: {
-                ...baseFile,
-                text: JSON.stringify(m, null, 2) + '\n',
-              },
-            };
-          }
-        }
-        return { ...current, source: next };
+        const next = renameFileInSource(src, from, to);
+        return next === null ? current : { ...current, source: next };
       });
       // Re-key any live parse error for the renamed file.
       setFileParseErrors((prev) => {
@@ -1297,6 +1331,71 @@ export function App() {
       });
     },
     [dispatchEdit, flushPendingFileReparse],
+  );
+
+  // Relocate a whole folder (and everything under it) so its new path is
+  // `newDir`. One dispatchEdit = one undo step: moveFolderInSource folds
+  // the per-file rename atomically — any single rejection (e.g. a
+  // manifest-less geometry file) aborts the entire move, leaving the
+  // source untouched. The Files tree gates the operation so a valid one
+  // never half-applies. Shared by folder drag-move and folder rename.
+  const relocateFolder = useCallback(
+    (from: string, newDir: string) => {
+      if (newDir === from) return;
+      flushPendingFileReparse();
+      dispatchEdit(null, (current) => {
+        const src = current?.source;
+        if (
+          src === undefined ||
+          src.kind !== 'folder' ||
+          src.files === undefined
+        ) {
+          return current;
+        }
+        const next = moveFolderInSource(src, from, newDir);
+        return next === null ? current : { ...current, source: next };
+      });
+      // Re-key live parse errors under the folder by path prefix.
+      setFileParseErrors((prev) => {
+        const prefix = `${from}/`;
+        let next: Map<string, string> | null = null;
+        for (const [p, msg] of prev) {
+          if (!p.startsWith(prefix)) continue;
+          if (next === null) next = new Map(prev);
+          next.delete(p);
+          next.set(`${newDir}${p.slice(from.length)}`, msg);
+        }
+        return next ?? prev;
+      });
+    },
+    [dispatchEdit, flushPendingFileReparse],
+  );
+
+  // Move a folder INTO destDir ('' = package root), keeping its name.
+  const handleMoveFolder = useCallback(
+    (srcDir: string, destDir: string) => {
+      const from = normalizePath(srcDir);
+      const dest = normalizePath(destDir);
+      if (dest === from || dest.startsWith(`${from}/`)) return; // self/descendant
+      const name = from.slice(from.lastIndexOf('/') + 1);
+      relocateFolder(from, dest === '' ? name : `${dest}/${name}`);
+    },
+    [relocateFolder],
+  );
+
+  // Rename a folder in place (its last path segment), moving every file
+  // under it to the new prefix.
+  const handleRenameFolder = useCallback(
+    (oldDir: string, newName: string) => {
+      const from = normalizePath(oldDir);
+      const i = from.lastIndexOf('/');
+      const parent = i === -1 ? '' : from.slice(0, i);
+      relocateFolder(
+        from,
+        normalizePath(parent === '' ? newName : `${parent}/${newName}`),
+      );
+    },
+    [relocateFolder],
   );
 
   const handleDeleteFile = useCallback(
@@ -2944,6 +3043,8 @@ export function App() {
               onCreateManifest={handleCreateManifest}
               onCreateFile={handleCreateFile}
               onRenameFile={handleRenameFile}
+              onMoveFolder={handleMoveFolder}
+              onRenameFolder={handleRenameFolder}
               onDeleteFile={handleDeleteFile}
               onAddFileToModel={handleAddFileToModel}
             />

@@ -1159,9 +1159,18 @@ pre {
   box-shadow: inset 0 0 0 1px #6a8aca;
 }
 
-/* The file being dragged for a move — dimmed like VS Code's cut. */
-.tree-node.file.dragging {
+/* The file or folder being dragged for a move — dimmed like VS Code's
+   cut. */
+.tree-node.file.dragging,
+.folder-row.dragging {
   opacity: 0.5;
+}
+
+/* A file row as the hovered drop target — the drop moves the dragged
+   item into this file's containing folder. */
+.tree-node.file.drop-target > .tree-node-button {
+  background: #2c3a55;
+  box-shadow: inset 0 0 0 1px #6a8aca;
 }
 
 .tree-node.file .tree-node-button {
