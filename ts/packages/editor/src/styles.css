@@ -2452,8 +2452,11 @@ input[type='checkbox'] {
   border: 1px solid var(--line-2);
   border-radius: var(--r-1);
   cursor: pointer;
+  /* Only the fill colour animates — transitioning the `background`
+     shorthand would also tween the check image's position/size, making
+     it slide in from the top-left. */
   transition:
-    background 0.12s,
+    background-color 0.12s,
     border-color 0.12s;
 }
 
