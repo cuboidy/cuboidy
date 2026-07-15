@@ -75,6 +75,15 @@ body {
   line-height: 1.5;
 }
 
+/* On-brand text selection everywhere (the source editor already did this
+   locally; this covers the rest of the UI so dragging to select never
+   shows the default OS blue). Note: this does NOT touch a native <select>
+   popup's highlight — that one is OS-drawn and unstyleable. */
+::selection {
+  background: var(--accent);
+  color: #fff;
+}
+
 /* ─── Scrollbars ──────────────────────────────────────────────────────
    Thin, graphite, translucent thumb (the padding-box + transparent border
    trick insets the thumb so it reads as a slim pill). Panels that hide
