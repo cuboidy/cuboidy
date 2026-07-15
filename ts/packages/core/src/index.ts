@@ -56,6 +56,7 @@ export {
   remapPartPalette,
   type Axis,
 } from './cvox/transform.js';
+export { expandProjectReuse, type ExpandResult } from './migrate.js';
 
 export { AIR } from './cvox/voxel-row.js';
 export type {

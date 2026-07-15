@@ -17,7 +17,8 @@
     "cuboidy-view": "./dist/cli/cuboidy-view.js",
     "cuboidy-query": "./dist/cli/cuboidy-query.js",
     "cuboidy-snap": "./dist/cli/cuboidy-snap.js",
-    "cuboidy-part": "./dist/cli/cuboidy-part.js"
+    "cuboidy-part": "./dist/cli/cuboidy-part.js",
+    "cuboidy-migrate": "./dist/cli/cuboidy-migrate.js"
   },
   "files": [
     "dist",
