@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check } from 'lucide-react';
+import { Check, Save } from 'lucide-react';
 import type { LoadedSource } from '../lib/types.js';
 import { saveToFolder } from '../lib/save.js';
 
@@ -51,7 +51,10 @@ export function SaveButton({ source }: Props) {
           Saved
         </>
       ) : (
-        'Save'
+        <>
+          <Save size={14} />
+          Save
+        </>
       )}
     </button>
   );

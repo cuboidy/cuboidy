@@ -199,6 +199,12 @@ svg.lucide {
   font-size: 0.75rem;
 }
 
+/* Icon-only variant of .btn (e.g. header undo/redo): square padding so a
+   lone glyph doesn't inherit the wide text-button padding. */
+.btn-icon-lg {
+  padding: 0.3rem 0.45rem;
+}
+
 /* Compact glyph-only button; width/height/glyph-size come from the
    context class. */
 .btn-icon {

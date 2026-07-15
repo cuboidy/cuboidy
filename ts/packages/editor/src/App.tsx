@@ -40,7 +40,7 @@ import { ConsolePanel, type ConsoleEntry } from './components/ConsolePanel.js';
 import { Dock, type PanelContent } from './components/Dock.js';
 import { ExportMenu } from './components/ExportMenu.js';
 import { Logo } from './components/Logo.js';
-import { Eye, EyeOff, Plus } from 'lucide-react';
+import { Eye, EyeOff, Plus, Redo2, Undo2 } from 'lucide-react';
 import { FileDropZone } from './components/FileDropZone.js';
 import { FileTree } from './components/FileTree.js';
 import { KeyInspectorPanel } from './components/KeyInspectorPanel.js';
@@ -3407,21 +3407,23 @@ export function App() {
             <>
               <button
                 type="button"
-                className="btn"
+                className="btn btn-icon-lg"
                 disabled={history.past.length === 0}
                 title="Undo (Ctrl+Z)"
+                aria-label="Undo"
                 onClick={performUndo}
               >
-                Undo
+                <Undo2 size={16} />
               </button>
               <button
                 type="button"
-                className="btn"
+                className="btn btn-icon-lg"
                 disabled={history.future.length === 0}
                 title="Redo (Ctrl+Shift+Z)"
+                aria-label="Redo"
                 onClick={performRedo}
               >
-                Redo
+                <Redo2 size={16} />
               </button>
             </>
           )}
