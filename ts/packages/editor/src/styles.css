@@ -1291,9 +1291,6 @@ svg.ficon-cvox {
 svg.ficon-json {
   color: #c9a86a;
 }
-svg.ficon-anim {
-  color: var(--txt-2);
-}
 
 .tree-caret {
   display: inline-flex;

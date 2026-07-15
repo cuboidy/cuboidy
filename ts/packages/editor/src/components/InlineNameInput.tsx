@@ -3,6 +3,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type ReactNode,
 } from 'react';
 
 // Shared inline text field for naming things in tree rows — part
@@ -12,18 +13,25 @@ import {
 // never commits. Invalid names flash red and keep the field open. A
 // `done` latch keeps the unmount-blur from firing after Enter/Escape
 // already resolved it.
+//
+// `leadingIcon`, when given, renders a per-keystroke icon before the
+// field (file rows pass `fileIcon` so the glyph tracks the typed
+// extension live — type `.json` and it flips from the .cvox box to the
+// braces icon). Rows without an icon (folders, parts) just omit it.
 export function InlineNameInput({
   initial,
   ariaLabel,
   validate,
   onCommit,
   onCancel,
+  leadingIcon,
 }: {
   initial: string;
   ariaLabel: string;
   validate: (name: string) => boolean;
   onCommit: (name: string) => void;
   onCancel: () => void;
+  leadingIcon?: (name: string) => ReactNode;
 }) {
   const ref = useRef<HTMLInputElement>(null);
   const [text, setText] = useState(initial);
@@ -70,21 +78,26 @@ export function InlineNameInput({
   };
 
   return (
-    <input
-      ref={ref}
-      type="text"
-      className={`tree-name-input${invalid ? ' invalid' : ''}`}
-      value={text}
-      aria-label={ariaLabel}
-      spellCheck={false}
-      onClick={(e) => e.stopPropagation()}
-      onChange={(e) => {
-        setText(e.target.value);
-        setInvalid(false);
-      }}
-      onKeyDown={handleKeyDown}
-      onBlur={() => finish(false)}
-      onAnimationEnd={() => setInvalid(false)}
-    />
+    <>
+      {leadingIcon !== undefined && (
+        <span className="tree-icon">{leadingIcon(text)}</span>
+      )}
+      <input
+        ref={ref}
+        type="text"
+        className={`tree-name-input${invalid ? ' invalid' : ''}`}
+        value={text}
+        aria-label={ariaLabel}
+        spellCheck={false}
+        onClick={(e) => e.stopPropagation()}
+        onChange={(e) => {
+          setText(e.target.value);
+          setInvalid(false);
+        }}
+        onKeyDown={handleKeyDown}
+        onBlur={() => finish(false)}
+        onAnimationEnd={() => setInvalid(false)}
+      />
+    </>
   );
 }

@@ -887,9 +887,9 @@ function DirChildren(props: DirChildrenProps) {
         <li className="tree-node">
           <div className="tree-row draft" style={{ paddingLeft: pad }}>
             <span className="tree-caret-spacer" aria-hidden="true" />
-            <span className="tree-icon">{fileIcon('new.cvox')}</span>
             <InlineNameInput
               initial="new.cvox"
+              leadingIcon={fileIcon}
               ariaLabel={`New file in ${dirPath === '' ? 'package root' : dirPath}`}
               validate={(name) =>
                 props.validateNewPath(
@@ -993,9 +993,9 @@ function FileNode({
       <li className="tree-node">
         <div className="tree-row draft" style={{ paddingLeft: pad }}>
           <span className="tree-caret-spacer" aria-hidden="true" />
-          <span className="tree-icon">{fileIcon(name)}</span>
           <InlineNameInput
             initial={name}
+            leadingIcon={fileIcon}
             ariaLabel={`Rename ${path}`}
             validate={validateRename}
             onCommit={(next) => onCommitRename(path, next)}
