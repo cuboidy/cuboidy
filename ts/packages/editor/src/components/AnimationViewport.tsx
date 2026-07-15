@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, type CSSProperties } from 'react';
 import { Pause, Play, Plus } from 'lucide-react';
 import { OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
@@ -128,6 +128,15 @@ export function AnimationViewport({
           max={hasTimeline ? duration : 1}
           step={hasTimeline ? Math.max(duration / 200, 0.001) : 0.001}
           value={hasTimeline ? Math.min(time, duration) : 0}
+          style={
+            {
+              '--fill': `${
+                hasTimeline && duration > 0
+                  ? (Math.min(time, duration) / duration) * 100
+                  : 0
+              }%`,
+            } as CSSProperties
+          }
           disabled={!hasTimeline}
           aria-label="Scrub timeline"
           onChange={(e) => scrub(Number(e.target.value))}

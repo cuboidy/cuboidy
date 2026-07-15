@@ -1772,11 +1772,75 @@ svg.ficon-anim {
   justify-content: center;
 }
 
+/* Playback scrubber: a slim track with the played portion filled violet
+   (--fill % is set on the element from time/duration) and a small round
+   thumb that grows on hover. */
 .anim-scrub {
   flex: 1;
   min-width: 0;
-  accent-color: var(--accent);
+  height: 14px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
   cursor: pointer;
+}
+
+.anim-scrub:focus {
+  outline: none;
+}
+
+.anim-scrub::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    var(--accent) var(--fill, 0%),
+    var(--bg-3) var(--fill, 0%)
+  );
+}
+
+.anim-scrub::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-3);
+}
+
+.anim-scrub::-moz-range-progress {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.anim-scrub::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 11px;
+  height: 11px;
+  margin-top: -3.5px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-2);
+  transition: transform 0.1s;
+}
+
+.anim-scrub::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--bg-2);
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.anim-scrub:hover:not(:disabled)::-webkit-slider-thumb {
+  transform: scale(1.25);
+}
+
+.anim-scrub:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgba(131, 56, 236, 0.35);
+}
+
+.anim-scrub:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .anim-time {
