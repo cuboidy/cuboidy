@@ -39,6 +39,7 @@ import { AnimationViewport } from './components/AnimationViewport.js';
 import { ConsolePanel, type ConsoleEntry } from './components/ConsolePanel.js';
 import { Dock, type PanelContent } from './components/Dock.js';
 import { ExportMenu } from './components/ExportMenu.js';
+import { Logo } from './components/Logo.js';
 import { FileDropZone } from './components/FileDropZone.js';
 import { FileTree } from './components/FileTree.js';
 import { KeyInspectorPanel } from './components/KeyInspectorPanel.js';
@@ -3392,7 +3393,10 @@ export function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>Cuboidy Editor</h1>
+        <div className="brand">
+          <Logo />
+          <h1>Cuboidy</h1>
+        </div>
         <div className="header-right">
           {source !== undefined && (
             <>

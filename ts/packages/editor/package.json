@@ -14,9 +14,12 @@
   },
   "dependencies": {
     "@cuboidy/core": "*",
+    "@fontsource/ibm-plex-mono": "^5.2.7",
+    "@fontsource/ibm-plex-sans": "^5.2.8",
     "@react-three/drei": "^10.0.6",
     "@react-three/fiber": "^9.0.0",
     "fflate": "^0.8.2",
+    "lucide-react": "^1.24.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "three": "^0.170.0"

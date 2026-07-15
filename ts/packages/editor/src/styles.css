@@ -1,3 +1,41 @@
+:root {
+  /* Cool graphite ramp */
+  --bg-0: #0E1116;   /* deepest: app ground / 3D canvas / inputs' backdrop */
+  --bg-1: #151A21;   /* panel body */
+  --bg-2: #1B222B;   /* header / toolbars / menus / inputs (raised) */
+  --bg-3: #232B35;   /* hover / pressed */
+  --line: #2C333D;   /* hairline / dividers */
+  --line-2: #38414D; /* stronger divider */
+
+  /* Text */
+  --txt-1: #E7EBF0;
+  --txt-2: #9AA3AF;
+  --txt-3: #626B77;
+
+  /* Accent (violet) — lit on STATE only */
+  --accent: #8338EC;
+  --accent-hi: #9A5CF0;
+  --accent-lo: #6F2ED6;
+  --accent-tint: #241C3B;
+
+  /* Semantic (kept distinct from the accent) */
+  --danger: #E5484D;
+  --warn: #F5A623;
+  --ok: #3DA35D;
+  --playhead: #F04A4A;
+
+  /* Radius / elevation */
+  --r-1: 3px;
+  --r-2: 4px;
+  --r-3: 8px;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-2: 0 10px 30px rgba(0, 0, 0, 0.55);
+
+  /* Type: one UI font (Sans); Mono only inside code/source views */
+  --ui: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -12,26 +50,16 @@ body,
 }
 
 body {
-  font-family:
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    Roboto,
-    sans-serif;
-  background: #1a1a1a;
-  color: #e0e0e0;
+  font-family: var(--ui);
+  background: var(--bg-0);
+  color: var(--txt-1);
   font-size: 14px;
   line-height: 1.5;
 }
 
 code,
 pre {
-  font-family:
-    ui-monospace,
-    'SF Mono',
-    Menlo,
-    Consolas,
-    monospace;
+  font-family: var(--mono);
   font-size: 0.9em;
 }
 
@@ -43,41 +71,41 @@ pre {
    warning/create) the same size as borderless ones. */
 .btn {
   padding: 0.3rem 0.8rem;
-  background: #3a3a3a;
-  color: #e0e0e0;
+  background: var(--bg-3);
+  color: var(--txt-1);
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--r-2);
   cursor: pointer;
   font: inherit;
   font-size: 0.85rem;
 }
 
 .btn:hover:not(:disabled) {
-  background: #4a4a4a;
+  background: #2b333e;
 }
 
 .btn-primary {
-  background: #3a4a6a;
+  background: var(--accent);
   color: #fff;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #4a5a7a;
+  background: var(--accent-hi);
 }
 
 .btn-danger {
-  background: #3a2424;
-  color: #ecc;
-  border-color: #5a3030;
+  background: #2a1a1d;
+  color: #f0b3b5;
+  border-color: #5a2a2e;
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: #4a2a2a;
+  background: #3a2024;
 }
 
 .btn-warning {
-  background: #4a3a1a;
-  color: #fc8;
+  background: #2a2015;
+  color: var(--warn);
   border-color: #6a5a2a;
 }
 
@@ -87,14 +115,14 @@ pre {
 
 /* Dashed = creates something that doesn't exist yet. */
 .btn-create {
-  background: #2a3a4a;
-  color: #cde;
-  border: 1px dashed #3a4a6a;
+  background: #1e1730;
+  color: #c9b3f0;
+  border: 1px solid #3a2d55;
 }
 
 .btn-create:hover:not(:disabled) {
-  background: #2a3a5a;
-  border-color: #4a5a7a;
+  background: #251c3c;
+  border-color: var(--accent-lo);
 }
 
 /* Dense contexts: panel toolbars, inline actions. */
@@ -113,16 +141,16 @@ pre {
   padding: 0;
   background: none;
   border: none;
-  border-radius: 3px;
-  color: #999;
+  border-radius: var(--r-1);
+  color: var(--txt-2);
   cursor: pointer;
   font: inherit;
   line-height: 1;
 }
 
 .btn-icon:hover:not(:disabled) {
-  background: #333;
-  color: #ddd;
+  background: var(--bg-3);
+  color: var(--txt-1);
 }
 
 .btn:disabled,
@@ -134,7 +162,7 @@ pre {
 .btn:focus-visible,
 .btn-icon:focus-visible,
 .menu-item:focus-visible {
-  outline: 1px solid #5af;
+  outline: 1px solid var(--accent);
   outline-offset: 1px;
 }
 
@@ -145,9 +173,9 @@ pre {
   z-index: 100;
   display: flex;
   flex-direction: column;
-  background: #2a2a2a;
-  border: 1px solid #3a3a3a;
-  border-radius: 4px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
   overflow: hidden;
 }
@@ -156,7 +184,7 @@ pre {
   padding: 0.45rem 0.8rem;
   background: none;
   border: none;
-  color: #e0e0e0;
+  color: var(--txt-1);
   cursor: pointer;
   font: inherit;
   font-size: 0.8rem;
@@ -165,7 +193,7 @@ pre {
 }
 
 .menu-item:hover {
-  background: #3a4a6a;
+  background: var(--accent);
 }
 
 .app {
@@ -181,15 +209,28 @@ pre {
   align-items: center;
   justify-content: space-between;
   padding: 0.6rem 1rem;
-  background: #2a2a2a;
-  border-bottom: 1px solid #3a3a3a;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--line);
   flex-shrink: 0;
   gap: 1rem;
 }
 
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.brand-mark {
+  display: block;
+  flex-shrink: 0;
+}
+
 .header h1 {
-  font-size: 1.05rem;
-  font-weight: 600;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
 .header-right {
@@ -218,15 +259,15 @@ pre {
 
 .view-toggle {
   display: inline-flex;
-  border: 1px solid #3a3a3a;
-  border-radius: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
   overflow: hidden;
 }
 
 .view-toggle button {
   padding: 0.3rem 0.8rem;
   background: transparent;
-  color: #aaa;
+  color: var(--txt-2);
   border: none;
   cursor: pointer;
   font: inherit;
@@ -237,16 +278,16 @@ pre {
 }
 
 .view-toggle button:not(:last-child) {
-  border-right: 1px solid #3a3a3a;
+  border-right: 1px solid var(--line);
 }
 
 .view-toggle button:hover:not(:disabled):not(.active) {
-  background: #333;
-  color: #e0e0e0;
+  background: var(--bg-3);
+  color: var(--txt-1);
 }
 
 .view-toggle button.active {
-  background: #3a4a6a;
+  background: var(--accent);
   color: #fff;
 }
 
@@ -265,7 +306,7 @@ pre {
 }
 
 .view-mode-overlay .view-toggle {
-  background: rgba(26, 26, 26, 0.85);
+  background: rgba(14, 17, 22, 0.85);
   backdrop-filter: blur(2px);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 }
@@ -293,7 +334,7 @@ pre {
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  background: #232323;
+  background: var(--bg-1);
 }
 
 /* Split preview while a dragged tab hovers the panel BODY: the overlay shows
@@ -303,8 +344,8 @@ pre {
   position: absolute;
   z-index: 5;
   pointer-events: none;
-  background: rgba(90, 170, 255, 0.18);
-  box-shadow: inset 0 0 0 2px #5af;
+  background: rgba(131, 56, 236, 0.18);
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 
 .dock-drop-left {
@@ -339,8 +380,8 @@ pre {
   display: flex;
   align-items: stretch;
   min-height: 26px;
-  background: #1f1f1f;
-  border-bottom: 1px solid #333;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--line);
 }
 
 .dock-tab {
@@ -356,7 +397,7 @@ pre {
   bottom: 0;
   width: 2px;
   margin-left: -1px;
-  background: #5af;
+  background: var(--accent);
   pointer-events: none;
   z-index: 3;
 }
@@ -381,14 +422,14 @@ pre {
   align-items: center;
   flex-shrink: 0;
   max-width: 160px;
-  border-right: 1px solid #2a2a2a;
-  color: #999;
+  border-right: 1px solid var(--line);
+  color: var(--txt-2);
 }
 
 .dock-tab.active {
-  background: #232323;
-  color: #ddd;
-  box-shadow: inset 0 -2px 0 #5af;
+  background: var(--bg-1);
+  color: var(--txt-1);
+  box-shadow: inset 0 -2px 0 var(--accent);
 }
 
 .dock-tab-label {
@@ -413,12 +454,12 @@ pre {
   width: 16px;
   height: 16px;
   margin-right: 0.3rem;
-  color: #777;
+  color: var(--txt-3);
 }
 
 .dock-tab-close:hover:not(:disabled) {
-  background: #4a2a2a;
-  color: #faa;
+  background: #3a2024;
+  color: #f0b3b5;
 }
 
 .dock-tabrow-actions {
@@ -489,7 +530,7 @@ pre {
   align-items: center;
   justify-content: center;
   gap: 1rem;
-  color: #888;
+  color: var(--txt-3);
 }
 
 .dock-empty-title {
@@ -509,7 +550,7 @@ pre {
   margin: 0;
   padding: 0.75rem 1rem;
   font-size: 0.75rem;
-  color: #777;
+  color: var(--txt-3);
   line-height: 1.4;
 }
 
@@ -547,13 +588,13 @@ pre {
 /* Draggable divider between two cells of a split. */
 .dock-splitter {
   flex: 0 0 5px;
-  background: #1c1c1c;
+  background: var(--bg-0);
   touch-action: none;
   transition: background 0.12s;
 }
 
 .dock-splitter:hover {
-  background: #3a4a6a;
+  background: var(--accent);
 }
 
 .dock-splitter-row {
@@ -592,29 +633,19 @@ pre {
 .palette-binding {
   flex: 1;
   min-width: 0;
-  background: #2a2a2a;
-  color: #8a9;
-  border: 1px solid #3a3a3a;
-  border-radius: 3px;
+  background: var(--bg-2);
+  color: var(--txt-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
   padding: 0.15rem 0.3rem;
-  font-family:
-    ui-monospace,
-    'SF Mono',
-    Menlo,
-    Consolas,
-    monospace;
+  font-family: var(--ui);
   font-size: 0.72rem;
 }
 
 .palette-target {
-  font-family:
-    ui-monospace,
-    'SF Mono',
-    Menlo,
-    Consolas,
-    monospace;
+  font-family: var(--ui);
   font-size: 0.72rem;
-  color: #8a9;
+  color: var(--txt-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -623,7 +654,7 @@ pre {
 .palette-count {
   flex-shrink: 0;
   font-size: 0.72rem;
-  color: #666;
+  color: var(--txt-3);
   font-variant-numeric: tabular-nums;
 }
 
@@ -633,7 +664,7 @@ pre {
 
 .palette-panel .panel-note {
   font-size: 0.75rem;
-  color: #fc8;
+  color: var(--warn);
   margin-bottom: 0.5rem;
   line-height: 1.4;
 }
@@ -642,7 +673,7 @@ pre {
 
 .part-properties {
   padding: 0.75rem 1rem 1rem;
-  border-top: 1px solid #3a3a3a;
+  border-top: 1px solid var(--line);
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -656,15 +687,10 @@ pre {
 }
 
 .part-properties-name {
-  font-family:
-    ui-monospace,
-    'SF Mono',
-    Menlo,
-    Consolas,
-    monospace;
+  font-family: var(--ui);
   font-size: 0.95rem;
   font-weight: 600;
-  color: #e8e8f0;
+  color: var(--txt-1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -681,25 +707,25 @@ pre {
   width: 100%;
   font-size: 0.95rem;
   font-weight: 600;
-  color: #e8e8f0;
+  color: var(--txt-1);
   background: transparent;
   border-color: transparent;
 }
 
 .part-properties-name-edit .text-input:hover:not(:disabled),
 .part-properties-name-edit .text-input:focus {
-  background: #1a1a1a;
-  border-color: #3a3a3a;
+  background: var(--bg-0);
+  border-color: var(--line);
 }
 
 .part-properties-name-edit .text-input:disabled {
-  color: #e8e8f0;
+  color: var(--txt-1);
   opacity: 0.7;
 }
 
 .part-properties-meta {
   font-size: 0.75rem;
-  color: #888;
+  color: var(--txt-3);
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
 }
@@ -707,7 +733,7 @@ pre {
 .part-properties-footer {
   margin-top: 0.75rem;
   padding-top: 0.75rem;
-  border-top: 1px solid #2a2a2a;
+  border-top: 1px solid var(--line);
   display: flex;
 }
 
@@ -728,12 +754,12 @@ pre {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #aaa;
+  color: var(--txt-2);
 }
 
 .property-group-empty {
   font-size: 0.75rem;
-  color: #888;
+  color: var(--txt-3);
   line-height: 1.4;
   display: flex;
   flex-direction: column;
@@ -750,7 +776,7 @@ pre {
 
 .property-group-note {
   font-size: 0.75rem;
-  color: #fc8;
+  color: var(--warn);
   line-height: 1.4;
   margin: 0;
 }
@@ -770,25 +796,20 @@ pre {
 }
 
 .property-field-label {
-  color: #888;
+  color: var(--txt-3);
   flex-shrink: 0;
   width: 3rem;
 }
 
 .property-field select {
   flex: 1;
-  background: #2a2a2a;
-  color: #e0e0e0;
-  border: 1px solid #3a3a3a;
-  border-radius: 3px;
+  background: var(--bg-2);
+  color: var(--txt-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
   padding: 0.15rem 0.3rem;
   font: inherit;
-  font-family:
-    ui-monospace,
-    'SF Mono',
-    Menlo,
-    Consolas,
-    monospace;
+  font-family: var(--ui);
 }
 
 .property-field select:disabled {
@@ -810,31 +831,21 @@ pre {
 }
 
 .property-position-axis {
-  color: #888;
-  font-family:
-    ui-monospace,
-    'SF Mono',
-    Menlo,
-    Consolas,
-    monospace;
+  color: var(--txt-3);
+  font-family: var(--ui);
   flex-shrink: 0;
 }
 
 .property-position-input input {
   flex: 1;
   min-width: 0;
-  background: #2a2a2a;
-  color: #e0e0e0;
-  border: 1px solid #3a3a3a;
-  border-radius: 3px;
+  background: var(--bg-2);
+  color: var(--txt-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
   padding: 0.15rem 0.3rem;
   font: inherit;
-  font-family:
-    ui-monospace,
-    'SF Mono',
-    Menlo,
-    Consolas,
-    monospace;
+  font-family: var(--ui);
   font-variant-numeric: tabular-nums;
   /* Hide native spinner buttons — they steal width and look bad in
      a dense panel. Users can still type or scroll-wheel-adjust. */
@@ -858,22 +869,17 @@ pre {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: #1a1a1a;
+  background: var(--bg-0);
 }
 
 .parse-error-banner {
-  background: #3a1a1a;
-  color: #faa;
+  background: #2a1a1d;
+  color: #f0b3b5;
   padding: 0.4rem 0.8rem;
   font-size: 0.8rem;
-  border-top: 1px solid #5a1a1a;
+  border-top: 1px solid #5a2a2e;
   flex-shrink: 0;
-  font-family:
-    ui-monospace,
-    'SF Mono',
-    Menlo,
-    Consolas,
-    monospace;
+  font-family: var(--mono);
 }
 
 .parse-error-banner strong {
@@ -885,12 +891,12 @@ pre {
   flex: 1;
   overflow: auto;
   min-height: 0;
-  background: #1a1a1a;
+  background: var(--bg-0);
 }
 
 /* `min-height: 100%` makes the content area fill the body even when the
    file has few lines (so the gutter bg and textarea cover the full
-   editing area, no #1a1a1a void). Long files grow this past 100%, and
+   editing area, no var(--bg-0) void). Long files grow this past 100%, and
    the body's overflow:auto handles the scroll. Both children sit in
    `align-items: stretch` (flex default) so they always have the same
    height — fixes the bug where the gutter ended before the textarea. */
@@ -898,12 +904,7 @@ pre {
   display: flex;
   align-items: stretch;
   min-height: 100%;
-  font-family:
-    ui-monospace,
-    'SF Mono',
-    Menlo,
-    Consolas,
-    monospace;
+  font-family: var(--mono);
   font-size: 0.85rem;
   line-height: 1.5;
 }
@@ -913,9 +914,9 @@ pre {
   left: 0;
   flex-shrink: 0;
   padding: 0.5rem 0.5rem;
-  background: #232323;
-  border-right: 1px solid #2a2a2a;
-  color: #555;
+  background: var(--bg-1);
+  border-right: 1px solid var(--line);
+  color: var(--txt-3);
   text-align: right;
   user-select: none;
   z-index: 1;
@@ -931,7 +932,7 @@ pre {
   border: none;
   outline: none;
   background: transparent;
-  color: #e0e0e0;
+  color: var(--txt-1);
   font: inherit;
   padding: 0.5rem 0.75rem;
   resize: none;
@@ -943,7 +944,7 @@ pre {
 }
 
 .source-textarea::selection {
-  background: #3a4a6a;
+  background: var(--accent);
 }
 
 .palette-grid {
@@ -958,7 +959,7 @@ pre {
   width: 100%;
   aspect-ratio: 1;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 4px;
+  border-radius: var(--r-2);
   cursor: pointer;
   overflow: hidden;
 }
@@ -978,12 +979,7 @@ pre {
   position: absolute;
   top: 0.2rem;
   left: 0.35rem;
-  font-family:
-    ui-monospace,
-    'SF Mono',
-    Menlo,
-    Consolas,
-    monospace;
+  font-family: var(--ui);
   font-size: 0.75rem;
   font-weight: 700;
   color: #fff;
@@ -1012,7 +1008,7 @@ pre {
   background: rgba(0, 0, 0, 0.65);
   color: #fff;
   border: none;
-  border-radius: 3px;
+  border-radius: var(--r-1);
   cursor: pointer;
   font: inherit;
   font-size: 0.9rem;
@@ -1031,7 +1027,7 @@ pre {
 }
 
 .swatch-delete:hover:not(:disabled) {
-  background: #a33;
+  background: var(--danger);
 }
 
 .swatch-delete:disabled {
@@ -1048,9 +1044,9 @@ pre {
   width: 100%;
   aspect-ratio: 1;
   background: transparent;
-  border: 1px dashed #3a3a3a;
-  border-radius: 4px;
-  color: #888;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-2);
+  color: var(--txt-3);
   cursor: pointer;
   font: inherit;
   font-size: 1.5rem;
@@ -1060,9 +1056,9 @@ pre {
 }
 
 .palette-add:hover {
-  background: #232323;
-  color: #ccc;
-  border-color: #4a4a4a;
+  background: var(--bg-1);
+  color: var(--txt-2);
+  border-color: #2b333e;
 }
 
 /* ─── File preview ────────────────────────────────────────────────── */
@@ -1072,16 +1068,11 @@ pre {
   overflow: auto;
   margin: 0;
   padding: 0.5rem 0;
-  font-family:
-    ui-monospace,
-    'SF Mono',
-    Menlo,
-    Consolas,
-    monospace;
+  font-family: var(--mono);
   font-size: 0.85rem;
   line-height: 1.5;
-  color: #e0e0e0;
-  background: #1a1a1a;
+  color: var(--txt-1);
+  background: var(--bg-0);
 }
 
 .file-preview-body .line {
@@ -1090,11 +1081,11 @@ pre {
 }
 
 .file-preview-body .line:hover {
-  background: #222;
+  background: var(--bg-1);
 }
 
 .file-preview-body .line-no {
-  color: #555;
+  color: var(--txt-3);
   margin-right: 1rem;
   text-align: right;
   user-select: none;
@@ -1128,28 +1119,28 @@ pre {
   cursor: pointer;
   user-select: none;
   border: 1px solid transparent;
-  border-radius: 3px;
+  border-radius: var(--r-1);
   /* Inline padding-left encodes tree depth (set per row). */
 }
 
 .tree-row:hover {
-  background: #2c2c2c;
+  background: var(--bg-3);
 }
 
 .tree-row.selected {
-  background: #2a3a5a;
+  background: var(--accent-tint);
   color: #fff;
 }
 
 .tree-row.selected:hover {
-  background: #2a3a5a;
+  background: var(--accent-tint);
 }
 
 /* Active drop target while a drag hovers it. Border-based so it doesn't
    shift layout, and visible over selected/hover. */
 .tree-row.drop-target {
-  border-color: #6a8aca;
-  background: #2c3a55;
+  border-color: var(--accent-lo);
+  background: var(--accent-tint);
 }
 
 .tree-row.drop-forbidden {
@@ -1177,14 +1168,14 @@ pre {
   padding: 0;
   background: none;
   border: none;
-  color: #999;
+  color: var(--txt-2);
   cursor: pointer;
   font-size: 0.6rem;
   line-height: 1;
 }
 
 .tree-caret-btn:hover {
-  color: #ddd;
+  color: var(--txt-1);
 }
 
 .tree-caret-spacer {
@@ -1199,12 +1190,7 @@ pre {
 
 .tree-name {
   flex: 1;
-  font-family:
-    ui-monospace,
-    'SF Mono',
-    Menlo,
-    Consolas,
-    monospace;
+  font-family: var(--ui);
   font-size: 0.85rem;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1214,23 +1200,18 @@ pre {
 .tree-name-input {
   flex: 1;
   min-width: 0;
-  background: #1a1a1a;
-  color: #e0e0e0;
-  border: 1px solid #4a5a7a;
-  border-radius: 3px;
+  background: var(--bg-0);
+  color: var(--txt-1);
+  border: 1px solid var(--accent-hi);
+  border-radius: var(--r-1);
   padding: 0.05rem 0.25rem;
-  font-family:
-    ui-monospace,
-    'SF Mono',
-    Menlo,
-    Consolas,
-    monospace;
+  font-family: var(--ui);
   font-size: 0.85rem;
 }
 
 .tree-name-input:focus {
   outline: none;
-  border-color: #6a8aca;
+  border-color: var(--accent-lo);
 }
 
 .tree-name-input.invalid {
@@ -1243,22 +1224,17 @@ pre {
 .tree-row .badge {
   font-size: 0.65rem;
   padding: 0.05rem 0.3rem;
-  background: #4a3a1a;
-  color: #fc8;
-  border-radius: 3px;
-  font-family:
-    ui-monospace,
-    'SF Mono',
-    Menlo,
-    Consolas,
-    monospace;
+  background: #2a2015;
+  color: var(--warn);
+  border-radius: var(--r-1);
+  font-family: var(--ui);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 /* cuboidy.json shown as absent in this package. */
 .tree-row.missing .tree-name {
-  color: #555;
+  color: var(--txt-3);
   font-style: italic;
 }
 
@@ -1266,7 +1242,7 @@ pre {
    W07) — its parts aren't loaded. Dimmed; the row carries a "load"
    button. Declared before .error so a syntax error still wins. */
 .tree-row.unreferenced .tree-name {
-  color: #777;
+  color: var(--txt-3);
   font-style: italic;
 }
 
@@ -1274,7 +1250,7 @@ pre {
    carries the detail). Targets .tree-name so it beats the selected
    row's white text. */
 .tree-row.error .tree-name {
-  color: #f47171;
+  color: var(--danger);
 }
 
 .create-manifest {
@@ -1290,10 +1266,10 @@ pre {
   width: 16px;
   height: 16px;
   margin-left: auto;
-  color: #777;
+  color: var(--txt-3);
   font-size: 0.85rem;
   line-height: 1;
-  border-radius: 3px;
+  border-radius: var(--r-1);
   opacity: 0;
 }
 
@@ -1302,8 +1278,8 @@ pre {
 }
 
 .file-delete:hover:not([aria-disabled='true']) {
-  background: #4a2a2a;
-  color: #faa;
+  background: #3a2024;
+  color: #f0b3b5;
 }
 
 .file-delete[aria-disabled='true'] {
@@ -1324,7 +1300,7 @@ pre {
   padding: 0.05rem 0.35rem;
   color: #9d9;
   background: #2a3a2a;
-  border-radius: 3px;
+  border-radius: var(--r-1);
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -1359,8 +1335,8 @@ pre {
   display: flex;
   gap: 0.5rem;
   padding: 0.4rem 0.75rem;
-  background: #232323;
-  border-bottom: 1px solid #3a3a3a;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--line);
 }
 
 /* The Parts panel's own scroller, below its pinned toolbar. With the
@@ -1409,10 +1385,10 @@ pre {
 .part-tree-draft-file {
   flex-shrink: 0;
   max-width: 45%;
-  background: #2a2a2a;
-  color: #e0e0e0;
-  border: 1px solid #3a3a3a;
-  border-radius: 3px;
+  background: var(--bg-2);
+  color: var(--txt-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
   padding: 0.05rem 0.15rem;
   font: inherit;
   font-size: 0.75rem;
@@ -1423,14 +1399,9 @@ pre {
 .part-tree-file {
   flex-shrink: 0;
   margin-left: 0.4rem;
-  font-family:
-    ui-monospace,
-    'SF Mono',
-    Menlo,
-    Consolas,
-    monospace;
+  font-family: var(--ui);
   font-size: 0.65rem;
-  color: #666;
+  color: var(--txt-3);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1438,7 +1409,7 @@ pre {
 }
 
 .tree-row.selected .part-tree-file {
-  color: #9ab;
+  color: var(--txt-1);
 }
 
 /* Root drop zone for unparenting via D&D, shown only while a drag is
@@ -1456,10 +1427,10 @@ pre {
   right: 0.5rem;
   bottom: 0.25rem;
   padding: 0.5rem;
-  border: 1px dashed #3a4a6a;
-  border-radius: 4px;
-  background: #20242e;
-  color: #6a8aca;
+  border: 1px dashed var(--accent-lo);
+  border-radius: var(--r-2);
+  background: var(--bg-2);
+  color: var(--accent-lo);
   font-size: 0.75rem;
   text-align: center;
 }
@@ -1469,9 +1440,9 @@ pre {
 }
 
 .part-tree-root-dropzone.active {
-  background: #2c3a55;
-  border-color: #6a8aca;
-  color: #cde;
+  background: var(--accent-tint);
+  border-color: var(--accent-lo);
+  color: var(--txt-1);
 }
 
 /* ─── Dropzone ────────────────────────────────────────────────────── */
@@ -1482,9 +1453,9 @@ pre {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  border: 2px dashed #3a3a3a;
+  border: 2px dashed var(--line);
   margin: 1rem;
-  border-radius: 8px;
+  border-radius: var(--r-3);
   padding: 2rem;
   transition:
     border-color 0.15s,
@@ -1492,8 +1463,8 @@ pre {
 }
 
 .dropzone.dragging {
-  border-color: #5af;
-  background: #1a2a3a;
+  border-color: var(--accent);
+  background: #1a1526;
 }
 
 .dropzone-icon {
@@ -1503,20 +1474,20 @@ pre {
 }
 
 .dropzone-headline {
-  color: #cde;
+  color: var(--txt-1);
   font-size: 1.05rem;
   text-align: center;
 }
 
 .dropzone-headline code {
-  background: #2a2a2a;
+  background: var(--bg-2);
   padding: 0.1rem 0.4rem;
-  border-radius: 3px;
-  color: #fc8;
+  border-radius: var(--r-1);
+  color: var(--warn);
 }
 
 .dropzone-sub {
-  color: #888;
+  color: var(--txt-3);
   margin: 0.75rem 0;
 }
 
@@ -1535,7 +1506,7 @@ pre {
 }
 
 .dropzone .open-btn:hover {
-  background: #4a4a4a;
+  background: #2b333e;
 }
 
 .dropzone input[type='file'] {
@@ -1545,7 +1516,7 @@ pre {
 .dropzone-note {
   margin-top: 1rem;
   font-size: 0.8rem;
-  color: #888;
+  color: var(--txt-3);
   max-width: 32rem;
   text-align: center;
 }
@@ -1557,8 +1528,8 @@ pre {
   max-height: 30%;
   overflow-y: auto;
   padding: 0.5rem 1rem;
-  background: #2a2a2a;
-  border-top: 1px solid #3a3a3a;
+  background: var(--bg-2);
+  border-top: 1px solid var(--line);
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -1566,7 +1537,7 @@ pre {
 
 .notice {
   padding: 0.6rem 0.8rem;
-  border-radius: 4px;
+  border-radius: var(--r-2);
   font-size: 0.9rem;
 }
 
@@ -1575,8 +1546,8 @@ pre {
 }
 
 .notice.error {
-  background: #3a1a1a;
-  color: #faa;
+  background: #2a1a1d;
+  color: #f0b3b5;
 }
 
 /* ─── Console panel ───────────────────────────────────────────────── */
@@ -1597,7 +1568,7 @@ pre {
 }
 
 .console-entry + .console-entry {
-  border-top: 1px solid #2a2a2a;
+  border-top: 1px solid var(--line);
 }
 
 .console-severity {
@@ -1605,28 +1576,23 @@ pre {
 }
 
 .console-entry.error .console-severity {
-  color: #f47171;
+  color: var(--danger);
 }
 
 .console-entry.warning .console-severity {
-  color: #fc8;
+  color: var(--warn);
 }
 
 .console-source {
-  font-family:
-    ui-monospace,
-    'SF Mono',
-    Menlo,
-    Consolas,
-    monospace;
-  color: #888;
+  font-family: var(--ui);
+  color: var(--txt-3);
   margin-right: 0.5rem;
 }
 
 .console-message code {
-  background: #2a2a2a;
+  background: var(--bg-2);
   padding: 0 0.25rem;
-  border-radius: 3px;
+  border-radius: var(--r-1);
 }
 
 /* ─── Animation view ──────────────────────────────────────────────── */
@@ -1650,8 +1616,8 @@ pre {
   align-items: center;
   gap: 0.75rem;
   padding: 0.5rem 0.9rem;
-  background: #232323;
-  border-top: 1px solid #3a3a3a;
+  background: var(--bg-1);
+  border-top: 1px solid var(--line);
 }
 
 .anim-play {
@@ -1669,30 +1635,25 @@ pre {
 .anim-scrub {
   flex: 1;
   min-width: 0;
-  accent-color: #5af;
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
 .anim-time {
   flex-shrink: 0;
-  font-family:
-    ui-monospace,
-    'SF Mono',
-    Menlo,
-    Consolas,
-    monospace;
+  font-family: var(--ui);
   font-size: 0.8rem;
-  color: #aaa;
+  color: var(--txt-2);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .anim-select {
   flex-shrink: 0;
-  background: #2a2a2a;
-  color: #e0e0e0;
-  border: 1px solid #3a3a3a;
-  border-radius: 3px;
+  background: var(--bg-2);
+  color: var(--txt-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
   padding: 0.2rem 0.3rem;
   font: inherit;
   font-size: 0.8rem;
@@ -1700,14 +1661,9 @@ pre {
 
 .anim-name {
   flex-shrink: 0;
-  font-family:
-    ui-monospace,
-    'SF Mono',
-    Menlo,
-    Consolas,
-    monospace;
+  font-family: var(--ui);
   font-size: 0.8rem;
-  color: #cde;
+  color: var(--txt-1);
 }
 
 .anim-empty {
@@ -1717,7 +1673,7 @@ pre {
   gap: 0.75rem;
   align-items: center;
   justify-content: center;
-  color: #888;
+  color: var(--txt-3);
   font-size: 0.9rem;
 }
 
@@ -1730,14 +1686,14 @@ pre {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: #202020;
+  background: var(--bg-1);
 }
 
 .timeline-empty {
   align-items: center;
   justify-content: center;
   gap: 0.75rem;
-  color: #888;
+  color: var(--txt-3);
   font-size: 0.9rem;
   padding: 1rem;
   text-align: center;
@@ -1751,7 +1707,7 @@ pre {
   align-items: center;
   gap: 0.9rem;
   padding: 0.4rem 0.8rem;
-  border-bottom: 1px solid #3a3a3a;
+  border-bottom: 1px solid var(--line);
 }
 
 .anim-edit-field {
@@ -1759,7 +1715,7 @@ pre {
   align-items: center;
   gap: 0.4rem;
   font-size: 0.78rem;
-  color: #aaa;
+  color: var(--txt-2);
 }
 
 .anim-edit-field .property-position-input {
@@ -1772,7 +1728,7 @@ pre {
   align-items: center;
   gap: 0.35rem;
   font-size: 0.8rem;
-  color: #aaa;
+  color: var(--txt-2);
 }
 
 .anim-create-inline {
@@ -1790,14 +1746,9 @@ pre {
 }
 
 .anim-clip-storage {
-  font-family:
-    ui-monospace,
-    'SF Mono',
-    Menlo,
-    Consolas,
-    monospace;
+  font-family: var(--ui);
   font-size: 0.7rem;
-  color: #8a9;
+  color: var(--txt-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1808,18 +1759,13 @@ pre {
 
 .text-input {
   width: 9rem;
-  background: #2a2a2a;
-  color: #e0e0e0;
-  border: 1px solid #3a3a3a;
-  border-radius: 3px;
+  background: var(--bg-2);
+  color: var(--txt-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
   padding: 0.15rem 0.3rem;
   font: inherit;
-  font-family:
-    ui-monospace,
-    'SF Mono',
-    Menlo,
-    Consolas,
-    monospace;
+  font-family: var(--ui);
   font-size: 0.8rem;
 }
 
@@ -1837,11 +1783,11 @@ pre {
 @keyframes text-input-invalid {
   0%,
   70% {
-    border-color: #c55;
-    box-shadow: 0 0 0 1px #c55;
+    border-color: var(--danger);
+    box-shadow: 0 0 0 1px var(--danger);
   }
   100% {
-    border-color: #3a3a3a;
+    border-color: var(--line);
     box-shadow: none;
   }
 }
@@ -1869,23 +1815,23 @@ pre {
   display: flex;
   flex-shrink: 0;
   height: 18px;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--line);
   position: sticky;
   top: 0;
   z-index: 3;
-  background: #202020;
+  background: var(--bg-1);
 }
 
 .timeline-gutter {
   flex-shrink: 0;
-  background: #232323;
+  background: var(--bg-1);
 }
 
 .timeline-ruler {
   flex: 1;
   min-width: 0;
   position: relative;
-  background: #1c1c1c;
+  background: var(--bg-0);
   cursor: pointer;
   /* Pointer-capture drag-scrubbing on touch: stop the browser from
      claiming horizontal pan gestures. */
@@ -1899,7 +1845,7 @@ pre {
   top: 0;
   bottom: 0;
   width: 1px;
-  background: #3a3a3a;
+  background: var(--line);
   pointer-events: none;
 }
 
@@ -1908,15 +1854,10 @@ pre {
   bottom: 1px;
   left: 0;
   padding: 0 2px;
-  font-family:
-    ui-monospace,
-    'SF Mono',
-    Menlo,
-    Consolas,
-    monospace;
+  font-family: var(--ui);
   font-size: 0.6rem;
   line-height: 1;
-  color: #888;
+  color: var(--txt-3);
   white-space: nowrap;
 }
 
@@ -1936,7 +1877,7 @@ pre {
 }
 
 .timeline-part {
-  border-bottom: 1px solid #2a2a2a;
+  border-bottom: 1px solid var(--line);
   padding-bottom: 2px;
 }
 
@@ -1966,14 +1907,9 @@ pre {
   background: transparent;
   border: none;
   cursor: pointer;
-  font-family:
-    ui-monospace,
-    'SF Mono',
-    Menlo,
-    Consolas,
-    monospace;
+  font-family: var(--ui);
   font-size: 0.72rem;
-  color: #cde;
+  color: var(--txt-1);
   text-align: left;
 }
 
@@ -1984,7 +1920,7 @@ pre {
 .timeline-caret {
   flex-shrink: 0;
   font-size: 0.6rem;
-  color: #888;
+  color: var(--txt-3);
 }
 
 .timeline-part-name {
@@ -1996,13 +1932,13 @@ pre {
 .timeline-part-clear {
   width: 15px;
   height: 15px;
-  color: #c99;
+  color: #d1a0a0;
   font-size: 0.8rem;
 }
 
 .timeline-part-clear:hover:not(:disabled) {
-  background: #4a2a2a;
-  color: #faa;
+  background: #3a2024;
+  color: #f0b3b5;
 }
 
 /* Collapsed-part key summary: read-only ticks aligned with the lanes. */
@@ -2014,7 +1950,7 @@ pre {
   /* Major gridlines only (see .timeline-lane for the var contract). */
   background-image: repeating-linear-gradient(
     90deg,
-    #2c2c2c 0 1px,
+    var(--line) 0 1px,
     transparent 1px calc(100% * var(--grid-frac, 1))
   );
 }
@@ -2024,7 +1960,7 @@ pre {
   top: 1px;
   bottom: 1px;
   width: 2px;
-  background: #557;
+  background: var(--accent-lo);
   transform: translateX(-50%);
   pointer-events: none;
 }
@@ -2046,26 +1982,21 @@ pre {
 }
 
 .timeline-attr-label {
-  font-family:
-    ui-monospace,
-    'SF Mono',
-    Menlo,
-    Consolas,
-    monospace;
+  font-family: var(--ui);
   font-size: 0.68rem;
-  color: #888;
+  color: var(--txt-3);
 }
 
 .timeline-add {
   width: 15px;
   height: 15px;
-  color: #cde;
+  color: var(--txt-1);
   font-size: 0.8rem;
 }
 
 .timeline-add:hover:not(:disabled) {
-  background: #3a4a6a;
-  color: #cde;
+  background: var(--accent);
+  color: var(--txt-1);
 }
 
 .timeline-lane {
@@ -2079,16 +2010,16 @@ pre {
   /* Gridlines aligned to the ruler ticks + the snap grid. --grid-frac and
      --snap-frac (fractions of the lane width) are set on .timeline-body; the
      major layer is drawn over the minor where they coincide. */
-  background-color: #1a1a1a;
+  background-color: var(--bg-0);
   background-image:
     repeating-linear-gradient(
       90deg,
-      #2c2c2c 0 1px,
+      var(--line) 0 1px,
       transparent 1px calc(100% * var(--grid-frac, 1))
     ),
     repeating-linear-gradient(
       90deg,
-      #232323 0 1px,
+      var(--bg-1) 0 1px,
       transparent 1px calc(100% * var(--snap-frac, 1))
     );
 }
@@ -2099,8 +2030,8 @@ pre {
   width: 9px;
   height: 9px;
   padding: 0;
-  background: #5af;
-  border: 1px solid #1a1a1a;
+  background: var(--accent);
+  border: 1px solid var(--bg-0);
   cursor: grab;
   transform: translate(-50%, -50%) rotate(45deg);
   /* Required for pointer-capture dragging on touch devices: without it the
@@ -2109,12 +2040,12 @@ pre {
 }
 
 .timeline-marker:hover:not(:disabled) {
-  background: #8cf;
+  background: var(--accent-hi);
 }
 
 .timeline-marker.selected {
   background: #fff;
-  box-shadow: 0 0 0 1px #5af;
+  box-shadow: 0 0 0 1px var(--accent);
 }
 
 .timeline-marker:disabled {
@@ -2125,13 +2056,13 @@ pre {
    (no 45° rotation) so the lock reads at a glance. */
 .timeline-marker.locked {
   transform: translate(-50%, -50%);
-  background: #47617f;
+  background: #4a3d6b;
   cursor: pointer;
 }
 
 .timeline-marker.dragging {
   background: #fff;
-  box-shadow: 0 0 0 2px #5af;
+  box-shadow: 0 0 0 2px var(--accent);
   cursor: grabbing;
   z-index: 1;
 }
@@ -2139,7 +2070,7 @@ pre {
 /* A key whose time exceeds the clip duration (clamped to the lane's right
    edge by the percentage layout). The lint badge offers Trim. */
 .timeline-marker.out-of-range {
-  background: #d66;
+  background: var(--danger);
 }
 
 /* Non-linear outgoing ease (SPEC §6.7): an amber dot riding the marker.
@@ -2153,8 +2084,8 @@ pre {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: #fa5;
-  border: 1px solid #1a1a1a;
+  background: var(--warn);
+  border: 1px solid var(--bg-0);
 }
 
 /* Faded origin shown while its marker is being dragged. */
@@ -2163,7 +2094,7 @@ pre {
   top: 50%;
   width: 9px;
   height: 9px;
-  background: #5af;
+  background: var(--accent);
   opacity: 0.3;
   transform: translate(-50%, -50%) rotate(45deg);
   pointer-events: none;
@@ -2176,9 +2107,9 @@ pre {
   align-items: center;
   gap: 0.45rem;
   padding: 0.15rem 0.5rem;
-  background: #3a2a1a;
-  color: #fc8;
-  border-radius: 4px;
+  background: #2a2015;
+  color: var(--warn);
+  border-radius: var(--r-2);
   font-size: 0.75rem;
 }
 
@@ -2187,7 +2118,7 @@ pre {
   top: 0;
   bottom: 0;
   width: 1px;
-  background: #f55;
+  background: var(--playhead);
   pointer-events: none;
   /* Above the sticky ruler so the red line reads across it. */
   z-index: 4;
@@ -2210,14 +2141,9 @@ pre {
 }
 
 .anim-inspector-title {
-  font-family:
-    ui-monospace,
-    'SF Mono',
-    Menlo,
-    Consolas,
-    monospace;
+  font-family: var(--ui);
   font-size: 0.78rem;
-  color: #e8e8f0;
+  color: var(--txt-1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2228,7 +2154,7 @@ pre {
   align-items: center;
   gap: 0.35rem;
   font-size: 0.75rem;
-  color: #888;
+  color: var(--txt-3);
 }
 
 .anim-inspector-time-field .property-position-input {
@@ -2246,7 +2172,7 @@ pre {
   align-items: center;
   gap: 0.4rem;
   font-size: 0.8rem;
-  color: #cde;
+  color: var(--txt-1);
 }
 
 /* Keyframe-level ease selector. Same skeleton as the time field; the select
@@ -2256,7 +2182,7 @@ pre {
   align-items: center;
   gap: 0.4rem;
   font-size: 0.8rem;
-  color: #cde;
+  color: var(--txt-1);
 }
 
 .anim-inspector-ease-label {
@@ -2266,18 +2192,13 @@ pre {
 .anim-inspector-ease select {
   flex: 1;
   min-width: 0;
-  background: #2a2a2a;
-  color: #e0e0e0;
-  border: 1px solid #3a3a3a;
-  border-radius: 3px;
+  background: var(--bg-2);
+  color: var(--txt-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
   padding: 0.15rem 0.3rem;
   font: inherit;
-  font-family:
-    ui-monospace,
-    'SF Mono',
-    Menlo,
-    Consolas,
-    monospace;
+  font-family: var(--ui);
 }
 
 .anim-inspector-ease select:disabled {
