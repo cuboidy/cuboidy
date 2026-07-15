@@ -847,14 +847,6 @@ svg.lucide {
   pointer-events: none;
 }
 
-.property-group-header h4 {
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--txt-2);
-}
-
 .property-group-empty {
   font-size: 0.75rem;
   color: var(--txt-3);

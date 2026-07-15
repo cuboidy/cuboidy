@@ -134,9 +134,6 @@ export function PartProperties({
       )}
 
       <div className={`property-group${rigDisabled ? ' disabled' : ''}`}>
-        <div className="property-group-header">
-          <h4>Rig</h4>
-        </div>
         {!hasManifest && (
           <div className="property-group-empty">
             <p>No manifest — parent and position can't be set yet.</p>
