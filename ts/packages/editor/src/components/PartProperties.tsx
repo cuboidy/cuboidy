@@ -94,22 +94,14 @@ export function PartProperties({
   const hasManifest = manifest !== undefined;
   const rigDisabled = !hasManifest || manifestEditsDisabled;
 
-  // Parts that clone/mirror this one would dangle if it were deleted, so delete
-  // is blocked while any exist (the user repoints/renames them first).
-  const clonedBy = cvox.parts
-    .filter((p) => p.name !== selectedPart && p.from?.part === selectedPart)
-    .map((p) => p.name);
   // A model needs at least one part; the last one can't be deleted.
   const isOnlyPart = cvox.parts.length <= 1;
-  const deleteDisabled = renameDisabled || clonedBy.length > 0 || isOnlyPart;
-  const deleteTitle =
-    clonedBy.length > 0
-      ? `Can't delete — cloned/mirrored by: ${clonedBy.join(', ')}`
-      : isOnlyPart
-        ? "Can't delete the only part"
-        : renameDisabled
-          ? 'Fix source syntax errors to delete'
-          : 'Delete this part (undo restores it)';
+  const deleteDisabled = renameDisabled || isOnlyPart;
+  const deleteTitle = isOnlyPart
+    ? "Can't delete the only part"
+    : renameDisabled
+      ? 'Fix source syntax errors to delete'
+      : 'Delete this part (undo restores it)';
 
   return (
     <section className="part-properties">
@@ -321,20 +313,9 @@ function resizeVoxels(
   return out;
 }
 
-// cvox-side per-part geometry: pivot (position + optional rotation) and
-// sockets. Size stays read-only (shown in the header) — resizing rewrites the
-// voxel grid and is deferred to its own step. clone/mirror parts derive their
-// geometry from the referent, so there's nothing to edit here.
+// cvox-side per-part geometry: size, pivot (position + optional rotation) and
+// sockets.
 function GeometryFields({ part, disabled, onEditPart }: GeometryFieldsProps) {
-  if (part.from !== undefined) {
-    const verb = part.from.mirror !== undefined ? 'mirrors' : 'clones';
-    return (
-      <p className="property-group-empty">
-        Geometry is derived — this part {verb} “{part.from.part}”.
-      </p>
-    );
-  }
-
   const rot = part.pivot.rot;
 
   // Resize one dimension. Committed on blur (not per keystroke) so typing

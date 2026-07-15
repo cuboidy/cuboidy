@@ -57,7 +57,6 @@ import { VoxelScene } from './components/VoxelScene.js';
 import { historyReducer, makeHistory } from './lib/history.js';
 import {
   normalizePath,
-  refreshSourceReuse,
   resolveProjectRefs,
 } from './lib/load-model.js';
 import {
@@ -201,14 +200,12 @@ function mapGeometryFiles<S extends LoadedSource>(
     }
   }
   if (geometries === null) return src;
-  // Structural edits can change reuse referents (rename, voxel edits),
-  // so re-derive every clone/mirror model-wide before publishing.
-  return refreshSourceReuse({
+  return {
     ...src,
     geometries,
     ...(files !== null && { files }),
     ...(primaryPatch !== null && primaryPatch),
-  });
+  };
 }
 
 // Rewrite every resolved external animation (§6.3) with `fn`, updating
@@ -493,7 +490,6 @@ export function App() {
     makeHistory<LoadResult | null>,
   );
   const loaded = history.present;
-  const sourceKind = loaded?.source?.kind;
   // Latest-value ref so the synchronous flush helpers (below) can read
   // the CURRENT text without re-binding every callback on each edit.
   const loadedRef = useRef(loaded);
@@ -546,49 +542,29 @@ export function App() {
   }, []);
 
   // Parse cvox text and land the outcome — error state plus (on success)
-  // the AST amend with a model-wide reuse refresh. The single
+  // the AST amend. The single
   // implementation behind BOTH the debounced timer and the synchronous
   // flush below, so the two paths can't drift. Returns true when the
   // text parsed and the AST landed.
-  const landCvoxReparse = useCallback(
-    (text: string, kind: LoadedSource['kind'] | undefined): boolean => {
-      // Deferred reuse (SPEC §6.9): in a folder source a clone/mirror
-      // referent may live in a sibling geometry file, so an unresolved
-      // one is not a parse error — refreshSourceReuse resolves (or
-      // reports) it. A cvox-only source has no siblings: pending refs
-      // stay the hard error strict parsing used to give.
-      const result = parseCvox(text, { deferUnresolvedReuse: true });
-      if (!result.ok) {
-        setCvoxParseError(result.message);
-        return false;
-      }
-      const pending = result.value.pending ?? [];
-      if (kind !== 'folder' && pending.length > 0) {
-        const p = pending[0]!;
-        const verb = p.from.mirror !== undefined ? 'mirror' : 'clone';
-        setCvoxParseError(
-          `part "${p.name}" ${verb}s unknown part "${p.from.part}"`,
-        );
-        return false;
-      }
-      setCvoxParseError(null);
-      dispatch({
-        type: 'amend',
-        apply: (current) => {
-          if (current?.source === undefined) return current;
-          return {
-            ...current,
-            source: refreshSourceReuse({
-              ...current.source,
-              cvox: result.value,
-            }),
-          };
-        },
-      });
-      return true;
-    },
-    [],
-  );
+  const landCvoxReparse = useCallback((text: string): boolean => {
+    const result = parseCvox(text);
+    if (!result.ok) {
+      setCvoxParseError(result.message);
+      return false;
+    }
+    setCvoxParseError(null);
+    dispatch({
+      type: 'amend',
+      apply: (current) => {
+        if (current?.source === undefined) return current;
+        return {
+          ...current,
+          source: { ...current.source, cvox: result.value },
+        };
+      },
+    });
+    return true;
+  }, []);
 
   // Flush (not discard) a pending debounced cvox reparse: parse the
   // CURRENT text synchronously and land the amend / error now. Returns
@@ -601,12 +577,12 @@ export function App() {
     reparseCvoxTimer.current = null;
     const src = loadedRef.current?.source;
     if (src === undefined) return true;
-    return landCvoxReparse(src.cvoxFile.text, src.kind);
+    return landCvoxReparse(src.cvoxFile.text);
   }, [landCvoxReparse]);
 
   // Manifest counterpart of landCvoxReparse: parse + amend with a full
   // reference re-resolve (geometry ASTs, bound palette, external
-  // animations, project/reuse errors track the edited manifest).
+  // animations, project errors track the edited manifest).
   const landManifestReparse = useCallback((text: string): boolean => {
     let json: unknown;
     try {
@@ -638,11 +614,9 @@ export function App() {
           externalPalette: _pal,
           externalAnims: _anims,
           projectErrors: _proj,
-          reuseErrors: _reuse,
           ...rest
         } = src;
-        // A changed geometry list can (un)resolve cross-file reuse in
-        // the primary too — read its refreshed AST back.
+        // A changed geometry list can pull a different primary AST in.
         const primaryNext = refs.geometries.get(src.cvoxFile.name);
         return {
           ...current,
@@ -659,9 +633,6 @@ export function App() {
             }),
             ...(refs.projectErrors.length > 0 && {
               projectErrors: refs.projectErrors,
-            }),
-            ...(refs.reuseErrors.length > 0 && {
-              reuseErrors: refs.reuseErrors,
             }),
           },
         };
@@ -712,8 +683,7 @@ export function App() {
         (result.source.droppedInlineComments > 0 ||
           (result.source.kind === 'folder' &&
             (result.source.manifestError !== undefined ||
-              (result.source.projectErrors?.length ?? 0) > 0 ||
-              (result.source.reuseErrors?.length ?? 0) > 0)))
+              (result.source.projectErrors?.length ?? 0) > 0)))
       ) {
         setLayout((l) => openPanelById(l, 'console'));
       }
@@ -781,10 +751,10 @@ export function App() {
         // The AST half of the already-recorded text edit — landCvoxReparse
         // amends, doesn't push (an entry whose undo changed only the
         // invisible AST would be a dead Ctrl+Z step).
-        landCvoxReparse(nextText, sourceKind);
+        landCvoxReparse(nextText);
       }, REPARSE_DEBOUNCE_MS);
     },
-    [dispatchEdit, cancelPendingCvoxReparse, landCvoxReparse, sourceKind],
+    [dispatchEdit, cancelPendingCvoxReparse, landCvoxReparse],
   );
 
   // Per-file source editing for the dynamic file tabs (v0.7 packages).
@@ -817,10 +787,7 @@ export function App() {
   const reparseFileNow = useCallback(
     (path: string, text: string): boolean => {
       if (path.endsWith('.cvox')) {
-        // Deferred reuse: geometry files are always part of a folder
-        // source, so unresolved referents go through the model-wide
-        // refresh instead of erroring the file tab.
-        const r = parseCvox(text, { deferUnresolvedReuse: true });
+        const r = parseCvox(text);
         if (!r.ok) {
           setFileParseError(path, r.message);
           return false;
@@ -839,10 +806,7 @@ export function App() {
             }
             const geometries = new Map(src.geometries);
             geometries.set(path, r.value);
-            return {
-              ...current,
-              source: refreshSourceReuse({ ...src, geometries }),
-            };
+            return { ...current, source: { ...src, geometries } };
           },
         });
         return true;
@@ -1362,11 +1326,8 @@ export function App() {
           externalPalette: _pal,
           externalAnims: _anims,
           projectErrors: _proj,
-          reuseErrors: _reuse,
           ...rest
         } = src;
-        // The newly-referenced file may define referents the primary's
-        // pending reuse parts were waiting for — read the refreshed AST.
         const primaryNext = refs.geometries.get(src.cvoxFile.name);
         return {
           ...current,
@@ -1387,9 +1348,6 @@ export function App() {
             }),
             ...(refs.projectErrors.length > 0 && {
               projectErrors: refs.projectErrors,
-            }),
-            ...(refs.reuseErrors.length > 0 && {
-              reuseErrors: refs.reuseErrors,
             }),
           },
         };
@@ -1728,13 +1686,11 @@ export function App() {
 
   // Move a part's declaration to another geometry file, atomically (one
   // dispatchEdit = one undo). The manifest is untouched — part names,
-  // not paths, are the cross-file join key — and clone/mirror referents
-  // resolve model-wide (§6.9), so no references need fixing up. Palette:
-  // with a manifest binding the shared palette makes indices portable;
-  // WITHOUT one each file's inline palette gives them meaning, so the
-  // moved voxels are remapped (missing colors appended to the target
-  // palette). Parts with `from` carry derived voxels — the declaration
-  // moves verbatim.
+  // not paths, are the cross-file join key, so no references need fixing
+  // up. Palette: with a manifest binding the shared palette makes indices
+  // portable; WITHOUT one each file's inline palette gives them meaning,
+  // so the moved voxels are remapped (missing colors appended to the
+  // target palette).
   const handleMovePart = useCallback(
     (name: string, targetPath: string) => {
       if (!flushGeometryReparse()) return;
@@ -1763,7 +1719,7 @@ export function App() {
         if (part === undefined) return current;
         let moved = part;
         let toPalette = toCvox.palette;
-        if (src.externalPalette === undefined && part.from === undefined) {
+        if (src.externalPalette === undefined) {
           const remapped = remapPartPalette(part, fromCvox.palette, toPalette);
           moved = remapped.part;
           toPalette = remapped.palette;
@@ -1786,7 +1742,7 @@ export function App() {
   // Rename a part everywhere it's referenced, atomically (one dispatchEdit =
   // one undo). The name is a cross-file join key, so a piecemeal rename would
   // leave dangling references. Rewrites:
-  //   cvox     — the part's `name`, and any part cloning/mirroring it (from.part)
+  //   cvox     — the part's `name`
   //   manifest — the entry `name`, any `parent` pointing at it, and every inline
   //              animation track keyed by the old name (re-keyed, order kept)
   //   external — every resolved §6.3 animation file whose tracks key the old
@@ -1798,24 +1754,17 @@ export function App() {
       dispatchEdit(null, (current) => {
         if (current?.source === undefined) return current;
         const src = current.source;
-        // Existence / collision checks are model-wide (§5) — the part and
-        // its reuse references may live in different geometry files.
+        // Existence / collision checks are model-wide (§5) — the part may
+        // live in any geometry file.
         const allParts = mergeGeometries(src).parts;
         if (!allParts.some((p) => p.name === oldName)) return current;
         if (allParts.some((p) => p.name === newName)) return current;
         let nextSrc = mapGeometryFiles(src, (cvox) => {
           let changed = false;
           const parts: Part[] = cvox.parts.map((p) => {
-            let np: Part = p;
-            if (np.name === oldName) {
-              np = { ...np, name: newName };
-              changed = true;
-            }
-            if (np.from !== undefined && np.from.part === oldName) {
-              np = { ...np, from: { ...np.from, part: newName } };
-              changed = true;
-            }
-            return np;
+            if (p.name !== oldName) return p;
+            changed = true;
+            return { ...p, name: newName };
           });
           return changed ? { ...cvox, parts } : null;
         });
@@ -1886,24 +1835,17 @@ export function App() {
   // Delete a part, cleaning up its references atomically (one undo). Removes
   // the cvox part; in the manifest drops its entry, re-parents its children to
   // its own parent (grandparent, or root if none), and drops its animation
-  // tracks (inline AND resolved external files). BLOCKS (no-op) if another
-  // part clones/mirrors it — the UI disables the action in that case, so this
-  // guard is just defensive. No confirmation: undo is the safety net (same as
-  // clip delete).
+  // tracks (inline AND resolved external files). No confirmation: undo is the
+  // safety net (same as clip delete).
   const handleDeletePart = useCallback(
     (name: string) => {
       if (!flushAllReparse()) return;
       dispatchEdit(null, (current) => {
         if (current?.source === undefined) return current;
         const src = current.source;
-        // Model-wide checks (§5): the part and any clone/mirror of it may
-        // live in different geometry files.
+        // Model-wide check (§5): the part may live in any geometry file.
         const allParts = mergeGeometries(src).parts;
         if (!allParts.some((p) => p.name === name)) return current;
-        // A clone/mirror of this part would dangle — refuse.
-        if (allParts.some((p) => p.name !== name && p.from?.part === name)) {
-          return current;
-        }
         let nextSrc = mapGeometryFiles(src, (cvox) =>
           cvox.parts.some((p) => p.name === name)
             ? { ...cvox, parts: cvox.parts.filter((p) => p.name !== name) }
@@ -2618,11 +2560,7 @@ export function App() {
       setManifestParseError(null);
       return;
     }
-    // Folder sources tolerate pending cross-file referents (§6.9);
-    // cvox-only keeps them as the hard error strict parsing gives.
-    const cvoxR = parseCvox(src.cvoxFile.text, {
-      deferUnresolvedReuse: src.kind === 'folder',
-    });
+    const cvoxR = parseCvox(src.cvoxFile.text);
     setCvoxParseError(cvoxR.ok ? null : cvoxR.message);
     if (src.kind === 'folder' && src.manifestFile !== undefined) {
       let err: string | null = null;
@@ -2647,7 +2585,7 @@ export function App() {
         if (path === src.cvoxFile.name) continue; // covered by cvoxParseError
         if (path === src.manifestFile?.name) continue;
         if (path.endsWith('.cvox')) {
-          const r = parseCvox(entry.text, { deferUnresolvedReuse: true });
+          const r = parseCvox(entry.text);
           if (!r.ok) next.set(path, r.message);
         } else if (path.endsWith('.json')) {
           try {
@@ -2990,7 +2928,6 @@ export function App() {
     if (source === undefined) return m;
     if (source.kind === 'folder') {
       for (const pe of source.projectErrors ?? []) m.set(pe.file, pe.message);
-      for (const pe of source.reuseErrors ?? []) m.set(pe.file, pe.message);
     }
     for (const [p, msg] of fileParseErrors) m.set(p, msg);
     const mErr =
@@ -3457,15 +3394,6 @@ export function App() {
         }
         if (source.kind === 'folder' && source.projectErrors !== undefined) {
           for (const pe of source.projectErrors) {
-            entries.push({
-              severity: 'error',
-              source: pe.file,
-              message: pe.message,
-            });
-          }
-        }
-        if (source.kind === 'folder' && source.reuseErrors !== undefined) {
-          for (const pe of source.reuseErrors) {
             entries.push({
               severity: 'error',
               source: pe.file,

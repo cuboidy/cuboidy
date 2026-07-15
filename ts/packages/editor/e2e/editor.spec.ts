@@ -4,22 +4,21 @@ import { ROBO_MINI, loadFolder, openTab, tab } from './helpers.js';
 // Editor E2E regression suite (audit D-1). Covers the workflows the
 // 2026-07-10 audit flagged as untested and the A-6 debounce/structure
 // races fixed on this branch. models/robo-mini doubles as the fixture:
-// geometry list + external palette + cross-file mirror (SPEC §6.9/§6.10).
+// a multi-file package (geometry list + external palette).
 
-test('robo-mini loads with cross-file mirror parts and no errors', async ({ page }) => {
+test('robo-mini loads all parts with no errors', async ({ page }) => {
   await loadFolder(page, ROBO_MINI);
 
   await openTab(page, 'Parts');
-  // All six parts, including arm-r (mirror of arm-l ACROSS files) and
-  // leg-r (same-file mirror) — before the shared project layer this
-  // package failed to load at all.
+  // All six parts across body.cvox + limbs.cvox load through the shared
+  // project layer.
   for (const part of ['body', 'head', 'arm-l', 'arm-r', 'leg-l', 'leg-r']) {
     await expect(
-      page.locator('.part-tree-name', { hasText: new RegExp(`^${part}$`) }),
+      page.locator('.tree-name', { hasText: new RegExp(`^${part}$`) }),
     ).toBeVisible();
   }
 
-  // Console panel reports no project/reuse errors.
+  // Console panel reports no project errors.
   await openTab(page, 'Console');
   await expect(page.locator('.console-entry.error')).toHaveCount(0);
 });
@@ -40,7 +39,7 @@ test('A-6: structural edit right after typing keeps the typed text', async ({ pa
   // Immediately rename a part (structural edit → serializes the AST).
   await openTab(page, 'Parts');
   await page
-    .locator('.part-tree-name', { hasText: /^head$/ })
+    .locator('.tree-name', { hasText: /^head$/ })
     .dblclick();
   const rename = page.getByLabel('Rename head');
   await rename.fill('noggin');
@@ -48,7 +47,7 @@ test('A-6: structural edit right after typing keeps the typed text', async ({ pa
 
   // The rename landed…
   await expect(
-    page.locator('.part-tree-name', { hasText: /^noggin$/ }),
+    page.locator('.tree-name', { hasText: /^noggin$/ }),
   ).toBeVisible();
   // …AND the just-typed voxel edit survived the re-serialize. Before
   // the fix the stale pre-typing AST overwrote it.
@@ -72,7 +71,7 @@ test('A-6: structural edit aborts while the source text is broken', async ({ pag
   await textarea.fill(broken);
 
   await openTab(page, 'Parts');
-  await page.locator('.part-tree-name', { hasText: /^head$/ }).dblclick();
+  await page.locator('.tree-name', { hasText: /^head$/ }).dblclick();
   const rename = page.getByLabel('Rename head');
   await rename.fill('noggin');
   await rename.press('Enter');
@@ -80,7 +79,7 @@ test('A-6: structural edit aborts while the source text is broken', async ({ pag
   // The rename must NOT have gone through (a stale-AST serialize would
   // have resurrected arm-l's size line and clobbered the typed text)…
   await expect(
-    page.locator('.part-tree-name', { hasText: /^head$/ }),
+    page.locator('.tree-name', { hasText: /^head$/ }),
   ).toBeVisible();
   // …the broken text is preserved verbatim…
   await openTab(page, 'body.cvox');
@@ -113,6 +112,6 @@ test('A-6: undo right after editing a non-primary file stays consistent', async 
   await expect(textarea).toHaveValue(original);
   await openTab(page, 'Parts');
   await expect(
-    page.locator('.part-tree-name', { hasText: /^leg-l$/ }),
+    page.locator('.tree-name', { hasText: /^leg-l$/ }),
   ).toBeVisible();
 });

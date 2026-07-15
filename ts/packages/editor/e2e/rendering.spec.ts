@@ -30,7 +30,7 @@ test('A-7: a loop:false clip stops at its end; loop:true keeps wrapping', async 
   await page.clock.runFor(3000);
   // The playhead clamps at duration and the transport stops.
   await expect(slider).toHaveValue('1');
-  const playButton = page.getByRole('button', { name: 'Play' });
+  const playButton = page.getByRole('button', { name: 'Play', exact: true });
   await expect(playButton).toBeVisible();
 
   // Pressing play again restarts from 0 instead of stopping immediately.
