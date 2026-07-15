@@ -21,8 +21,26 @@
   /* Semantic (kept distinct from the accent) */
   --danger: #E5484D;
   --warn: #F5A623;
-  --ok: #3DA35D;
   --playhead: #F04A4A;
+
+  /* Semantic surfaces — tinted bg + on-surface fg/border/hover, so the
+     danger/warn families are the single source of truth (not ad-hoc hex). */
+  --danger-bg: #2a1a1d;
+  --danger-border: #5a2a2e;
+  --danger-fg: #f0b3b5;
+  --danger-hover: #3a2024;
+  --warn-bg: #2a2015;
+  --warn-border: #6a5a2a;
+  --warn-hover: #5a4a2a;
+
+  /* Accent-tinted "create / add" surface (violet). */
+  --create-bg: #1e1730;
+  --create-border: #3a2d55;
+  --create-fg: #c9b3f0;
+  --create-hover: #251c3c;
+
+  /* Extra graphite step for control hovers. */
+  --bg-4: #2b333e;
 
   /* Radius / elevation */
   --r-1: 3px;
@@ -79,7 +97,7 @@ body {
 ::-webkit-scrollbar-thumb {
   background: var(--line-2);
   border: 3px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--r-3);
   background-clip: padding-box;
 }
 
@@ -122,7 +140,7 @@ svg.lucide {
 }
 
 .btn:hover:not(:disabled) {
-  background: #2b333e;
+  background: var(--bg-4);
 }
 
 .btn-primary {
@@ -135,34 +153,34 @@ svg.lucide {
 }
 
 .btn-danger {
-  background: #2a1a1d;
-  color: #f0b3b5;
-  border-color: #5a2a2e;
+  background: var(--danger-bg);
+  color: var(--danger-fg);
+  border-color: var(--danger-border);
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: #3a2024;
+  background: var(--danger-hover);
 }
 
 .btn-warning {
-  background: #2a2015;
+  background: var(--warn-bg);
   color: var(--warn);
-  border-color: #6a5a2a;
+  border-color: var(--warn-border);
 }
 
 .btn-warning:hover:not(:disabled) {
-  background: #5a4a2a;
+  background: var(--warn-hover);
 }
 
 /* Dashed = creates something that doesn't exist yet. */
 .btn-create {
-  background: #1e1730;
-  color: #c9b3f0;
-  border: 1px solid #3a2d55;
+  background: var(--create-bg);
+  color: var(--create-fg);
+  border: 1px solid var(--create-border);
 }
 
 .btn-create:hover:not(:disabled) {
-  background: #251c3c;
+  background: var(--create-hover);
   border-color: var(--accent-lo);
 }
 
@@ -499,8 +517,8 @@ svg.lucide {
 }
 
 .dock-tab-close:hover:not(:disabled) {
-  background: #3a2024;
-  color: #f0b3b5;
+  background: var(--danger-hover);
+  color: var(--danger-fg);
 }
 
 .dock-tabrow-actions {
@@ -914,11 +932,11 @@ svg.lucide {
 }
 
 .parse-error-banner {
-  background: #2a1a1d;
-  color: #f0b3b5;
+  background: var(--danger-bg);
+  color: var(--danger-fg);
   padding: 0.4rem 0.8rem;
   font-size: 0.8rem;
-  border-top: 1px solid #5a2a2e;
+  border-top: 1px solid var(--danger-border);
   flex-shrink: 0;
   font-family: var(--mono);
 }
@@ -1099,7 +1117,7 @@ svg.lucide {
 .palette-add:hover {
   background: var(--bg-1);
   color: var(--txt-2);
-  border-color: #2b333e;
+  border-color: var(--bg-4);
 }
 
 /* ─── File preview ────────────────────────────────────────────────── */
@@ -1239,7 +1257,7 @@ svg.ficon-json {
   color: #c9a86a;
 }
 svg.ficon-anim {
-  color: #6ab0a0;
+  color: var(--txt-2);
 }
 
 .tree-caret {
@@ -1283,7 +1301,7 @@ svg.ficon-anim {
 .tree-row .badge {
   font-size: 0.65rem;
   padding: 0.05rem 0.3rem;
-  background: #2a2015;
+  background: var(--warn-bg);
   color: var(--warn);
   border-radius: var(--r-1);
   font-family: var(--ui);
@@ -1337,8 +1355,8 @@ svg.ficon-anim {
 }
 
 .file-delete:hover:not([aria-disabled='true']) {
-  background: #3a2024;
-  color: #f0b3b5;
+  background: var(--danger-hover);
+  color: var(--danger-fg);
 }
 
 .file-delete[aria-disabled='true'] {
@@ -1357,8 +1375,8 @@ svg.ficon-anim {
 .file-load {
   margin-left: auto;
   padding: 0.05rem 0.35rem;
-  color: #9d9;
-  background: #2a3a2a;
+  color: var(--txt-2);
+  background: var(--bg-3);
   border-radius: var(--r-1);
   font-size: 0.7rem;
   text-transform: uppercase;
@@ -1371,8 +1389,8 @@ svg.ficon-anim {
 }
 
 .file-load:hover:not([aria-disabled='true']) {
-  background: #2a4a2a;
-  color: #cfc;
+  background: var(--bg-4);
+  color: var(--txt-1);
 }
 
 .file-load[aria-disabled='true'] {
@@ -1459,7 +1477,7 @@ svg.ficon-anim {
 }
 
 .tree-row.selected .part-tree-visibility {
-  color: #cbd3de;
+  color: var(--txt-1);
 }
 
 /* Target-file picker on the new-part draft row (multi-cvox models
@@ -1548,7 +1566,7 @@ svg.ficon-anim {
 
 .dropzone.dragging {
   border-color: var(--accent);
-  background: #1a1526;
+  background: var(--accent-tint);
 }
 
 .dropzone-icon {
@@ -1589,7 +1607,7 @@ svg.ficon-anim {
 }
 
 .dropzone .open-btn:hover {
-  background: #2b333e;
+  background: var(--bg-4);
 }
 
 .dropzone input[type='file'] {
@@ -1629,8 +1647,8 @@ svg.ficon-anim {
 }
 
 .notice.error {
-  background: #2a1a1d;
-  color: #f0b3b5;
+  background: var(--danger-bg);
+  color: var(--danger-fg);
 }
 
 /* ─── Console panel ───────────────────────────────────────────────── */
@@ -2016,13 +2034,13 @@ svg.ficon-anim {
 .timeline-part-clear {
   width: 15px;
   height: 15px;
-  color: #d1a0a0;
+  color: var(--danger-fg);
   font-size: 0.8rem;
 }
 
 .timeline-part-clear:hover:not(:disabled) {
-  background: #3a2024;
-  color: #f0b3b5;
+  background: var(--danger-hover);
+  color: var(--danger-fg);
 }
 
 /* Collapsed-part key summary: read-only ticks aligned with the lanes. */
@@ -2191,7 +2209,7 @@ svg.ficon-anim {
   align-items: center;
   gap: 0.45rem;
   padding: 0.15rem 0.5rem;
-  background: #2a2015;
+  background: var(--warn-bg);
   color: var(--warn);
   border-radius: var(--r-2);
   font-size: 0.75rem;

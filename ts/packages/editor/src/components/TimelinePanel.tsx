@@ -1,4 +1,5 @@
 import { isIdentifier, type Manifest } from '@cuboidy/core';
+import { Plus } from 'lucide-react';
 import type { AnimationSession } from '../lib/useAnimationSession.js';
 import { NumberInput } from './NumberInput.js';
 import { TextInput } from './TextInput.js';
@@ -74,7 +75,8 @@ export function TimelinePanel({
               disabled={manifestEditsDisabled}
               onClick={onCreateClip}
             >
-              + Create animation
+              <Plus size={13} />
+              Create animation
             </button>
           </>
         ) : (

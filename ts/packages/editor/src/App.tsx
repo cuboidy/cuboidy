@@ -3082,7 +3082,8 @@ export function App() {
                   className="btn btn-create btn-sm"
                   onClick={handleCreateManifest}
                 >
-                  + Create manifest
+                  <Plus size={13} />
+                  Create manifest
                 </button>
               </div>
             ),
@@ -3457,7 +3458,8 @@ export function App() {
                   className="btn btn-create"
                   onClick={() => handleReopenPanel(p.id)}
                 >
-                  + {p.title}
+                  <Plus size={13} />
+                  {p.title}
                 </button>
               ))}
             </div>

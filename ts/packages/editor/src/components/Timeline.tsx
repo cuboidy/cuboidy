@@ -7,7 +7,7 @@ import {
   type CSSProperties,
   type PointerEvent,
 } from 'react';
-import { ChevronDown, ChevronRight, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, X } from 'lucide-react';
 import {
   formatTimeKey,
   type AnimationTrack,
@@ -407,7 +407,7 @@ const TimelineLanes = memo(function TimelineLanes({
                         disabled={disabled}
                         onClick={() => onAddKey(part, key)}
                       >
-                        +
+                        <Plus size={13} />
                       </button>
                     </div>
                     <div

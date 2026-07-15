@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Pause, Play } from 'lucide-react';
+import { Pause, Play, Plus } from 'lucide-react';
 import { OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import type { Cvox, Manifest, Palette } from '@cuboidy/core';
@@ -78,7 +78,8 @@ export function AnimationViewport({
             disabled={manifestEditsDisabled}
             onClick={onCreateClip}
           >
-            + Create animation
+            <Plus size={13} />
+            Create animation
           </button>
         </div>
       </div>
@@ -157,7 +158,8 @@ export function AnimationViewport({
           title="Create a new clip"
           onClick={onCreateClip}
         >
-          + New clip
+          <Plus size={13} />
+          New clip
         </button>
       </div>
     </div>

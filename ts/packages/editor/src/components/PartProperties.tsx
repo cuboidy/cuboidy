@@ -1,4 +1,5 @@
 import { type ChangeEvent } from 'react';
+import { Plus } from 'lucide-react';
 import { isIdentifier, type Cvox, type Manifest, type ManifestPart } from '@cuboidy/core';
 import { findManifestPart } from '../lib/part-tree.js';
 import { NumberInput } from './NumberInput.js';
@@ -144,7 +145,8 @@ export function PartProperties({
               className="btn btn-create btn-sm create-manifest-inline"
               onClick={onCreateManifest}
             >
-              + Create manifest
+              <Plus size={13} />
+              Create manifest
             </button>
           </div>
         )}
