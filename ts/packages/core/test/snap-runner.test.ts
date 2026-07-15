@@ -159,11 +159,12 @@ describe('renderSnapshots — v0.7 project shapes', () => {
     for (const tile of out.tiles) expect(isPng(tile.png)).toBe(true);
   });
 
-  it('renders a multi-geometry model with a cross-file mirror', async () => {
+  it('renders a multi-geometry model spanning two cvox files', async () => {
     const dir = await makeModel({
       'body.cvox':
         'palette #F00 #0F0\npart arm\nsize 2 1 1\npivot 0 0 0\nvoxels { 01 }',
-      'arms.cvox': 'part arm_r mirror arm',
+      'arms.cvox':
+        'palette #F00 #0F0\npart arm_r\nsize 2 1 1\npivot 2 0 0\nvoxels { 10 }',
       'cuboidy.json': JSON.stringify({
         name: 'multi',
         geometry: ['body.cvox', 'arms.cvox'],

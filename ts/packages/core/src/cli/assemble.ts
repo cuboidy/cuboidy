@@ -134,7 +134,6 @@ export async function loadAndAssemble(dir: string): Promise<LoadResult | LoadErr
 
   const pal = buildEffectivePalette(
     project.geometries,
-    project.reuseOrigins,
     project.externalPalette,
   );
   if (!pal.ok) {
@@ -144,7 +143,6 @@ export async function loadAndAssemble(dir: string): Promise<LoadResult | LoadErr
   const assembly = assembleWorld(
     manifest,
     project.geometries,
-    project.reuseOrigins,
     pal.value,
     orderResult.order,
   );
@@ -170,11 +168,10 @@ type PaletteResult =
 
 function buildEffectivePalette(
   geometries: readonly GeometryFile[],
-  reuseOrigins: ReadonlyMap<string, string>,
   external: Palette | undefined,
 ): PaletteResult {
   const warnings: string[] = [];
-  const maxIdxByFile = maxIndexByFile(geometries, reuseOrigins);
+  const maxIdxByFile = maxIndexByFile(geometries);
 
   if (external !== undefined) {
     const remap = new Map<string, readonly number[] | null>();
@@ -247,19 +244,15 @@ function colorKey(c: Color): string {
   return `${c.r},${c.g},${c.b},${c.a}`;
 }
 
-// Highest voxel index used per geometry file, attributing a cross-file
-// reuse part's voxels to the file that DEFINED the referent (its indices
-// live in that file's palette space).
+// Highest voxel index used per geometry file (its indices live in that
+// file's palette space).
 function maxIndexByFile(
   geometries: readonly GeometryFile[],
-  reuseOrigins: ReadonlyMap<string, string>,
 ): Map<string, number> {
   const max = new Map<string, number>();
   for (const g of geometries) {
-    if (!max.has(g.path)) max.set(g.path, AIR);
+    let m = max.get(g.path) ?? AIR;
     for (const part of g.cvox.parts) {
-      const origin = reuseOrigins.get(part.name) ?? g.path;
-      let m = max.get(origin) ?? AIR;
       for (const layer of part.voxels) {
         for (const row of layer) {
           for (const idx of row) {
@@ -267,8 +260,8 @@ function maxIndexByFile(
           }
         }
       }
-      max.set(origin, m);
     }
+    max.set(g.path, m);
   }
   return max;
 }
@@ -276,7 +269,6 @@ function maxIndexByFile(
 function assembleWorld(
   manifest: Manifest,
   geometries: readonly GeometryFile[],
-  reuseOrigins: ReadonlyMap<string, string>,
   eff: EffectivePalette,
   order: readonly ManifestPart[],
 ): Assembly {
@@ -297,10 +289,9 @@ function assembleWorld(
         );
         continue;
       }
-      const origin = reuseOrigins.get(part.name) ?? g.path;
       cvoxByName.set(part.name, {
         part,
-        remap: eff.remap.get(origin) ?? null,
+        remap: eff.remap.get(g.path) ?? null,
       });
     }
   }

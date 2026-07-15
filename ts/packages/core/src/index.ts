@@ -47,7 +47,6 @@ export {
 export type { KeyAttr, AttrValue, EaseAttr } from './animation-edit.js';
 
 export { parseCvox } from './cvox/parse.js';
-export type { ParseCvoxOptions } from './cvox/parse.js';
 export { serializeColor, serializeCvox } from './cvox/serialize.js';
 export {
   duplicatePart,
@@ -56,7 +55,6 @@ export {
   remapPartPalette,
   type Axis,
 } from './cvox/transform.js';
-export { expandProjectReuse, type ExpandResult } from './migrate.js';
 
 export { AIR } from './cvox/voxel-row.js';
 export type {
@@ -64,8 +62,6 @@ export type {
   Cvox,
   Palette,
   Part,
-  PartRef,
-  PendingReuse,
   Pivot,
   Size,
   Socket,
@@ -75,8 +71,6 @@ export type {
 export {
   normalizeRefPath,
   projectFilePaths,
-  refreshProjectReuse,
-  resolveCrossFileReuse,
   resolveProject,
 } from './project.js';
 export type {

@@ -35,7 +35,7 @@ describe('runLint — fixture parity (exit 0)', () => {
     expect(r.exitCode).toBe(0);
   });
 
-  it('robo-mini model (geometry list + palette binding + cross-file mirror) lints clean', async () => {
+  it('robo-mini model (geometry list + palette binding) lints clean', async () => {
     const r = await runLint(resolve(REPO_ROOT, 'models/robo-mini'), {
       strict: true,
     });
@@ -101,7 +101,7 @@ describe('runLint — W06 mirror symmetry (geometric)', () => {
         'palette #F00',
         BODY,
         'part arm-l\nsize 1 2 1\npivot 0 0 0\nvoxels { 0 , 0 }',
-        'part arm-r clone arm-l',
+        'part arm-r\nsize 1 2 1\npivot 0 0 0\nvoxels { 0 , 0 }',
       ].join('\n'),
       'cuboidy.json': manifest({
         'arm-l': [-1, 0, 0],
@@ -113,14 +113,14 @@ describe('runLint — W06 mirror symmetry (geometric)', () => {
   });
 
   it('warns when positions are sign-opposite but the voxels are not mirrored', async () => {
-    // Asymmetric voxel pattern cloned (not mirrored): the old
+    // Asymmetric voxel pattern copied verbatim (not mirrored): the old
     // positions-only rule was blind to this.
     const dir = await makeModel({
       'voxels.cvox': [
         'palette #F00',
         BODY,
         'part arm-l\nsize 2 1 1\npivot 1 0 0\nvoxels { 0. }',
-        'part arm-r clone arm-l',
+        'part arm-r\nsize 2 1 1\npivot 1 0 0\nvoxels { 0. }',
       ].join('\n'),
       'cuboidy.json': manifest({
         'arm-l': [-2, 0, 0],
@@ -298,68 +298,6 @@ describe('runLint — v0.7 project shape (geometry list + palette binding)', () 
     const xfile = r.diagnostics.find((d) => d.file === '<cross-file>');
     expect(xfile?.diag.code).toBe('missing');
     expect(xfile?.diag.message).toContain('no palette');
-  });
-});
-
-describe('runLint — cross-file clone/mirror (SPEC §6.9)', () => {
-  const paletteJson = JSON.stringify({ colors: ['#F00', '#0F0'] });
-
-  it('a clone whose referent lives in another geometry file lints clean', async () => {
-    const dir = await makeModel({
-      'body.cvox': 'part arm\nsize 2 1 1\nvoxels { 01 }',
-      'arms.cvox': 'part arm_l clone arm',
-      'palette.json': paletteJson,
-      'cuboidy.json': JSON.stringify({
-        name: 'm',
-        geometry: ['body.cvox', 'arms.cvox'],
-        palette: 'palette.json',
-        parts: [{ name: 'arm' }, { name: 'arm_l', parent: 'arm' }],
-      }),
-    });
-    const r = await runLint(dir);
-    expect(r.diagnostics).toEqual([]);
-    expect(r.exitCode).toBe(0);
-  });
-
-  it('a referent missing model-wide is an error (exit 1)', async () => {
-    const dir = await makeModel({
-      'body.cvox': 'part arm\nsize 2 1 1\nvoxels { 01 }',
-      'arms.cvox': 'part arm_l clone nope',
-      'palette.json': paletteJson,
-      'cuboidy.json': JSON.stringify({
-        name: 'm',
-        geometry: ['body.cvox', 'arms.cvox'],
-        palette: 'palette.json',
-        parts: [{ name: 'arm' }, { name: 'arm_l', parent: 'arm' }],
-      }),
-    });
-    const r = await runLint(dir);
-    expect(r.exitCode).toBe(1);
-    const diag = r.diagnostics.find((d) => d.diag.code === 'missing');
-    expect(diag?.diag.message).toMatch(/unknown part "nope"/);
-    expect(diag?.file).toMatch(/arms\.cvox$/);
-  });
-
-  it('a cross-file chain is invalid-value (exit 1)', async () => {
-    const dir = await makeModel({
-      'body.cvox': 'part arm\nsize 2 1 1\nvoxels { 01 }\npart arm2 clone arm',
-      'arms.cvox': 'part arm_l clone arm2',
-      'palette.json': paletteJson,
-      'cuboidy.json': JSON.stringify({
-        name: 'm',
-        geometry: ['body.cvox', 'arms.cvox'],
-        palette: 'palette.json',
-        parts: [
-          { name: 'arm' },
-          { name: 'arm2', parent: 'arm' },
-          { name: 'arm_l', parent: 'arm' },
-        ],
-      }),
-    });
-    const r = await runLint(dir);
-    expect(r.exitCode).toBe(1);
-    const diag = r.diagnostics.find((d) => d.diag.code === 'invalid-value');
-    expect(diag?.diag.message).toMatch(/reuse chains/);
   });
 });
 

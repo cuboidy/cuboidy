@@ -4,9 +4,9 @@ import { mkdtemp, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { loadAndAssemble, stringifyCoord } from '../src/cli/assemble.js';
 
-// SPEC §6.9 / §6.10 through the inspection-CLI assembly layer: manifest
-// geometry lists, external palette binding, and cross-file reuse — the
-// same project resolution lint and the editor use.
+// SPEC §6.10 through the inspection-CLI assembly layer: manifest geometry
+// lists and external palette binding — the same project resolution lint
+// and the editor use.
 
 async function makeModel(files: Record<string, string>): Promise<string> {
   const dir = await mkdtemp(resolve(tmpdir(), 'cuboidy-assemble-test-'));
@@ -21,7 +21,7 @@ async function makeModel(files: Record<string, string>): Promise<string> {
 const ONE_VOXEL = (color: string) =>
   `palette ${color}\npart p\n    size 1 1 1\n    pivot 0 0 0\n    voxels { 0 }`;
 
-describe('loadAndAssemble — §6.9 geometry list', () => {
+describe('loadAndAssemble — geometry list', () => {
   it('loads a package whose manifest lists geometry files (no voxels.cvox)', async () => {
     const dir = await makeModel({
       'body.cvox':
@@ -63,46 +63,6 @@ describe('loadAndAssemble — §6.9 geometry list', () => {
     if (r.ok) return;
     expect(r.exitCode).toBe(2);
     expect(r.message).toMatch(/body\.cvox/);
-  });
-
-  it('assembles a cross-file clone with the referent file colors', async () => {
-    const dir = await makeModel({
-      'body.cvox':
-        'palette #FF0000 #00FF00\npart arm\n    size 2 1 1\n    pivot 0 0 0\n    voxels { 01 }',
-      'arms.cvox': 'part arm_l clone arm',
-      'cuboidy.json': JSON.stringify({
-        name: 'm',
-        geometry: ['body.cvox', 'arms.cvox'],
-        parts: [
-          { name: 'arm' },
-          { name: 'arm_l', parent: 'arm', position: [0, 3, 0] },
-        ],
-      }),
-    });
-    const r = await loadAndAssemble(dir);
-    expect(r.ok).toBe(true);
-    if (!r.ok) return;
-    // The clone's voxels keep the referent's palette indices (0=red, 1=green)
-    // even though arms.cvox has no inline palette of its own.
-    expect(r.assembly.grid.get(stringifyCoord(0, 3, 0))).toBe(0);
-    expect(r.assembly.grid.get(stringifyCoord(1, 3, 0))).toBe(1);
-  });
-
-  it('surfaces an unresolvable cross-file referent as exit 1', async () => {
-    const dir = await makeModel({
-      'body.cvox': ONE_VOXEL('#FF0000'),
-      'arms.cvox': 'part arm_l clone nope',
-      'cuboidy.json': JSON.stringify({
-        name: 'm',
-        geometry: ['body.cvox', 'arms.cvox'],
-        parts: [{ name: 'p' }, { name: 'arm_l', parent: 'p' }],
-      }),
-    });
-    const r = await loadAndAssemble(dir);
-    expect(r.ok).toBe(false);
-    if (r.ok) return;
-    expect(r.exitCode).toBe(1);
-    expect(r.message).toMatch(/unknown part "nope"/);
   });
 });
 

@@ -15,9 +15,4 @@ export const RESERVED_KEYWORDS: readonly string[] = [
   'socket',
   'voxels',
   'rot',
-  // SPEC §7.5.1 part-reuse: clone (verbatim) / mirror (reflected). Reserved
-  // so they cannot be used as identifiers (part/socket names); a voxel row
-  // spelling them stays valid voxel data per §7.3.4 lexical isolation.
-  'clone',
-  'mirror',
 ];

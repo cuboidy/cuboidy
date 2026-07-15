@@ -38,42 +38,12 @@ export interface Socket {
   rot?: Vec3;
 }
 
-// SPEC §7.5.1: a part-reuse reference. `clone` reuses another part's
-// geometry verbatim; `mirror` reuses it reflected across the named local
-// axis. It is a declarative reference (like SVG <use>), NOT a function:
-// no chaining (the referent must be a concrete part), no composition, a
-// closed transform set, and one-pass resolution to plain voxel data.
-export interface PartRef {
-  // Name of the concrete part whose geometry is reused.
-  part: string;
-  // Mirror axis (local grid axis). Absent → `clone` (verbatim reuse);
-  // present → `mirror` reflected across the plane perpendicular to this axis.
-  mirror?: 'x' | 'y' | 'z';
-}
-
 export interface Part {
   name: string;
-  // When present, size/pivot/sockets/voxels are DERIVED from `from.part`
-  // (optionally reflected). Assembly fills the derived geometry; the
-  // serializer re-emits the `clone`/`mirror` form rather than expanding.
-  from?: PartRef;
   size: Size;
   pivot: Pivot;
   sockets: readonly Socket[];
   voxels: readonly (readonly (readonly number[])[])[];
-}
-
-// SPEC §6.9: a reuse part whose referent is not defined in the same file.
-// Only produced when parsing with `deferUnresolvedReuse` — the project
-// layer (resolveCrossFileReuse) resolves it against every geometry file
-// and splices the derived Part back into `Cvox.parts`.
-export interface PendingReuse {
-  name: string;
-  from: PartRef;
-  // The part's position in the file's declaration order, counting BOTH
-  // resolved parts and pending ones. resolveCrossFileReuse / the
-  // serializer use it to restore source order.
-  index: number;
 }
 
 export interface Cvox {
@@ -92,9 +62,4 @@ export interface Cvox {
   // line for an empty array (round-trips to absent).
   palette: Palette;
   parts: Part[];
-  // Unresolved cross-file reuse references (SPEC §6.9), in declaration
-  // order. Present only when parsed with `deferUnresolvedReuse` and the
-  // file references parts it does not define; absent otherwise. These
-  // parts are NOT in `parts` until resolveCrossFileReuse splices them in.
-  pending?: readonly PendingReuse[];
 }
