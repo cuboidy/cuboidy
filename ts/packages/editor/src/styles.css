@@ -1389,95 +1389,17 @@ pre {
   min-height: 0;
 }
 
-.part-tree-root,
-.part-tree-children {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-.part-tree-row {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding-right: 1rem;
-  padding-top: 0.25rem;
-  padding-bottom: 0.25rem;
-  cursor: pointer;
-  user-select: none;
-  border: 1px solid transparent;
-  border-radius: 3px;
-  /* Inline padding-left is set per-row to encode tree depth. */
-}
-
-.part-tree-row:hover {
-  background: #2c2c2c;
-}
-
-.part-tree-row.selected {
-  background: #2a3a5a;
-  color: #fff;
-}
-
-.part-tree-row.selected:hover {
-  background: #2a3a5a;
-}
-
-.part-tree-row.hidden .part-tree-name {
+/* Hidden-part dim — a Parts-only state layered on the shared row. */
+.tree-row.hidden .tree-name {
   opacity: 0.4;
 }
 
-/* Active drop target highlight while dragging another node onto it.
-   Border-based so it doesn't shift layout the way a thicker outline
-   would, and visible regardless of selected/hover state. */
-.part-tree-row.drop-target {
-  border-color: #6a8aca;
-  background: #2c3a55;
-}
-
-.part-tree-row.drop-forbidden {
-  cursor: not-allowed;
-}
-
-/* Visibility toggle now sits at the right end of the row (name flex:1 pushes
+/* Visibility toggle at the right end of a part row (name flex:1 pushes
    it over). */
 .part-tree-visibility {
   cursor: pointer;
   flex-shrink: 0;
   margin-left: 0.4rem;
-}
-
-/* Expand/collapse caret at the left. Fixed-width so leaf rows (which use the
-   spacer instead) keep their names aligned with expandable siblings'.
-   TODO: replace the ▾/▸ glyph with a proper icon — the character has too much
-   built-in whitespace to scale up cleanly. */
-.part-tree-caret-btn {
-  flex-shrink: 0;
-  width: 1rem;
-  height: 1rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  background: none;
-  border: none;
-  color: #999;
-  cursor: pointer;
-  font-size: 0.6rem;
-  line-height: 1;
-}
-
-.part-tree-caret-btn:hover {
-  color: #ddd;
-}
-
-.part-tree-caret-spacer {
-  width: 1rem;
-  flex-shrink: 0;
-}
-
-.part-tree-draft {
-  cursor: default;
 }
 
 /* Target-file picker on the new-part draft row (multi-cvox models
@@ -1494,20 +1416,6 @@ pre {
   padding: 0.05rem 0.15rem;
   font: inherit;
   font-size: 0.75rem;
-}
-
-.part-tree-name {
-  flex: 1;
-  font-family:
-    ui-monospace,
-    'SF Mono',
-    Menlo,
-    Consolas,
-    monospace;
-  font-size: 0.85rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* Defining-file badge (v0.7 multi-cvox): faint, right-aligned, never
@@ -1529,7 +1437,7 @@ pre {
   max-width: 8rem;
 }
 
-.part-tree-row.selected .part-tree-file {
+.tree-row.selected .part-tree-file {
   color: #9ab;
 }
 

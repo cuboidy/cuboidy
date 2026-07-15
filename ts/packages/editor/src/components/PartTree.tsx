@@ -143,7 +143,7 @@ export function PartTree({
       // rows themselves keeps a row-click from also firing this.
       onClick={() => onSelectPart(null)}
     >
-      <ul className="part-tree-root" role="tree">
+      <ul className="tree-list" role="tree">
         {tree.map((node) => (
           <PartTreeBranch
             key={node.name}
@@ -321,7 +321,7 @@ function PartTreeBranch(props: BranchProps) {
   };
 
   const rowClass = [
-    'part-tree-row',
+    'tree-row',
     hidden ? 'hidden' : '',
     selected ? 'selected' : '',
     isDropTarget ? 'drop-target' : '',
@@ -337,7 +337,7 @@ function PartTreeBranch(props: BranchProps) {
   const isRenaming = renaming === node.name;
 
   return (
-    <li className="part-tree-node" role="treeitem">
+    <li className="tree-node" role="treeitem">
       <div
         className={rowClass}
         style={{ paddingLeft: `${0.5 + depth * 0.9}rem` }}
@@ -354,17 +354,17 @@ function PartTreeBranch(props: BranchProps) {
         {hasChildren ? (
           <button
             type="button"
-            className="part-tree-caret-btn"
+            className="tree-caret-btn"
             aria-label={`${expanded ? 'Collapse' : 'Expand'} ${node.name}`}
             onClick={(e) => {
               e.stopPropagation();
               onToggleExpand(node.name);
             }}
           >
-            <span className="part-tree-caret">{expanded ? '▾' : '▸'}</span>
+            <span className="tree-caret">{expanded ? '▾' : '▸'}</span>
           </button>
         ) : (
-          <span className="part-tree-caret-spacer" aria-hidden="true" />
+          <span className="tree-caret-spacer" aria-hidden="true" />
         )}
         {isRenaming ? (
           <InlineNameInput
@@ -376,7 +376,7 @@ function PartTreeBranch(props: BranchProps) {
           />
         ) : (
           <span
-            className="part-tree-name"
+            className="tree-name"
             title="Double-click to rename"
             onDoubleClick={(e) => {
               e.stopPropagation();
@@ -401,7 +401,7 @@ function PartTreeBranch(props: BranchProps) {
         />
       </div>
       {hasChildren && expanded && (
-        <ul className="part-tree-children" role="group">
+        <ul className="tree-list" role="group">
           {node.children.map((child) => (
             <PartTreeBranch
               {...props}
@@ -485,9 +485,9 @@ function DraftPartRow({
   };
 
   return (
-    <li className="part-tree-node" role="treeitem">
+    <li className="tree-node" role="treeitem">
       <div
-        className="part-tree-row part-tree-draft"
+        className="tree-row draft"
         style={{ paddingLeft: `${0.5 + depth * 0.9}rem` }}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
@@ -506,7 +506,7 @@ function DraftPartRow({
           finish(false);
         }}
       >
-        <span className="part-tree-caret-spacer" aria-hidden="true" />
+        <span className="tree-caret-spacer" aria-hidden="true" />
         <input
           ref={inputRef}
           type="text"
