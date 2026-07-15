@@ -2439,6 +2439,45 @@ svg.ficon-anim {
   border-color: var(--accent);
 }
 
+/* Custom checkbox (loop, keyframe visible): graphite box, violet fill +
+   white check when on. */
+input[type='checkbox'] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  margin: 0;
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-1);
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
+}
+
+input[type='checkbox']:hover:not(:disabled) {
+  border-color: var(--txt-3);
+}
+
+input[type='checkbox']:checked {
+  background: var(--accent)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E")
+    center / 70% no-repeat;
+  border-color: var(--accent);
+}
+
+input[type='checkbox']:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+input[type='checkbox']:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .anim-inspector-clipboard {
   display: flex;
   gap: 0.4rem;
