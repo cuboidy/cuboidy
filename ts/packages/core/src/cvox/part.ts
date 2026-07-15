@@ -7,7 +7,8 @@ import { PivotParser } from './pivot.js';
 import { SizeParser } from './size.js';
 import { SocketParser } from './socket.js';
 import type { Token } from './tokenize.js';
-import type { Palette, Part, PartRef, Pivot, Size, Socket, Vec3 } from './types.js';
+import type { Palette, Part, PartRef, Pivot, Size, Socket } from './types.js';
+import { mirrorGeometry } from './transform.js';
 import { resolveVoxels, VoxelsParser, type RawVoxels } from './voxels.js';
 
 // Internal intermediate type — PartParser's return value. Carries the part's
@@ -301,73 +302,6 @@ export function reusePart(name: string, from: PartRef, ref: Part): Part {
       voxels: ref.voxels,
     };
   }
-  const axis = from.mirror;
-  return {
-    name,
-    from,
-    size: ref.size,
-    pivot: mirrorPivot(ref.pivot, ref.size, axis),
-    sockets: ref.sockets.map((s) => mirrorSocket(s, ref.size, axis)),
-    voxels: mirrorVoxels(ref.voxels, ref.size, axis),
-  };
-}
-
-type Axis = 'x' | 'y' | 'z';
-
-// Reflect a position (continuous, range [0, dim]) across the axis midplane:
-// the chosen-axis component becomes dim - value; the others are unchanged.
-function mirrorPos(v: Vec3, size: Size, axis: Axis): Vec3 {
-  return {
-    x: axis === 'x' ? size.w - v.x : v.x,
-    y: axis === 'y' ? size.h - v.y : v.y,
-    z: axis === 'z' ? size.d - v.z : v.z,
-  };
-}
-
-// Reflect an Euler rotation: a mirror flips handedness, so the two angle
-// components NOT around the mirror axis are negated (the around-axis one is
-// kept). Matches the standard rig-mirror convention (e.g. Blender X-mirror).
-function mirrorRot(rot: Vec3, axis: Axis): Vec3 {
-  return {
-    x: axis === 'x' ? rot.x : -rot.x,
-    y: axis === 'y' ? rot.y : -rot.y,
-    z: axis === 'z' ? rot.z : -rot.z,
-  };
-}
-
-function mirrorPivot(p: Pivot, size: Size, axis: Axis): Pivot {
-  const pos = mirrorPos(p.pos, size, axis);
-  return p.rot !== undefined ? { pos, rot: mirrorRot(p.rot, axis) } : { pos };
-}
-
-function mirrorSocket(s: Socket, size: Size, axis: Axis): Socket {
-  const pos = mirrorPos(s.pos, size, axis);
-  return s.rot !== undefined
-    ? { name: s.name, pos, rot: mirrorRot(s.rot, axis) }
-    : { name: s.name, pos };
-}
-
-// Reflect the voxel grid (indexed voxels[y][z][x]) across the chosen axis.
-function mirrorVoxels(
-  voxels: Part['voxels'],
-  size: Size,
-  axis: Axis,
-): number[][][] {
-  const out: number[][][] = [];
-  for (let y = 0; y < size.h; y++) {
-    const sy = axis === 'y' ? size.h - 1 - y : y;
-    const layer: number[][] = [];
-    for (let z = 0; z < size.d; z++) {
-      const sz = axis === 'z' ? size.d - 1 - z : z;
-      const srcRow = voxels[sy]![sz]!;
-      const row: number[] = [];
-      for (let x = 0; x < size.w; x++) {
-        const sx = axis === 'x' ? size.w - 1 - x : x;
-        row.push(srcRow[sx]!);
-      }
-      layer.push(row);
-    }
-    out.push(layer);
-  }
-  return out;
+  // Mirror geometry is shared with the concrete `mirrorPart` transform.
+  return { name, from, ...mirrorGeometry(ref, from.mirror) };
 }

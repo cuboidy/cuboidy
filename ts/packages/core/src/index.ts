@@ -49,6 +49,13 @@ export type { KeyAttr, AttrValue, EaseAttr } from './animation-edit.js';
 export { parseCvox } from './cvox/parse.js';
 export type { ParseCvoxOptions } from './cvox/parse.js';
 export { serializeColor, serializeCvox } from './cvox/serialize.js';
+export {
+  duplicatePart,
+  mirrorGeometry,
+  mirrorPart,
+  remapPartPalette,
+  type Axis,
+} from './cvox/transform.js';
 
 export { AIR } from './cvox/voxel-row.js';
 export type {
