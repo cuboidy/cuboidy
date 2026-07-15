@@ -1153,6 +1153,17 @@ pre {
   color: #fff;
 }
 
+/* Folder (or package root) under a drag as the move target. */
+.folder-row.drop-target {
+  background: #2c3a55;
+  box-shadow: inset 0 0 0 1px #6a8aca;
+}
+
+/* The file being dragged for a move — dimmed like VS Code's cut. */
+.tree-node.file.dragging {
+  opacity: 0.5;
+}
+
 .tree-node.file .tree-node-button {
   display: flex;
   align-items: center;

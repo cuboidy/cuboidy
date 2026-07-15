@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type DragEvent } from 'react';
 import { manifestGeometry } from '@cuboidy/core';
 import { InlineNameInput } from './InlineNameInput.js';
 import { normalizePath } from '../lib/load-model.js';
@@ -66,6 +66,12 @@ export function FileTree({
   const [selected, setSelected] = useState<
     { kind: 'dir' | 'file'; path: string } | null
   >(null);
+  // Drag-and-drop move: the file path currently being dragged, and the
+  // folder path ('' = package root) under the cursor as a drop target.
+  // A drop reuses onRenameFile — a full-path rename IS a move (§8), so
+  // the manifest/extension guards all live in that one handler.
+  const [draggingPath, setDraggingPath] = useState<string | null>(null);
+  const [dropDir, setDropDir] = useState<string | null>(null);
 
   const allPaths = useMemo(() => {
     const paths = new Set<string>();
@@ -232,6 +238,46 @@ export function FileTree({
     setCreatingIn(joined);
   };
 
+  // ── drag-and-drop move ──────────────────────────────────────────────
+  const baseName = (p: string): string => {
+    const i = p.lastIndexOf('/');
+    return i === -1 ? p : p.slice(i + 1);
+  };
+  const moveTarget = (dir: string, path: string): string =>
+    dir === '' ? baseName(path) : `${dir}/${baseName(path)}`;
+  // A file is draggable when it's renamable — a move IS a rename, so the
+  // manifest anchor and a manifest-less primary geometry stay pinned.
+  const isMovable = (path: string): boolean =>
+    canEdit && rowOps(path).renameReason === null;
+  // Would dropping the dragged file into `dir` ('' = root) be a real
+  // move? No for its own folder (a no-op) or a name clash in the target.
+  const canDropInto = (dir: string): boolean => {
+    if (draggingPath === null) return false;
+    const to = moveTarget(dir, draggingPath);
+    return to !== draggingPath && !allPaths.has(to);
+  };
+  const endDrag = (): void => {
+    setDraggingPath(null);
+    setDropDir(null);
+  };
+  // Shared drag props for a folder drop target (root row + child rows).
+  const folderDropProps = (dir: string) => ({
+    onDragOver: (e: DragEvent) => {
+      if (!canDropInto(dir)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = 'move';
+      setDropDir(dir);
+    },
+    onDrop: (e: DragEvent) => {
+      if (draggingPath === null || !canDropInto(dir)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onRenameFile(draggingPath, moveTarget(dir, draggingPath));
+      endDrag();
+    },
+  });
+
   return (
     <div className="file-tree">
       {canEdit && (
@@ -264,9 +310,10 @@ export function FileTree({
         <ul className="tree-root">
           <li className="tree-node folder">
             <div
-              className={`folder-row${selectedDirForHighlight === '' ? ' selected' : ''}`}
+              className={`folder-row${selectedDirForHighlight === '' ? ' selected' : ''}${dropDir === '' ? ' drop-target' : ''}`}
               title="Package root — New file / New folder create here while selected"
               onClick={() => setSelected({ kind: 'dir', path: '' })}
+              {...folderDropProps('')}
             >
               <span className="icon">📁</span>
               <span className="name">{source.folderName}</span>
@@ -277,6 +324,15 @@ export function FileTree({
               dirPath=""
 
               fileErrors={fileErrors}
+              draggingPath={draggingPath}
+              dropDir={dropDir}
+              isMovable={isMovable}
+              folderDropProps={folderDropProps}
+              onFileDragStart={(path) => {
+                setDraggingPath(path);
+                setDropDir(null);
+              }}
+              onFileDragEnd={endDrag}
               newBadgePath={
                 source.synthetic ? source.manifestFile?.name : undefined
               }
@@ -405,6 +461,16 @@ interface DirChildrenProps {
   dirPath: string;
 
   fileErrors: ReadonlyMap<string, string>;
+  // Drag-and-drop move state + callbacks (threaded through the recursion).
+  draggingPath: string | null;
+  dropDir: string | null;
+  isMovable: (path: string) => boolean;
+  folderDropProps: (dir: string) => {
+    onDragOver: (e: DragEvent) => void;
+    onDrop: (e: DragEvent) => void;
+  };
+  onFileDragStart: (path: string) => void;
+  onFileDragEnd: () => void;
   newBadgePath?: string | undefined;
   canEdit: boolean;
   creatingIn: string | null;
@@ -443,9 +509,10 @@ function DirChildren(props: DirChildrenProps) {
         return (
           <li className="tree-node folder" key={name}>
             <div
-              className={`folder-row${props.selectedDir === childPath ? ' selected' : ''}`}
+              className={`folder-row${props.selectedDir === childPath ? ' selected' : ''}${props.dropDir === childPath ? ' drop-target' : ''}`}
               title={`${childPath}/ — New file / New folder create here while selected`}
               onClick={() => props.onSelectDir(childPath)}
+              {...props.folderDropProps(childPath)}
             >
               <span className="icon">📁</span>
               <span className="name">{name}</span>
@@ -511,6 +578,10 @@ function DirChildren(props: DirChildrenProps) {
           unreferenced={props.isUnreferenced(f.path)}
           renaming={props.renamingPath === f.path}
           ops={props.rowOps(f.path)}
+          draggable={props.isMovable(f.path)}
+          dragging={props.draggingPath === f.path}
+          onDragStartFile={props.onFileDragStart}
+          onDragEndFile={props.onFileDragEnd}
           validateRename={props.validateRename(f.path)}
           onOpenPath={(p) => {
             // Opening a file retargets creation to its containing folder
@@ -538,6 +609,10 @@ function FileNode({
   unreferenced,
   renaming,
   ops,
+  draggable,
+  dragging,
+  onDragStartFile,
+  onDragEndFile,
   validateRename,
   onOpenPath,
   onStartRename,
@@ -554,6 +629,10 @@ function FileNode({
   unreferenced?: boolean;
   renaming: boolean;
   ops: RowOps;
+  draggable: boolean;
+  dragging: boolean;
+  onDragStartFile: (path: string) => void;
+  onDragEndFile: () => void;
   validateRename: (name: string) => boolean;
   onOpenPath: (path: string) => void;
   onStartRename: (path: string) => void;
@@ -580,8 +659,17 @@ function FileNode({
   }
   return (
     <li
-      className={`tree-node file${selected === true ? ' selected' : ''}${error !== undefined ? ' error' : ''}${unreferenced === true ? ' unreferenced' : ''}`}
+      className={`tree-node file${selected === true ? ' selected' : ''}${error !== undefined ? ' error' : ''}${unreferenced === true ? ' unreferenced' : ''}${dragging ? ' dragging' : ''}`}
       title={error !== undefined ? `Syntax error: ${error}` : path}
+      draggable={draggable}
+      onDragStart={(e) => {
+        if (!draggable) return;
+        e.dataTransfer.effectAllowed = 'move';
+        // Some browsers refuse to start a drag without a payload set.
+        e.dataTransfer.setData('text/plain', path);
+        onDragStartFile(path);
+      }}
+      onDragEnd={onDragEndFile}
     >
       <button
         type="button"
