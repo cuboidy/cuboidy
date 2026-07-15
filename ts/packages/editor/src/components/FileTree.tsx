@@ -42,10 +42,15 @@ const CREATABLE_RE = /^[^\\:]+\.(cvox|json|md|txt)$/i;
 // drafts a file inside it. "+ New folder" drafts an empty folder —
 // session-only until a file lands in it (the package model is a file
 // map, so an empty folder has no on-disk representation). Double-click
-// renames a file (full relative path, so a rename can also move); the
-// hover × deletes. The manifest anchor is never renamable/deletable;
-// the primary geometry is renamable only when a manifest records it,
-// and never deletable.
+// renames a file or folder (its name only — moving between folders is
+// drag-and-drop, below); the hover × deletes. The manifest anchor is
+// never renamable/deletable; the primary geometry is renamable only
+// when a manifest records it, and never deletable.
+//
+// Drag-and-drop moves: drag a file onto a folder (or another file, to
+// land in its folder) or drag a whole folder onto another folder /
+// the root. A drop is a full-path rename under the hood, so it reuses
+// the same reference-following guards.
 export function FileTree({
   source,
   fileErrors,
@@ -221,11 +226,16 @@ export function FileTree({
       );
     };
 
+  // A file rename edits only the filename (last segment) — moving between
+  // folders is drag-and-drop's job. The new name lands in the same
+  // folder, must be a valid creatable file, and keeps the file's type
+  // (geometry stays .cvox, a bound palette stays .json — §8).
   const validateRename = (oldPath: string) => (name: string) => {
-    if (name === oldPath) return true;
-    if (!validateNewPath(name)) return false;
-    // A rename keeps the file's type — geometry stays .cvox, a bound
-    // palette stays .json (§8 extension rules).
+    if (name === baseName(oldPath)) return true;
+    if (name.includes('/')) return false;
+    const parent = parentDir(oldPath);
+    const newPath = parent === '' ? name : `${parent}/${name}`;
+    if (!validateNewPath(newPath)) return false;
     const oldExt = oldPath.slice(oldPath.lastIndexOf('.')).toLowerCase();
     const newExt = name.slice(name.lastIndexOf('.')).toLowerCase();
     if (oldExt === '.cvox' || oldExt === '.json') return newExt === oldExt;
@@ -351,6 +361,12 @@ export function FileTree({
     // and just re-key the UI state.
     if (filesUnder(dir).length > 0) onRenameFolder(dir, name);
     carryFolderState(dir, newDir);
+  };
+  // Rename a file in place — reattach the new filename to its folder.
+  const commitRenameFile = (oldPath: string, name: string): void => {
+    setRenamingPath(null);
+    const parent = parentDir(oldPath);
+    onRenameFile(oldPath, parent === '' ? name : `${parent}/${name}`);
   };
   // Drop-target handlers for a row. `target` drives which row highlights;
   // a drop always resolves to a directory (a file targets its folder).
@@ -487,10 +503,7 @@ export function FileTree({
               onCancelCreateFolder={() => setCreatingFolderIn(null)}
               onCancelCreate={() => setCreatingIn(null)}
               onStartRename={setRenamingPath}
-              onCommitRename={(oldPath, name) => {
-                onRenameFile(oldPath, name);
-                setRenamingPath(null);
-              }}
+              onCommitRename={commitRenameFile}
               onCancelRename={() => setRenamingPath(null)}
               onDeleteFile={onDeleteFile}
               onAddFileToModel={onAddFileToModel}
@@ -826,7 +839,7 @@ function FileNode({
         <div className="tree-node-draft">
           <span className="icon">📄</span>
           <InlineNameInput
-            initial={path}
+            initial={name}
             ariaLabel={`Rename ${path}`}
             validate={validateRename}
             onCommit={(next) => onCommitRename(path, next)}
