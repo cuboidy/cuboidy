@@ -1,9 +1,18 @@
 import { type ChangeEvent } from 'react';
-import { Plus } from 'lucide-react';
-import { isIdentifier, type Cvox, type Manifest, type ManifestPart } from '@cuboidy/core';
+import { Plus, X } from 'lucide-react';
+import {
+  isIdentifier,
+  type Cvox,
+  type Manifest,
+  type ManifestPart,
+  type Part,
+} from '@cuboidy/core';
 import { findManifestPart } from '../lib/part-tree.js';
 import { NumberInput } from './NumberInput.js';
 import { TextInput } from './TextInput.js';
+
+type Axis = 'x' | 'y' | 'z';
+const AXES: readonly Axis[] = ['x', 'y', 'z'];
 
 interface Props {
   selectedPart: string;
@@ -25,12 +34,24 @@ interface Props {
   // A move re-serializes two cvox files, so it's blocked while any has
   // syntax errors (a rewrite would clobber the in-progress text).
   moveDisabled: boolean;
+  // cvox (geometry) edits — pivot / sockets — re-serialize the part's
+  // defining file, so they're blocked while any cvox source is mid-edit
+  // unparseable (same reason as moveDisabled).
+  cvoxEditsDisabled: boolean;
   onChangeParent: (partName: string, parent: string | null) => void;
   onChangePosition: (partName: string, axis: 0 | 1 | 2, value: number) => void;
   onRenamePart: (oldName: string, newName: string) => void;
   onDeletePart: (name: string) => void;
   onCreateManifest: () => void;
   onMovePart: (name: string, targetFile: string) => void;
+  // Immutably rewrite the selected part's cvox geometry. `build` runs
+  // against the part in whatever file defines it; `tag` coalesces a burst
+  // of live number-input commits into one undo entry.
+  onEditPart: (
+    partName: string,
+    build: (part: Part) => Part,
+    tag?: string,
+  ) => void;
 }
 
 const NONE_VALUE = '__none__';
@@ -48,12 +69,14 @@ export function PartProperties({
   geometryFiles,
   partFile,
   moveDisabled,
+  cvoxEditsDisabled,
   onChangeParent,
   onChangePosition,
   onRenamePart,
   onDeletePart,
   onCreateManifest,
   onMovePart,
+  onEditPart,
 }: Props) {
   const cvoxPart = cvox.parts.find((p) => p.name === selectedPart);
   if (cvoxPart === undefined) {
@@ -164,6 +187,15 @@ export function PartProperties({
         )}
       </div>
 
+      <div className="property-section">
+        <div className="property-section-title">Geometry</div>
+        <GeometryFields
+          part={cvoxPart}
+          disabled={cvoxEditsDisabled}
+          onEditPart={onEditPart}
+        />
+      </div>
+
       <div className="part-properties-footer">
         <button
           type="button"
@@ -246,6 +278,254 @@ function RigFields({
         />
       </div>
     </>
+  );
+}
+
+interface GeometryFieldsProps {
+  part: Part;
+  disabled: boolean;
+  onEditPart: (
+    partName: string,
+    build: (part: Part) => Part,
+    tag?: string,
+  ) => void;
+}
+
+// Set one axis of a Vec3 without disturbing the others (returns a fresh Vec3).
+function withAxis(v: { x: number; y: number; z: number }, axis: Axis, value: number) {
+  return { ...v, [axis]: value };
+}
+
+// cvox-side per-part geometry: pivot (position + optional rotation) and
+// sockets. Size stays read-only (shown in the header) — resizing rewrites the
+// voxel grid and is deferred to its own step. clone/mirror parts derive their
+// geometry from the referent, so there's nothing to edit here.
+function GeometryFields({ part, disabled, onEditPart }: GeometryFieldsProps) {
+  if (part.from !== undefined) {
+    const verb = part.from.mirror !== undefined ? 'mirrors' : 'clones';
+    return (
+      <p className="property-group-empty">
+        Geometry is derived — this part {verb} “{part.from.part}”.
+      </p>
+    );
+  }
+
+  const rot = part.pivot.rot;
+
+  const toggleRot = (on: boolean) => {
+    onEditPart(part.name, (p) => {
+      if (on) {
+        return {
+          ...p,
+          pivot: { ...p.pivot, rot: p.pivot.rot ?? { x: 0, y: 0, z: 0 } },
+        };
+      }
+      const { rot: _drop, ...rest } = p.pivot;
+      return { ...p, pivot: rest };
+    });
+  };
+
+  const addSocket = () => {
+    onEditPart(part.name, (p) => {
+      const names = new Set(p.sockets.map((s) => s.name));
+      let n = 1;
+      while (names.has(`socket${n}`)) n += 1;
+      return {
+        ...p,
+        sockets: [...p.sockets, { name: `socket${n}`, pos: { x: 0, y: 0, z: 0 } }],
+      };
+    });
+  };
+
+  const toggleSocketRot = (i: number, on: boolean) => {
+    onEditPart(part.name, (p) => ({
+      ...p,
+      sockets: p.sockets.map((s, j) => {
+        if (j !== i) return s;
+        if (on) return { ...s, rot: s.rot ?? { x: 0, y: 0, z: 0 } };
+        const { rot: _drop, ...rest } = s;
+        return rest;
+      }),
+    }));
+  };
+
+  return (
+    <div className={`property-group${disabled ? ' disabled' : ''}`}>
+      <label className="property-field">
+        <span className="property-field-label">pivot</span>
+        <div className="property-position">
+          {AXES.map((axis) => (
+            <NumberInput
+              key={axis}
+              label={axis}
+              value={part.pivot.pos[axis]}
+              disabled={disabled}
+              onChange={(v) =>
+                onEditPart(
+                  part.name,
+                  (p) => ({
+                    ...p,
+                    pivot: { ...p.pivot, pos: withAxis(p.pivot.pos, axis, v) },
+                  }),
+                  `pivot:pos:${part.name}:${axis}`,
+                )
+              }
+            />
+          ))}
+        </div>
+      </label>
+
+      <label className="property-check">
+        <input
+          type="checkbox"
+          checked={rot !== undefined}
+          disabled={disabled}
+          onChange={(e) => toggleRot(e.target.checked)}
+        />
+        <span>pivot rotation</span>
+      </label>
+      {rot !== undefined && (
+        <div className="property-position property-position-indent">
+          {AXES.map((axis) => (
+            <NumberInput
+              key={axis}
+              label={axis}
+              value={rot[axis]}
+              disabled={disabled}
+              onChange={(v) =>
+                onEditPart(
+                  part.name,
+                  (p) => ({
+                    ...p,
+                    pivot: {
+                      ...p.pivot,
+                      rot: withAxis(p.pivot.rot ?? { x: 0, y: 0, z: 0 }, axis, v),
+                    },
+                  }),
+                  `pivot:rot:${part.name}:${axis}`,
+                )
+              }
+            />
+          ))}
+        </div>
+      )}
+
+      <div className="property-field-label socket-list-label">sockets</div>
+      {part.sockets.length === 0 && (
+        <p className="socket-empty">No sockets.</p>
+      )}
+      {part.sockets.map((socket, i) => (
+        <div className="socket-row" key={i}>
+          <div className="socket-row-head">
+            <TextInput
+              value={socket.name}
+              disabled={disabled}
+              ariaLabel="Socket name"
+              validate={(name) =>
+                isIdentifier(name) &&
+                !part.sockets.some((s, j) => j !== i && s.name === name)
+              }
+              onCommit={(name) =>
+                onEditPart(part.name, (p) => ({
+                  ...p,
+                  sockets: p.sockets.map((s, j) =>
+                    j === i ? { ...s, name } : s,
+                  ),
+                }))
+              }
+            />
+            <button
+              type="button"
+              className="btn btn-icon btn-sm socket-remove"
+              disabled={disabled}
+              title="Remove socket"
+              aria-label="Remove socket"
+              onClick={() =>
+                onEditPart(part.name, (p) => ({
+                  ...p,
+                  sockets: p.sockets.filter((_, j) => j !== i),
+                }))
+              }
+            >
+              <X size={13} />
+            </button>
+          </div>
+          <div className="property-position">
+            {AXES.map((axis) => (
+              <NumberInput
+                key={axis}
+                label={axis}
+                value={socket.pos[axis]}
+                disabled={disabled}
+                onChange={(v) =>
+                  onEditPart(
+                    part.name,
+                    (p) => ({
+                      ...p,
+                      sockets: p.sockets.map((s, j) =>
+                        j === i ? { ...s, pos: withAxis(s.pos, axis, v) } : s,
+                      ),
+                    }),
+                    `socket:pos:${part.name}:${i}:${axis}`,
+                  )
+                }
+              />
+            ))}
+          </div>
+          <label className="property-check">
+            <input
+              type="checkbox"
+              checked={socket.rot !== undefined}
+              disabled={disabled}
+              onChange={(e) => toggleSocketRot(i, e.target.checked)}
+            />
+            <span>rotation</span>
+          </label>
+          {socket.rot !== undefined && (
+            <div className="property-position property-position-indent">
+              {AXES.map((axis) => (
+                <NumberInput
+                  key={axis}
+                  label={axis}
+                  value={socket.rot![axis]}
+                  disabled={disabled}
+                  onChange={(v) =>
+                    onEditPart(
+                      part.name,
+                      (p) => ({
+                        ...p,
+                        sockets: p.sockets.map((s, j) =>
+                          j === i
+                            ? {
+                                ...s,
+                                rot: withAxis(
+                                  s.rot ?? { x: 0, y: 0, z: 0 },
+                                  axis,
+                                  v,
+                                ),
+                              }
+                            : s,
+                        ),
+                      }),
+                      `socket:rot:${part.name}:${i}:${axis}`,
+                    )
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+      <button
+        type="button"
+        className="btn btn-create btn-sm socket-add"
+        disabled={disabled}
+        onClick={addSocket}
+      >
+        <Plus size={13} />
+        socket
+      </button>
+    </div>
   );
 }
 

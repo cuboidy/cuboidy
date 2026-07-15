@@ -944,6 +944,15 @@ svg.lucide {
   gap: 0.3rem;
 }
 
+/* A value triple that sits inline in a labelled row (e.g. pivot) must grow to
+   fill the row's remaining width so its inputs track the panel width. A
+   flex-row child doesn't stretch on the main axis by default the way the
+   flex-column triples (rig position / socket rows) do via align-items. */
+.property-field .property-position {
+  flex: 1;
+  min-width: 0;
+}
+
 .property-position-input {
   display: flex;
   align-items: center;
@@ -983,6 +992,97 @@ svg.lucide {
 
 .property-position-input input:disabled {
   cursor: not-allowed;
+}
+
+/* Model panel (cuboidy.json name/version). Matches the part inspector's
+   padding so the two panels read as siblings. */
+.model-properties {
+  padding: 0.75rem 1rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* A text field sitting in a labelled .property-field row (Model name/version,
+   socket name) fills the row like the select/number inputs beside it, rather
+   than the fixed 9rem default. */
+.property-field .text-input {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+
+/* Divided subsection within the part inspector (e.g. Geometry). Keeps the
+   rig fields above and the cvox fields below visually distinct. */
+.property-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.property-section-title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--txt-3);
+}
+
+/* Rot triple, indented under its enable checkbox. */
+.property-position-indent {
+  padding-left: 0.5rem;
+}
+
+.property-check {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--txt-2);
+}
+
+.socket-list-label {
+  margin-top: 0.2rem;
+  width: auto;
+}
+
+.socket-empty {
+  font-size: 0.75rem;
+  color: var(--txt-3);
+  margin: 0;
+}
+
+/* One socket: name + remove on top, its position triple below. */
+.socket-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.4rem;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
+}
+
+.socket-row-head {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.socket-row-head .text-input {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+
+.socket-remove {
+  flex-shrink: 0;
+}
+
+.socket-add {
+  align-self: flex-start;
 }
 
 /* ─── Source editor (cvox tab textarea) ───────────────────────────── */

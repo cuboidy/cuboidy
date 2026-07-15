@@ -16,6 +16,7 @@ export type Side = 'a' | 'b';
 // panel in a later Phase D step.)
 export type ToolPanelId =
   | 'files'
+  | 'model'
   | 'parts'
   | 'properties'
   | 'palette'
@@ -62,6 +63,7 @@ const split = (
 // dynamic ones (cvox/manifest take their file name) live in App.panelTitle.
 export const ALL_PANELS: LeafId[] = [
   'files',
+  'model',
   'parts',
   'properties',
   'palette',
@@ -73,17 +75,23 @@ export const ALL_PANELS: LeafId[] = [
   'console',
 ];
 
-// Default layout (nested binary): left column = Files over (Parts over
-// Properties); center column = the source panels (Preview/cvox/manifest as
-// tabs) over the bottom leaf (Timeline with the Console tabbed behind it,
-// VS Code style); right column = Palette over the Key Inspector (the
-// keyframe editor's selection detail, kept near the timeline's right end —
-// where it used to live as a fixed sidebar). Realizes the IA:
-// Parts/Properties adjacent (#5), Palette separated from the rig (#6), and
-// the timeline docked under the viewport like a Premiere-style editor.
+// Default layout (nested binary): left column = (Files with Model tabbed
+// behind it — both project-wide) over (Parts over Properties); center column
+// = the source panels (Preview/cvox/manifest as tabs) over the bottom leaf
+// (Timeline with the Console tabbed behind it, VS Code style); right column =
+// Palette over the Key Inspector (the keyframe editor's selection detail,
+// kept near the timeline's right end — where it used to live as a fixed
+// sidebar). Realizes the IA: Parts/Properties adjacent (#5), Palette
+// separated from the rig (#6), and the timeline docked under the viewport
+// like a Premiere-style editor.
 export const initialLayout: LayoutNode = split(
   'row',
-  split('col', leaf('files'), split('col', leaf('parts'), leaf('properties'), 0.4), 0.25),
+  split(
+    'col',
+    { kind: 'leaf', panels: ['files', 'model'], active: 'files' },
+    split('col', leaf('parts'), leaf('properties'), 0.4),
+    0.25,
+  ),
   split(
     'row',
     split(

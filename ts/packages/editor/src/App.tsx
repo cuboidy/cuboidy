@@ -43,6 +43,7 @@ import { Logo } from './components/Logo.js';
 import { Eye, EyeOff, FolderOpen, Plus, Redo2, Undo2 } from 'lucide-react';
 import { FileDropZone } from './components/FileDropZone.js';
 import { FileTree } from './components/FileTree.js';
+import { ModelProperties } from './components/ModelProperties.js';
 import { KeyInspectorPanel } from './components/KeyInspectorPanel.js';
 import { PalettePanel } from './components/PalettePanel.js';
 import { PartProperties } from './components/PartProperties.js';
@@ -1599,6 +1600,42 @@ export function App() {
     [dispatchEdit, cancelPendingCvoxReparse],
   );
 
+  // Rewrite ONE part's cvox geometry (pivot / sockets), routed to whichever
+  // geometry file defines it — part names are unique model-wide (§5), so the
+  // build runs on exactly one file. `build` returning the same part is a
+  // no-op (mapGeometryFiles then returns the source unchanged, and the
+  // history reducer drops the entry). Backs PartProperties' Geometry section.
+  const mutateCvoxPart = useCallback(
+    (tag: string | null, partName: string, build: (part: Part) => Part) => {
+      if (!flushGeometryReparse()) return;
+      dispatchEdit(tag, (current) => {
+        const src = current?.source;
+        if (src === undefined) return current;
+        const nextSrc = mapGeometryFiles(src, (cvox) => {
+          const i = cvox.parts.findIndex((p) => p.name === partName);
+          if (i < 0) return null;
+          const built = build(cvox.parts[i]!);
+          if (built === cvox.parts[i]) return null;
+          const parts = cvox.parts.slice();
+          parts[i] = built;
+          return { ...cvox, parts };
+        });
+        return nextSrc === src ? current : { ...current, source: nextSrc };
+      });
+    },
+    [dispatchEdit, flushGeometryReparse],
+  );
+
+  // Adapter for PartProperties' Geometry section: (partName, build, tag?) —
+  // the component supplies coalescing tags (e.g. a live pivot-axis drag) while
+  // mutateCvoxPart takes the tag first.
+  const handleEditPart = useCallback(
+    (partName: string, build: (part: Part) => Part, tag?: string) => {
+      mutateCvoxPart(tag ?? null, partName, build);
+    },
+    [mutateCvoxPart],
+  );
+
   // Begin creating a part: open the inline draft row in the tree. The draft is
   // nested under the selected part when a manifest is loaded (so the new part
   // becomes its child); otherwise it goes to the root. Nothing is written until
@@ -2003,6 +2040,62 @@ export function App() {
       setManifestParseError(null);
     },
     [dispatchEdit, flushPendingManifestReparse],
+  );
+
+  // Model-level manifest fields (name / version) — the cuboidy.json data that
+  // isn't per-part. Same re-serialize + clear-error shape as mutateManifestPart
+  // but rewrites the top-level object. Backs the Model panel.
+  const mutateManifest = useCallback(
+    (tag: string | null, build: (m: Manifest) => Manifest) => {
+      if (!flushPendingManifestReparse()) return;
+      dispatchEdit(tag, (current) => {
+        if (current?.source?.kind !== 'folder') return current;
+        const src = current.source;
+        if (src.manifest === undefined) return current;
+        const nextManifest = build(src.manifest);
+        if (nextManifest === src.manifest) return current;
+        const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
+        return {
+          ...current,
+          source: {
+            ...src,
+            manifest: nextManifest,
+            manifestFile: {
+              ...baseFile,
+              text: JSON.stringify(nextManifest, null, 2) + '\n',
+            },
+          },
+        };
+      });
+      setManifestParseError(null);
+    },
+    [dispatchEdit, flushPendingManifestReparse],
+  );
+
+  const handleChangeModelName = useCallback(
+    (name: string) => {
+      mutateManifest(null, (m) => (m.name === name ? m : { ...m, name }));
+    },
+    [mutateManifest],
+  );
+
+  const handleChangeModelVersion = useCallback(
+    (version: string) => {
+      mutateManifest(null, (m) => {
+        const v = version.trim();
+        if (v === '') {
+          if (m.version === undefined) return m;
+          const { version: _drop, ...rest } = m;
+          return rest;
+        }
+        if (m.version === v) return m;
+        // Keep version right after name for a tidy diff even when it was
+        // absent before (a bare `{ ...m, version }` would append it last).
+        const { name, version: _old, ...rest } = m;
+        return { name, version: v, ...rest };
+      });
+    },
+    [mutateManifest],
   );
 
   const handleChangePartParent = useCallback(
@@ -2798,6 +2891,8 @@ export function App() {
       switch (id) {
         case 'files':
           return 'Files';
+        case 'model':
+          return 'Model';
         case 'parts':
           return 'Parts';
         case 'properties':
@@ -3089,6 +3184,19 @@ export function App() {
               </div>
             ),
         };
+      case 'model':
+        return {
+          title,
+          body: (
+            <ModelProperties
+              manifest={manifest}
+              disabled={manifestParseError !== null}
+              onChangeName={handleChangeModelName}
+              onChangeVersion={handleChangeModelVersion}
+              onCreateManifest={handleCreateManifest}
+            />
+          ),
+        };
       case 'files':
         return {
           title,
@@ -3231,12 +3339,16 @@ export function App() {
                 moveDisabled={
                   cvoxParseError !== null || fileParseErrors.size > 0
                 }
+                cvoxEditsDisabled={
+                  cvoxParseError !== null || fileParseErrors.size > 0
+                }
                 onChangeParent={handleChangePartParent}
                 onChangePosition={handleChangePartPosition}
                 onRenamePart={handleRenamePart}
                 onDeletePart={handleDeletePart}
                 onCreateManifest={handleCreateManifest}
                 onMovePart={handleMovePart}
+                onEditPart={handleEditPart}
               />
             ) : (
               <p className="panel-empty">
