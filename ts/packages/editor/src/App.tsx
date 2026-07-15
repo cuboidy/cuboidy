@@ -40,7 +40,7 @@ import { ConsolePanel, type ConsoleEntry } from './components/ConsolePanel.js';
 import { Dock, type PanelContent } from './components/Dock.js';
 import { ExportMenu } from './components/ExportMenu.js';
 import { Logo } from './components/Logo.js';
-import { Eye, EyeOff, Plus, Redo2, Undo2 } from 'lucide-react';
+import { Eye, EyeOff, FolderOpen, Plus, Redo2, Undo2 } from 'lucide-react';
 import { FileDropZone } from './components/FileDropZone.js';
 import { FileTree } from './components/FileTree.js';
 import { KeyInspectorPanel } from './components/KeyInspectorPanel.js';
@@ -48,6 +48,7 @@ import { PalettePanel } from './components/PalettePanel.js';
 import { PartProperties } from './components/PartProperties.js';
 import { PartTree } from './components/PartTree.js';
 import { SaveButton } from './components/SaveButton.js';
+import { SettingsMenu } from './components/SettingsMenu.js';
 import { SourceEditor } from './components/SourceEditor.js';
 import { TimelinePanel } from './components/TimelinePanel.js';
 import { ViewModeToggle } from './components/ViewModeToggle.js';
@@ -3398,49 +3399,63 @@ export function App() {
   return (
     <div className="app">
       <header className="header">
-        <div className="brand">
-          <Logo />
-          <h1>Cuboidy</h1>
+        <div className="header-left">
+          <div className="brand">
+            <Logo />
+            <h1>Cuboidy</h1>
+          </div>
+          {/* ⚙ view/workspace settings (Reset layout) — a separate concern
+              from the right-side document/session controls, so it lives by
+              the brand, not next to Save/Export. A hairline sets it off from
+              the wordmark. */}
+          {source !== undefined && (
+            <>
+              <span className="header-divider" aria-hidden="true" />
+              <SettingsMenu onResetLayout={handleResetLayout} />
+            </>
+          )}
         </div>
         <div className="header-right">
           {source !== undefined && (
             <>
-              <button
-                type="button"
-                className="icon-btn"
-                disabled={history.past.length === 0}
-                title="Undo (Ctrl+Z)"
-                aria-label="Undo"
-                onClick={performUndo}
-              >
-                <Undo2 size={16} />
-              </button>
-              <button
-                type="button"
-                className="icon-btn"
-                disabled={history.future.length === 0}
-                title="Redo (Ctrl+Shift+Z)"
-                aria-label="Redo"
-                onClick={performRedo}
-              >
-                <Redo2 size={16} />
-              </button>
+              <div className="header-group">
+                <button
+                  type="button"
+                  className="icon-btn"
+                  disabled={history.past.length === 0}
+                  title="Undo (Ctrl+Z)"
+                  aria-label="Undo"
+                  onClick={performUndo}
+                >
+                  <Undo2 size={16} />
+                </button>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  disabled={history.future.length === 0}
+                  title="Redo (Ctrl+Shift+Z)"
+                  aria-label="Redo"
+                  onClick={performRedo}
+                >
+                  <Redo2 size={16} />
+                </button>
+              </div>
+              <span className="header-divider" aria-hidden="true" />
+              <div className="header-group">
+                {source.kind === 'folder' && <SaveButton source={source} />}
+                <ExportMenu source={source} />
+              </div>
+              <span className="header-divider" aria-hidden="true" />
             </>
           )}
-          {source?.kind === 'folder' && <SaveButton source={source} />}
-          {source !== undefined && <ExportMenu source={source} />}
-          {source !== undefined && (
+          {loaded !== null && (
             <button
               type="button"
               className="btn"
-              title="Reset the panel layout to the default"
-              onClick={handleResetLayout}
+              title="Load a different model"
+              onClick={handleReset}
             >
-              Reset layout
-            </button>
-          )}
-          {loaded !== null && (
-            <button type="button" className="btn" onClick={handleReset}>
+              <FolderOpen size={14} />
               Load another
             </button>
           )}
