@@ -40,6 +40,7 @@ import { ConsolePanel, type ConsoleEntry } from './components/ConsolePanel.js';
 import { Dock, type PanelContent } from './components/Dock.js';
 import { ExportMenu } from './components/ExportMenu.js';
 import { Logo } from './components/Logo.js';
+import { Eye, EyeOff, Plus } from 'lucide-react';
 import { FileDropZone } from './components/FileDropZone.js';
 import { FileTree } from './components/FileTree.js';
 import { KeyInspectorPanel } from './components/KeyInspectorPanel.js';
@@ -3142,7 +3143,8 @@ export function App() {
                   }
                   onClick={handleStartCreatePart}
                 >
-                  + New part
+                  <Plus size={13} />
+                  New part
                 </button>
                 <button
                   type="button"
@@ -3150,6 +3152,7 @@ export function App() {
                   onClick={handleShowAll}
                   disabled={hiddenParts.size === 0}
                 >
+                  <Eye size={13} />
                   Show all
                 </button>
                 <button
@@ -3158,6 +3161,7 @@ export function App() {
                   onClick={handleHideAll}
                   disabled={visibleCount === 0}
                 >
+                  <EyeOff size={13} />
                   Hide all
                 </button>
               </div>

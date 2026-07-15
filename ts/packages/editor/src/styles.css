@@ -70,6 +70,10 @@ pre {
    own patterns. The transparent border keeps bordered intents (danger/
    warning/create) the same size as borderless ones. */
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
   padding: 0.3rem 0.8rem;
   background: var(--bg-3);
   color: var(--txt-1);
@@ -78,6 +82,12 @@ pre {
   cursor: pointer;
   font: inherit;
   font-size: 0.85rem;
+}
+
+/* Lucide icons: one stroke weight everywhere; colour follows currentColor. */
+svg.lucide {
+  stroke-width: 1.75;
+  flex-shrink: 0;
 }
 
 .btn:hover:not(:disabled) {
@@ -1184,8 +1194,26 @@ pre {
 }
 
 .tree-icon {
+  display: inline-flex;
+  align-items: center;
   flex-shrink: 0;
-  font-size: 0.95rem;
+  color: var(--txt-2);
+}
+
+/* Per-extension file-icon tints (folders carry no icon at all). */
+svg.ficon-cvox {
+  color: #9a86c9;
+}
+svg.ficon-json {
+  color: #c9a86a;
+}
+svg.ficon-anim {
+  color: #6ab0a0;
+}
+
+.tree-caret {
+  display: inline-flex;
+  align-items: center;
 }
 
 .tree-name {
@@ -1918,8 +1946,9 @@ pre {
 }
 
 .timeline-caret {
+  display: inline-flex;
+  align-items: center;
   flex-shrink: 0;
-  font-size: 0.6rem;
   color: var(--txt-3);
 }
 

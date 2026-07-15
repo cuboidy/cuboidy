@@ -7,6 +7,7 @@ import {
   type CSSProperties,
   type PointerEvent,
 } from 'react';
+import { ChevronDown, ChevronRight, X } from 'lucide-react';
 import {
   formatTimeKey,
   type AnimationTrack,
@@ -352,7 +353,13 @@ const TimelineLanes = memo(function TimelineLanes({
                   title={`${part} — ${keyCount} key${keyCount === 1 ? '' : 's'}`}
                   onClick={() => togglePart(part)}
                 >
-                  <span className="timeline-caret">{expanded ? '▾' : '▸'}</span>
+                  <span className="timeline-caret">
+                    {expanded ? (
+                      <ChevronDown size={11} />
+                    ) : (
+                      <ChevronRight size={11} />
+                    )}
+                  </span>
                   <span className="timeline-part-name">{part}</span>
                 </button>
                 {hasTrack && (
@@ -363,7 +370,7 @@ const TimelineLanes = memo(function TimelineLanes({
                     title={`Clear all ${part} keys in this clip`}
                     onClick={() => onClearPart(part)}
                   >
-                    ×
+                    <X size={13} />
                   </button>
                 )}
               </div>

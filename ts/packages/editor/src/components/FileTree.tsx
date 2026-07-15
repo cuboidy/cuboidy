@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState, type DragEvent } from 'react';
 import { manifestGeometry } from '@cuboidy/core';
+import { ChevronDown, ChevronRight, Plus, X } from 'lucide-react';
 import { InlineNameInput } from './InlineNameInput.js';
+import { fileIcon } from './fileIcon.js';
 import { normalizePath } from '../lib/load-model.js';
 import type { LoadedSource } from '../lib/types.js';
 
@@ -499,7 +501,8 @@ export function FileTree({
               setCreatingIn(effectiveDir);
             }}
           >
-            + New file
+            <Plus size={13} />
+            New file
           </button>
           <button
             type="button"
@@ -510,7 +513,8 @@ export function FileTree({
               setCreatingFolderIn(effectiveDir);
             }}
           >
-            + New folder
+            <Plus size={13} />
+            New folder
           </button>
         </div>
       )}
@@ -533,9 +537,14 @@ export function FileTree({
                   toggleCollapse('');
                 }}
               >
-                <span className="tree-caret">{collapsed.has('') ? '▸' : '▾'}</span>
+                <span className="tree-caret">
+                  {collapsed.has('') ? (
+                    <ChevronRight size={12} />
+                  ) : (
+                    <ChevronDown size={12} />
+                  )}
+                </span>
               </button>
-              <span className="tree-icon">📁</span>
               <span className="tree-name">{source.folderName}</span>
               {source.synthetic && <span className="badge">unsaved</span>}
             </div>
@@ -595,7 +604,7 @@ export function FileTree({
                         title="Not present in this folder"
                       >
                         <span className="tree-caret-spacer" aria-hidden="true" />
-                        <span className="tree-icon">📄</span>
+                        <span className="tree-icon">{fileIcon('cuboidy.json')}</span>
                         <span className="tree-name">cuboidy.json</span>
                       </div>
                     </li>
@@ -615,7 +624,7 @@ export function FileTree({
               onClick={() => onOpenPath(primary)}
             >
               <span className="tree-caret-spacer" aria-hidden="true" />
-              <span className="tree-icon">📄</span>
+              <span className="tree-icon">{fileIcon(primary)}</span>
               <span className="tree-name">{primary}</span>
             </div>
           </li>
@@ -627,7 +636,8 @@ export function FileTree({
           className="btn btn-create btn-sm create-manifest"
           onClick={onCreateManifest}
         >
-          + Create manifest
+          <Plus size={13} />
+          Create manifest
         </button>
       )}
     </div>
@@ -756,8 +766,7 @@ function DirChildren(props: DirChildrenProps) {
             <li className="tree-node" key={name}>
               <div className="tree-row draft" style={{ paddingLeft: pad }}>
                 <span className="tree-caret-spacer" aria-hidden="true" />
-                <span className="tree-icon">📁</span>
-                <InlineNameInput
+                  <InlineNameInput
                   initial={name}
                   ariaLabel={`Rename folder ${childPath}`}
                   validate={props.validateRenameFolder(childPath)}
@@ -814,12 +823,17 @@ function DirChildren(props: DirChildrenProps) {
                     props.onToggleCollapse(childPath);
                   }}
                 >
-                  <span className="tree-caret">{expanded ? '▾' : '▸'}</span>
+                  <span className="tree-caret">
+                    {expanded ? (
+                      <ChevronDown size={12} />
+                    ) : (
+                      <ChevronRight size={12} />
+                    )}
+                  </span>
                 </button>
               ) : (
                 <span className="tree-caret-spacer" aria-hidden="true" />
               )}
-              <span className="tree-icon">📁</span>
               <span className="tree-name">{name}</span>
               {props.canEdit &&
                 (() => {
@@ -839,7 +853,7 @@ function DirChildren(props: DirChildrenProps) {
                         if (reason === null) props.onDeleteFolderRow(childPath);
                       }}
                     >
-                      ×
+                      <X size={14} />
                     </span>
                   );
                 })()}
@@ -859,7 +873,6 @@ function DirChildren(props: DirChildrenProps) {
         <li className="tree-node">
           <div className="tree-row draft" style={{ paddingLeft: pad }}>
             <span className="tree-caret-spacer" aria-hidden="true" />
-            <span className="tree-icon">📁</span>
             <InlineNameInput
               initial="folder"
               ariaLabel={`New folder in ${dirPath === '' ? 'package root' : dirPath}`}
@@ -874,7 +887,7 @@ function DirChildren(props: DirChildrenProps) {
         <li className="tree-node">
           <div className="tree-row draft" style={{ paddingLeft: pad }}>
             <span className="tree-caret-spacer" aria-hidden="true" />
-            <span className="tree-icon">📄</span>
+            <span className="tree-icon">{fileIcon('new.cvox')}</span>
             <InlineNameInput
               initial="new.cvox"
               ariaLabel={`New file in ${dirPath === '' ? 'package root' : dirPath}`}
@@ -980,7 +993,7 @@ function FileNode({
       <li className="tree-node">
         <div className="tree-row draft" style={{ paddingLeft: pad }}>
           <span className="tree-caret-spacer" aria-hidden="true" />
-          <span className="tree-icon">📄</span>
+          <span className="tree-icon">{fileIcon(name)}</span>
           <InlineNameInput
             initial={name}
             ariaLabel={`Rename ${path}`}
@@ -1005,7 +1018,7 @@ function FileNode({
         {...dragProps}
       >
         <span className="tree-caret-spacer" aria-hidden="true" />
-        <span className="tree-icon">📄</span>
+        <span className="tree-icon">{fileIcon(name)}</span>
         <span className="tree-name">{name}</span>
         {isNew === true && <span className="badge">new</span>}
         {ops.addReason !== 'hidden' && (
@@ -1038,7 +1051,7 @@ function FileNode({
               if (ops.deleteReason === null) onDeleteFile(path);
             }}
           >
-            ×
+            <X size={14} />
           </span>
         )}
       </div>

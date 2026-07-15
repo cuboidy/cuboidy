@@ -1,4 +1,5 @@
 import { AIR, type Color, type Palette, type Part } from '@cuboidy/core';
+import { Plus, X } from 'lucide-react';
 
 // What the panel is editing — the model's EFFECTIVE palette per the
 // SPEC §6.10 precedence: the manifest-bound external file when a
@@ -156,7 +157,7 @@ export function PalettePanel({
             onClick={handleAddColor}
             title="Add a new color (default white)"
           >
-            +
+            <Plus size={16} />
           </button>
         )}
       </div>
@@ -236,7 +237,7 @@ function PaletteSwatch({
             : 'Delete this color'
         }
       >
-        ×
+        <X size={13} />
       </button>
     </div>
   );

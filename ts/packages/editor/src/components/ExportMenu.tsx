@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import type { LoadedSource } from '../lib/types.js';
 import { downloadAsZip, downloadFile } from '../lib/save.js';
 
@@ -75,7 +76,8 @@ export function ExportMenu({ source }: Props) {
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        Export ▾
+        Export
+        <ChevronDown size={14} />
       </button>
       {open && (
         <div className="menu export-menu-items" role="menu">

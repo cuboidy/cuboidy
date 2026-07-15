@@ -5,6 +5,7 @@ import {
   useState,
   type DragEvent,
 } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { InlineNameInput } from './InlineNameInput.js';
 import {
   buildPartTree,
@@ -361,7 +362,9 @@ function PartTreeBranch(props: BranchProps) {
               onToggleExpand(node.name);
             }}
           >
-            <span className="tree-caret">{expanded ? '▾' : '▸'}</span>
+            <span className="tree-caret">
+              {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            </span>
           </button>
         ) : (
           <span className="tree-caret-spacer" aria-hidden="true" />

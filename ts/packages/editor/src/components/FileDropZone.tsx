@@ -1,4 +1,5 @@
 import { useCallback, useState, type ChangeEvent, type DragEvent } from 'react';
+import { Folder } from 'lucide-react';
 import type { LoadResult } from '../lib/types.js';
 import {
   loadFromDirectoryEntry,
@@ -83,7 +84,9 @@ export function FileDropZone({ onLoad }: Props) {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div className="dropzone-icon">📁</div>
+      <div className="dropzone-icon">
+        <Folder size={44} strokeWidth={1.5} />
+      </div>
       <p className="dropzone-headline">
         Drop a cuboidy folder, <code>.cvox</code>, or <code>.cuboidy</code> file
       </p>

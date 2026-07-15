@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { AlertTriangle, XCircle } from 'lucide-react';
 
 // One row in the Console panel. `source` is the file the entry is about
 // (shown as a muted mono tag); `message` allows inline markup (<code> etc.).
@@ -21,7 +22,11 @@ export function ConsolePanel({ entries }: { entries: ConsoleEntry[] }) {
       {entries.map((e, i) => (
         <li key={i} className={`console-entry ${e.severity}`}>
           <span className="console-severity" aria-hidden="true">
-            {e.severity === 'error' ? '✕' : '⚠'}
+            {e.severity === 'error' ? (
+              <XCircle size={14} />
+            ) : (
+              <AlertTriangle size={14} />
+            )}
           </span>
           <span className="console-message">
             {e.source !== undefined && (

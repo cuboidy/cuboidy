@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Check } from 'lucide-react';
 import type { LoadedSource } from '../lib/types.js';
 import { saveToFolder } from '../lib/save.js';
 
@@ -42,7 +43,16 @@ export function SaveButton({ source }: Props) {
       onClick={handleSave}
       disabled={state === 'saving'}
     >
-      {state === 'saving' ? 'Saving…' : state === 'saved' ? '✓ Saved' : 'Save'}
+      {state === 'saving' ? (
+        'Saving…'
+      ) : state === 'saved' ? (
+        <>
+          <Check size={14} />
+          Saved
+        </>
+      ) : (
+        'Save'
+      )}
     </button>
   );
 }

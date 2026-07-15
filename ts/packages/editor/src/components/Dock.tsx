@@ -7,6 +7,7 @@ import {
   type ReactNode,
   type WheelEvent,
 } from 'react';
+import { Plus, X } from 'lucide-react';
 import type {
   Edge,
   LayoutNode,
@@ -234,7 +235,7 @@ function DockLeaf({
                 title="Close panel"
                 onClick={() => onClose(path, id)}
               >
-                ×
+                <X size={14} />
               </button>
             </div>
           ))}
@@ -251,7 +252,7 @@ function DockLeaf({
             disabled={closedPanels.length === 0}
             onClick={() => setMenuOpen((o) => !o)}
           >
-            +
+            <Plus size={15} />
           </button>
           {menuOpen && closedPanels.length > 0 && (
             <div className="menu dock-add-menu">

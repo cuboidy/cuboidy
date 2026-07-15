@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Pause, Play } from 'lucide-react';
 import { OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import type { Cvox, Manifest, Palette } from '@cuboidy/core';
@@ -113,7 +114,11 @@ export function AnimationViewport({
           disabled={!hasTimeline}
           onClick={() => setPlaying((p) => !p)}
         >
-          {playing ? '❚❚' : '▶'}
+          {playing ? (
+            <Pause size={15} fill="currentColor" strokeWidth={0} />
+          ) : (
+            <Play size={15} fill="currentColor" strokeWidth={0} />
+          )}
         </button>
         <input
           type="range"
