@@ -195,6 +195,21 @@ interface SwatchProps {
   onDelete: () => void;
 }
 
+// Black or white text for a swatch, chosen by the fill's perceived
+// luminance so the index letter / usage count stays legible on any colour.
+function contrastText(hex: string | undefined): '#000' | '#fff' {
+  const m = hex !== undefined ? /^#?([0-9a-f]{6})$/i.exec(hex.trim()) : null;
+  const digits = m?.[1];
+  if (digits === undefined) return '#fff';
+  const n = parseInt(digits, 16);
+  const lum =
+    (0.299 * ((n >> 16) & 255) +
+      0.587 * ((n >> 8) & 255) +
+      0.114 * (n & 255)) /
+    255;
+  return lum > 0.6 ? '#000' : '#fff';
+}
+
 function PaletteSwatch({
   index,
   color,
@@ -205,6 +220,7 @@ function PaletteSwatch({
 }: SwatchProps) {
   const hex = colorToHex(color);
   const label = indexToChar(index);
+  const fg = contrastText(hex);
   const inUse = usage > 0;
   // Delete is disabled either by global panel disable (parse error) or
   // because this index is referenced by voxels. Showing two reasons in
@@ -221,8 +237,14 @@ function PaletteSwatch({
         onChange={(e) => onEdit(e.target.value)}
         title={`Index ${index} ('${label}') · ${usage} use${usage === 1 ? '' : 's'}`}
       />
-      <span className="swatch-label">{label}</span>
-      {inUse && <span className="swatch-usage">{usage}</span>}
+      <span className="swatch-label" style={{ color: fg }}>
+        {label}
+      </span>
+      {inUse && (
+        <span className="swatch-usage" style={{ color: fg }}>
+          {usage}
+        </span>
+      )}
       <button
         type="button"
         className="swatch-delete"
