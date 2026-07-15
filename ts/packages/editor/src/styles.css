@@ -199,10 +199,32 @@ svg.lucide {
   font-size: 0.75rem;
 }
 
-/* Icon-only variant of .btn (e.g. header undo/redo): square padding so a
-   lone glyph doesn't inherit the wide text-button padding. */
-.btn-icon-lg {
-  padding: 0.3rem 0.45rem;
+/* Chrome-less icon button (header undo/redo, transport play/pause): just
+   the glyph, brightening on hover — no background or border. */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  background: none;
+  border: none;
+  color: var(--txt-2);
+  cursor: pointer;
+}
+
+.icon-btn:hover:not(:disabled) {
+  color: var(--txt-1);
+}
+
+.icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.icon-btn:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: var(--r-1);
 }
 
 /* Compact glyph-only button; width/height/glyph-size come from the

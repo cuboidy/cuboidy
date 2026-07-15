@@ -110,7 +110,7 @@ export function AnimationViewport({
       <div className="anim-controls">
         <button
           type="button"
-          className="btn btn-primary anim-play"
+          className="anim-play icon-btn"
           aria-label={playing ? 'Pause' : 'Play'}
           disabled={!hasTimeline}
           onClick={() => setPlaying((p) => !p)}

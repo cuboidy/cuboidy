@@ -3407,7 +3407,7 @@ export function App() {
             <>
               <button
                 type="button"
-                className="btn btn-icon-lg"
+                className="icon-btn"
                 disabled={history.past.length === 0}
                 title="Undo (Ctrl+Z)"
                 aria-label="Undo"
@@ -3417,7 +3417,7 @@ export function App() {
               </button>
               <button
                 type="button"
-                className="btn btn-icon-lg"
+                className="icon-btn"
                 disabled={history.future.length === 0}
                 title="Redo (Ctrl+Shift+Z)"
                 aria-label="Redo"
