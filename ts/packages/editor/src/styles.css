@@ -1400,10 +1400,35 @@ svg.ficon-anim {
 
 /* Visibility toggle at the right end of a part row (name flex:1 pushes
    it over). */
+/* Eye / eye-off toggle. Like VS Code: the eye is revealed on hover for a
+   visible part, but a hidden part keeps its eye-off showing so the state
+   reads without hovering. */
 .part-tree-visibility {
-  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
   margin-left: 0.4rem;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--txt-3);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.tree-row:hover .part-tree-visibility,
+.tree-row.selected .part-tree-visibility,
+.tree-row.hidden .part-tree-visibility {
+  opacity: 1;
+}
+
+.part-tree-visibility:hover {
+  color: var(--txt-1);
+}
+
+.tree-row.selected .part-tree-visibility {
+  color: #cbd3de;
 }
 
 /* Target-file picker on the new-part draft row (multi-cvox models

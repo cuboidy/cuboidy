@@ -5,7 +5,7 @@ import {
   useState,
   type DragEvent,
 } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, Eye, EyeOff } from 'lucide-react';
 import { InlineNameInput } from './InlineNameInput.js';
 import {
   buildPartTree,
@@ -394,14 +394,19 @@ function PartTreeBranch(props: BranchProps) {
             {basename(partFiles.get(node.name)!)}
           </span>
         )}
-        <input
-          type="checkbox"
+        <button
+          type="button"
           className="part-tree-visibility"
-          checked={!hidden}
-          aria-label={`Toggle visibility of ${node.name}`}
-          onClick={(e) => e.stopPropagation()}
-          onChange={() => onToggleVisibility(node.name)}
-        />
+          aria-label={`${hidden ? 'Show' : 'Hide'} ${node.name}`}
+          aria-pressed={hidden}
+          title={hidden ? 'Show part' : 'Hide part'}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleVisibility(node.name);
+          }}
+        >
+          {hidden ? <EyeOff size={14} /> : <Eye size={14} />}
+        </button>
       </div>
       {hasChildren && expanded && (
         <ul className="tree-list" role="group">
