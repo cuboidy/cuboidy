@@ -866,6 +866,43 @@ svg.lucide {
   padding-top: 0.75rem;
   border-top: 1px solid var(--line);
   display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Duplicate / Mirror row above the (destructive) Delete button. */
+.part-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.part-actions .btn {
+  flex: 1;
+}
+
+/* Mirror button + its axis picker read as one control. */
+.mirror-action {
+  display: flex;
+  flex: 1;
+  gap: 0.25rem;
+}
+
+.mirror-action .btn {
+  flex: 1;
+}
+
+.mirror-action select {
+  background: var(--bg-2);
+  color: var(--txt-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
+  padding: 0.15rem 0.25rem;
+  font: inherit;
+  font-family: var(--ui);
+}
+
+.mirror-action select:disabled {
+  cursor: not-allowed;
 }
 
 .property-group {

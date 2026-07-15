@@ -51,11 +51,12 @@ So a cell `(x,y,z)` is: layer `y`, row `z`, char `x`. Consequences:
   mirror about the parent centerline are symmetric around it — get it wrong and
   one side juts out (cost me a visible asymmetry once).
 - **Generate symmetric / repeated parts, don't hand-duplicate**: author one
-  side, then run `cuboidy-part mirror one.cvox ear-l one.cvox ear-r` (or
-  `duplicate` for a verbatim copy). The tool writes concrete voxels with the
-  pivot/socket reflection done for you, so you never redo the L/R voxel math.
-  The manifest `position` is still per-part; lint **W06** flags an l/r pair
-  whose assembled geometry isn't X-symmetric.
+  side (`ear-l`), then `cuboidy-part duplicate ears.cvox ear-l ears.cvox ear-r`
+  and `cuboidy-part mirror ears.cvox ear-r` — the mirror reflects voxels /
+  pivot / sockets in place, so you never redo the L/R voxel math. (`mirror`
+  alone flips a part where it is; `duplicate` makes the copy to flip.) The
+  manifest `position` is still per-part; lint **W06** flags an l/r pair whose
+  assembled geometry isn't X-symmetric.
 
 ## Shape / rounding
 

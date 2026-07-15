@@ -1,5 +1,5 @@
-import { type ChangeEvent } from 'react';
-import { Plus, X } from 'lucide-react';
+import { useState, type ChangeEvent } from 'react';
+import { Copy, FlipHorizontal2, Plus, X } from 'lucide-react';
 import {
   AIR,
   isIdentifier,
@@ -54,6 +54,11 @@ interface Props {
     build: (part: Part) => Part,
     tag?: string,
   ) => void;
+  // Duplicate: append a concrete copy of this part to its file (geometry
+  // only, no manifest rig). Mirror: reflect this part in place across the
+  // axis. Both match the cuboidy-part CLI.
+  onDuplicatePart: (name: string) => void;
+  onMirrorPart: (name: string, axis: Axis) => void;
 }
 
 const NONE_VALUE = '__none__';
@@ -79,7 +84,10 @@ export function PartProperties({
   onCreateManifest,
   onMovePart,
   onEditPart,
+  onDuplicatePart,
+  onMirrorPart,
 }: Props) {
+  const [mirrorAxis, setMirrorAxis] = useState<Axis>('x');
   const cvoxPart = cvox.parts.find((p) => p.name === selectedPart);
   if (cvoxPart === undefined) {
     // Selection points at a part that no longer exists in cvox (e.g.,
@@ -191,6 +199,48 @@ export function PartProperties({
       </div>
 
       <div className="part-properties-footer">
+        <div className="part-actions">
+          <button
+            type="button"
+            className="btn btn-sm"
+            disabled={cvoxEditsDisabled}
+            title={
+              cvoxEditsDisabled
+                ? 'Fix cvox syntax errors to duplicate'
+                : 'Add a concrete copy of this part to its file'
+            }
+            onClick={() => onDuplicatePart(selectedPart)}
+          >
+            <Copy size={13} />
+            Duplicate
+          </button>
+          <div className="mirror-action">
+            <button
+              type="button"
+              className="btn btn-sm"
+              disabled={cvoxEditsDisabled}
+              title={
+                cvoxEditsDisabled
+                  ? 'Fix cvox syntax errors to mirror'
+                  : `Flip this part across ${mirrorAxis} (in place)`
+              }
+              onClick={() => onMirrorPart(selectedPart, mirrorAxis)}
+            >
+              <FlipHorizontal2 size={13} />
+              Mirror
+            </button>
+            <select
+              value={mirrorAxis}
+              disabled={cvoxEditsDisabled}
+              aria-label="Mirror axis"
+              onChange={(e) => setMirrorAxis(e.target.value as Axis)}
+            >
+              <option value="x">x</option>
+              <option value="y">y</option>
+              <option value="z">z</option>
+            </select>
+          </div>
+        </div>
         <button
           type="button"
           className="btn btn-danger btn-sm"

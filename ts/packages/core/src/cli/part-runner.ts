@@ -11,21 +11,22 @@ import {
 } from '../cvox/transform.js';
 import type { Cvox, Part } from '../cvox/types.js';
 
-// `cuboidy-part`: author concrete geometry by copying or mirroring an
-// existing part into a (same or other) cvox file. Replaces the declarative
-// clone/mirror grammar — the output is plain voxel data, so an AI model
-// generator can build symmetric limbs by running this rather than emitting a
-// reuse clause. All real work is here; the bin is a thin arg shell.
+// `cuboidy-part`: author concrete geometry by copying or flipping a part.
+// `duplicate` copies a part into a (same or other) cvox file; `mirror`
+// reflects a part IN PLACE. Both write plain voxel data, so an AI model
+// generator can build symmetric limbs (duplicate, then mirror the copy)
+// rather than emitting a reuse clause. All real work is here; the bin is a
+// thin arg shell.
 
-export interface PartOp {
-  op: 'duplicate' | 'mirror';
-  fromFile: string;
-  fromPart: string;
-  toFile: string;
-  toPart: string;
-  // Mirror axis (mirror only); defaults to 'x'.
-  axis?: Axis;
-}
+export type PartOp =
+  | {
+      op: 'duplicate';
+      fromFile: string;
+      fromPart: string;
+      toFile: string;
+      toPart: string;
+    }
+  | { op: 'mirror'; file: string; part: string; axis: Axis };
 
 export interface RunResult {
   text: string;
@@ -47,6 +48,40 @@ async function readCvox(
 }
 
 export async function runPart(op: PartOp): Promise<RunResult> {
+  return op.op === 'mirror' ? runMirror(op) : runDuplicate(op);
+}
+
+// Reflect a part IN PLACE: replace it with its mirror (same name), rewriting
+// the file. voxels / pivot / sockets are reflected; the palette is untouched.
+async function runMirror(
+  op: Extract<PartOp, { op: 'mirror' }>,
+): Promise<RunResult> {
+  const r = await readCvox(op.file);
+  if ('error' in r) return { text: r.error, exitCode: r.code };
+  const i = r.cvox.parts.findIndex((p) => p.name === op.part);
+  if (i < 0) {
+    return { text: `part "${op.part}" not found in ${op.file}`, exitCode: 1 };
+  }
+  const parts = r.cvox.parts.slice();
+  parts[i] = mirrorPart(parts[i]!, op.axis, op.part);
+  try {
+    await writeFile(op.file, serializeCvox({ ...r.cvox, parts }));
+  } catch (e) {
+    return {
+      text: `cannot write ${op.file}: ${(e as Error).message}`,
+      exitCode: 2,
+    };
+  }
+  return {
+    text: `mirror(${op.axis}): flipped "${op.part}" in ${op.file}`,
+    exitCode: 0,
+  };
+}
+
+// Copy a part into a (same or other) cvox file under a new name.
+async function runDuplicate(
+  op: Extract<PartOp, { op: 'duplicate' }>,
+): Promise<RunResult> {
   if (!isIdentifier(op.toPart)) {
     return { text: `invalid part name "${op.toPart}"`, exitCode: 2 };
   }
@@ -82,10 +117,7 @@ export async function runPart(op: PartOp): Promise<RunResult> {
     };
   }
 
-  let newPart: Part =
-    op.op === 'mirror'
-      ? mirrorPart(src, op.axis ?? 'x', op.toPart)
-      : duplicatePart(src, op.toPart);
+  let newPart: Part = duplicatePart(src, op.toPart);
 
   // Cross-file: the source indices mean colors in from.cvox's inline palette,
   // so remap them into to.cvox's (appending any it lacks). Same file needs no
@@ -110,10 +142,8 @@ export async function runPart(op: PartOp): Promise<RunResult> {
       exitCode: 2,
     };
   }
-  const how =
-    op.op === 'mirror' ? `mirror(${op.axis ?? 'x'})` : 'duplicate';
   return {
-    text: `${how}: wrote "${op.toPart}" to ${op.toFile}`,
+    text: `duplicate: wrote "${op.toPart}" to ${op.toFile}`,
     exitCode: 0,
   };
 }

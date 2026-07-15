@@ -11,9 +11,11 @@ import {
   InlineAnimationSchema,
   addAttrAtTime,
   deleteAttrAtKey,
+  duplicatePart,
   isIdentifier,
   manifestGeometry,
   mergeKeyframeAtTime,
+  mirrorPart,
   moveAttrKey,
   parseCvox,
   parseManifest,
@@ -24,6 +26,7 @@ import {
   setEaseAtKey,
   trimTrackKeys,
   type AttrValue,
+  type Axis,
   type Cvox,
   type EaseAttr,
   type EasingName,
@@ -477,6 +480,15 @@ function deleteFileInSource(src: FolderSource, p: string): FolderSource | null {
     }
   }
   return next;
+}
+
+// A model-wide-unique part name (§5): `base` if free, else `base-2`, `-3`…
+// (`-` is a legal identifier char, so the suffix keeps the name valid).
+function uniquePartName(existing: ReadonlySet<string>, base: string): string {
+  if (!existing.has(base)) return base;
+  let n = 2;
+  while (existing.has(`${base}-${n}`)) n += 1;
+  return `${base}-${n}`;
 }
 
 export function App() {
@@ -1617,6 +1629,63 @@ export function App() {
   }, [loaded, selectedPartName, manifestParseError]);
 
   const handleCancelCreatePart = useCallback(() => setCreating(null), []);
+
+  // Append a new CONCRETE part derived from an existing one (duplicate /
+  // mirror — the cuboidy-part CLI's editor twin). Geometry only, matching
+  // the CLI: the new part lands in the SAME geometry file as its source and
+  // gets no manifest rig entry (set parent/position afterward via the Rig
+  // fields). `make` builds the part from the source + a model-wide-unique
+  // name; that name is computed up front so the new part can be selected.
+  const insertDerivedPart = useCallback(
+    (
+      sourceName: string,
+      base: string,
+      make: (source: Part, newName: string) => Part,
+    ) => {
+      if (!flushGeometryReparse()) return;
+      const cur = loadedRef.current?.source;
+      if (cur === undefined) return;
+      const merged = mergeGeometries(cur);
+      const existing = new Set(merged.parts.map((p) => p.name));
+      if (!existing.has(sourceName)) return;
+      const newName = uniquePartName(existing, base);
+      dispatchEdit(null, (current) => {
+        const src = current?.source;
+        if (src === undefined) return current;
+        const m = mergeGeometries(src);
+        const source = m.parts.find((p) => p.name === sourceName);
+        if (source === undefined || m.parts.some((p) => p.name === newName)) {
+          return current;
+        }
+        const file = m.files.get(sourceName) ?? src.cvoxFile.name;
+        const newPart = make(source, newName);
+        const nextSrc = mapGeometryFiles(src, (cvox, path) =>
+          path === file ? { ...cvox, parts: [...cvox.parts, newPart] } : null,
+        );
+        return nextSrc === src ? current : { ...current, source: nextSrc };
+      });
+      setSelectedPartName(newName);
+    },
+    [dispatchEdit, flushGeometryReparse],
+  );
+
+  const handleDuplicatePart = useCallback(
+    (name: string) => {
+      insertDerivedPart(name, `${name}-copy`, (source, newName) =>
+        duplicatePart(source, newName),
+      );
+    },
+    [insertDerivedPart],
+  );
+
+  // Reflect the part IN PLACE (same name), a single geometry mutation — not
+  // a new part. Matches `cuboidy-part mirror`.
+  const handleMirrorPart = useCallback(
+    (name: string, axis: Axis) => {
+      mutateCvoxPart(null, name, (p) => mirrorPart(p, axis, p.name));
+    },
+    [mutateCvoxPart],
+  );
 
   // Confirm the draft: append a 1×1×1 solid block (palette index 0, or AIR if
   // the palette is empty) named `name`, and — when a `parent` is given — add a
@@ -3286,6 +3355,8 @@ export function App() {
                 onCreateManifest={handleCreateManifest}
                 onMovePart={handleMovePart}
                 onEditPart={handleEditPart}
+                onDuplicatePart={handleDuplicatePart}
+                onMirrorPart={handleMirrorPart}
               />
             ) : (
               <p className="panel-empty">

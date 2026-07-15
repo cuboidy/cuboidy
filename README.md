@@ -90,7 +90,9 @@ Four CLIs assemble a model (rest pose — translation only, pivot/animation rota
 - **`cuboidy-view <dir>`** — orthographic projections as **ASCII grids** of palette-index characters (the `voxels.cvox` alphabet), for a token-cheap textual read.
 - **`cuboidy-query <dir> --at=x,y,z`** — exact voxel lookup at world coordinates (fractional-safe; the precise tool when half-voxel offsets are present).
 - **`cuboidy-lint <dir>`** — voxel-definition + cross-file lint.
-- **`cuboidy-part <duplicate|mirror> <from.cvox> <fromPart> <to.cvox> <toPart> [axis]`** — copy or mirror a part into a cvox file as concrete geometry (the way symmetric limbs / repeated parts are authored — an AI generator runs this instead of hand-writing the mirrored voxels). Cross-file copies remap the palette so colors are preserved.
+- **`cuboidy-part`** — author concrete geometry (the way symmetric limbs / repeated parts are made — an AI generator runs this instead of hand-writing mirrored voxels):
+  - `cuboidy-part duplicate <from.cvox> <fromPart> <to.cvox> <toPart>` — copy a part (cross-file copies remap the palette so colors are preserved).
+  - `cuboidy-part mirror <file.cvox> <part> [axis]` — reflect a part **in place** across `axis` (default `x`). A bilateral pair is *duplicate, then mirror the copy*.
 
 ## Token efficiency
 
