@@ -1,4 +1,4 @@
-import { useMemo, useState, type DragEvent } from 'react';
+import { useEffect, useMemo, useState, type DragEvent } from 'react';
 import { manifestGeometry } from '@cuboidy/core';
 import { InlineNameInput } from './InlineNameInput.js';
 import { normalizePath } from '../lib/load-model.js';
@@ -79,6 +79,36 @@ export function FileTree({
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   // Folder path whose name is being edited inline (double-click), or null.
   const [renamingDir, setRenamingDir] = useState<string | null>(null);
+  // Collapsed folder paths ('' = package root). Absent = expanded (the
+  // default), so a freshly loaded package shows everything — matches the
+  // Parts tree's collapse model.
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const toggleCollapse = (dir: string): void =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(dir)) next.delete(dir);
+      else next.add(dir);
+      return next;
+    });
+  // A new-file / new-folder draft must be visible: expand the folder it
+  // opens in and every ancestor (incl. root) so it can't hide in a
+  // collapsed branch. Mirrors the Parts tree's create-forces-open rule.
+  useEffect(() => {
+    const target = creatingIn ?? creatingFolderIn;
+    if (target === null) return;
+    setCollapsed((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Set(prev);
+      let changed = next.delete('');
+      if (target !== '') {
+        const segs = target.split('/');
+        for (let i = 1; i <= segs.length; i++) {
+          if (next.delete(segs.slice(0, i).join('/'))) changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [creatingIn, creatingFolderIn]);
   // The selected NODE (VS Code-style single selection): a folder or a
   // file. Creation targets the selected folder, or a selected file's
   // containing folder.
@@ -485,88 +515,109 @@ export function FileTree({
         </div>
       )}
       {isFolder ? (
-        <ul className="tree-root">
-          <li className="tree-node folder">
+        <ul className="tree-list">
+          <li className="tree-node">
             <div
-              className={`folder-row${selectedDirForHighlight === '' ? ' selected' : ''}${dropTarget?.kind === 'dir' && dropTarget.path === '' ? ' drop-target' : ''}`}
+              className={`tree-row${selectedDirForHighlight === '' ? ' selected' : ''}${dropTarget?.kind === 'dir' && dropTarget.path === '' ? ' drop-target' : ''}${dragging?.kind === 'dir' && dragging.path === '' ? ' dragging' : ''}`}
+              style={{ paddingLeft: '0.5rem' }}
               title="Package root — New file / New folder create here while selected"
               onClick={() => setSelected({ kind: 'dir', path: '' })}
               {...folderRowProps('')}
             >
-              <span className="icon">📁</span>
-              <span className="name">{source.folderName}</span>
+              <button
+                type="button"
+                className="tree-caret-btn"
+                aria-label={`${collapsed.has('') ? 'Expand' : 'Collapse'} ${source.folderName}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleCollapse('');
+                }}
+              >
+                <span className="tree-caret">{collapsed.has('') ? '▸' : '▾'}</span>
+              </button>
+              <span className="tree-icon">📁</span>
+              <span className="tree-name">{source.folderName}</span>
               {source.synthetic && <span className="badge">unsaved</span>}
             </div>
-            <DirChildren
-              node={tree}
-              dirPath=""
-
-              fileErrors={fileErrors}
-              dragging={dragging}
-              dropTarget={dropTarget}
-              folderRowProps={folderRowProps}
-              fileRowProps={fileRowProps}
-              newBadgePath={
-                source.synthetic ? source.manifestFile?.name : undefined
-              }
-              canEdit={canEdit}
-              creatingIn={creatingIn}
-              creatingFolderIn={creatingFolderIn}
-              selectedDir={selectedDirForHighlight}
-              selectedFile={selectedFileForHighlight}
-              renamingPath={renamingPath}
-              renamingDir={renamingDir}
-              isUnreferenced={isUnreferenced}
-              rowOps={rowOps}
-              validateNewPath={validateNewPath}
-              validateNewFolderIn={validateNewFolderIn}
-              validateRename={validateRename}
-              validateRenameFolder={validateRenameFolder}
-              onOpenPath={onOpenPath}
-              onSelectDir={(dir) => setSelected({ kind: 'dir', path: dir })}
-              onStartRenameDir={setRenamingDir}
-              onCommitRenameFolder={commitRenameFolder}
-              onCancelRenameFolder={() => setRenamingDir(null)}
-              onSelectFile={(p) => setSelected({ kind: 'file', path: p })}
-              onCommitCreate={commitCreateFile}
-              onCommitCreateFolder={commitCreateFolder}
-              onCancelCreateFolder={() => setCreatingFolderIn(null)}
-              onCancelCreate={() => setCreatingIn(null)}
-              onStartRename={setRenamingPath}
-              onCommitRename={commitRenameFile}
-              onCancelRename={() => setRenamingPath(null)}
-              folderDeleteReason={folderDeleteReason}
-              onDeleteFolderRow={commitDeleteFolder}
-              onDeleteFile={onDeleteFile}
-              onAddFileToModel={onAddFileToModel}
-            />
-            {!hasManifestFile && (
-              <ul className="tree-children">
-                <li
-                  className="tree-node file missing"
-                  title="Not present in this folder"
-                >
-                  <span className="icon">📄</span>
-                  <span className="name">cuboidy.json</span>
-                </li>
-              </ul>
+            {!collapsed.has('') && (
+              <>
+                <DirChildren
+                  node={tree}
+                  dirPath=""
+                  depth={1}
+                  collapsed={collapsed}
+                  onToggleCollapse={toggleCollapse}
+                  fileErrors={fileErrors}
+                  dragging={dragging}
+                  dropTarget={dropTarget}
+                  folderRowProps={folderRowProps}
+                  fileRowProps={fileRowProps}
+                  newBadgePath={
+                    source.synthetic ? source.manifestFile?.name : undefined
+                  }
+                  canEdit={canEdit}
+                  creatingIn={creatingIn}
+                  creatingFolderIn={creatingFolderIn}
+                  selectedDir={selectedDirForHighlight}
+                  selectedFile={selectedFileForHighlight}
+                  renamingPath={renamingPath}
+                  renamingDir={renamingDir}
+                  isUnreferenced={isUnreferenced}
+                  rowOps={rowOps}
+                  validateNewPath={validateNewPath}
+                  validateNewFolderIn={validateNewFolderIn}
+                  validateRename={validateRename}
+                  validateRenameFolder={validateRenameFolder}
+                  onOpenPath={onOpenPath}
+                  onSelectDir={(dir) => setSelected({ kind: 'dir', path: dir })}
+                  onStartRenameDir={setRenamingDir}
+                  onCommitRenameFolder={commitRenameFolder}
+                  onCancelRenameFolder={() => setRenamingDir(null)}
+                  onSelectFile={(p) => setSelected({ kind: 'file', path: p })}
+                  onCommitCreate={commitCreateFile}
+                  onCommitCreateFolder={commitCreateFolder}
+                  onCancelCreateFolder={() => setCreatingFolderIn(null)}
+                  onCancelCreate={() => setCreatingIn(null)}
+                  onStartRename={setRenamingPath}
+                  onCommitRename={commitRenameFile}
+                  onCancelRename={() => setRenamingPath(null)}
+                  folderDeleteReason={folderDeleteReason}
+                  onDeleteFolderRow={commitDeleteFolder}
+                  onDeleteFile={onDeleteFile}
+                  onAddFileToModel={onAddFileToModel}
+                />
+                {!hasManifestFile && (
+                  <ul className="tree-list">
+                    <li className="tree-node">
+                      <div
+                        className="tree-row missing"
+                        style={{ paddingLeft: `${0.5 + 0.9}rem` }}
+                        title="Not present in this folder"
+                      >
+                        <span className="tree-caret-spacer" aria-hidden="true" />
+                        <span className="tree-icon">📄</span>
+                        <span className="tree-name">cuboidy.json</span>
+                      </div>
+                    </li>
+                  </ul>
+                )}
+              </>
             )}
           </li>
         </ul>
       ) : (
-        <ul className="tree-root">
-          <li
-            className={`tree-node file${fileErrors.has(primary) ? ' error' : ''}`}
-            title={fileErrors.get(primary) ?? primary}
-          >
-            <button
-              type="button"
-              className="tree-node-button"
+        <ul className="tree-list">
+          <li className="tree-node">
+            <div
+              className={`tree-row${fileErrors.has(primary) ? ' error' : ''}`}
+              style={{ paddingLeft: '0.5rem' }}
+              title={fileErrors.get(primary) ?? primary}
               onClick={() => onOpenPath(primary)}
             >
-              <span className="icon">📄</span>
-              <span className="name">{primary}</span>
-            </button>
+              <span className="tree-caret-spacer" aria-hidden="true" />
+              <span className="tree-icon">📄</span>
+              <span className="tree-name">{primary}</span>
+            </div>
           </li>
         </ul>
       )}
@@ -631,6 +682,12 @@ interface DirChildrenProps {
   node: DirNode;
   // This directory's package-relative path ('' = root).
   dirPath: string;
+  // Nesting depth of the rows this renders (root's children = 1); drives
+  // the inline left-padding, matching the Parts tree.
+  depth: number;
+  // Collapse state (folder paths) + toggle, shared with the whole tree.
+  collapsed: ReadonlySet<string>;
+  onToggleCollapse: (dir: string) => void;
 
   fileErrors: ReadonlyMap<string, string>;
   // Drag-and-drop move state + prop-builders (threaded through the
@@ -688,16 +745,18 @@ interface DirChildrenProps {
 }
 
 function DirChildren(props: DirChildrenProps) {
-  const { node, dirPath } = props;
+  const { node, dirPath, depth } = props;
+  const pad = `${0.5 + depth * 0.9}rem`;
   return (
-    <ul className="tree-children">
+    <ul className="tree-list">
       {[...node.dirs.entries()].map(([name, child]) => {
         const childPath = dirPath === '' ? name : `${dirPath}/${name}`;
         if (props.renamingDir === childPath) {
           return (
-            <li className="tree-node folder" key={name}>
-              <div className="tree-node-draft">
-                <span className="icon">📁</span>
+            <li className="tree-node" key={name}>
+              <div className="tree-row draft" style={{ paddingLeft: pad }}>
+                <span className="tree-caret-spacer" aria-hidden="true" />
+                <span className="tree-icon">📁</span>
                 <InlineNameInput
                   initial={name}
                   ariaLabel={`Rename folder ${childPath}`}
@@ -708,37 +767,66 @@ function DirChildren(props: DirChildrenProps) {
                   onCancel={props.onCancelRenameFolder}
                 />
               </div>
-              <DirChildren {...props} node={child} dirPath={childPath} />
+              {!props.collapsed.has(childPath) && (
+                <DirChildren
+                  {...props}
+                  node={child}
+                  dirPath={childPath}
+                  depth={depth + 1}
+                />
+              )}
             </li>
           );
         }
         const dropOnDir =
           props.dropTarget?.kind === 'dir' &&
           props.dropTarget.path === childPath;
+        const expandable =
+          child.dirs.size > 0 ||
+          child.files.length > 0 ||
+          props.creatingIn === childPath ||
+          props.creatingFolderIn === childPath;
+        const expanded = !props.collapsed.has(childPath);
         return (
-          <li className="tree-node folder" key={name}>
+          <li className="tree-node" key={name}>
             <div
-              className={`folder-row${props.selectedDir === childPath ? ' selected' : ''}${dropOnDir ? ' drop-target' : ''}${
+              className={`tree-row${props.selectedDir === childPath ? ' selected' : ''}${dropOnDir ? ' drop-target' : ''}${
                 props.dragging?.kind === 'dir' &&
                 props.dragging.path === childPath
                   ? ' dragging'
                   : ''
               }`}
-              title={`${childPath}/ — double-click to rename; New file / New folder create here while selected`}
+              style={{ paddingLeft: pad }}
+              title={`${childPath}/ — double-click to rename`}
               onClick={() => props.onSelectDir(childPath)}
               onDoubleClick={() => {
                 if (props.canEdit) props.onStartRenameDir(childPath);
               }}
               {...props.folderRowProps(childPath)}
             >
-              <span className="icon">📁</span>
-              <span className="name">{name}</span>
+              {expandable ? (
+                <button
+                  type="button"
+                  className="tree-caret-btn"
+                  aria-label={`${expanded ? 'Collapse' : 'Expand'} ${childPath}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    props.onToggleCollapse(childPath);
+                  }}
+                >
+                  <span className="tree-caret">{expanded ? '▾' : '▸'}</span>
+                </button>
+              ) : (
+                <span className="tree-caret-spacer" aria-hidden="true" />
+              )}
+              <span className="tree-icon">📁</span>
+              <span className="tree-name">{name}</span>
               {props.canEdit &&
                 (() => {
                   const reason = props.folderDeleteReason(childPath);
                   return (
                     <span
-                      className="btn-icon file-delete"
+                      className="file-delete"
                       role="button"
                       aria-disabled={reason !== null}
                       aria-label={`Delete folder ${childPath}`}
@@ -756,14 +844,22 @@ function DirChildren(props: DirChildrenProps) {
                   );
                 })()}
             </div>
-            <DirChildren {...props} node={child} dirPath={childPath} />
+            {expanded && (
+              <DirChildren
+                {...props}
+                node={child}
+                dirPath={childPath}
+                depth={depth + 1}
+              />
+            )}
           </li>
         );
       })}
       {props.creatingFolderIn === dirPath && (
-        <li className="tree-node folder">
-          <div className="tree-node-draft">
-            <span className="icon">📁</span>
+        <li className="tree-node">
+          <div className="tree-row draft" style={{ paddingLeft: pad }}>
+            <span className="tree-caret-spacer" aria-hidden="true" />
+            <span className="tree-icon">📁</span>
             <InlineNameInput
               initial="folder"
               ariaLabel={`New folder in ${dirPath === '' ? 'package root' : dirPath}`}
@@ -775,9 +871,10 @@ function DirChildren(props: DirChildrenProps) {
         </li>
       )}
       {props.creatingIn === dirPath && (
-        <li className="tree-node file">
-          <div className="tree-node-draft">
-            <span className="icon">📄</span>
+        <li className="tree-node">
+          <div className="tree-row draft" style={{ paddingLeft: pad }}>
+            <span className="tree-caret-spacer" aria-hidden="true" />
+            <span className="tree-icon">📄</span>
             <InlineNameInput
               initial="new.cvox"
               ariaLabel={`New file in ${dirPath === '' ? 'package root' : dirPath}`}
@@ -797,6 +894,7 @@ function DirChildren(props: DirChildrenProps) {
           key={f.path}
           path={f.path}
           name={f.name}
+          depth={depth}
           selected={props.selectedFile === f.path}
           error={props.fileErrors.get(f.path)}
           isNew={f.path === props.newBadgePath}
@@ -832,6 +930,7 @@ function DirChildren(props: DirChildrenProps) {
 function FileNode({
   path,
   name,
+  depth,
   selected,
   error,
   isNew,
@@ -851,6 +950,7 @@ function FileNode({
 }: {
   path: string;
   name: string;
+  depth: number;
   selected?: boolean;
   error?: string | undefined;
   isNew?: boolean;
@@ -874,11 +974,13 @@ function FileNode({
   onDeleteFile: (path: string) => void;
   onAddFileToModel: (path: string) => void;
 }) {
+  const pad = `${0.5 + depth * 0.9}rem`;
   if (renaming) {
     return (
-      <li className="tree-node file">
-        <div className="tree-node-draft">
-          <span className="icon">📄</span>
+      <li className="tree-node">
+        <div className="tree-row draft" style={{ paddingLeft: pad }}>
+          <span className="tree-caret-spacer" aria-hidden="true" />
+          <span className="tree-icon">📄</span>
           <InlineNameInput
             initial={name}
             ariaLabel={`Rename ${path}`}
@@ -891,21 +993,20 @@ function FileNode({
     );
   }
   return (
-    <li
-      className={`tree-node file${selected === true ? ' selected' : ''}${error !== undefined ? ' error' : ''}${unreferenced === true ? ' unreferenced' : ''}${dragging ? ' dragging' : ''}${dropActive ? ' drop-target' : ''}`}
-      title={error !== undefined ? `Syntax error: ${error}` : path}
-      {...dragProps}
-    >
-      <button
-        type="button"
-        className="tree-node-button"
+    <li className="tree-node">
+      <div
+        className={`tree-row${selected === true ? ' selected' : ''}${error !== undefined ? ' error' : ''}${unreferenced === true ? ' unreferenced' : ''}${dragging ? ' dragging' : ''}${dropActive ? ' drop-target' : ''}`}
+        style={{ paddingLeft: pad }}
+        title={error !== undefined ? `Syntax error: ${error}` : path}
         onClick={() => onOpenPath(path)}
         onDoubleClick={() => {
           if (ops.renameReason === null) onStartRename(path);
         }}
+        {...dragProps}
       >
-        <span className="icon">📄</span>
-        <span className="name">{name}</span>
+        <span className="tree-caret-spacer" aria-hidden="true" />
+        <span className="tree-icon">📄</span>
+        <span className="tree-name">{name}</span>
         {isNew === true && <span className="badge">new</span>}
         {ops.addReason !== 'hidden' && (
           <span
@@ -927,13 +1028,11 @@ function FileNode({
         )}
         {ops.deleteReason !== 'hidden' && (
           <span
-            className="btn-icon file-delete"
+            className="file-delete"
             role="button"
             aria-disabled={ops.deleteReason !== null}
             aria-label={`Delete ${path}`}
-            title={
-              ops.deleteReason ?? `Delete ${path} (undo restores it)`
-            }
+            title={ops.deleteReason ?? `Delete ${path} (undo restores it)`}
             onClick={(e) => {
               e.stopPropagation();
               if (ops.deleteReason === null) onDeleteFile(path);
@@ -942,7 +1041,7 @@ function FileNode({
             ×
           </span>
         )}
-      </button>
+      </div>
     </li>
   );
 }

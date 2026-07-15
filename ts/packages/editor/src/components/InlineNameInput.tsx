@@ -73,7 +73,7 @@ export function InlineNameInput({
     <input
       ref={ref}
       type="text"
-      className={`part-tree-name-input${invalid ? ' invalid' : ''}`}
+      className={`tree-name-input${invalid ? ' invalid' : ''}`}
       value={text}
       aria-label={ariaLabel}
       spellCheck={false}

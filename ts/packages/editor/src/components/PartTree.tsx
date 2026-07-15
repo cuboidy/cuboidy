@@ -510,7 +510,7 @@ function DraftPartRow({
         <input
           ref={inputRef}
           type="text"
-          className={`part-tree-name-input${invalid ? ' invalid' : ''}`}
+          className={`tree-name-input${invalid ? ' invalid' : ''}`}
           value={text}
           aria-label="New part name"
           spellCheck={false}
