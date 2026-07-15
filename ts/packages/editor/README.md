@@ -28,9 +28,8 @@ npm run preview        # serves dist/ on a local port
 **Loading** — drop (or pick) a model folder, a single `.cvox` file, or
 a packed `.cuboidy` ZIP. Folder loads resolve the whole SPEC §6.9/§6.10
 project: the manifest's `geometry` list, the external palette binding,
-external animation files, and model-wide `clone`/`mirror` references
-(a part may reuse one defined in another geometry file). Load problems
-appear in the Console panel and as red names in the Files tree.
+and external animation files. Load problems appear in the Console panel
+and as red names in the Files tree.
 
 **Views** — a dockable panel layout (drag tabs to split/rearrange) with
 three 3D modes:
@@ -54,8 +53,8 @@ three 3D modes:
 - Palette: edit/add/delete colors, bind/unbind an external
   `palette.json`, externalize/inline
 - Renames and deletes cascade atomically — a part rename rewrites the
-  cvox declaration, `clone`/`mirror` references in every file, manifest
-  entries, and inline AND external animation tracks in one undo step
+  cvox declaration, manifest entries, and inline AND external animation
+  tracks in one undo step
 
 **Saving** — in-place folder writeback on Chrome/Edge (File System
 Access API) or a ZIP download elsewhere; Export produces a packed
@@ -67,7 +66,7 @@ Access API) or a ZIP download elsewhere; Export produces a packed
 npm run test:e2e       # Playwright (headless Chromium, boots vite on :5199)
 ```
 
-The E2E suite covers project loading (cross-file reuse), the
+The E2E suite covers multi-file project loading, the
 reparse/structural-edit race fixes, undo consistency, and rendering
 semantics (loop behavior, rest-pose parity between Rig and Anim views).
 

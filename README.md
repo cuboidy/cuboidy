@@ -72,7 +72,7 @@ Models live under `models/`:
 - `models/cat/` — quadruped with pointy ears, vertical tail, and belly markings; idle tail-twitch animation
 - `models/crown/` — single-part static accessory, designed to attach to wolf's `hat` socket
 - `models/boy/`, `models/girl/` — humanoid rigs (head / body / arms / legs) in standard, `-chibi`, and `-mini` proportions
-- `models/robo-mini/` — v0.7+ project-feature demo: manifest `geometry` list (two `.cvox` files), external `palette.json` binding, and cross-file `mirror` reuse (§6.9/§6.10)
+- `models/robo-mini/` — v0.7+ project-feature demo: manifest `geometry` list (two `.cvox` files) and external `palette.json` binding (§6.9/§6.10)
 
 ## Inspecting models
 
@@ -90,6 +90,7 @@ Four CLIs assemble a model (rest pose — translation only, pivot/animation rota
 - **`cuboidy-view <dir>`** — orthographic projections as **ASCII grids** of palette-index characters (the `voxels.cvox` alphabet), for a token-cheap textual read.
 - **`cuboidy-query <dir> --at=x,y,z`** — exact voxel lookup at world coordinates (fractional-safe; the precise tool when half-voxel offsets are present).
 - **`cuboidy-lint <dir>`** — voxel-definition + cross-file lint.
+- **`cuboidy-part <duplicate|mirror> <from.cvox> <fromPart> <to.cvox> <toPart> [axis]`** — copy or mirror a part into a cvox file as concrete geometry (the way symmetric limbs / repeated parts are authored — an AI generator runs this instead of hand-writing the mirrored voxels). Cross-file copies remap the palette so colors are preserved.
 
 ## Token efficiency
 
@@ -130,7 +131,7 @@ Full methodology, dataset, and per-model numbers in
 
 - [x] Spec document (`SPEC.md`) — v0.8 draft (multi-file geometry, shareable external palettes, keyframe easing)
 - [x] Reference parser (TypeScript) — `ts/packages/core/`, full v0.8 grammar (555 tests)
-- [x] Shared project loader — `resolveProject()`: manifest geometry list, external palette, external animations, model-wide clone/mirror resolution; used by lint, the inspection CLIs and the editor
+- [x] Shared project loader — `resolveProject()`: manifest geometry list, external palette, external animations; used by lint, the inspection CLIs and the editor
 - [x] Cross-file lint — project-shaped validation (`validateProject`): manifest↔geometry part matching, cross-file duplicate names, palette resolution/range, animation target checks, W06 geometric l/r symmetry, W07 unreferenced `.cvox`, H03 shadowed inline palette
 - [x] Shared parity fixtures — `fixtures/cvox/<code>/` and `fixtures/json/<code>/`, contract for cross-implementation conformance
 - [x] JSON Schema for `cuboidy.json` — `schema/cuboidy.schema.json` (Draft 2020-12, derived from the Zod ManifestSchema; reference via `"$schema": "https://cuboidy.com/schema/cuboidy.schema.json"` or the GitHub raw URL)

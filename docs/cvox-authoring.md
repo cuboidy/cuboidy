@@ -50,12 +50,12 @@ So a cell `(x,y,z)` is: layer `y`, row `z`, char `x`. Consequences:
   don't eyeball it. For pivot.x = p on a width-w child, the two positions that
   mirror about the parent centerline are symmetric around it — get it wrong and
   one side juts out (cost me a visible asymmetry once).
-- **Reuse instead of duplicating** (SPEC §7.5.1): a bilateral or repeated part
-  can be `part ear-r mirror ear-l` (reflected) or `part x2 clone x1` (verbatim)
-  — no body, geometry derived, round-trips as the one-liner. This kills the
-  L/R voxel duplication and the mirror-pivot math (`mirror` reflects pivot.x for
-  you). The manifest `position` is still per-part (cvox `mirror` doesn't touch
-  it); lint **W06** flags an l/r position that isn't X-symmetric.
+- **Generate symmetric / repeated parts, don't hand-duplicate**: author one
+  side, then run `cuboidy-part mirror one.cvox ear-l one.cvox ear-r` (or
+  `duplicate` for a verbatim copy). The tool writes concrete voxels with the
+  pivot/socket reflection done for you, so you never redo the L/R voxel math.
+  The manifest `position` is still per-part; lint **W06** flags an l/r pair
+  whose assembled geometry isn't X-symmetric.
 
 ## Shape / rounding
 

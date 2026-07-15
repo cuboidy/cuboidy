@@ -3,11 +3,11 @@
 **Version:** 0.8 (draft)
 **Status:** Early draft. Subject to change before v1.0.
 
-**Changes in this draft revision (v0.8):** Added **per-attribute keyframe easing** (§6.5, §6.7). A keyframe gains an optional `ease` object mapping an attribute (`rot` / `pos` / `scale`) to the interpolation curve of that attribute's **outgoing** segment (this keyframe → the next). Curves are 20 named presets — `linear` (default), `step`, and `in` / `out` / `in-out` variants of `sine` / `quad` / `cubic` / `back` / `elastic` / `bounce` — applied as a remap of normalized segment progress before linear interpolation (`visible` always steps and cannot be eased). `ease` is deliberately **exempt from §6.5 carryover**: a curve applies only where it is written, and only to its own attribute — it never propagates to later keyframes or leaks onto other attributes. Custom cubic-bezier curves remain reserved for a future revision.
+**Changes in this draft revision (v0.8):** Added **per-attribute keyframe easing** (§6.5, §6.7). A keyframe gains an optional `ease` object mapping an attribute (`rot` / `pos` / `scale`) to the interpolation curve of that attribute's **outgoing** segment (this keyframe → the next). Curves are 20 named presets — `linear` (default), `step`, and `in` / `out` / `in-out` variants of `sine` / `quad` / `cubic` / `back` / `elastic` / `bounce` — applied as a remap of normalized segment progress before linear interpolation (`visible` always steps and cannot be eased). `ease` is deliberately **exempt from §6.5 carryover**: a curve applies only where it is written, and only to its own attribute — it never propagates to later keyframes or leaks onto other attributes. Custom cubic-bezier curves remain reserved for a future revision. This revision also **removes part reuse** (the `clone` / `mirror` reuse-clause added in v0.6): every part is now concrete voxel data, and symmetric or repeated geometry is authored by copy/mirror tooling that emits plain voxels. `clone` and `mirror` are no longer reserved keywords (now **7**, §7.3.1) and the `Part.from` AST field is gone.
 
 **Changes in v0.7:** The package generalizes from the fixed two-file layout to **manifest-anchored references**. (1) **Multiple geometry files**: the manifest gains an optional top-level `geometry` array (§6.9) listing the package's `.cvox` files by reference path (§8); absent → the previous fixed `["voxels.cvox"]`, so existing models are unchanged. Part names remain unique across the whole model (§5) — a name defined in two geometry files is a cross-file `duplicate` error. (2) **Shareable palettes**: the cvox `palette` declaration is relaxed from "exactly one" to **"at most one"** (§7.4); a new external palette file (`{ "colors": [...] }`, §6.10) can be bound model-wide via the manifest's optional top-level `palette` reference. The binding **takes precedence over inline palettes** (enabling palette swapping / skins; a shadowed inline palette lints as hint **H03**), and a palette-less file's voxel index-range validation moves from parse time to cross-file validation. (3) New lint **W07**: a `.cvox` file present in the package but not referenced by `geometry`. `cuboidy.json` remains the package's only fixed filename (the load anchor); every other file is named freely and found by reference. External animation files were already specified in v0.6 (§6.3, §8) and are unchanged.
 
-**Changes in v0.6:** Added **part reuse** (§7.5.1). A part header may carry a reuse-clause instead of a body: `clone <ref>` reuses another part's geometry verbatim, and `mirror <ref> [x|y|z]` reuses it reflected across a local axis (default `x`) — eliminating the verbatim duplication of bilateral (l/r) and repeated parts. `clone` and `mirror` join the reserved keywords (now **9**, §7.3.1). It is a declarative reference (like SVG `<use>`), **not** a function: no chaining, no composition, a closed transform set, one-pass resolution to plain voxel data. A reuse part carries no body and round-trips as its one-line clause (the default mirror axis is omitted on write). A companion lint rule **W06** (§11.6) flags an `l`/`r` manifest pair whose positions are not X-symmetric. AST: `Part` gains an optional `from?: { part, mirror? }`.
+**Changes in v0.6:** Added **part reuse** — a `clone` / `mirror` reuse-clause in the part header. *(Removed in v0.8; see the top of this changelog. The companion lint **W06**, §11.6, which flags an `l`/`r` pair whose assembled geometry is not mirror-symmetric, remains.)*
 
 **Changes since v0.5:** Comment preservation policy is now explicit. The **file header** — consecutive `//` comment lines (with optional interspersed blank lines) appearing before the first declaration — is preserved verbatim by spec-compliant parsers and serializers (§7.11.1). All other comments (end-of-line, between declarations, inside `voxels { … }` blocks) are **advisory** and MAY be discarded by tooling. This replaces the v0.5 aspirational rule that "writers SHOULD preserve all comments attached to enclosing structural elements" — that rule was too expensive to implement without a CST and not justified by demand. The file header narrowing covers the legitimate use cases (license notices, "generated by" markers, file-level documentation) at trivial cost while leaving inline comments as pure source-code aids that round-trip-aware tools do not promise to keep. AST gains an optional `header?: readonly string[]` field; absent when the file has no header, never an empty array.
 
@@ -122,7 +122,7 @@ Names for parts, sockets, animations, and the model itself match:
 - ASCII only (no Unicode)
 - Hyphen `-` allowed (`leg-fl`, `ear-l`)
 - No leading digit or hyphen
-- **Must not match a reserved cvox keyword** (§7.3) — i.e., `palette`, `part`, `size`, `pivot`, `socket`, `voxels`, `rot`, `clone`, `mirror` are not valid identifiers, even though they satisfy the regex above
+- **Must not match a reserved cvox keyword** (§7.3) — i.e., `palette`, `part`, `size`, `pivot`, `socket`, `voxels`, `rot` are not valid identifiers, even though they satisfy the regex above
 
 In `voxels.cvox`, identifier names (the `part` name in §7.5 and the `socket` name in §7.8) are written as **bare tokens** — `part head`, `socket hat 1 0 0`. No quoting is needed because the reserved-keyword exclusion above makes bare names lexically unambiguous: `part part` is rejected as "invalid identifier" rather than parsing as a part named `part`. In `cuboidy.json`, names are plain JSON strings — JSON has its own string syntax — and the same identifier rule applies (the manifest schema uses the strengthened `isIdentifier`).
 
@@ -310,7 +310,6 @@ This rule supports cross-rig sharing: a shared `quadruped_walk.json` that animat
 - An array of **reference paths** (§8), each ending in `.cvox`. Non-empty; duplicate entries are `invalid-value`.
 - Absent → **`["voxels.cvox"]`** (the pre-v0.7 fixed layout; existing models are unchanged).
 - The model's parts are the union of all listed files, in list order. **Part names are unique across the whole model** (§5) — a name defined in two geometry files is a cross-file `duplicate` error (§11.6).
-- `clone` / `mirror` referents (§7.5.1) resolve model-wide: a part in one geometry file may reuse a part defined in another.
 - A `.cvox` file present in the package but not listed here is not part of the model and lints as **W07** (§11.6).
 
 ### 6.10 Palette binding & external palette file
@@ -365,12 +364,11 @@ Cuboidy's lexer emits tokens with one of two **kinds**: `bare` (whitespace-delim
 
 These three tokens are **always significant**, including inside a `voxels { … }` block. They never appear inside another token (none of them is in the voxel-cell character set `[.0-9a-zA-Z]`), so they cannot collide with voxel data.
 
-**Reserved keywords — context-scoped (Layer 2)** (the full set is flat — 9 words — but each is only recognized as a *statement-starting keyword* in a specific scope; full structural validity table in §7.3):
+**Reserved keywords — context-scoped (Layer 2)** (the full set is flat — 7 words — but each is only recognized as a *statement-starting keyword* in a specific scope; full structural validity table in §7.3):
 
 | Scope | Statement-starting keywords recognized here | Other lexical features |
 |---|---|---|
 | **top-level** (outside any `{ … }`) | `palette`, `part` | `#` introduces a color literal (palette arg) |
-| **`part` header** (immediately after the `part` name) | `clone`, `mirror` (optional reuse-clause, §7.5.1) | — |
 | **`part` section** (between a `part` keyword and the next `part` or end of file) | `size`, `pivot`, `socket`, `voxels` (and `palette`, which is file-level but may appear textually here without closing the part — see §7.5) | — |
 | **`pivot` / `socket` declaration** (after the position triple) | `rot` (optional, introduces a rotation triple) | — |
 | **`voxels { … }` block** | **(none)** — alphabetic reserved keywords have no lexical privilege here; every token except the reserved punctuation `,` `}` is interpreted as a voxel-row string | — |
@@ -382,7 +380,7 @@ These three tokens are **always significant**, including inside a `voxels { … 
 | whitespace (space, tab, newline) | token separator; no syntactic significance |
 | `//` … end-of-line | comment, stripped before tokenization |
 
-**Lexical vs structural — two separate axes.** The set of *lexical* reserved tokens is fixed (9 keywords + 3 punctuation). What changes by scope is *structural validity* — which reserved token can appear here and what role it plays. A reserved keyword token never participates in identifier slots: the §5 identifier rule excludes reserved keywords, so bare `part part` fails `isIdentifier` and surfaces as "invalid identifier 'part'" rather than parsing as a part literally named `part`. Identifier slots take bare tokens — string-kind tokens (`"..."`) are rejected, since cvox identifiers are always bare. A name spelled like a reserved keyword cannot be expressed at all in cvox; the user must pick a different name (or wrap their model in a non-reserved synonym). To put a reserved-spelled string inside the voxel grid, write a row inside `voxels { … }` where alphabetic keywords have no lexical privilege. (The 3 reserved punctuation tokens never decay into voxel-row strings, however, because their characters fall outside `[.0-9a-zA-Z]`.)
+**Lexical vs structural — two separate axes.** The set of *lexical* reserved tokens is fixed (7 keywords + 3 punctuation). What changes by scope is *structural validity* — which reserved token can appear here and what role it plays. A reserved keyword token never participates in identifier slots: the §5 identifier rule excludes reserved keywords, so bare `part part` fails `isIdentifier` and surfaces as "invalid identifier 'part'" rather than parsing as a part literally named `part`. Identifier slots take bare tokens — string-kind tokens (`"..."`) are rejected, since cvox identifiers are always bare. A name spelled like a reserved keyword cannot be expressed at all in cvox; the user must pick a different name (or wrap their model in a non-reserved synonym). To put a reserved-spelled string inside the voxel grid, write a row inside `voxels { … }` where alphabetic keywords have no lexical privilege. (The 3 reserved punctuation tokens never decay into voxel-row strings, however, because their characters fall outside `[.0-9a-zA-Z]`.)
 
 The framework generalizes naturally: each block-introducing keyword (currently `voxels`; future versions may add more) decides what is reserved inside its `{ … }`. The `voxels` keyword reserves no alphabetic keywords — so alphabetic reserved keywords from other scopes appearing inside `voxels { … }` are simply voxel-row strings.
 
@@ -394,7 +392,7 @@ Every token has a **kind**: `bare` (whitespace-delimited; covers all cvox identi
 
 | Token | Kind | Pattern | Example |
 |---|---|---|---|
-| **Reserved keyword** | bare | one of `palette`, `part`, `size`, `pivot`, `socket`, `voxels`, `rot`, `clone`, `mirror` (per §7.1 scope rules) | `voxels` |
+| **Reserved keyword** | bare | one of `palette`, `part`, `size`, `pivot`, `socket`, `voxels`, `rot` (per §7.1 scope rules) | `voxels` |
 | **Reserved punctuation** | bare | `{` `}` `,` (always 1-character tokens, universal scope) | `{` |
 | **Color literal** | bare | `#` followed by 3, 4, 6, or 8 hex digits | `#8B4513` |
 | **Number** | bare | integer or decimal, optional leading `-` (no exponent, no leading `.`) | `3`, `1.5`, `-2` |
@@ -423,18 +421,13 @@ file         := (palette-decl | part)+        (palette-decl at most once;
 palette-decl := "palette" color+
 color        := "#" (3 | 4 | 6 | 8) hex-digits
 
-part         := "part" identifier ( reuse-clause | part-body )
+part         := "part" identifier part-body
 part-body    := (palette-decl | size-decl | pivot-decl | socket-decl | voxels-block)+
                                               (any order; size exactly once;
                                                voxels exactly once;
                                                pivot at most once;
                                                sockets any count;
                                                palette remains file-level)
-reuse-clause := "clone" identifier            (§7.5.1: reuse the named part —
-              | "mirror" identifier axis?      clone verbatim, or mirror it;
-                                               a reuse part has NO body, its
-                                               geometry is derived)
-axis         := "x" | "y" | "z"               (mirror axis; omitted → "x")
 
 size-decl    := "size" int int int
 pivot-decl   := "pivot" num num num ("rot" num num num)?
@@ -468,10 +461,10 @@ Concretely: `part rot` pulls 1 token whose text is `rot`, but `rot` is rejected 
 
 The reserved-token set is **flat** — there is no concept of "sub-keyword". It has two sub-categories distinguished only by syntactic shape; both share the property "stops argument collection (§7.2) and never appears in an identifier slot".
 
-#### 7.3.1 Reserved keywords (9, alphabetic)
+#### 7.3.1 Reserved keywords (7, alphabetic)
 
 ```
-palette  part  size  pivot  socket  voxels  rot  clone  mirror
+palette  part  size  pivot  socket  voxels  rot
 ```
 
 #### 7.3.2 Reserved punctuation (3, symbol)
@@ -492,8 +485,6 @@ Each reserved token has a single structurally valid position. Outside that posit
 | `pivot` | within a `part` section (at most once per part) |
 | `socket` | within a `part` section (any count) |
 | `voxels` | within a `part` section (exactly once per part) |
-| `clone` | in a `part` header, immediately after the part name (§7.5.1) |
-| `mirror` | in a `part` header, immediately after the part name (§7.5.1) |
 | `rot` | inside a `pivot` or `socket` declaration, immediately after the position triple |
 | `{` | immediately after the `voxels` keyword (opens a voxels block) |
 | `}` | inside a voxels block (closes it) |
@@ -546,55 +537,6 @@ A `part` section must contain:
 | `voxels` | **exactly 1** | Missing → `missing`. Duplicate → `duplicate` |
 
 **Order is free.** Any permutation of these elements within a part is valid. Writers should normalize to `size → pivot → socket* → voxels` for diff stability.
-
-### 7.5.1 Part reuse — `clone` and `mirror`
-
-```
-part <identifier> clone  <ref>
-part <identifier> mirror <ref> [ x | y | z ]
-```
-
-A reuse-clause may appear **immediately after the part name**, in place of a body. It makes the new part **reuse the geometry of another part** (`<ref>`) instead of duplicating it:
-
-- **`clone <ref>`** — reuse `<ref>`'s `size`, `voxels`, `pivot`, and `sockets` **verbatim**.
-- **`mirror <ref> [axis]`** — reuse them **reflected** across the named **local** grid axis. `axis` is `x`, `y`, or `z`; omitted → `x` (the bilateral left/right axis, since +X is the model's right per §4).
-
-A reuse part **MUST NOT** declare a body (`size` / `pivot` / `socket` / `voxels`); its geometry is derived at assembly. The reflection is purely **local** (within the referent's `W×H×D` grid); placement in world space is still the manifest `position`'s job (§6.2). The companion lint **W06** (§11.6) flags an `<x>-l` / `<x>-r` pair whose assembled voxels are not mirror-symmetric across the parent's YZ plane.
-
-This is a **declarative reference** (akin to SVG `<use>` or glTF instancing), **not** a function: there is no chaining, no composition, no expressions, and a closed transform set. Specifically:
-
-- **No chains.** `<ref>` MUST be a concrete part (one with a body), not itself a reuse part → otherwise `invalid-value`.
-- **No self-reference.** A part MUST NOT `clone` / `mirror` itself → `invalid-value`.
-- **Free order.** `<ref>` may be declared before or after the reuse part (resolved in a second pass, like `palette`). An unknown `<ref>` → `missing`.
-
-**Model-wide resolution (§6.9).** `<ref>` resolves against the union of all manifest-listed geometry files, so a part may reuse one defined in another file. Self-reference and same-file chains are reported at parse time; everything else is resolved at the project level, per geometry file in manifest list order, per reuse-clause in declaration order, with this error precedence per reference:
-
-1. `duplicate` — the referent name is defined in more than one geometry file (ambiguous; the duplicate itself is also a §11.6 error)
-2. `invalid-value` — the referent is itself a reuse part, wherever it is defined (no chains)
-3. `missing` — the referent is not defined in any geometry file
-
-Colors travel with the geometry: a cross-file reuse part's voxel indices resolve against the **referent** file's palette (moot under a §6.10 binding, which applies to every file).
-
-**Reflection rules** for `mirror <ref> <axis>` (axis `a` ∈ {x, y, z}; `dim` is the referent's size along `a`):
-
-| Element | Transform |
-|---|---|
-| voxel cell at index `i` along `a` | moves to index `dim − 1 − i` (the row/section is reversed along `a`) |
-| `pivot.pos` / `socket.pos`, component along `a` | `v → dim − v` (other components unchanged) |
-| `pivot.rot` / `socket.rot` | the two Euler components **not** around `a` are negated (handedness flip); the around-`a` component is kept |
-
-**Canonical serialization.** A reuse part round-trips as its one-line clause — the writer emits `part <name> clone <ref>` / `part <name> mirror <ref> [axis]` and does **not** expand the derived geometry. The default mirror axis `x` is omitted (a source `mirror a x` normalizes to `mirror a`).
-
-```
-// example: a symmetric pair + a verbatim copy
-palette #F5D2B5 #7A4A2A #5A3A20    // 0=skin 1=hair 2=inner-ear
-
-part ear-l
-    size 3 3 2
-    voxels { 111 111 , 121 111 , .1. .1. }
-part ear-r mirror ear-l        // reflected across X (the default axis)
-part ear-spare clone ear-l     // an identical extra, placed elsewhere via the manifest
-```
 
 ### 7.6 `size`
 
@@ -937,7 +879,7 @@ Cross-file validation operates on the **project**: the manifest plus its referen
 | `unknown` | warning | A geometry file defines a part not listed in `cuboidy.json` `parts` |
 | `missing` | error | A geometry file's voxels use color indices while **neither** an inline palette **nor** a manifest palette binding exists (§6.10) |
 | `invalid-value` | error | A geometry file references a palette index outside the **bound** palette's range (the binding replaces a possibly-longer inline palette — §7.4) |
-| `invalid-value` | warning | **[W06]** an `<x>-l` / `<x>-r` part pair (same parent) whose occupied voxels are not mirror images across the parent's YZ plane, computed from manifest position + pivot + voxel occupancy. The check is geometric, not positional: a `mirror` (§7.5.1) reflects the pivot too, so the matching hand-written position is often legitimately NOT the sign-opposite |
+| `invalid-value` | warning | **[W06]** an `<x>-l` / `<x>-r` part pair (same parent) whose occupied voxels are not mirror images across the parent's YZ plane, computed from manifest position + pivot + voxel occupancy. The check is geometric, not positional: a correctly mirrored part reflects its pivot too, so the matching hand-written position is often legitimately NOT the sign-opposite |
 | `invalid-value` | warning | **[W07]** a `.cvox` file exists in the package but is not referenced by the manifest `geometry` list (usually a forgotten entry — §6.9) |
 | `invalid-value` | hint | **[H03]** a geometry file's inline palette is shadowed by the manifest `palette` binding (§6.10) |
 | `unknown` | warning | Animation targets a part not present in `cuboidy.json` `parts` (cross-rig sharing, §6.8) |
