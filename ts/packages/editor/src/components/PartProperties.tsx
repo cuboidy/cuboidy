@@ -1,11 +1,13 @@
 import { type ChangeEvent } from 'react';
 import { Plus, X } from 'lucide-react';
 import {
+  AIR,
   isIdentifier,
   type Cvox,
   type Manifest,
   type ManifestPart,
   type Part,
+  type Size,
 } from '@cuboidy/core';
 import { findManifestPart } from '../lib/part-tree.js';
 import { NumberInput } from './NumberInput.js';
@@ -296,6 +298,29 @@ function withAxis(v: { x: number; y: number; z: number }, axis: Axis, value: num
   return { ...v, [axis]: value };
 }
 
+// Rebuild the voxel grid for a new size: existing cells (indexed [y][z][x],
+// dims [h][d][w]) are kept where they overlap; grown cells fill with AIR;
+// shrunk ones are dropped. Shrinking loses data by design (undo restores it) —
+// no confirmation prompt.
+function resizeVoxels(
+  voxels: Part['voxels'],
+  size: Size,
+): number[][][] {
+  const out: number[][][] = [];
+  for (let y = 0; y < size.h; y++) {
+    const srcLayer = voxels[y];
+    const layer: number[][] = [];
+    for (let z = 0; z < size.d; z++) {
+      const srcRow = srcLayer?.[z];
+      const row: number[] = [];
+      for (let x = 0; x < size.w; x++) row.push(srcRow?.[x] ?? AIR);
+      layer.push(row);
+    }
+    out.push(layer);
+  }
+  return out;
+}
+
 // cvox-side per-part geometry: pivot (position + optional rotation) and
 // sockets. Size stays read-only (shown in the header) — resizing rewrites the
 // voxel grid and is deferred to its own step. clone/mirror parts derive their
@@ -311,6 +336,18 @@ function GeometryFields({ part, disabled, onEditPart }: GeometryFieldsProps) {
   }
 
   const rot = part.pivot.rot;
+
+  // Resize one dimension. Committed on blur (not per keystroke) so typing
+  // "12" doesn't first crop to 1 and throw the data away before the 2 lands.
+  // Clamped to a whole number ≥ 1; the voxel grid is rebuilt to match.
+  const setSizeDim = (dim: keyof Size, value: number) => {
+    onEditPart(part.name, (p) => {
+      const n = Math.max(1, Math.floor(value));
+      if (n === p.size[dim]) return p;
+      const size = { ...p.size, [dim]: n };
+      return { ...p, size, voxels: resizeVoxels(p.voxels, size) };
+    });
+  };
 
   const toggleRot = (on: boolean) => {
     onEditPart(part.name, (p) => {
@@ -351,6 +388,24 @@ function GeometryFields({ part, disabled, onEditPart }: GeometryFieldsProps) {
 
   return (
     <div className={`property-group${disabled ? ' disabled' : ''}`}>
+      <label className="property-field">
+        <span className="property-field-label">size</span>
+        <div className="property-position">
+          {(['w', 'h', 'd'] as const).map((dim) => (
+            <NumberInput
+              key={dim}
+              label={dim}
+              value={part.size[dim]}
+              disabled={disabled}
+              step="1"
+              // Commit on blur/Enter: a mid-type crop would discard voxels.
+              commitOnBlur
+              onChange={(v) => setSizeDim(dim, v)}
+            />
+          ))}
+        </div>
+      </label>
+
       <label className="property-field">
         <span className="property-field-label">pivot</span>
         <div className="property-position">
