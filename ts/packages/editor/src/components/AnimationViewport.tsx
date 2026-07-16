@@ -23,6 +23,8 @@ interface Props {
   // Selection gizmos (pivot / sockets / frame) for the selected part.
   selectedPart: string | null;
   gizmos: GizmoVisibility;
+  // Click-to-select — see VoxelScene.
+  onSelectPart: (name: string | null) => void;
   onCreateClip: () => void;
 }
 
@@ -39,6 +41,7 @@ export function AnimationViewport({
   partPalettes,
   selectedPart,
   gizmos,
+  onSelectPart,
   onCreateClip,
 }: Props) {
   const {
@@ -95,7 +98,11 @@ export function AnimationViewport({
   return (
     <div className="anim-view">
       <div className="anim-canvas">
-        <Canvas camera={{ position: [radius, radius, radius], fov: 50 }} shadows={false}>
+        <Canvas
+          camera={{ position: [radius, radius, radius], fov: 50 }}
+          shadows={false}
+          onPointerMissed={() => onSelectPart(null)}
+        >
           <ambientLight intensity={0.8} />
           <directionalLight position={[10, 20, 10]} intensity={1.0} />
           <gridHelper
@@ -110,6 +117,7 @@ export function AnimationViewport({
             partPalettes={partPalettes}
             selectedPart={selectedPart}
             gizmos={gizmos}
+            onSelectPart={onSelectPart}
           />
           <OrbitControls target={center} makeDefault />
         </Canvas>

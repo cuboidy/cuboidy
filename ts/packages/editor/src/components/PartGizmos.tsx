@@ -31,6 +31,11 @@ const FRAME_COLOR = 0x8338ec; // --accent
 const PIVOT_COLOR = 0xf5f3ff;
 const SOCKET_COLOR = 0xffb703;
 
+// Gizmos are overlay-only: never raycast targets. Without this, the
+// selected part's frame lines (Line raycast threshold is a full world
+// unit) would swallow clicks aimed at parts behind it.
+const noRaycast = () => null;
+
 // Axis-cross colors, pre-linearized: vertex-color attributes bypass
 // three's sRGB→linear color management (unlike material.color), same
 // deal as PartMesh's palette conversion.
@@ -84,6 +89,7 @@ export function PartGizmos({ part, show }: Props) {
           geometry={frameGeom}
           position={[w / 2, h / 2, d / 2]}
           renderOrder={998}
+          raycast={noRaycast}
         >
           <lineBasicMaterial
             color={FRAME_COLOR}
@@ -95,10 +101,10 @@ export function PartGizmos({ part, show }: Props) {
       )}
       {show.pivot && (
         <group position={[piv.x, piv.y, piv.z]}>
-          <lineSegments geometry={axesGeom} renderOrder={1000}>
+          <lineSegments geometry={axesGeom} renderOrder={1000} raycast={noRaycast}>
             <lineBasicMaterial vertexColors depthTest={false} transparent />
           </lineSegments>
-          <mesh renderOrder={1000}>
+          <mesh renderOrder={1000} raycast={noRaycast}>
             <sphereGeometry args={[r * 0.75, 16, 12]} />
             <meshBasicMaterial
               color={PIVOT_COLOR}
@@ -114,6 +120,7 @@ export function PartGizmos({ part, show }: Props) {
             key={s.name}
             position={[s.pos.x, s.pos.y, s.pos.z]}
             renderOrder={999}
+            raycast={noRaycast}
           >
             <octahedronGeometry args={[r * 0.9]} />
             <meshBasicMaterial

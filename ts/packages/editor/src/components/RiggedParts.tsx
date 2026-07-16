@@ -20,6 +20,9 @@ interface Props {
   // overlays per the visibility flags. Null = no part selected.
   selectedPart: string | null;
   gizmos: GizmoVisibility;
+  // Click-to-select: fired with the clicked part's name. The caller
+  // owns deselection (Canvas onPointerMissed).
+  onSelectPart: (name: string) => void;
 }
 
 // Renders the rig forest as nested three.js groups so a parent's animated
@@ -38,6 +41,7 @@ export function RiggedParts({
   partPalettes,
   selectedPart,
   gizmos,
+  onSelectPart,
 }: Props) {
   return (
     <>
@@ -51,6 +55,7 @@ export function RiggedParts({
           partPalettes={partPalettes}
           selectedPart={selectedPart}
           gizmos={gizmos}
+          onSelectPart={onSelectPart}
         />
       ))}
     </>
@@ -72,6 +77,7 @@ interface NodeProps {
   partPalettes?: ReadonlyMap<string, Palette> | undefined;
   selectedPart: string | null;
   gizmos: GizmoVisibility;
+  onSelectPart: (name: string) => void;
 }
 
 function RigNodeView({
@@ -82,6 +88,7 @@ function RigNodeView({
   partPalettes,
   selectedPart,
   gizmos,
+  onSelectPart,
 }: NodeProps) {
   const part = node.part;
   const pose = poses?.get(part.name) ?? REST_POSE;
@@ -129,7 +136,19 @@ function RigNodeView({
           the scale is centered on pivot.pos (scaling (v_local − pivot.pos),
           not (v_local) − pivot). At rest scale [1,1,1] this is a no-op. */}
       <group scale={pose.scale}>
-        <group position={[-piv.x, -piv.y, -piv.z]} visible={meshVisible}>
+        <group
+          position={[-piv.x, -piv.y, -piv.z]}
+          visible={meshVisible}
+          onClick={(e) => {
+            // An orbit drag ends in a click too — r3f's delta (px moved
+            // between down and up) tells them apart. A hidden part lets
+            // the ray pass through to whatever is behind it (three's
+            // raycaster ignores `visible`, so guard here).
+            if (!meshVisible || e.delta > 2) return;
+            e.stopPropagation();
+            onSelectPart(part.name);
+          }}
+        >
           <PartMesh
             part={part}
             palette={partPalettes?.get(part.name) ?? palette}
@@ -152,6 +171,7 @@ function RigNodeView({
           partPalettes={partPalettes}
           selectedPart={selectedPart}
           gizmos={gizmos}
+          onSelectPart={onSelectPart}
         />
       ))}
     </group>

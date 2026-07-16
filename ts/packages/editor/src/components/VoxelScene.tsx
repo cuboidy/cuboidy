@@ -27,6 +27,9 @@ interface Props {
   // Selection gizmos (pivot / sockets / frame) for the selected part.
   selectedPart: string | null;
   gizmos: GizmoVisibility;
+  // Click-to-select: a part click selects it; a click that hits nothing
+  // (r3f fires onPointerMissed only for non-drag clicks) deselects.
+  onSelectPart: (name: string | null) => void;
 }
 
 // Renders the model in one of two static modes:
@@ -53,6 +56,7 @@ export function VoxelScene({
   partPalettes,
   selectedPart,
   gizmos,
+  onSelectPart,
 }: Props) {
   const rigMode = viewMode !== 'cvox' && manifest !== undefined;
   const visibleParts = cvox.parts.filter((p) => !hiddenParts.has(p.name));
@@ -81,6 +85,7 @@ export function VoxelScene({
     <Canvas
       camera={{ position: [radius, radius, radius], fov: 50 }}
       shadows={false}
+      onPointerMissed={() => onSelectPart(null)}
     >
       <ambientLight intensity={0.8} />
       <directionalLight position={[10, 20, 10]} intensity={1.0} />
@@ -97,12 +102,22 @@ export function VoxelScene({
           partPalettes={partPalettes}
           selectedPart={selectedPart}
           gizmos={gizmos}
+          onSelectPart={onSelectPart}
         />
       ) : (
         // Cvox view: origin-stacked, no rig transforms by design. Part
         // local coords ARE world coords here, so gizmos render in place.
         visibleParts.map((part) => (
-          <group key={part.name} position={[0, 0, 0]}>
+          <group
+            key={part.name}
+            position={[0, 0, 0]}
+            onClick={(e) => {
+              // delta > 2px = an orbit drag's terminal click, not a pick.
+              if (e.delta > 2) return;
+              e.stopPropagation();
+              onSelectPart(part.name);
+            }}
+          >
             <PartMesh
               part={part}
               palette={partPalettes?.get(part.name) ?? cvox.palette}

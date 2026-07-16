@@ -3186,6 +3186,7 @@ export function App() {
                   partPalettes={partPalettes}
                   selectedPart={effectiveSelectedPart}
                   gizmos={gizmoVis}
+                  onSelectPart={setSelectedPartName}
                   onCreateClip={handleCreateAnimationClip}
                 />
               ) : (
@@ -3197,6 +3198,7 @@ export function App() {
                   partPalettes={partPalettes}
                   selectedPart={effectiveSelectedPart}
                   gizmos={gizmoVis}
+                  onSelectPart={setSelectedPartName}
                 />
               )}
             </>
