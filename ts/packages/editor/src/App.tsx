@@ -2137,6 +2137,31 @@ export function App() {
     [mutateManifestPart],
   );
 
+  const handleChangePartRotation = useCallback(
+    (partName: string, axis: 0 | 1 | 2, value: number) => {
+      mutateManifestPart(`part:rot:${partName}:${axis}`, partName, (entry) => {
+        const cur = entry.rotation ?? [0, 0, 0];
+        const next: [number, number, number] = [cur[0], cur[1], cur[2]];
+        next[axis] = value;
+        return { ...entry, rotation: next };
+      });
+    },
+    [mutateManifestPart],
+  );
+
+  // Checkbox on/off: absent `rotation` is the SPEC default (identity), so
+  // unchecking drops the field from the JSON instead of writing [0,0,0].
+  const handleTogglePartRotation = useCallback(
+    (partName: string, on: boolean) => {
+      mutateManifestPart(null, partName, (entry) => {
+        if (on) return { ...entry, rotation: entry.rotation ?? [0, 0, 0] };
+        const { rotation: _drop, ...rest } = entry;
+        return rest;
+      });
+    },
+    [mutateManifestPart],
+  );
+
   const handleCreateManifest = useCallback(() => {
     if (!flushAllReparse()) return;
     dispatchEdit(null, (current) => {
@@ -3350,6 +3375,8 @@ export function App() {
                 }
                 onChangeParent={handleChangePartParent}
                 onChangePosition={handleChangePartPosition}
+                onChangeRotation={handleChangePartRotation}
+                onToggleRotation={handleTogglePartRotation}
                 onRenamePart={handleRenamePart}
                 onDeletePart={handleDeletePart}
                 onCreateManifest={handleCreateManifest}

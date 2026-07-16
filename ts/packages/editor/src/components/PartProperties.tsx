@@ -42,6 +42,10 @@ interface Props {
   cvoxEditsDisabled: boolean;
   onChangeParent: (partName: string, parent: string | null) => void;
   onChangePosition: (partName: string, axis: 0 | 1 | 2, value: number) => void;
+  // Rest rotation (SPEC §6.2): Euler degrees around the part's pivot.
+  // Toggle off = drop the field (identity), matching pivot rotation.
+  onChangeRotation: (partName: string, axis: 0 | 1 | 2, value: number) => void;
+  onToggleRotation: (partName: string, on: boolean) => void;
   onRenamePart: (oldName: string, newName: string) => void;
   onDeletePart: (name: string) => void;
   onCreateManifest: () => void;
@@ -79,6 +83,8 @@ export function PartProperties({
   cvoxEditsDisabled,
   onChangeParent,
   onChangePosition,
+  onChangeRotation,
+  onToggleRotation,
   onRenamePart,
   onDeletePart,
   onCreateManifest,
@@ -185,6 +191,8 @@ export function PartProperties({
             disabled={manifestEditsDisabled}
             onChangeParent={onChangeParent}
             onChangePosition={onChangePosition}
+            onChangeRotation={onChangeRotation}
+            onToggleRotation={onToggleRotation}
           />
         )}
       </div>
@@ -262,6 +270,8 @@ interface RigFieldsProps {
   disabled: boolean;
   onChangeParent: (partName: string, parent: string | null) => void;
   onChangePosition: (partName: string, axis: 0 | 1 | 2, value: number) => void;
+  onChangeRotation: (partName: string, axis: 0 | 1 | 2, value: number) => void;
+  onToggleRotation: (partName: string, on: boolean) => void;
 }
 
 function RigFields({
@@ -271,8 +281,11 @@ function RigFields({
   disabled,
   onChangeParent,
   onChangePosition,
+  onChangeRotation,
+  onToggleRotation,
 }: RigFieldsProps) {
   const position = manifestPart?.position ?? [0, 0, 0];
+  const rotation = manifestPart?.rotation;
   const parent = manifestPart?.parent ?? null;
 
   const handleParent = (e: ChangeEvent<HTMLSelectElement>) => {
@@ -321,6 +334,28 @@ function RigFields({
           onChange={(v) => onChangePosition(selectedPart, 2, v)}
         />
       </div>
+      <label className="property-check">
+        <input
+          type="checkbox"
+          checked={rotation !== undefined}
+          disabled={disabled}
+          onChange={(e) => onToggleRotation(selectedPart, e.target.checked)}
+        />
+        <span>rotation</span>
+      </label>
+      {rotation !== undefined && (
+        <div className="property-position property-position-indent">
+          {([0, 1, 2] as const).map((axis) => (
+            <NumberInput
+              key={axis}
+              label={AXES[axis]!}
+              value={rotation[axis]}
+              disabled={disabled}
+              onChange={(v) => onChangeRotation(selectedPart, axis, v)}
+            />
+          ))}
+        </div>
+      )}
     </>
   );
 }
