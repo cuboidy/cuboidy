@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { dirname, resolve } from 'node:path';
 import { mkdtemp, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { loadAndAssemble, stringifyCoord } from '../src/cli/assemble.js';
+import {
+  gridRotationWarnings,
+  loadAndAssemble,
+  stringifyCoord,
+} from '../src/cli/assemble.js';
 
 // SPEC §6.10 through the inspection-CLI assembly layer: manifest geometry
 // lists and external palette binding — the same project resolution lint
@@ -139,5 +143,99 @@ describe('loadAndAssemble — merged inline palettes', () => {
     expect(r.assembly.palette).toHaveLength(3);
     expect(r.assembly.grid.get(stringifyCoord(0, 5, 0))).toBe(2); // blue
     expect(r.assembly.grid.get(stringifyCoord(1, 5, 0))).toBe(0); // red
+  });
+});
+
+// SPEC §6.2 / §7.7 rest rotations through the shared rig-transform layer:
+// pivot placement is exact (a child of a rotated parent lands where the
+// rig puts it); each part's own voxels stay axis-aligned in the grid.
+describe('loadAndAssemble — rest rotations', () => {
+  const TWO_PARTS = [
+    'palette #FF0000 #00FF00',
+    'part body\n    size 1 1 1\n    pivot 0 0 0\n    voxels { 0 }',
+    'part arm\n    size 1 1 1\n    pivot 0 0 0\n    voxels { 1 }',
+  ].join('\n');
+
+  it("places a child's voxels at the parent-rotated pivot (float noise cleaned)", async () => {
+    const dir = await makeModel({
+      'voxels.cvox': TWO_PARTS,
+      'cuboidy.json': JSON.stringify({
+        name: 'm',
+        parts: [
+          { name: 'body', rotation: [0, 90, 0] },
+          { name: 'arm', parent: 'body', position: [2, 0, 0] },
+        ],
+      }),
+    });
+    const r = await loadAndAssemble(dir);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    // Ry(90) sends +X to −Z: the arm's pivot lands at exactly (0, 0, −2)
+    // — round6 must strip the quaternion noise so the key is queryable.
+    expect(r.assembly.grid.get(stringifyCoord(0, 0, -2))).toBe(1);
+    expect(r.assembly.hasFractional).toBe(false);
+  });
+
+  it('exposes rotation-aware world transforms on resolvedParts', async () => {
+    const dir = await makeModel({
+      'voxels.cvox': TWO_PARTS,
+      'cuboidy.json': JSON.stringify({
+        name: 'm',
+        parts: [
+          { name: 'body', rotation: [0, 90, 0] },
+          { name: 'arm', parent: 'body', position: [2, 0, 0] },
+        ],
+      }),
+    });
+    const r = await loadAndAssemble(dir);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const arm = r.assembly.resolvedParts.find((p) => p.name === 'arm')!;
+    expect(arm.transform.pos[0]).toBeCloseTo(0, 10);
+    expect(arm.transform.pos[2]).toBeCloseTo(-2, 10);
+    // The arm inherits the parent orientation (its quat turns +X to −Z).
+    const q = arm.transform.quat;
+    expect(Math.hypot(q[0], q[1], q[2], q[3])).toBeCloseTo(1, 10);
+    expect(Math.abs(q[1])).toBeGreaterThan(0.1); // Y-axis rotation present
+  });
+
+  it('gridRotationWarnings names rotated parts; silent otherwise', async () => {
+    const dir = await makeModel({
+      'voxels.cvox': [
+        'palette #FF0000 #00FF00',
+        'part body\n    size 1 1 1\n    pivot 0 0 0 rot 0 45 0\n    voxels { 0 }',
+        'part arm\n    size 1 1 1\n    pivot 0 0 0\n    voxels { 1 }',
+      ].join('\n'),
+      'cuboidy.json': JSON.stringify({
+        name: 'm',
+        parts: [
+          { name: 'body' },
+          { name: 'arm', parent: 'body', rotation: [0, 0, 30] },
+        ],
+      }),
+    });
+    const r = await loadAndAssemble(dir);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const warnings = gridRotationWarnings(r.assembly);
+    expect(warnings).toHaveLength(2);
+    expect(warnings[0]).toMatch(/part "body" has pivot rotation/);
+    expect(warnings[1]).toMatch(/part "arm" has manifest rotation/);
+    // assembleWorld itself no longer emits rotation warnings.
+    expect(r.assembly.warnings).toHaveLength(0);
+  });
+
+  it('emits no rotation warnings for an unrotated model', async () => {
+    const dir = await makeModel({
+      'voxels.cvox': TWO_PARTS,
+      'cuboidy.json': JSON.stringify({
+        name: 'm',
+        parts: [{ name: 'body' }, { name: 'arm', position: [3, 0, 0] }],
+      }),
+    });
+    const r = await loadAndAssemble(dir);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(gridRotationWarnings(r.assembly)).toEqual([]);
   });
 });

@@ -1,6 +1,7 @@
 import type { Palette } from '../cvox/types.js';
 import { AIR, indexToChar } from '../cvox/voxel-row.js';
 import {
+  gridRotationWarnings,
   loadAndAssemble,
   parseCoordKey,
   type Assembly,
@@ -22,10 +23,11 @@ import {
 //   - top    — camera at +Y looking −Y, screen-up = −Z (model's front on top)
 //   - bottom — camera at −Y looking +Y, screen-up = +Z (model's back on top)
 //
-// Pivot rotations (SPEC §7.7) and animation rotations (§6.5) are NOT
-// applied — this tool renders the assembled rest pose with translation
-// only. A part declaring `pivot ... rot ...` emits a warning and the
-// rotation is ignored.
+// Rest rotations (§6.2 manifest `rotation`, §7.7 `pivot.rot`) move each
+// part's PIVOT to its true rig position, but the part's own voxels stay
+// axis-aligned — an integer-lattice projection cannot draw a turned
+// cube. Affected parts emit a warning pointing at cuboidy-snap, which
+// renders the true orientation. Animation poses are never applied.
 //
 // Fractional world coordinates (which arise when a part's pivot or
 // position contains 0.5-style offsets) are **snapped to the integer
@@ -113,6 +115,7 @@ function renderModel(asm: Assembly, opts: ViewOptions): RunResult {
   }
 
   for (const w of asm.warnings) out.push(`warning: ${w}`);
+  for (const w of gridRotationWarnings(asm)) out.push(`warning: ${w}`);
 
   return { text: out.join('\n'), exitCode: 0 };
 }

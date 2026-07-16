@@ -1,4 +1,6 @@
-import type { Palette } from '../cvox/types.js';
+import type { Palette, Part } from '../cvox/types.js';
+import { AIR } from '../cvox/voxel-row.js';
+import { quatRotateVec3, type WorldTransform } from '../rig-transform.js';
 import type { Rgb } from './framebuffer.js';
 import type { Vec3 } from './vec.js';
 
@@ -13,6 +15,14 @@ import type { Vec3 } from './vec.js';
 // two adjacent parts is removed) and is safe at half-voxel offsets:
 // neighbours that don't line up on the integer grid simply aren't
 // culled (the z-buffer still hides them; the only cost is extra fills).
+//
+// buildSceneFromParts is the rotation-aware sibling: it emits faces per
+// part in part-local space and pushes the corners through the part's
+// SPEC §7.7 rest world transform, so rest rotations render as true
+// oriented cubes. Culling there is per-part only (cross-part seams stay
+// in the quad list — with rotation the parts need not share a lattice);
+// the z-buffer and back-face cull hide them, so the image matches the
+// grid path for unrotated models at the cost of a few extra fills.
 
 export interface Voxel {
   x: number;
@@ -95,4 +105,96 @@ export function buildScene(voxels: readonly Voxel[], palette: Palette): Scene {
   const max: Vec3 = [maxX, maxY, maxZ];
   const center: Vec3 = [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2];
   return { quads, center, min, max };
+}
+
+// One part ready for oriented rendering: cvox geometry, its palette
+// remap into the effective palette (null = identity), and its rest
+// world transform. Mirrors assemble.ts's ResolvedPart without depending
+// on the CLI layer.
+export interface OrientedPart {
+  part: Part;
+  remap: readonly number[] | null;
+  transform: WorldTransform;
+}
+
+// Rotation-aware scene builder: per part, emit the faces its own solid
+// neighbours don't cull, with every corner mapped by
+//   v_world = transform.pos + rotate(transform.quat, v_local − pivot.pos)
+// (SPEC §7.7 rest pose). Scene bounds accumulate over emitted corners —
+// exact for the visible hull, since any extreme point of a solid volume
+// lies on a face-exposed voxel.
+export function buildSceneFromParts(
+  parts: readonly OrientedPart[],
+  palette: Palette,
+): Scene {
+  const srgb = palette.map((c) => [c.r / 255, c.g / 255, c.b / 255] as Rgb);
+
+  const quads: Quad[] = [];
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+
+  for (const { part, remap, transform } of parts) {
+    const { w, h, d } = part.size;
+    const solid = (x: number, y: number, z: number): boolean =>
+      x >= 0 && x < w && y >= 0 && y < h && z >= 0 && z < d &&
+      part.voxels[y]![z]![x]! !== AIR;
+    const piv = part.pivot.pos;
+    const toWorld = (x: number, y: number, z: number): Vec3 => {
+      const r = quatRotateVec3(transform.quat, [
+        x - piv.x,
+        y - piv.y,
+        z - piv.z,
+      ]);
+      return [
+        transform.pos[0] + r[0],
+        transform.pos[1] + r[1],
+        transform.pos[2] + r[2],
+      ];
+    };
+
+    for (let y = 0; y < h; y++) {
+      const layer = part.voxels[y]!;
+      for (let z = 0; z < d; z++) {
+        const row = layer[z]!;
+        for (let x = 0; x < w; x++) {
+          const idx = row[x]!;
+          if (idx === AIR) continue;
+          const effIdx = remap === null ? idx : remap[idx]!;
+          const color = srgb[effIdx]!;
+          for (const f of FACES) {
+            if (solid(x + f.d[0], y + f.d[1], z + f.d[2])) continue;
+            const corners = f.corners.map((c) =>
+              toWorld(x + c[0], y + c[1], z + c[2]),
+            ) as [Vec3, Vec3, Vec3, Vec3];
+            quads.push({
+              corners,
+              normal: quatRotateVec3(transform.quat, f.normal),
+              color,
+            });
+            for (const c of corners) {
+              if (c[0] < minX) minX = c[0];
+              if (c[0] > maxX) maxX = c[0];
+              if (c[1] < minY) minY = c[1];
+              if (c[1] > maxY) maxY = c[1];
+              if (c[2] < minZ) minZ = c[2];
+              if (c[2] > maxZ) maxZ = c[2];
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // No solid voxels → same finite, origin-anchored scene buildScene
+  // returns (callers reject empty models earlier; this keeps the direct
+  // API NaN-safe).
+  if (quads.length === 0) {
+    return { quads: [], center: [0, 0, 0], min: [0, 0, 0], max: [0, 0, 0] };
+  }
+  return {
+    quads,
+    center: [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2],
+    min: [minX, minY, minZ],
+    max: [maxX, maxY, maxZ],
+  };
 }

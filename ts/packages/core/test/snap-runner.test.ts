@@ -140,6 +140,37 @@ describe('runSnap — filesystem', () => {
   });
 });
 
+describe('runSnap — rest rotations', () => {
+  it('renders a rotated part with no rotation warning and widened bounds', async () => {
+    // A 6-voxel boom resting at 45° about Z: rendered as true oriented
+    // cubes (the old grid path drew it horizontal and warned).
+    const dir = await makeModel({
+      'voxels.cvox': [
+        'palette #888888 #FF3B30',
+        'part torso\nsize 2 1 2\npivot 1 0 1\nvoxels { 00\n00 }',
+        'part boom\nsize 6 1 1\npivot 0 0 0\nvoxels { 000001 }',
+      ].join('\n'),
+      'cuboidy.json': JSON.stringify({
+        name: 'boom45',
+        parts: [
+          { name: 'torso', position: [0, 0, 0] },
+          { name: 'boom', parent: 'torso', position: [0, 2, 0], rotation: [0, 0, 45] },
+        ],
+      }),
+    });
+    const outDir = await mkdtemp(resolve(tmpdir(), 'cuboidy-snap-rot-'));
+    const r = await runSnap(dir, opts({ outDir }));
+    expect(r.exitCode).toBe(0);
+    expect(r.text).not.toMatch(/rotation/);
+    // The 6-long boom at 45° reaches y ≈ 2 + 6·sin45 ≈ 6.2: the reported
+    // world bounds must cover the rotated extent, not the 1-high grid row.
+    const m = r.text.match(/Y=(-?\d+)\.\.(-?\d+)/);
+    expect(m).not.toBeNull();
+    expect(Number(m![2])).toBeGreaterThanOrEqual(6);
+    expect(isPng(await readFile(resolve(outDir, 'front.png')))).toBe(true);
+  });
+});
+
 describe('renderSnapshots — v0.7 project shapes', () => {
   it('renders a palette-less model with a §6.10 bound palette', async () => {
     const dir = await makeModel({

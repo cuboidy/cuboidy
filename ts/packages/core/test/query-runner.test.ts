@@ -242,3 +242,32 @@ describe('runQuery — IO + arg errors', () => {
     expect(r.exitCode).toBe(2);
   });
 });
+
+// Rest rotations (§6.2 / §7.7): the grid keeps voxels axis-aligned, so
+// the query surface must say so — and still answer at the rig-exact
+// pivot placement of a rotated parent's child.
+describe('runQuery — rest rotations', () => {
+  it('warns about axis-aligned voxels and answers at the rotated placement', async () => {
+    const dir = await makeModel({
+      'voxels.cvox': [
+        'palette #FF0000 #00FF00',
+        'part body\n    size 1 1 1\n    pivot 0 0 0\n    voxels { 0 }',
+        'part arm\n    size 1 1 1\n    pivot 0 0 0\n    voxels { 1 }',
+      ].join('\n'),
+      'cuboidy.json': JSON.stringify({
+        name: 'm',
+        parts: [
+          { name: 'body', rotation: [0, 90, 0] },
+          { name: 'arm', parent: 'body', position: [2, 0, 0] },
+        ],
+      }),
+    });
+    const r = await runQuery(dir, {
+      queries: [{ kind: 'at', x: 0, y: 0, z: -2 }],
+    });
+    expect(r.exitCode).toBe(0);
+    // Ry(90) sends the arm's +X offset to −Z; its voxel answers there.
+    expect(r.text).toContain('at(0,0,-2)=1');
+    expect(r.text).toMatch(/warning: part "body" has manifest rotation/);
+  });
+});

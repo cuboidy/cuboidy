@@ -6,6 +6,11 @@ import type { Color, Palette, Part, Vec3 } from '../cvox/types.js';
 import { AIR } from './../cvox/voxel-row.js';
 import { MAX_PALETTE } from '../cvox/palette.js';
 import {
+  computeRestWorldTransforms,
+  type Vec3Tuple,
+  type WorldTransform,
+} from '../rig-transform.js';
+import {
   projectFilePaths,
   resolveProject,
   type GeometryFile,
@@ -47,10 +52,18 @@ export interface Assembly {
   // Topologically-sorted parts so consumers iterating in order see
   // parents before children. Useful when emitting per-part diagnostics.
   order: readonly ManifestPart[];
+  // Per manifest part (in `order`): the resolved cvox geometry, its
+  // palette remap into `palette`, and its SPEC §7.7 rest world transform
+  // from the shared rig-transform layer (rotation-aware). Quad-based
+  // consumers (cuboidy-snap) render the true orientation from here;
+  // `grid` below is the axis-aligned projection of the same data.
+  resolvedParts: readonly ResolvedPart[];
   // World-space voxel grid. Key is `${X},${Y},${Z}` where X/Y/Z are the
   // raw fractional world coords (no rounding). Use stringifyCoord() to
   // build keys, parseCoordKey() to read them back. Values index into
-  // `palette`.
+  // `palette`. Each part's voxels stay axis-aligned (a rest rotation
+  // moves the part's pivot but does not turn its cells — the grid is an
+  // integer-lattice representation; see gridRotationWarnings).
   grid: Map<string, number>;
   bbox: BBox;
   // True if any voxel cell sits at a non-integer world coordinate. This
@@ -58,6 +71,15 @@ export interface Assembly {
   // or switch to a finer projection grid.
   hasFractional: boolean;
   warnings: string[];
+}
+
+export interface ResolvedPart {
+  name: string;
+  part: Part;
+  // Index remap from the defining file's palette into Assembly.palette
+  // (null = identity), same table the grid values went through.
+  remap: readonly number[] | null;
+  transform: WorldTransform;
 }
 
 export interface LoadResult {
@@ -296,21 +318,18 @@ function assembleWorld(
     }
   }
 
-  const worldPositions = new Map<string, Vec3>();
-  for (const mp of order) {
-    const local = mp.position ?? [0, 0, 0];
-    let base: Vec3 = { x: 0, y: 0, z: 0 };
-    if (mp.parent !== undefined) {
-      // topoSort guarantees the parent was visited first.
-      base = worldPositions.get(mp.parent)!;
-    }
-    worldPositions.set(mp.name, {
-      x: base.x + local[0],
-      y: base.y + local[1],
-      z: base.z + local[2],
-    });
+  // SPEC §7.7 rest world transforms from the shared rig-transform layer
+  // (the same math the editor renders through). Pivot placement is exact
+  // — a child of a rotated parent lands where the rig puts it; only each
+  // part's own voxel orientation is approximated below (axis-aligned).
+  const pivotRots = new Map<string, Vec3Tuple>();
+  for (const [name, { part }] of cvoxByName) {
+    const rot = part.pivot.rot;
+    if (rot !== undefined) pivotRots.set(name, [rot.x, rot.y, rot.z]);
   }
+  const transforms = computeRestWorldTransforms(manifest.parts, pivotRots);
 
+  const resolvedParts: ResolvedPart[] = [];
   const grid = new Map<string, number>();
   const bbox: BBox = {
     minX: Infinity, maxX: -Infinity,
@@ -326,13 +345,9 @@ function assembleWorld(
       continue;
     }
     const { part, remap } = entry;
-    if (part.pivot.rot !== undefined) {
-      warnings.push(`part "${mp.name}" has pivot rotation; rotation is ignored in this tool`);
-    }
-    if (mp.rotation !== undefined) {
-      warnings.push(`part "${mp.name}" has manifest rotation; rotation is ignored in this tool`);
-    }
-    const wp = worldPositions.get(mp.name)!;
+    const transform = transforms.get(mp.name)!;
+    resolvedParts.push({ name: mp.name, part, remap, transform });
+    const wp = transform.pos;
     const px = part.pivot.pos.x;
     const py = part.pivot.pos.y;
     const pz = part.pivot.pos.z;
@@ -345,9 +360,14 @@ function assembleWorld(
           const idx = row[x]!;
           if (idx === AIR) continue;
           const effIdx = remap === null ? idx : remap[idx]!;
-          const wx = wp.x + x - px;
-          const wy = wp.y + y - py;
-          const wz = wp.z + z - pz;
+          // round6 strips quaternion float noise (a 90° parent rotation
+          // must land a child at exactly −2, not −2.0000000000000004) so
+          // grid keys stay queryable; genuinely fractional placements
+          // (0.5 offsets, 45° rotations) survive. Same convention as the
+          // W06 lint's cell keys.
+          const wx = round6(wp[0] + x - px);
+          const wy = round6(wp[1] + y - py);
+          const wz = round6(wp[2] + z - pz);
           if (!Number.isInteger(wx) || !Number.isInteger(wy) || !Number.isInteger(wz)) {
             hasFractional = true;
           }
@@ -368,11 +388,39 @@ function assembleWorld(
     geometries,
     palette: eff.palette,
     order,
+    resolvedParts,
     grid,
     bbox,
     hasFractional,
     warnings,
   };
+}
+
+// Warning lines for the grid-based consumers (cuboidy-view /
+// cuboidy-query): the merged world grid keeps every part's voxels
+// axis-aligned, so a rest rotation (§6.2 manifest `rotation` or §7.7
+// `pivot.rot`) shows up in pivot placement only. cuboidy-snap renders
+// the true orientation and does not carry these.
+export function gridRotationWarnings(asm: Assembly): string[] {
+  const mpByName = new Map(asm.manifest.parts.map((p) => [p.name, p]));
+  const out: string[] = [];
+  for (const rp of asm.resolvedParts) {
+    const kinds: string[] = [];
+    if (mpByName.get(rp.name)?.rotation !== undefined) {
+      kinds.push('manifest rotation');
+    }
+    if (rp.part.pivot.rot !== undefined) kinds.push('pivot rotation');
+    if (kinds.length > 0) {
+      out.push(
+        `part "${rp.name}" has ${kinds.join(' and ')}; this grid projection keeps its voxels axis-aligned (pivot placement follows the rig — use cuboidy-snap for the true orientation)`,
+      );
+    }
+  }
+  return out;
+}
+
+function round6(n: number): number {
+  return Math.round(n * 1e6) / 1e6;
 }
 
 // Canonical coord-key encoding. JavaScript's String(n) is canonical for

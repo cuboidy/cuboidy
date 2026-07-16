@@ -1,6 +1,7 @@
 import type { Palette, Vec3 } from '../cvox/types.js';
 import { AIR, indexToChar } from '../cvox/voxel-row.js';
 import {
+  gridRotationWarnings,
   loadAndAssemble,
   parseCoordKey,
   stringifyCoord,
@@ -82,6 +83,7 @@ export async function runQuery(
     out.push(executeQuery(asm, q));
   }
   for (const w of asm.warnings) out.push(`warning: ${w}`);
+  for (const w of gridRotationWarnings(asm)) out.push(`warning: ${w}`);
 
   return { text: out.join('\n'), exitCode: 0 };
 }

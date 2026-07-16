@@ -6,14 +6,14 @@ import { encodePng } from '../render/png.js';
 import type { Rgb } from '../render/framebuffer.js';
 import type { Angle } from '../render/camera.js';
 import { STANDARD_IDS, ANGLES } from '../render/camera.js';
-import { buildScene, type Voxel } from '../render/scene.js';
+import { buildSceneFromParts, type Scene } from '../render/scene.js';
 import {
   computeGlobalScale,
   renderContactSheet,
   renderTile,
   type ContactTile,
 } from '../render/snapshot.js';
-import { loadAndAssemble, parseCoordKey, type Assembly, type BBox } from './assemble.js';
+import { loadAndAssemble, type Assembly, type BBox } from './assemble.js';
 
 // cuboidy-snap: assemble a model in rest pose and render it to PNG images
 // from several angles — the raster counterpart to cuboidy-view's ASCII
@@ -22,9 +22,11 @@ import { loadAndAssemble, parseCoordKey, type Assembly, type BBox } from './asse
 // a contact sheet (all angles in one labeled image) plus one PNG per
 // angle, written under <out>/.
 //
-// Like cuboidy-view, pivot/animation rotations are NOT applied (rest
-// pose, translation only); a part declaring `pivot ... rot ...` emits a
-// warning. Palette alpha is ignored (voxels render opaque).
+// Unlike the grid-bound cuboidy-view / cuboidy-query, snap renders the
+// full REST pose: rest rotations (§6.2 manifest `rotation`, §7.7
+// `pivot.rot`) draw as true oriented cubes via the shared rig-transform
+// layer. Animation poses are still not applied. Palette alpha is
+// ignored (voxels render opaque).
 
 export interface SnapOptions {
   angles: readonly Angle[];
@@ -57,11 +59,14 @@ export interface RenderedSnapshots {
   tiles: { id: string; label: string; png: Buffer }[];
   sheet: Buffer | null;
   scalePxPerVoxel: number;
+  // World-space bounds of the rendered scene (rotation-aware, from the
+  // oriented quads — the grid bbox can undershoot when parts rest
+  // rotated). Reported in the summary and the contact-sheet title.
+  bounds: BBox;
 }
 
 export function renderSnapshots(asm: Assembly, opts: SnapOptions): RenderedSnapshots {
-  const voxels = gridToVoxels(asm);
-  const scene = buildScene(voxels, asm.palette);
+  const scene = buildSceneFromParts(asm.resolvedParts, asm.palette);
   const scale = computeGlobalScale(scene, opts.angles, opts);
 
   const tiles: { id: string; label: string; png: Buffer }[] = [];
@@ -76,14 +81,15 @@ export function renderSnapshots(asm: Assembly, opts: SnapOptions): RenderedSnaps
     contactTiles.push({ label: angle.label, fb });
   }
 
+  const bounds = sceneBounds(scene);
   let sheet: Buffer | null = null;
   if (opts.sheet && contactTiles.length > 0) {
-    const title = sheetTitle(asm, scale);
+    const title = sheetTitle(asm, bounds, scale);
     const fb = renderContactSheet(contactTiles, title, opts.cols);
     sheet = encodePng(fb.width, fb.height, fb.toRgba());
   }
 
-  return { tiles, sheet, scalePxPerVoxel: scale };
+  return { tiles, sheet, scalePxPerVoxel: scale, bounds };
 }
 
 export async function runSnap(dir: string, opts: SnapOptions): Promise<RunResult> {
@@ -125,13 +131,12 @@ export async function runSnap(dir: string, opts: SnapOptions): Promise<RunResult
 
 // --- helpers ---------------------------------------------------------------
 
-function gridToVoxels(asm: Assembly): Voxel[] {
-  const out: Voxel[] = [];
-  for (const [key, idx] of asm.grid) {
-    const c = parseCoordKey(key);
-    out.push({ x: c.x, y: c.y, z: c.z, idx });
-  }
-  return out;
+function sceneBounds(scene: Scene): BBox {
+  return {
+    minX: scene.min[0], maxX: scene.max[0],
+    minY: scene.min[1], maxY: scene.max[1],
+    minZ: scene.min[2], maxZ: scene.max[2],
+  };
 }
 
 function intBBox(b: BBox): BBox {
@@ -142,8 +147,8 @@ function intBBox(b: BBox): BBox {
   };
 }
 
-function sheetTitle(asm: Assembly, scale: number): string {
-  const b = intBBox(asm.bbox);
+function sheetTitle(asm: Assembly, bounds: BBox, scale: number): string {
+  const b = intBBox(bounds);
   return (
     `${asm.manifest.name}  ` +
     `X${b.minX}..${b.maxX} Y${b.minY}..${b.maxY} Z${b.minZ}..${b.maxZ}  ` +
@@ -158,7 +163,7 @@ function summary(
   outDir: string,
   written: readonly string[],
 ): string {
-  const b = intBBox(asm.bbox);
+  const b = intBBox(rendered.bounds);
   const out: string[] = [];
   out.push(`model: ${asm.manifest.name}`);
   out.push(`parts: ${asm.order.map((p) => p.name).join(' ')}`);
