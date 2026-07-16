@@ -43,7 +43,17 @@ import { ConsolePanel, type ConsoleEntry } from './components/ConsolePanel.js';
 import { Dock, type PanelContent } from './components/Dock.js';
 import { ExportMenu } from './components/ExportMenu.js';
 import { Logo } from './components/Logo.js';
-import { Eye, EyeOff, FolderOpen, Plus, Redo2, Undo2 } from 'lucide-react';
+import {
+  Box,
+  Crosshair,
+  Eye,
+  EyeOff,
+  FolderOpen,
+  Plug,
+  Plus,
+  Redo2,
+  Undo2,
+} from 'lucide-react';
 import { FileDropZone } from './components/FileDropZone.js';
 import { FileTree } from './components/FileTree.js';
 import { ModelProperties } from './components/ModelProperties.js';
@@ -85,6 +95,7 @@ import { synthesizeManifest } from './lib/synthesize-manifest.js';
 import { useAnimationSession } from './lib/useAnimationSession.js';
 import type {
   FileEntry,
+  GizmoVisibility,
   LoadResult,
   LoadedSource,
   ViewMode,
@@ -514,6 +525,18 @@ export function App() {
   );
   const [hiddenParts, setHiddenParts] = useState<ReadonlySet<string>>(new Set());
   const [viewMode, setViewMode] = useState<ViewMode>('cvox');
+  // Per-kind visibility of the selected part's preview gizmos (pivot /
+  // sockets / frame), toggled from the preview overlay. The flags outlive
+  // selection changes and loads — they're a viewer preference, not model
+  // state.
+  const [gizmoVis, setGizmoVis] = useState<GizmoVisibility>({
+    pivot: true,
+    sockets: true,
+    frame: true,
+  });
+  const handleToggleGizmo = useCallback((kind: keyof GizmoVisibility) => {
+    setGizmoVis((v) => ({ ...v, [kind]: !v[kind] }));
+  }, []);
   // Selected part for the right-panel inspector. Null = nothing
   // selected (right panel hides the properties section). Pruned at
   // render time if the name no longer exists in cvox.parts so stale
@@ -3108,8 +3131,42 @@ export function App() {
             <>
               {/* Panel-local toolbar: the view-mode switch belongs to the
                   Preview panel, so it floats over the 3D's top-right rather
-                  than the global header (panel-system design A2). */}
+                  than the global header (panel-system design A2). The gizmo
+                  toggles sit beside it — they only affect this panel too. */}
               <div className="view-mode-overlay">
+                <div
+                  className="gizmo-toggles"
+                  role="group"
+                  aria-label="Selected-part gizmos"
+                >
+                  <button
+                    type="button"
+                    className={gizmoVis.pivot ? 'active' : ''}
+                    aria-pressed={gizmoVis.pivot}
+                    title="Show the selected part's pivot"
+                    onClick={() => handleToggleGizmo('pivot')}
+                  >
+                    <Crosshair size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    className={gizmoVis.sockets ? 'active' : ''}
+                    aria-pressed={gizmoVis.sockets}
+                    title="Show the selected part's sockets"
+                    onClick={() => handleToggleGizmo('sockets')}
+                  >
+                    <Plug size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    className={gizmoVis.frame ? 'active' : ''}
+                    aria-pressed={gizmoVis.frame}
+                    title="Show the selected part's bounding frame"
+                    onClick={() => handleToggleGizmo('frame')}
+                  >
+                    <Box size={14} />
+                  </button>
+                </div>
                 <ViewModeToggle
                   mode={effectiveViewMode}
                   rigAvailable={rigAvailable}
@@ -3127,6 +3184,8 @@ export function App() {
                   session={animSession}
                   manifestEditsDisabled={manifestParseError !== null}
                   partPalettes={partPalettes}
+                  selectedPart={effectiveSelectedPart}
+                  gizmos={gizmoVis}
                   onCreateClip={handleCreateAnimationClip}
                 />
               ) : (
@@ -3136,6 +3195,8 @@ export function App() {
                   viewMode={effectiveViewMode}
                   hiddenParts={hiddenParts}
                   partPalettes={partPalettes}
+                  selectedPart={effectiveSelectedPart}
+                  gizmos={gizmoVis}
                 />
               )}
             </>

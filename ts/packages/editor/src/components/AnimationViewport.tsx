@@ -9,6 +9,7 @@ import {
   computeSceneSpan,
 } from '../lib/rig.js';
 import type { AnimationSession } from '../lib/useAnimationSession.js';
+import type { GizmoVisibility } from '../lib/types.js';
 import { RiggedParts } from './RiggedParts.js';
 
 interface Props {
@@ -19,6 +20,9 @@ interface Props {
   manifestEditsDisabled: boolean;
   // Per-part palette override (SPEC §6.10) — see VoxelScene.
   partPalettes?: ReadonlyMap<string, Palette> | undefined;
+  // Selection gizmos (pivot / sockets / frame) for the selected part.
+  selectedPart: string | null;
+  gizmos: GizmoVisibility;
   onCreateClip: () => void;
 }
 
@@ -33,6 +37,8 @@ export function AnimationViewport({
   session,
   manifestEditsDisabled,
   partPalettes,
+  selectedPart,
+  gizmos,
   onCreateClip,
 }: Props) {
   const {
@@ -102,6 +108,8 @@ export function AnimationViewport({
             poses={poses}
             hiddenParts={hiddenParts}
             partPalettes={partPalettes}
+            selectedPart={selectedPart}
+            gizmos={gizmos}
           />
           <OrbitControls target={center} makeDefault />
         </Canvas>

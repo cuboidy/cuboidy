@@ -90,6 +90,16 @@ export interface LoadResult {
 // animation. The UI disables each toggle when its requirement is unmet.
 export type ViewMode = 'cvox' | 'rig' | 'anim';
 
+// Per-kind visibility of the selected part's 3D preview gizmos (pivot
+// marker, socket markers, bounding frame), toggled from the preview
+// overlay. The flags outlive any one selection — gizmos simply render
+// only while a part is selected.
+export interface GizmoVisibility {
+  pivot: boolean;
+  sockets: boolean;
+  frame: boolean;
+}
+
 // A keyframe selected in the animation timeline: one attribute (rot/pos/
 // scale/visible) of one part at one time-key. The per-attribute model means
 // selection is an (attribute, time) pair, not a whole-keyframe marker.

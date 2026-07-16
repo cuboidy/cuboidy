@@ -434,12 +434,52 @@ svg.lucide {
   top: 0.5rem;
   right: 0.5rem;
   z-index: 5;
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
 }
 
-.view-mode-overlay .view-toggle {
+.view-mode-overlay .view-toggle,
+.view-mode-overlay .gizmo-toggles {
   background: rgba(14, 17, 22, 0.78);
   backdrop-filter: blur(6px);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+/* Selected-part gizmo toggles (pivot / sockets / frame): same chrome as
+   the segmented view switch beside them, but independent on/off buttons
+   rather than mutually exclusive tabs. */
+.gizmo-toggles {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+}
+
+.gizmo-toggles button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  background: transparent;
+  color: var(--txt-2);
+  border: none;
+  border-radius: var(--r-2);
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+
+.gizmo-toggles button:hover:not(.active) {
+  background: var(--bg-3);
+  color: var(--txt-1);
+}
+
+.gizmo-toggles button.active {
+  background: var(--accent);
+  color: #fff;
 }
 
 /* ─── Main / Sidebar / Scene ──────────────────────────────────────── */

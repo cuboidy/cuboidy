@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import { composePartRotation, type Palette, type Pose } from '@cuboidy/core';
 import type { RigNode } from '../lib/rig.js';
+import type { GizmoVisibility } from '../lib/types.js';
+import { PartGizmos } from './PartGizmos.js';
 import { PartMesh } from './PartMesh.js';
 
 interface Props {
@@ -14,6 +16,10 @@ interface Props {
   // each part resolves against its DEFINING file's inline palette.
   // Absent = every part uses `palette`.
   partPalettes?: ReadonlyMap<string, Palette> | undefined;
+  // Selection gizmos: the selected part draws pivot / socket / frame
+  // overlays per the visibility flags. Null = no part selected.
+  selectedPart: string | null;
+  gizmos: GizmoVisibility;
 }
 
 // Renders the rig forest as nested three.js groups so a parent's animated
@@ -30,6 +36,8 @@ export function RiggedParts({
   poses,
   hiddenParts,
   partPalettes,
+  selectedPart,
+  gizmos,
 }: Props) {
   return (
     <>
@@ -41,6 +49,8 @@ export function RiggedParts({
           poses={poses}
           hiddenParts={hiddenParts}
           partPalettes={partPalettes}
+          selectedPart={selectedPart}
+          gizmos={gizmos}
         />
       ))}
     </>
@@ -60,6 +70,8 @@ interface NodeProps {
   poses: Map<string, Pose> | null;
   hiddenParts: ReadonlySet<string>;
   partPalettes?: ReadonlyMap<string, Palette> | undefined;
+  selectedPart: string | null;
+  gizmos: GizmoVisibility;
 }
 
 function RigNodeView({
@@ -68,6 +80,8 @@ function RigNodeView({
   poses,
   hiddenParts,
   partPalettes,
+  selectedPart,
+  gizmos,
 }: NodeProps) {
   const part = node.part;
   const pose = poses?.get(part.name) ?? REST_POSE;
@@ -120,6 +134,12 @@ function RigNodeView({
             part={part}
             palette={partPalettes?.get(part.name) ?? palette}
           />
+          {/* Gizmos live in the same local frame as the mesh (and inside
+              the scale group), so the frame follows animated scale while
+              the pivot marker — the scale center — stays put. */}
+          {part.name === selectedPart && (
+            <PartGizmos part={part} show={gizmos} />
+          )}
         </group>
       </group>
       {node.children.map((child) => (
@@ -130,6 +150,8 @@ function RigNodeView({
           poses={poses}
           hiddenParts={hiddenParts}
           partPalettes={partPalettes}
+          selectedPart={selectedPart}
+          gizmos={gizmos}
         />
       ))}
     </group>

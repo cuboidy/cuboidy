@@ -2,12 +2,13 @@ import { useMemo } from 'react';
 import { OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import type { Cvox, Manifest, Palette } from '@cuboidy/core';
-import type { ViewMode } from '../lib/types.js';
+import type { GizmoVisibility, ViewMode } from '../lib/types.js';
 import {
   buildRigTree,
   computeSceneCenter,
   computeSceneSpan,
 } from '../lib/rig.js';
+import { PartGizmos } from './PartGizmos.js';
 import { PartMesh } from './PartMesh.js';
 import { RiggedParts } from './RiggedParts.js';
 
@@ -23,6 +24,9 @@ interface Props {
   // each part resolves against its DEFINING file's inline palette.
   // Absent = every part uses cvox.palette (bound or single-file model).
   partPalettes?: ReadonlyMap<string, Palette> | undefined;
+  // Selection gizmos (pivot / sockets / frame) for the selected part.
+  selectedPart: string | null;
+  gizmos: GizmoVisibility;
 }
 
 // Renders the model in one of two static modes:
@@ -47,6 +51,8 @@ export function VoxelScene({
   viewMode,
   hiddenParts,
   partPalettes,
+  selectedPart,
+  gizmos,
 }: Props) {
   const rigMode = viewMode !== 'cvox' && manifest !== undefined;
   const visibleParts = cvox.parts.filter((p) => !hiddenParts.has(p.name));
@@ -89,15 +95,21 @@ export function VoxelScene({
           poses={null}
           hiddenParts={hiddenParts}
           partPalettes={partPalettes}
+          selectedPart={selectedPart}
+          gizmos={gizmos}
         />
       ) : (
-        // Cvox view: origin-stacked, no rig transforms by design.
+        // Cvox view: origin-stacked, no rig transforms by design. Part
+        // local coords ARE world coords here, so gizmos render in place.
         visibleParts.map((part) => (
           <group key={part.name} position={[0, 0, 0]}>
             <PartMesh
               part={part}
               palette={partPalettes?.get(part.name) ?? cvox.palette}
             />
+            {part.name === selectedPart && (
+              <PartGizmos part={part} show={gizmos} />
+            )}
           </group>
         ))
       )}
