@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
-import { Euler, MathUtils, Quaternion } from 'three';
-import type { Palette, Pose } from '@cuboidy/core';
+import { composePartRotation, type Palette, type Pose } from '@cuboidy/core';
 import type { RigNode } from '../lib/rig.js';
 import { PartMesh } from './PartMesh.js';
 
@@ -20,9 +19,11 @@ interface Props {
 // Renders the rig forest as nested three.js groups so a parent's animated
 // transform carries its whole subtree (SPEC §6.2 rigid hierarchy). Each
 // part-group's transform reproduces the SPEC §7.7 formula
-//   v_parent = part.position + anim.pos + M_pivot·M_anim·S_anim·(v_local − pivot.pos)
+//   v_parent = part.position + anim.pos + M_rot·M_pivot·M_anim·S_anim·(v_local − pivot.pos)
 // by placing the group at part.position+anim.pos (so the group origin IS the
 // part's pivot), rotating/scaling there, and offsetting the mesh by −pivot.
+// The rotation composition itself lives in @cuboidy/core (rig-transform),
+// so this view can never drift from the CLI's interpretation of §7.7.
 export function RiggedParts({
   roots,
   palette,
@@ -71,6 +72,7 @@ function RigNodeView({
   const part = node.part;
   const pose = poses?.get(part.name) ?? REST_POSE;
   const base = node.manifestPart?.position ?? [0, 0, 0];
+  const restRot = node.manifestPart?.rotation;
   const piv = part.pivot.pos;
   const pivotRot = part.pivot.rot;
 
@@ -83,33 +85,21 @@ function RigNodeView({
     [base, pose.pos],
   );
 
-  // q_total = q_pivot · q_anim (SPEC §7.7): the animation rotation is applied
-  // first in the rest-local frame, then the pivot's rest rotation. Euler order
-  // ZXY intrinsic (§4), degrees → radians. three.js is right-handed like the
-  // native frame, so no handedness flip (that's Unity-only, §4).
+  // q_total = q_rotation · q_pivot · q_anim (SPEC §7.7): the animation
+  // rotation applies first in the rest-local frame, then the geometry-side
+  // pivot.rot, then the manifest part's parent-space `rotation`. All three
+  // are Euler degrees, ZXY intrinsic (§4); three.js is right-handed like
+  // the native frame, so no handedness flip (that's Unity-only, §4).
   const quaternion = useMemo<[number, number, number, number]>(() => {
-    const q = new Quaternion().setFromEuler(
-      new Euler(
-        MathUtils.degToRad(pose.rot[0]),
-        MathUtils.degToRad(pose.rot[1]),
-        MathUtils.degToRad(pose.rot[2]),
-        'ZXY',
-      ),
+    const q = composePartRotation(
+      restRot,
+      pivotRot === undefined
+        ? undefined
+        : [pivotRot.x, pivotRot.y, pivotRot.z],
+      pose.rot,
     );
-    if (pivotRot !== undefined) {
-      const qPivot = new Quaternion().setFromEuler(
-        new Euler(
-          MathUtils.degToRad(pivotRot.x),
-          MathUtils.degToRad(pivotRot.y),
-          MathUtils.degToRad(pivotRot.z),
-          'ZXY',
-        ),
-      );
-      qPivot.multiply(q);
-      return [qPivot.x, qPivot.y, qPivot.z, qPivot.w];
-    }
-    return [q.x, q.y, q.z, q.w];
-  }, [pose.rot, pivotRot]);
+    return [q[0], q[1], q[2], q[3]];
+  }, [restRot, pivotRot, pose.rot]);
 
   const meshVisible = pose.visible && !hiddenParts.has(part.name);
 

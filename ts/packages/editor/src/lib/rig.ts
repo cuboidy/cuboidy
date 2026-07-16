@@ -1,68 +1,68 @@
-import type { Cvox, Manifest, ManifestPart, Part } from '@cuboidy/core';
+import {
+  QUAT_IDENTITY,
+  computeRestWorldTransforms,
+  quatRotateVec3,
+  type Cvox,
+  type Manifest,
+  type ManifestPart,
+  type Part,
+  type Vec3Tuple,
+  type WorldTransform,
+} from '@cuboidy/core';
 import type { ViewMode } from './types.js';
 
 // Rig math shared by the static rig view (VoxelScene) and the animation
 // view (AnimationView). Two concerns live here:
-//   1. Camera framing — world-space part positions / scene bbox, computed
-//      from the REST pose (manifest positions, no animation) so the camera
-//      never jumps as an animation plays.
+//   1. Camera framing — the scene's world-space bbox, computed from the
+//      REST pose (manifest positions + rotations, no animation) so the
+//      camera never jumps as an animation plays.
 //   2. Hierarchy — the parent/child forest the animation view nests into
 //      three.js groups so a parent's animated transform carries its children.
 
-// Computes the rendering offset for each part (the world-space position that
-// goes into <group position={...}>). Cvox view returns [0,0,0] for all parts
-// (origin-stacked). Rig / anim views walk the manifest parent chain.
-//
-// SPEC §6.2 / §7.7: a part's `position` is where its **pivot** sits in the
-// parent's local space. world pivot = parent world pivot + part.position;
-// the rendering origin (where voxel [0,0,0] sits) is `world pivot − pivot`.
-// Parts missing from the manifest fall back to origin.
-export function computePartPositions(
-  cvox: Cvox,
-  manifest: Manifest | undefined,
-  viewMode: ViewMode,
-): Map<string, [number, number, number]> {
-  const out = new Map<string, [number, number, number]>();
-  if (viewMode === 'cvox' || manifest === undefined) {
-    for (const p of cvox.parts) out.set(p.name, [0, 0, 0]);
-    return out;
-  }
-  const mpByName = new Map<string, ManifestPart>();
-  for (const mp of manifest.parts) mpByName.set(mp.name, mp);
+interface Bounds {
+  min: [number, number, number];
+  max: [number, number, number];
+}
 
-  const worldPivots = new Map<string, [number, number, number]>();
-  const resolveWorldPivot = (
-    name: string,
-    seen: ReadonlySet<string> = new Set(),
-  ): [number, number, number] => {
-    const cached = worldPivots.get(name);
-    if (cached !== undefined) return cached;
-    const mp = mpByName.get(name);
-    if (mp === undefined) {
-      const zero: [number, number, number] = [0, 0, 0];
-      worldPivots.set(name, zero);
-      return zero;
-    }
-    const local = mp.position ?? [0, 0, 0];
-    let wp: [number, number, number];
-    // Cycle guard: a parent chain that loops back resolves the offending
-    // hop as a root (local offset only) rather than recursing forever.
-    if (mp.parent === undefined || seen.has(name)) {
-      wp = [local[0], local[1], local[2]];
-    } else {
-      const parent = resolveWorldPivot(mp.parent, new Set(seen).add(name));
-      wp = [parent[0] + local[0], parent[1] + local[1], parent[2] + local[2]];
-    }
-    worldPivots.set(name, wp);
-    return wp;
-  };
-
+// World-space rest bbox of the whole model (rig / anim views). Each part's
+// eight local box corners are pushed through the shared SPEC §7.7 rest
+// transform from @cuboidy/core — rotation-aware, so a part resting at 45°
+// still frames correctly. Parts missing from the manifest fall back to an
+// origin-anchored identity transform. The box always includes the unit
+// cube at the origin (historical behavior: the camera stays anchored near
+// the grid origin even for far-flung models).
+function computeWorldBounds(cvox: Cvox, manifest: Manifest): Bounds {
+  const pivotRots = new Map<string, Vec3Tuple>();
   for (const p of cvox.parts) {
-    const wp = resolveWorldPivot(p.name);
-    const piv = p.pivot.pos;
-    out.set(p.name, [wp[0] - piv.x, wp[1] - piv.y, wp[2] - piv.z]);
+    const rot = p.pivot.rot;
+    if (rot !== undefined) pivotRots.set(p.name, [rot.x, rot.y, rot.z]);
   }
-  return out;
+  const transforms = computeRestWorldTransforms(manifest.parts, pivotRots);
+  const fallback: WorldTransform = { pos: [0, 0, 0], quat: QUAT_IDENTITY };
+
+  const min: [number, number, number] = [0, 0, 0];
+  const max: [number, number, number] = [1, 1, 1];
+  for (const p of cvox.parts) {
+    const wt = transforms.get(p.name) ?? fallback;
+    const piv = p.pivot.pos;
+    for (const cx of [0, p.size.w]) {
+      for (const cy of [0, p.size.h]) {
+        for (const cz of [0, p.size.d]) {
+          const r = quatRotateVec3(wt.quat, [
+            cx - piv.x,
+            cy - piv.y,
+            cz - piv.z,
+          ]);
+          for (let i = 0; i < 3; i++) {
+            const w = wt.pos[i]! + r[i]!;
+            if (w < min[i]!) min[i] = w;
+            if (w > max[i]!) max[i] = w;
+          }
+        }
+      }
+    }
+  }
+  return { min, max };
 }
 
 export interface Span {
@@ -83,23 +83,8 @@ export function computeSceneSpan(
       d: Math.max(1, ...cvox.parts.map((p) => p.size.d)),
     };
   }
-  const positions = computePartPositions(cvox, manifest, viewMode);
-  let minX = 0;
-  let minY = 0;
-  let minZ = 0;
-  let maxX = 1;
-  let maxY = 1;
-  let maxZ = 1;
-  for (const p of cvox.parts) {
-    const pos = positions.get(p.name) ?? [0, 0, 0];
-    minX = Math.min(minX, pos[0]);
-    minY = Math.min(minY, pos[1]);
-    minZ = Math.min(minZ, pos[2]);
-    maxX = Math.max(maxX, pos[0] + p.size.w);
-    maxY = Math.max(maxY, pos[1] + p.size.h);
-    maxZ = Math.max(maxZ, pos[2] + p.size.d);
-  }
-  return { w: maxX - minX, h: maxY - minY, d: maxZ - minZ };
+  const { min, max } = computeWorldBounds(cvox, manifest);
+  return { w: max[0] - min[0], h: max[1] - min[1], d: max[2] - min[2] };
 }
 
 export function computeSceneCenter(
@@ -113,23 +98,12 @@ export function computeSceneCenter(
     const maxD = Math.max(1, ...cvox.parts.map((p) => p.size.d));
     return [maxW / 2, maxH / 2, maxD / 2];
   }
-  const positions = computePartPositions(cvox, manifest, viewMode);
-  let minX = 0;
-  let minY = 0;
-  let minZ = 0;
-  let maxX = 1;
-  let maxY = 1;
-  let maxZ = 1;
-  for (const p of cvox.parts) {
-    const pos = positions.get(p.name) ?? [0, 0, 0];
-    minX = Math.min(minX, pos[0]);
-    minY = Math.min(minY, pos[1]);
-    minZ = Math.min(minZ, pos[2]);
-    maxX = Math.max(maxX, pos[0] + p.size.w);
-    maxY = Math.max(maxY, pos[1] + p.size.h);
-    maxZ = Math.max(maxZ, pos[2] + p.size.d);
-  }
-  return [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2];
+  const { min, max } = computeWorldBounds(cvox, manifest);
+  return [
+    (min[0] + max[0]) / 2,
+    (min[1] + max[1]) / 2,
+    (min[2] + max[2]) / 2,
+  ];
 }
 
 // ─── Hierarchy ──────────────────────────────────────────────────────────
