@@ -91,6 +91,44 @@ describe('parseManifest', () => {
   });
 });
 
+// SPEC §6.2 (v0.9): per-part rest rotation.
+describe('parseManifest — part rotation (v0.9)', () => {
+  it('accepts a part with a rotation triple', () => {
+    const r = parseManifest({
+      name: 'test',
+      parts: [{ name: 'body', rotation: [0, 45, 0] }],
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.parts[0]?.rotation).toEqual([0, 45, 0]);
+  });
+
+  it('leaves rotation absent when omitted (identity rest rotation)', () => {
+    const r = parseManifest({ name: 'test', parts: [{ name: 'body' }] });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.parts[0]?.rotation).toBeUndefined();
+  });
+
+  it('rejects a rotation with the wrong arity', () => {
+    const r = parseManifest({
+      name: 'test',
+      parts: [{ name: 'body', rotation: [0, 45] }],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('invalid-value');
+  });
+
+  it('rejects a non-numeric rotation component', () => {
+    const r = parseManifest({
+      name: 'test',
+      parts: [{ name: 'body', rotation: [0, '45', 0] }],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('invalid-value');
+  });
+});
+
 // SPEC §6.9 / §6.10 (v0.7): geometry list + external palette binding.
 describe('parseManifest — geometry & palette (v0.7)', () => {
   const base = { name: 'test', parts: [{ name: 'body' }] };

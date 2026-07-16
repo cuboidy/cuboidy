@@ -83,6 +83,16 @@ export type {
 export { buildMesh } from './mesh.js';
 export type { MeshData } from './mesh.js';
 
+export {
+  QUAT_IDENTITY,
+  composePartRotation,
+  computeRestWorldTransforms,
+  quatFromEulerZXYDeg,
+  quatMultiply,
+  quatRotateVec3,
+} from './rig-transform.js';
+export type { QuatTuple, Vec3Tuple, WorldTransform } from './rig-transform.js';
+
 export { validateCrossFile, validateProject } from './lint/cross-file.js';
 export type { ProjectInput } from './lint/cross-file.js';
 export { lintCvox } from './lint/voxel-rules.js';

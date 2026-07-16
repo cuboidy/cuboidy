@@ -329,6 +329,9 @@ function assembleWorld(
     if (part.pivot.rot !== undefined) {
       warnings.push(`part "${mp.name}" has pivot rotation; rotation is ignored in this tool`);
     }
+    if (mp.rotation !== undefined) {
+      warnings.push(`part "${mp.name}" has manifest rotation; rotation is ignored in this tool`);
+    }
     const wp = worldPositions.get(mp.name)!;
     const px = part.pivot.pos.x;
     const py = part.pivot.pos.y;

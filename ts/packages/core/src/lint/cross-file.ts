@@ -217,9 +217,9 @@ function checkLrSymmetry(
 
 // Solid-cell coordinates in PARENT space: manifest position places the
 // pivot, so a cell's origin is position + local − pivot (SPEC §6.2 —
-// translation only; rest rotations don't participate in the bilateral
-// placement rule). Keys are rounded so fractional pivots (0.5 centers)
-// compare exactly.
+// translation only; rest rotations — `pivot.rot` and the manifest part's
+// `rotation` — don't participate in the bilateral placement rule). Keys
+// are rounded so fractional pivots (0.5 centers) compare exactly.
 function parentSpaceCells(
   part: Part,
   position: readonly [number, number, number],

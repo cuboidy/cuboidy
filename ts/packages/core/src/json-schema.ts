@@ -72,7 +72,7 @@ export function buildManifestJsonSchema(): Record<string, unknown> {
     $id: 'https://cuboidy.com/schema/cuboidy.schema.json',
     title: 'Cuboidy Manifest',
     description:
-      'Schema for cuboidy.json — the manifest file of a Cuboidy v0.8 model package (geometry list, palette binding, rig hierarchy + animation references). Generated from the Zod ManifestSchema in @cuboidy/core. SPEC §8 reference paths, tuple arity and geometry uniqueness are encoded; the remaining runtime-only rules (SPEC §11.5: duplicate part names, parent existence/cycles, animation duration/time-key semantics) need parseManifest or an equivalent validator.',
+      'Schema for cuboidy.json — the manifest file of a Cuboidy v0.9 model package (geometry list, palette binding, rig hierarchy + animation references). Generated from the Zod ManifestSchema in @cuboidy/core. SPEC §8 reference paths, tuple arity and geometry uniqueness are encoded; the remaining runtime-only rules (SPEC §11.5: duplicate part names, parent existence/cycles, animation duration/time-key semantics) need parseManifest or an equivalent validator.',
     ...constrained,
   };
 }

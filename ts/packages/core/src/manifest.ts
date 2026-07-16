@@ -11,6 +11,10 @@ export const ManifestPartSchema = z
     name: Identifier,
     parent: Identifier.optional(),
     position: Vec3.optional(),
+    // SPEC §6.2 (v0.9): rest rotation in parent space, Euler degrees ZXY
+    // (§4), applied around the part's pivot on top of the geometry-side
+    // pivot.rot (q_rest = q_rotation · q_pivot, §7.7). Absent → identity.
+    rotation: Vec3.optional(),
   })
   .strict();
 

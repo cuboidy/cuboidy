@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://cuboidy.com/schema/cuboidy.schema.json",
   "title": "Cuboidy Manifest",
-  "description": "Schema for cuboidy.json — the manifest file of a Cuboidy v0.8 model package (geometry list, palette binding, rig hierarchy + animation references). Generated from the Zod ManifestSchema in @cuboidy/core. SPEC §8 reference paths, tuple arity and geometry uniqueness are encoded; the remaining runtime-only rules (SPEC §11.5: duplicate part names, parent existence/cycles, animation duration/time-key semantics) need parseManifest or an equivalent validator.",
+  "description": "Schema for cuboidy.json — the manifest file of a Cuboidy v0.9 model package (geometry list, palette binding, rig hierarchy + animation references). Generated from the Zod ManifestSchema in @cuboidy/core. SPEC §8 reference paths, tuple arity and geometry uniqueness are encoded; the remaining runtime-only rules (SPEC §11.5: duplicate part names, parent existence/cycles, animation duration/time-key semantics) need parseManifest or an equivalent validator.",
   "type": "object",
   "properties": {
     "name": {
@@ -73,6 +73,22 @@
             }
           },
           "position": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "minItems": 3,
+            "maxItems": 3
+          },
+          "rotation": {
             "type": "array",
             "prefixItems": [
               {
