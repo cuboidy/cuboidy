@@ -132,7 +132,7 @@ Full methodology, dataset, and per-model numbers in
 ## Roadmap
 
 - [x] Spec document (`SPEC.md`) — v0.9 draft (multi-file geometry, shareable external palettes, keyframe easing, per-part rest rotation)
-- [x] Reference parser (TypeScript) — `ts/packages/core/`, full v0.9 grammar (541 tests)
+- [x] Reference parser (TypeScript) — `ts/packages/core/`, full v0.9 grammar (554 tests)
 - [x] Shared project loader — `resolveProject()`: manifest geometry list, external palette, external animations; used by lint, the inspection CLIs and the editor
 - [x] Cross-file lint — project-shaped validation (`validateProject`): manifest↔geometry part matching, cross-file duplicate names, palette resolution/range, animation target checks, W06 geometric l/r symmetry, W07 unreferenced `.cvox`, H03 shadowed inline palette
 - [x] Shared parity fixtures — `fixtures/cvox/<code>/` and `fixtures/json/<code>/`, contract for cross-implementation conformance
