@@ -2,7 +2,7 @@
 
 An open text-based file format for voxel character models, rigs, and animations.
 
-**Status: v0.8 draft. See [SPEC.md](SPEC.md) for the formal specification.**
+**Status: v0.9 draft. See [SPEC.md](SPEC.md) for the formal specification.**
 
 ## What it is
 
@@ -131,8 +131,8 @@ Full methodology, dataset, and per-model numbers in
 
 ## Roadmap
 
-- [x] Spec document (`SPEC.md`) — v0.8 draft (multi-file geometry, shareable external palettes, keyframe easing)
-- [x] Reference parser (TypeScript) — `ts/packages/core/`, full v0.8 grammar (555 tests)
+- [x] Spec document (`SPEC.md`) — v0.9 draft (multi-file geometry, shareable external palettes, keyframe easing, per-part rest rotation)
+- [x] Reference parser (TypeScript) — `ts/packages/core/`, full v0.9 grammar (541 tests)
 - [x] Shared project loader — `resolveProject()`: manifest geometry list, external palette, external animations; used by lint, the inspection CLIs and the editor
 - [x] Cross-file lint — project-shaped validation (`validateProject`): manifest↔geometry part matching, cross-file duplicate names, palette resolution/range, animation target checks, W06 geometric l/r symmetry, W07 unreferenced `.cvox`, H03 shadowed inline palette
 - [x] Shared parity fixtures — `fixtures/cvox/<code>/` and `fixtures/json/<code>/`, contract for cross-implementation conformance

@@ -1,9 +1,11 @@
 # Cuboidy Format Specification
 
-**Version:** 0.8 (draft)
+**Version:** 0.9 (draft)
 **Status:** Early draft. Subject to change before v1.0.
 
-**Changes in this draft revision (v0.8):** Added **per-attribute keyframe easing** (§6.5, §6.7). A keyframe gains an optional `ease` object mapping an attribute (`rot` / `pos` / `scale`) to the interpolation curve of that attribute's **outgoing** segment (this keyframe → the next). Curves are 20 named presets — `linear` (default), `step`, and `in` / `out` / `in-out` variants of `sine` / `quad` / `cubic` / `back` / `elastic` / `bounce` — applied as a remap of normalized segment progress before linear interpolation (`visible` always steps and cannot be eased). `ease` is deliberately **exempt from §6.5 carryover**: a curve applies only where it is written, and only to its own attribute — it never propagates to later keyframes or leaks onto other attributes. Custom cubic-bezier curves remain reserved for a future revision. This revision also **removes part reuse** (the `clone` / `mirror` reuse-clause added in v0.6): every part is now concrete voxel data, and symmetric or repeated geometry is authored by copy/mirror tooling that emits plain voxels. `clone` and `mirror` are no longer reserved keywords (now **7**, §7.3.1) and the `Part.from` AST field is gone.
+**Changes in this draft revision (v0.9):** Added an optional per-part **`rotation`** field to the manifest part object (§6.2) — the part's **rest rotation** in parent space: 3 Euler angles in degrees, ZXY intrinsic order (§4), applied around the part's pivot. It composes **outside** the geometry file's `pivot.rot` and inside the parent's transform, so the full §7.7 rotation becomes `q_total = q_rotation · q_pivot · q_anim`; keyframe `rot` values remain relative to the (now two-term) rest rotation, and children ride a parent's rest rotation like any other parent transform (§6.2 rigid hierarchy). Absent → identity, so existing models are unchanged. The translation-only CLI projections (`cuboidy-view` / `cuboidy-query` / `cuboidy-snap`) warn and ignore it the same way they treat `pivot.rot`.
+
+**Changes in v0.8:** Added **per-attribute keyframe easing** (§6.5, §6.7). A keyframe gains an optional `ease` object mapping an attribute (`rot` / `pos` / `scale`) to the interpolation curve of that attribute's **outgoing** segment (this keyframe → the next). Curves are 20 named presets — `linear` (default), `step`, and `in` / `out` / `in-out` variants of `sine` / `quad` / `cubic` / `back` / `elastic` / `bounce` — applied as a remap of normalized segment progress before linear interpolation (`visible` always steps and cannot be eased). `ease` is deliberately **exempt from §6.5 carryover**: a curve applies only where it is written, and only to its own attribute — it never propagates to later keyframes or leaks onto other attributes. Custom cubic-bezier curves remain reserved for a future revision. This revision also **removes part reuse** (the `clone` / `mirror` reuse-clause added in v0.6): every part is now concrete voxel data, and symmetric or repeated geometry is authored by copy/mirror tooling that emits plain voxels. `clone` and `mirror` are no longer reserved keywords (now **7**, §7.3.1) and the `Part.from` AST field is gone.
 
 **Changes in v0.7:** The package generalizes from the fixed two-file layout to **manifest-anchored references**. (1) **Multiple geometry files**: the manifest gains an optional top-level `geometry` array (§6.9) listing the package's `.cvox` files by reference path (§8); absent → the previous fixed `["voxels.cvox"]`, so existing models are unchanged. Part names remain unique across the whole model (§5) — a name defined in two geometry files is a cross-file `duplicate` error. (2) **Shareable palettes**: the cvox `palette` declaration is relaxed from "exactly one" to **"at most one"** (§7.4); a new external palette file (`{ "colors": [...] }`, §6.10) can be bound model-wide via the manifest's optional top-level `palette` reference. The binding **takes precedence over inline palettes** (enabling palette swapping / skins; a shadowed inline palette lints as hint **H03**), and a palette-less file's voxel index-range validation moves from parse time to cross-file validation. (3) New lint **W07**: a `.cvox` file present in the package but not referenced by `geometry`. `cuboidy.json` remains the package's only fixed filename (the load anchor); every other file is named freely and found by reference. External animation files were already specified in v0.6 (§6.3, §8) and are unchanged.
 
@@ -53,11 +55,11 @@ Cuboidy is **not** a triangle-mesh format. It does not specify skin weights, UV 
 | **Manifest** | `cuboidy.json` — the package's fixed-name anchor: rig hierarchy, animations, and references to every other file (geometry list, palette binding) |
 | **Geometry file** | A `.cvox` file — shape, optional inline palette, pivot, sockets. Default (when the manifest lists none): `voxels.cvox` |
 | **Palette file** | A `.json` file of shareable colors (§6.10), bound model-wide via the manifest |
-| **Packed Cuboidy** | `<name>.cuboidy` — ZIP archive of the package (reserved; not specified in v0.8) |
+| **Packed Cuboidy** | `<name>.cuboidy` — ZIP archive of the package (reserved; not specified in v0.9) |
 | **Part** | A rigid voxel sub-object, optionally parented in the hierarchy |
 | **Socket** | A named attachment point on a part |
 | **Keyframe** | A time-indexed pose snapshot for an animated part |
-| **Rest pose** | A part's pose when no animation is active: position = `part.position` (in parent space), rotation = the part's `pivot.rot` if present (around `pivot.pos`), else identity, scale = `[1,1,1]` |
+| **Rest pose** | A part's pose when no animation is active: position = `part.position` (in parent space), rotation = the manifest part's `rotation` composed with the geometry file's `pivot.rot` (`q_rotation · q_pivot`, both around `pivot.pos`; each identity when absent), scale = `[1,1,1]` |
 
 ---
 
@@ -143,7 +145,7 @@ The manifest is a standard JSON document (no comments, no trailing commas).
 ```json
 {
   "name": "<identifier>",
-  "version": "0.8",
+  "version": "0.9",
   "geometry": ["body.cvox", "gear/hat.cvox"],
   "palette": "palette.json",
   "parts": [ ... ],
@@ -154,7 +156,7 @@ The manifest is a standard JSON document (no comments, no trailing commas).
 | Field | Required | Type | Notes |
 |---|---|---|---|
 | `name` | **yes** | string (identifier) | Model identifier |
-| `version` | no | string | Spec version this model targets. Absent → the current spec version (`"0.8"` in this draft) |
+| `version` | no | string | Spec version this model targets. Absent → the current spec version (`"0.9"` in this draft) |
 | `geometry` | no | array of reference paths | The model's geometry files (§6.9). Absent → `["voxels.cvox"]` |
 | `palette` | no | reference path | Model-wide external palette binding (§6.10). Absent → each geometry file's inline palette |
 | `parts` | **yes** | array (non-empty) | At least one part |
@@ -166,7 +168,8 @@ The manifest is a standard JSON document (no comments, no trailing commas).
 {
   "name": "<identifier>",
   "parent": "<identifier>",
-  "position": [x, y, z]
+  "position": [x, y, z],
+  "rotation": [rx, ry, rz]
 }
 ```
 
@@ -175,6 +178,7 @@ The manifest is a standard JSON document (no comments, no trailing commas).
 | `name` | **yes** | string (identifier) | Unique within model |
 | `parent` | no | string (identifier) | Another part's name. Absent → this part is a root |
 | `position` | no | `[number, number, number]` | Where this part's pivot sits in **parent space** — voxel-unit offset from the parent's pivot (root parts: offset from world origin). Default `[0, 0, 0]` (this part's pivot coincides with the parent's pivot). See §7.7 for the full transform semantics |
+| `rotation` | no | `[number, number, number]` | The part's **rest rotation** in parent space: Euler degrees, ZXY intrinsic order (§4), applied around the part's pivot. Composes outside the geometry file's `pivot.rot` (`q_rest = q_rotation · q_pivot`, §7.7) and is inherited by children like any parent transform. Default: absent → identity |
 
 Rules:
 
@@ -228,7 +232,7 @@ Per-part shape, pivot, and sockets live in `voxels.cvox`, not here. See §7.
 
 | Field | Type | Interpretation | Default at first keyframe |
 |---|---|---|---|
-| `rot` | `[rx, ry, rz]` Euler degrees | **Relative** to rest pose rotation (the part's `pivot.rot` if present, else identity). Composed with `pivot.rot` as described in §7.7 | `[0, 0, 0]` |
+| `rot` | `[rx, ry, rz]` Euler degrees | **Relative** to rest pose rotation (the manifest part's `rotation` composed with the part's `pivot.rot`; identity when both are absent). Composed as described in §7.7 | `[0, 0, 0]` |
 | `pos` | `[dx, dy, dz]` voxel units | **Delta** added to `part.position` | `[0, 0, 0]` |
 | `scale` | `[sx, sy, sz]` multipliers | **Multiplier** from rest scale (`[1,1,1]`). Per-axis, non-uniform allowed. Applied around the same pivot point as `rot` | `[1, 1, 1]` |
 | `visible` | bool | Visibility toggle | `true` |
@@ -388,7 +392,7 @@ The framework generalizes naturally: each block-introducing keyword (currently `
 
 ### 7.1.1 Token table
 
-Every token has a **kind**: `bare` (whitespace-delimited; covers all cvox identifier slots and value slots) or `string` (a `"..."` literal). The string-kind is preserved at the lexer level for future extensibility, but no v0.8 production accepts it — every identifier, number, and color slot expects bare. Encountering a string-kind token in any slot surfaces as `invalid-value`. The patterns below describe the *text* of a token after kind-classification.
+Every token has a **kind**: `bare` (whitespace-delimited; covers all cvox identifier slots and value slots) or `string` (a `"..."` literal). The string-kind is preserved at the lexer level for future extensibility, but no v0.9 production accepts it — every identifier, number, and color slot expects bare. Encountering a string-kind token in any slot surfaces as `invalid-value`. The patterns below describe the *text* of a token after kind-classification.
 
 | Token | Kind | Pattern | Example |
 |---|---|---|---|
@@ -398,7 +402,7 @@ Every token has a **kind**: `bare` (whitespace-delimited; covers all cvox identi
 | **Number** | bare | integer or decimal, optional leading `-` (no exponent, no leading `.`) | `3`, `1.5`, `-2` |
 | **Voxel row** | bare | `[.0-9a-zA-Z]+` (only inside `voxels { … }`; length must equal `W`) | `000`, `0.0`, `101` |
 | **Identifier** | bare | §5 identifier rule (regex + not a reserved keyword); used for part/socket names | `head`, `leg-fl` |
-| **String literal** | string | `"` … `"` on a single line, content `[^"\n]*`. Text excludes the surrounding quotes. No v0.8 production accepts string-kind — reserved at the lexer layer for future use. | `"reserved"` |
+| **String literal** | string | `"` … `"` on a single line, content `[^"\n]*`. Text excludes the surrounding quotes. No v0.9 production accepts string-kind — reserved at the lexer layer for future use. | `"reserved"` |
 
 The `"..."` literal must open and close on the same physical line; the lexer does not match a `"` across a newline. An unmatched opening `"` is a **lexical error** — the tokenizer returns `invalid-value` immediately with a location pointing at the unmatched `"`, rather than producing an ambiguous partial token stream.
 
@@ -559,7 +563,7 @@ pivot <x> <y> <z> rot <rx> <ry> <rz>
 - Optional. Default: position bottom-center, `[W/2, 0, D/2]`; rotation absent (identity)
 - Position coordinates in **part-local space**, voxel units; may be fractional; may lie outside the grid bounds (W01 lint warning, not error)
 - Optional rotation: 3 Euler angles in degrees, ZXY intrinsic order (§4), introduced by the reserved word `rot` (structurally valid here and in `socket` declarations per §7.3)
-- **Semantic** (rest pose transform): `part.position` is the parent-space position of this part's pivot (§6.2), while `pivot.pos` is the same pivot point in part-local space. **Parent space is the coordinate frame whose origin coincides with the parent's pivot** (for a root part, parent space is world space). This is the standard rig convention — children attach to the parent's pivot, not to the corner of the parent's voxel grid. With matrix-vector convention and column vectors, a part-local point `v_local` lands at `v_parent = part.position + anim.pos + M_pivot · M_anim · S_anim · (v_local − pivot.pos)`, where `anim.pos` is the current keyframe `pos` delta, `M_pivot` is the rotation matrix for `pivot.rot` (identity when absent), `M_anim` is the animated rotation matrix, and `S_anim` is the animated scale matrix. Rotation and scale are both applied around `pivot.pos`; no `+ pivot.pos` term is added after the transform because `part.position` already names the pivot's destination in parent space — and crucially, no `− parent.pivot.pos` term appears either, because parent space is *already* parent-pivot-centered (see hierarchy composition below). Equivalently in quaternion form for rotation: `q_total = q_pivot · q_anim` (the animation rotation is applied first, in the rest-pose-local frame, then the pivot rotation brings it to the rest orientation)
+- **Semantic** (rest pose transform): `part.position` is the parent-space position of this part's pivot (§6.2), while `pivot.pos` is the same pivot point in part-local space. **Parent space is the coordinate frame whose origin coincides with the parent's pivot** (for a root part, parent space is world space). This is the standard rig convention — children attach to the parent's pivot, not to the corner of the parent's voxel grid. With matrix-vector convention and column vectors, a part-local point `v_local` lands at `v_parent = part.position + anim.pos + M_rot · M_pivot · M_anim · S_anim · (v_local − pivot.pos)`, where `anim.pos` is the current keyframe `pos` delta, `M_rot` is the rotation matrix for the manifest part's `rotation` (§6.2; identity when absent), `M_pivot` is the rotation matrix for `pivot.rot` (identity when absent), `M_anim` is the animated rotation matrix, and `S_anim` is the animated scale matrix. Rotation and scale are all applied around `pivot.pos`; no `+ pivot.pos` term is added after the transform because `part.position` already names the pivot's destination in parent space — and crucially, no `− parent.pivot.pos` term appears either, because parent space is *already* parent-pivot-centered (see hierarchy composition below). Equivalently in quaternion form for rotation: `q_total = q_rotation · q_pivot · q_anim` (the animation rotation is applied first, in the rest-pose-local frame, then the two rest terms — the geometry file's pivot rotation, then the manifest rotation — bring it to the rest orientation; `q_rest = q_rotation · q_pivot` is the rest pose rotation of §2)
 - **Hierarchy composition** (rest pose, no rotation/scale): because `v_parent` is already in parent-pivot-centered coordinates, composing through the parent chain is a plain sum of `position` values; the part's own pivot is subtracted exactly once at the leaf, and no ancestor's pivot ever appears:
 
   ```
@@ -647,7 +651,7 @@ voxels {
 }
 ```
 
-- A `//` sequence anywhere on a line starts a comment; the comment extends to the end of that line. This rule is applied before string-kind token recognition, so `"foo // bar"` is treated as an unterminated string after comment stripping in v0.8. Future versions that assign semantics to strings MUST define string-aware comment handling before enabling such strings in grammar productions
+- A `//` sequence anywhere on a line starts a comment; the comment extends to the end of that line. This rule is applied before string-kind token recognition, so `"foo // bar"` is treated as an unterminated string after comment stripping in v0.9. Future versions that assign semantics to strings MUST define string-aware comment handling before enabling such strings in grammar productions
 - **Universal scope** (§7.1 Layer 1): comments work in every scope, including inside `voxels { … }` blocks. They are stripped by the tokenizer before any scope-aware parsing
 - No whitespace context is required around `//`; the `/` character does not appear in any valid Cuboidy token, so `//` cannot collide with data
 - Note: color literals (`#FFFFFF`) use `#`, not `//`, and are unrelated to comments
@@ -754,7 +758,7 @@ part demo
     }
 ```
 
-All four are valid Cuboidy v0.8 input. (Note: a part literally named after a reserved keyword like `part part` is not expressible — v0.4 allowed this via quoting, but v0.5's strengthened identifier rule rejects reserved keywords in identifier slots. Pick a non-reserved name.)
+All four are valid Cuboidy v0.9 input. (Note: a part literally named after a reserved keyword like `part part` is not expressible — v0.4 allowed this via quoting, but v0.5's strengthened identifier rule rejects reserved keywords in identifier slots. Pick a non-reserved name.)
 
 ---
 
@@ -796,11 +800,12 @@ Reference cycles (a → b → a) are an error.
 | Location | Field | Default |
 |---|---|---|
 | `cuboidy.json` | part `position` | `[0, 0, 0]` |
+| `cuboidy.json` | part `rotation` | absent → identity (`[0, 0, 0]`) |
 | `cuboidy.json` | part `parent` | absent → root |
 | `cuboidy.json` | `geometry` | absent → `["voxels.cvox"]` |
 | `cuboidy.json` | `palette` | absent → each geometry file's inline palette |
 | `cuboidy.json` | `animations` | absent → no animations |
-| `cuboidy.json` | `version` | absent → current spec version (`"0.8"` in this draft) |
+| `cuboidy.json` | `version` | absent → current spec version (`"0.9"` in this draft) |
 | Keyframe (first) | `rot` | `[0, 0, 0]` |
 | Keyframe (first) | `pos` | `[0, 0, 0]` |
 | Keyframe (first) | `scale` | `[1, 1, 1]` |
@@ -940,7 +945,7 @@ All reference examples pass the current lint rules at error level.
 
 ---
 
-## 13. Future extensions (out of scope for v0.8)
+## 13. Future extensions (out of scope for v0.9)
 
 - **Packed format**: `<name>.cuboidy` (ZIP archive of the package)
 - **Per-geometry-file palette bindings**: a palette per `geometry` entry (v0.7 bindings are model-wide; §6.10)
