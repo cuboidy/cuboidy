@@ -1,5 +1,11 @@
 import { useMemo } from 'react';
-import { composePartRotation, type Palette, type Pose } from '@cuboidy/core';
+import type { ThreeEvent } from '@react-three/fiber';
+import {
+  composePartRotation,
+  type Palette,
+  type Part,
+  type Pose,
+} from '@cuboidy/core';
 import type { Object3D } from 'three';
 import type { RigNode } from '../lib/rig.js';
 import type { GizmoVisibility } from '../lib/types.js';
@@ -30,6 +36,21 @@ interface Props {
   registerObject?: ((name: string, obj: Object3D | null) => void) | undefined;
   // Marker picking for the SELECTED part's gizmos — see PartGizmos.
   picking?: GizmoPicking | null | undefined;
+  // Voxel-tool stroke handlers, attached to the SELECTED part's mesh
+  // group only (design §2.6: other parts are inert while a voxel tool
+  // is active).
+  voxelStroke?: VoxelStrokeHandlers | null | undefined;
+}
+
+export interface VoxelStrokeHandlers {
+  onPointerDown: (e: ThreeEvent<PointerEvent>) => void;
+  onPointerMove: (e: ThreeEvent<PointerEvent>) => void;
+  // Non-null while a stroke is in progress: the part's geometry as it
+  // was at STROKE START. Rendered as an invisible hit proxy so the
+  // whole drag raycasts against the start-of-stroke surface — erasing
+  // must not tunnel into the voxels a just-erased cell was hiding
+  // (MagicaVoxel semantics: one drag shaves one layer).
+  snapshot: Part | null;
 }
 
 // Renders the rig forest as nested three.js groups so a parent's animated
@@ -51,6 +72,7 @@ export function RiggedParts({
   onSelectPart,
   registerObject,
   picking,
+  voxelStroke,
 }: Props) {
   return (
     <>
@@ -67,6 +89,7 @@ export function RiggedParts({
           onSelectPart={onSelectPart}
           registerObject={registerObject}
           picking={picking}
+          voxelStroke={voxelStroke}
         />
       ))}
     </>
@@ -91,6 +114,7 @@ interface NodeProps {
   onSelectPart: (name: string) => void;
   registerObject?: ((name: string, obj: Object3D | null) => void) | undefined;
   picking?: GizmoPicking | null | undefined;
+  voxelStroke?: VoxelStrokeHandlers | null | undefined;
 }
 
 function RigNodeView({
@@ -104,6 +128,7 @@ function RigNodeView({
   onSelectPart,
   registerObject,
   picking,
+  voxelStroke,
 }: NodeProps) {
   const part = node.part;
   const pose = poses?.get(part.name) ?? REST_POSE;
@@ -158,6 +183,11 @@ function RigNodeView({
         <group
           position={[-piv.x, -piv.y, -piv.z]}
           visible={meshVisible}
+          {...(part.name === selectedPart &&
+            voxelStroke != null && {
+              onPointerDown: voxelStroke.onPointerDown,
+              onPointerMove: voxelStroke.onPointerMove,
+            })}
           onClick={(e) => {
             // An orbit drag ends in a click too — r3f's delta (px moved
             // between down and up) tells them apart. A hidden part lets
@@ -182,6 +212,21 @@ function RigNodeView({
             part={part}
             palette={partPalettes?.get(part.name) ?? palette}
           />
+          {/* Invisible stroke-start hit proxy (see VoxelStrokeHandlers.
+              snapshot): invisible objects still raycast, and since a
+              stroke only removes material, its surface is always the
+              NEAREST hit — the visible, partially-erased mesh sits at
+              or behind it. */}
+          {part.name === selectedPart &&
+            voxelStroke != null &&
+            voxelStroke.snapshot !== null && (
+              <group visible={false}>
+                <PartMesh
+                  part={voxelStroke.snapshot}
+                  palette={partPalettes?.get(part.name) ?? palette}
+                />
+              </group>
+            )}
           {/* Gizmos live in the same local frame as the mesh (and inside
               the scale group), so the frame follows animated scale while
               the pivot marker — the scale center — stays put. */}
@@ -203,6 +248,7 @@ function RigNodeView({
           onSelectPart={onSelectPart}
           registerObject={registerObject}
           picking={picking}
+          voxelStroke={voxelStroke}
         />
       ))}
     </group>

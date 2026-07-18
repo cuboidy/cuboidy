@@ -122,6 +122,15 @@ export type TransformSubTarget =
   | { kind: 'pivot' }
   | { kind: 'socket'; socket: string };
 
+// One cell of a voxel-tool stroke (design §2.6), in part-local voxel
+// coords. `value` is a palette index, or AIR for an erase.
+export interface VoxelEdit {
+  x: number;
+  y: number;
+  z: number;
+  value: number;
+}
+
 // A keyframe selected in the animation timeline: one attribute (rot/pos/
 // scale/visible) of one part at one time-key. The per-attribute model means
 // selection is an (attribute, time) pair, not a whole-keyframe marker.

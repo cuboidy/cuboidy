@@ -542,6 +542,51 @@ svg.lucide {
   background: var(--line);
 }
 
+/* Paint tool's active-color strip: floats over the preview's bottom
+   center while a voxel-painting tool is active. Read-only view of the
+   selected part's effective palette. */
+.palette-strip-overlay {
+  position: absolute;
+  bottom: 0.6rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+}
+
+.palette-strip {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 3px;
+  padding: 4px;
+  max-width: 60vw;
+  background: rgba(14, 17, 22, 0.78);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.strip-swatch {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: var(--r-1);
+  cursor: pointer;
+}
+
+.strip-swatch.active {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.strip-empty {
+  padding: 0.1rem 0.4rem;
+  font-size: 0.75rem;
+  color: var(--txt-2);
+}
+
 /* ─── Main / Sidebar / Scene ──────────────────────────────────────── */
 
 .main {

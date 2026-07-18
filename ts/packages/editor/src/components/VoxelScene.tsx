@@ -7,14 +7,21 @@ import {
   useState,
 } from 'react';
 import { OrbitControls } from '@react-three/drei';
-import { Canvas } from '@react-three/fiber';
+import { Canvas, type ThreeEvent } from '@react-three/fiber';
 import type { Object3D } from 'three';
-import type { Cvox, Manifest, Palette } from '@cuboidy/core';
+import {
+  AIR,
+  type Cvox,
+  type Manifest,
+  type Palette,
+  type Part,
+} from '@cuboidy/core';
 import type {
   GizmoVisibility,
   PreviewTool,
   TransformSubTarget,
   ViewMode,
+  VoxelEdit,
 } from '../lib/types.js';
 import {
   buildRigTree,
@@ -23,7 +30,10 @@ import {
 } from '../lib/rig.js';
 import { PartGizmos, type GizmoPicking } from './PartGizmos.js';
 import { PartMesh } from './PartMesh.js';
-import { RiggedParts } from './RiggedParts.js';
+import {
+  RiggedParts,
+  type VoxelStrokeHandlers,
+} from './RiggedParts.js';
 import { TransformGizmo } from './TransformGizmo.js';
 
 interface Props {
@@ -69,6 +79,11 @@ interface Props {
     socket: string,
     rot: [number, number, number],
   ) => void;
+  // Voxel tools (design §2.6): the active paint color (index into the
+  // selected part's effective palette; -1 = none available) and the
+  // stroke commit — one completed stroke = one call = one undo.
+  activeColorIndex: number;
+  onStrokeVoxels: (name: string, edits: readonly VoxelEdit[]) => void;
   // Bumped by the App on model LOAD. Camera framing (orbit target +
   // radius) recomputes only then and on view switch — never on edits,
   // so a gizmo drag can't move the viewpoint under the user.
@@ -109,10 +124,158 @@ export function VoxelScene({
   onRotatePivot,
   onMoveSocket,
   onRotateSocket,
+  activeColorIndex,
+  onStrokeVoxels,
   framingKey,
 }: Props) {
   const rigMode = viewMode !== 'cvox' && manifest !== undefined;
-  const visibleParts = cvox.parts.filter((p) => !hiddenParts.has(p.name));
+  const voxelActive = tool === 'erase' || tool === 'paint';
+
+  // ── Voxel stroke (design §2.6). The in-progress stroke lives here as
+  // a cell→value overlay; the model renders through `displayCvox` so
+  // the mesh updates live, and pointer-up commits everything as ONE
+  // dispatch upstream. A ref mirrors the state for the event handlers
+  // (pointermove bursts within one frame must see their own writes).
+  const [stroke, setStroke] = useState<ReadonlyMap<string, number> | null>(
+    null,
+  );
+  const strokeRef = useRef<Map<string, number> | null>(null);
+  const strokeActiveRef = useRef(false);
+  // Geometry frozen at stroke start — the drag's raycast target, so
+  // erasing can't tunnel into freshly-revealed voxels (one drag =
+  // one layer). See VoxelStrokeHandlers.snapshot.
+  const [strokeSnapshot, setStrokeSnapshot] = useState<Part | null>(null);
+
+  const selectedPartData = useMemo(
+    () =>
+      selectedPart === null
+        ? undefined
+        : cvox.parts.find((p) => p.name === selectedPart),
+    [cvox, selectedPart],
+  );
+
+  const strokeHit = (e: ThreeEvent<PointerEvent>) => {
+    if (selectedPartData === undefined) return;
+    const face = e.face;
+    if (face === undefined || face === null) return;
+    const value = tool === 'erase' ? AIR : activeColorIndex;
+    if (tool === 'paint' && value < 0) return; // empty palette
+    // Hit point (world) → the mesh's local frame == part-local voxel
+    // coords; stepping half a cell against the face normal (already
+    // local) lands inside the voxel that OWNS the hit face.
+    const local = e.object.worldToLocal(e.point.clone());
+    const n = face.normal;
+    const vx = Math.floor(local.x - n.x * 0.5);
+    const vy = Math.floor(local.y - n.y * 0.5);
+    const vz = Math.floor(local.z - n.z * 0.5);
+    const { w, h, d } = selectedPartData.size;
+    if (vx < 0 || vx >= w || vy < 0 || vy >= h || vz < 0 || vz >= d) return;
+    const key = `${vx},${vy},${vz}`;
+    const cur =
+      strokeRef.current?.get(key) ??
+      selectedPartData.voxels[vy]?.[vz]?.[vx];
+    if (cur === undefined || cur === value) return;
+    const next = new Map(strokeRef.current ?? []);
+    next.set(key, value);
+    strokeRef.current = next;
+    setStroke(next);
+  };
+
+  const voxelStroke: VoxelStrokeHandlers | null =
+    voxelActive && selectedPart !== null && !hiddenParts.has(selectedPart)
+      ? {
+          onPointerDown: (e) => {
+            // Alt+drag stays the camera (design §2.6); only a plain
+            // left press starts a stroke.
+            if (e.altKey || e.button !== 0) return;
+            e.stopPropagation();
+            strokeActiveRef.current = true;
+            setStrokeSnapshot(selectedPartData ?? null);
+            strokeHit(e);
+          },
+          onPointerMove: (e) => {
+            if (!strokeActiveRef.current) return;
+            // The nearest intersection is the snapshot surface; stop
+            // here so the same event doesn't ALSO fire for the visible
+            // mesh's face behind it.
+            e.stopPropagation();
+            strokeHit(e);
+          },
+          snapshot: strokeSnapshot,
+        }
+      : null;
+
+  const commitStroke = useCallback(() => {
+    const s = strokeRef.current;
+    strokeRef.current = null;
+    strokeActiveRef.current = false;
+    setStroke(null);
+    setStrokeSnapshot(null);
+    if (s === null || s.size === 0 || selectedPart === null) return;
+    const edits: VoxelEdit[] = [...s].map(([k, value]) => {
+      const [x, y, z] = k.split(',').map(Number) as [number, number, number];
+      return { x, y, z, value };
+    });
+    onStrokeVoxels(selectedPart, edits);
+  }, [selectedPart, onStrokeVoxels]);
+
+  // The stroke ends wherever the pointer goes up — including off the
+  // mesh and outside the canvas.
+  useEffect(() => {
+    const up = () => {
+      if (strokeActiveRef.current) commitStroke();
+    };
+    window.addEventListener('pointerup', up);
+    return () => window.removeEventListener('pointerup', up);
+  }, [commitStroke]);
+
+  // Tool/selection changed out from under an in-progress stroke —
+  // commit what's there rather than dropping the work.
+  useEffect(() => {
+    if (!voxelActive && strokeRef.current !== null) commitStroke();
+  }, [voxelActive, commitStroke]);
+
+  // Alt = orbit while a voxel tool holds the plain left-drag.
+  const [altHeld, setAltHeld] = useState(false);
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') setAltHeld(true);
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') setAltHeld(false);
+    };
+    const blur = () => setAltHeld(false);
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    window.addEventListener('blur', blur);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', blur);
+    };
+  }, []);
+
+  // The rendered model: the base cvox with the in-progress stroke
+  // overlaid on the selected part.
+  const displayCvox = useMemo(() => {
+    if (stroke === null || stroke.size === 0 || selectedPart === null) {
+      return cvox;
+    }
+    const parts = cvox.parts.map((p) => {
+      if (p.name !== selectedPart) return p;
+      const voxels = p.voxels.map((layer, y) =>
+        layer.map((row, z) =>
+          row.map((v, x) => stroke.get(`${x},${y},${z}`) ?? v),
+        ),
+      );
+      return { ...p, voxels };
+    });
+    return { ...cvox, parts };
+  }, [cvox, stroke, selectedPart]);
+
+  const visibleParts = displayCvox.parts.filter(
+    (p) => !hiddenParts.has(p.name),
+  );
 
   // name → outer rig group, registered by RiggedParts. Held in a ref
   // (registration happens during commit, reads during render see the
@@ -181,13 +344,16 @@ export function VoxelScene({
   }, [selectedPart, subPick, tool, cvox]);
 
   // Clicking a part body (or empty space) resets the sub-target along
-  // with the selection.
+  // with the selection. Inert while a voxel tool is active (design
+  // §2.6: clicks are edits there, and losing the selection mid-paint
+  // would be an accident).
   const selectAndResetSub = useCallback(
     (name: string | null) => {
+      if (tool === 'erase' || tool === 'paint') return;
       setSubPick({ part: name ?? '', sub: { kind: 'part' } });
       onSelectPart(name);
     },
-    [onSelectPart],
+    [onSelectPart, tool],
   );
 
   // Marker picking config for the selected part's PartGizmos. While a
@@ -207,7 +373,10 @@ export function VoxelScene({
       ? { ...gizmos, pivot: true, sockets: true }
       : gizmos;
 
-  const roots = useMemo(() => buildRigTree(cvox, manifest), [cvox, manifest]);
+  const roots = useMemo(
+    () => buildRigTree(displayCvox, manifest),
+    [displayCvox, manifest],
+  );
 
   // Framing deliberately does NOT track cvox/manifest edits: it
   // recomputes on load (framingKey) and view switch only. A move-gizmo
@@ -343,6 +512,7 @@ export function VoxelScene({
           onSelectPart={selectAndResetSub}
           registerObject={registerPartObject}
           picking={picking}
+          voxelStroke={voxelStroke}
         />
       ) : (
         // Cvox view: origin-stacked, no rig transforms by design. Part
@@ -351,6 +521,11 @@ export function VoxelScene({
           <group
             key={part.name}
             position={[0, 0, 0]}
+            {...(part.name === selectedPart &&
+              voxelStroke !== null && {
+                onPointerDown: voxelStroke.onPointerDown,
+                onPointerMove: voxelStroke.onPointerMove,
+              })}
             onClick={(e) => {
               // delta > 2px = an orbit drag's terminal click, not a
               // pick. A ray that also hit a gizmo marker yields to it
@@ -371,6 +546,17 @@ export function VoxelScene({
               part={part}
               palette={partPalettes?.get(part.name) ?? cvox.palette}
             />
+            {/* Invisible stroke-start hit proxy — see RiggedParts. */}
+            {part.name === selectedPart &&
+              voxelStroke !== null &&
+              voxelStroke.snapshot !== null && (
+                <group visible={false}>
+                  <PartMesh
+                    part={voxelStroke.snapshot}
+                    palette={partPalettes?.get(part.name) ?? cvox.palette}
+                  />
+                </group>
+              )}
             {part.name === selectedPart && (
               <PartGizmos
                 part={part}
@@ -383,7 +569,13 @@ export function VoxelScene({
         ))
       )}
       {gizmoHost}
-      <OrbitControls target={target} makeDefault />
+      {/* While a voxel tool holds the plain left-drag for strokes, the
+          orbit moves to Alt+drag (design §2.6). Pan/zoom unchanged. */}
+      <OrbitControls
+        target={target}
+        makeDefault
+        enableRotate={!voxelActive || altHeld}
+      />
     </Canvas>
   );
 }

@@ -61,6 +61,7 @@ import { FileTree } from './components/FileTree.js';
 import { ModelProperties } from './components/ModelProperties.js';
 import { KeyInspectorPanel } from './components/KeyInspectorPanel.js';
 import { PalettePanel } from './components/PalettePanel.js';
+import { PaletteStrip } from './components/PaletteStrip.js';
 import { PartProperties } from './components/PartProperties.js';
 import { PartTree } from './components/PartTree.js';
 import { PreviewToolbar } from './components/PreviewToolbar.js';
@@ -103,6 +104,7 @@ import type {
   LoadedSource,
   PreviewTool,
   ViewMode,
+  VoxelEdit,
 } from './lib/types.js';
 
 // Debounce window for live re-parse of the cvox source view. Long
@@ -551,6 +553,10 @@ export function App() {
   // view switches — never on document edits, so moving a part can't
   // drag the viewpoint along.
   const [framingKey, setFramingKey] = useState(0);
+  // Paint/attach tools' active color — an index into the selected
+  // part's effective palette, picked from the preview's PaletteStrip.
+  // Clamped at use (palettes shrink; selection changes files).
+  const [activeColorIndex, setActiveColorIndex] = useState(0);
   // Selected part for the right-panel inspector. Null = nothing
   // selected (right panel hides the properties section). Pruned at
   // render time if the name no longer exists in cvox.parts so stale
@@ -2325,6 +2331,32 @@ export function App() {
     [mutateCvoxPart],
   );
 
+  // One completed voxel-tool stroke (design §2.6) — every painted /
+  // erased cell of the drag lands as ONE geometry edit = one undo.
+  const handleStrokeVoxels = useCallback(
+    (partName: string, edits: readonly VoxelEdit[]) => {
+      if (edits.length === 0) return;
+      const byKey = new Map(
+        edits.map((e) => [`${e.x},${e.y},${e.z}`, e.value]),
+      );
+      mutateCvoxPart(null, partName, (p) => {
+        let changed = false;
+        const voxels = p.voxels.map((layer, y) =>
+          layer.map((row, z) =>
+            row.map((v, x) => {
+              const nv = byKey.get(`${x},${y},${z}`);
+              if (nv === undefined || nv === v) return v;
+              changed = true;
+              return nv;
+            }),
+          ),
+        );
+        return changed ? { ...p, voxels } : p;
+      });
+    },
+    [mutateCvoxPart],
+  );
+
   // Socket drag commits — part-local cvox edits through the shared
   // geometry mutation (one undo each).
   const handleGizmoMoveSocket = useCallback(
@@ -3006,12 +3038,10 @@ export function App() {
   const previewToolDisabled = useMemo(() => {
     const d: Partial<Record<PreviewTool, string>> = {
       attach: 'Not implemented yet',
-      erase: 'Not implemented yet',
-      paint: 'Not implemented yet',
     };
-    // Transform edits write geometry files (pivot/socket) and the
-    // manifest (part placement, pivot compensation) — any of them
-    // mid-edit unparseable disables the tools, matching the inspector.
+    // Every editing tool writes geometry files (and move/rotate the
+    // manifest too) — any of them mid-edit unparseable disables the
+    // tools, matching the inspector.
     const parseBroken =
       manifestParseError !== null ||
       cvoxParseError !== null ||
@@ -3019,9 +3049,14 @@ export function App() {
     if (effectiveViewMode === 'anim') {
       d.move = 'Rest editing lives in the Rig and Cvox views';
       d.rotate = 'Rest editing lives in the Rig and Cvox views';
+      d.erase = 'Voxel editing lives in the Rig and Cvox views for now';
+      d.paint = 'Voxel editing lives in the Rig and Cvox views for now';
     } else if (parseBroken) {
-      d.move = 'Fix the syntax errors first';
-      d.rotate = 'Fix the syntax errors first';
+      const msg = 'Fix the syntax errors first';
+      d.move = msg;
+      d.rotate = msg;
+      d.erase = msg;
+      d.paint = msg;
     }
     return d;
   }, [
@@ -3356,7 +3391,19 @@ export function App() {
       };
     }
     switch (id) {
-      case 'preview':
+      case 'preview': {
+        // The paint tool's color choices come from the SELECTED part's
+        // effective palette (§6.10 — unbound multi-file models resolve
+        // per defining file), so the painted index means the right
+        // color in the right file.
+        const stripPalette =
+          (effectiveSelectedPart !== null
+            ? partPalettes?.get(effectiveSelectedPart)
+            : undefined) ?? (renderCvox ?? source.cvox).palette;
+        const clampedColor =
+          stripPalette.length === 0
+            ? -1
+            : Math.min(activeColorIndex, stripPalette.length - 1);
         return {
           title,
           fill: true,
@@ -3449,12 +3496,24 @@ export function App() {
                   onRotatePivot={handleGizmoRotatePivot}
                   onMoveSocket={handleGizmoMoveSocket}
                   onRotateSocket={handleGizmoRotateSocket}
+                  activeColorIndex={clampedColor}
+                  onStrokeVoxels={handleStrokeVoxels}
                   framingKey={framingKey}
                 />
+              )}
+              {effectivePreviewTool === 'paint' && (
+                <div className="palette-strip-overlay">
+                  <PaletteStrip
+                    palette={stripPalette}
+                    active={clampedColor}
+                    onPick={setActiveColorIndex}
+                  />
+                </div>
               )}
             </>
           ),
         };
+      }
       case 'timeline':
         return {
           title,
