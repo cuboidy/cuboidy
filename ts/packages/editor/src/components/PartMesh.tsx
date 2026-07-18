@@ -1,11 +1,19 @@
 import { useEffect, useMemo } from 'react';
 import { buildMesh, type Palette, type Part } from '@cuboidy/core';
-import { BufferAttribute, BufferGeometry } from 'three';
+import { BufferAttribute, BufferGeometry, Mesh } from 'three';
 
 interface Props {
   part: Part;
   palette: Palette;
+  // Disable hit-testing — used mid voxel-stroke, when the invisible
+  // start-of-stroke snapshot must be the ONLY raycast target (a fresh
+  // in-bounds attach joins this mesh instantly, and letting it take
+  // hits would let a drag stack voxels onto its own output).
+  raycastDisabled?: boolean | undefined;
 }
+
+const noRaycast = () => null;
+const meshRaycast = Mesh.prototype.raycast;
 
 // three.js interprets vertex-color attributes as linear, but buildMesh
 // emits sRGB (matching the palette's color space — SPEC §10). Convert
@@ -15,7 +23,7 @@ function srgbToLinear(c: number): number {
   return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
 }
 
-export function PartMesh({ part, palette }: Props) {
+export function PartMesh({ part, palette, raycastDisabled }: Props) {
   const geometry = useMemo(() => {
     const mesh = buildMesh(part, palette);
     const linearColors = new Float32Array(mesh.colors.length);
@@ -31,7 +39,10 @@ export function PartMesh({ part, palette }: Props) {
   }, [part, palette]);
   useEffect(() => () => geometry.dispose(), [geometry]);
   return (
-    <mesh geometry={geometry}>
+    <mesh
+      geometry={geometry}
+      raycast={raycastDisabled === true ? noRaycast : meshRaycast}
+    >
       <meshStandardMaterial vertexColors />
     </mesh>
   );

@@ -51,7 +51,17 @@ export interface VoxelStrokeHandlers {
   // must not tunnel into the voxels a just-erased cell was hiding
   // (MagicaVoxel semantics: one drag shaves one layer).
   snapshot: Part | null;
+  // Attach cells outside the current grid, previewed as ghost cubes in
+  // part-local coords (the grid grows only at commit). Raycast-inert:
+  // they must never become stroke targets themselves.
+  ghost: {
+    cells: readonly (readonly [number, number, number])[];
+    color: number;
+  } | null;
 }
+
+// Ghost cubes / hit proxies never take raycasts.
+const noRaycast = () => null;
 
 // Renders the rig forest as nested three.js groups so a parent's animated
 // transform carries its whole subtree (SPEC §6.2 rigid hierarchy). Each
@@ -211,6 +221,9 @@ function RigNodeView({
           <PartMesh
             part={part}
             palette={partPalettes?.get(part.name) ?? palette}
+            raycastDisabled={
+              part.name === selectedPart && voxelStroke?.snapshot != null
+            }
           />
           {/* Invisible stroke-start hit proxy (see VoxelStrokeHandlers.
               snapshot): invisible objects still raycast, and since a
@@ -227,6 +240,18 @@ function RigNodeView({
                 />
               </group>
             )}
+          {part.name === selectedPart &&
+            voxelStroke?.ghost != null &&
+            voxelStroke.ghost.cells.map(([x, y, z]) => (
+              <mesh
+                key={`${x},${y},${z}`}
+                position={[x + 0.5, y + 0.5, z + 0.5]}
+                raycast={noRaycast}
+              >
+                <boxGeometry args={[1, 1, 1]} />
+                <meshStandardMaterial color={voxelStroke.ghost!.color} />
+              </mesh>
+            ))}
           {/* Gizmos live in the same local frame as the mesh (and inside
               the scale group), so the frame follows animated scale while
               the pivot marker — the scale center — stays put. */}

@@ -2332,7 +2332,13 @@ export function App() {
   );
 
   // One completed voxel-tool stroke (design §2.6) — every painted /
-  // erased cell of the drag lands as ONE geometry edit = one undo.
+  // erased / attached cell of the drag lands as ONE geometry edit =
+  // one undo. Attach cells may lie outside the grid: the grid grows to
+  // fit (§2.7), and negative-direction growth shifts voxels, pivot.pos
+  // and every socket.pos together — the render is unchanged because
+  // the −pivot draw offset cancels the shift exactly (no manifest
+  // compensation needed). The cvox view, which draws raw coordinates,
+  // re-origins once at commit.
   const handleStrokeVoxels = useCallback(
     (partName: string, edits: readonly VoxelEdit[]) => {
       if (edits.length === 0) return;
@@ -2340,18 +2346,79 @@ export function App() {
         edits.map((e) => [`${e.x},${e.y},${e.z}`, e.value]),
       );
       mutateCvoxPart(null, partName, (p) => {
-        let changed = false;
-        const voxels = p.voxels.map((layer, y) =>
-          layer.map((row, z) =>
-            row.map((v, x) => {
-              const nv = byKey.get(`${x},${y},${z}`);
-              if (nv === undefined || nv === v) return v;
-              changed = true;
-              return nv;
-            }),
-          ),
-        );
-        return changed ? { ...p, voxels } : p;
+        const { w, h, d } = p.size;
+        let minX = 0;
+        let minY = 0;
+        let minZ = 0;
+        let maxX = w - 1;
+        let maxY = h - 1;
+        let maxZ = d - 1;
+        for (const e of edits) {
+          if (e.value === AIR) continue; // erases can't grow the grid
+          if (e.x < minX) minX = e.x;
+          if (e.y < minY) minY = e.y;
+          if (e.z < minZ) minZ = e.z;
+          if (e.x > maxX) maxX = e.x;
+          if (e.y > maxY) maxY = e.y;
+          if (e.z > maxZ) maxZ = e.z;
+        }
+        const sx = -minX;
+        const sy = -minY;
+        const sz = -minZ;
+        const nw = maxX - minX + 1;
+        const nh = maxY - minY + 1;
+        const nd = maxZ - minZ + 1;
+        if (sx === 0 && sy === 0 && sz === 0 && nw === w && nh === h && nd === d) {
+          // In-place — no growth.
+          let changed = false;
+          const voxels = p.voxels.map((layer, y) =>
+            layer.map((row, z) =>
+              row.map((v, x) => {
+                const nv = byKey.get(`${x},${y},${z}`);
+                if (nv === undefined || nv === v) return v;
+                changed = true;
+                return nv;
+              }),
+            ),
+          );
+          return changed ? { ...p, voxels } : p;
+        }
+        const voxels: number[][][] = [];
+        for (let y = 0; y < nh; y++) {
+          const layer: number[][] = [];
+          for (let z = 0; z < nd; z++) {
+            const row: number[] = [];
+            for (let x = 0; x < nw; x++) {
+              const bx = x - sx;
+              const by = y - sy;
+              const bz = z - sz;
+              const base =
+                bx >= 0 && bx < w && by >= 0 && by < h && bz >= 0 && bz < d
+                  ? p.voxels[by]![bz]![bx]!
+                  : AIR;
+              row.push(byKey.get(`${bx},${by},${bz}`) ?? base);
+            }
+            layer.push(row);
+          }
+          voxels.push(layer);
+        }
+        return {
+          ...p,
+          size: { w: nw, h: nh, d: nd },
+          voxels,
+          pivot: {
+            ...p.pivot,
+            pos: {
+              x: p.pivot.pos.x + sx,
+              y: p.pivot.pos.y + sy,
+              z: p.pivot.pos.z + sz,
+            },
+          },
+          sockets: p.sockets.map((s) => ({
+            ...s,
+            pos: { x: s.pos.x + sx, y: s.pos.y + sy, z: s.pos.z + sz },
+          })),
+        };
       });
     },
     [mutateCvoxPart],
@@ -3036,9 +3103,7 @@ export function App() {
   // needs the rig view and a clean manifest AST. The not-yet-built
   // tools stay visible (the toolbar is the locked design) but disabled.
   const previewToolDisabled = useMemo(() => {
-    const d: Partial<Record<PreviewTool, string>> = {
-      attach: 'Not implemented yet',
-    };
+    const d: Partial<Record<PreviewTool, string>> = {};
     // Every editing tool writes geometry files (and move/rotate the
     // manifest too) — any of them mid-edit unparseable disables the
     // tools, matching the inspector.
@@ -3049,12 +3114,14 @@ export function App() {
     if (effectiveViewMode === 'anim') {
       d.move = 'Rest editing lives in the Rig and Cvox views';
       d.rotate = 'Rest editing lives in the Rig and Cvox views';
+      d.attach = 'Voxel editing lives in the Rig and Cvox views for now';
       d.erase = 'Voxel editing lives in the Rig and Cvox views for now';
       d.paint = 'Voxel editing lives in the Rig and Cvox views for now';
     } else if (parseBroken) {
       const msg = 'Fix the syntax errors first';
       d.move = msg;
       d.rotate = msg;
+      d.attach = msg;
       d.erase = msg;
       d.paint = msg;
     }
@@ -3501,7 +3568,8 @@ export function App() {
                   framingKey={framingKey}
                 />
               )}
-              {effectivePreviewTool === 'paint' && (
+              {(effectivePreviewTool === 'paint' ||
+                effectivePreviewTool === 'attach') && (
                 <div className="palette-strip-overlay">
                   <PaletteStrip
                     palette={stripPalette}

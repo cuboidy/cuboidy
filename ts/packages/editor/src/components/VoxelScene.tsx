@@ -90,6 +90,9 @@ interface Props {
   framingKey: number;
 }
 
+// Ghost cubes never take raycasts (stroke targets are the snapshot).
+const ghostNoRaycast = () => null;
+
 // Renders the model in one of two static modes:
 //   - Cvox view: every part sits at world origin [0,0,0], the literal
 //     .cvox-local convention. Multi-part files overlap; the sidebar
@@ -129,7 +132,8 @@ export function VoxelScene({
   framingKey,
 }: Props) {
   const rigMode = viewMode !== 'cvox' && manifest !== undefined;
-  const voxelActive = tool === 'erase' || tool === 'paint';
+  const voxelActive =
+    tool === 'erase' || tool === 'paint' || tool === 'attach';
 
   // ── Voxel stroke (design §2.6). The in-progress stroke lives here as
   // a cell→value overlay; the model renders through `displayCvox` so
@@ -158,17 +162,45 @@ export function VoxelScene({
     if (selectedPartData === undefined) return;
     const face = e.face;
     if (face === undefined || face === null) return;
-    const value = tool === 'erase' ? AIR : activeColorIndex;
-    if (tool === 'paint' && value < 0) return; // empty palette
     // Hit point (world) → the mesh's local frame == part-local voxel
-    // coords; stepping half a cell against the face normal (already
-    // local) lands inside the voxel that OWNS the hit face.
+    // coords. The raycast target is the start-of-stroke snapshot (the
+    // live mesh's raycast is suppressed during the stroke), so these
+    // are BASE coordinates, stable for the whole drag — and a stroke
+    // can never hit its own freshly-attached voxels, which is what
+    // keeps a drag one layer thick instead of stacking toward the
+    // camera.
     const local = e.object.worldToLocal(e.point.clone());
     const n = face.normal;
+    const { w, h, d } = selectedPartData.size;
+    if (tool === 'attach') {
+      const value = activeColorIndex;
+      if (value < 0) return; // empty palette
+      // Stepping half a cell ALONG the normal lands in the empty cell
+      // the hit face borders — possibly outside the grid (grown at
+      // commit; previewed as ghost cubes meanwhile).
+      const cx = Math.floor(local.x + n.x * 0.5);
+      const cy = Math.floor(local.y + n.y * 0.5);
+      const cz = Math.floor(local.z + n.z * 0.5);
+      const key = `${cx},${cy},${cz}`;
+      if (strokeRef.current?.has(key) === true) return;
+      const inBounds =
+        cx >= 0 && cx < w && cy >= 0 && cy < h && cz >= 0 && cz < d;
+      if (inBounds && selectedPartData.voxels[cy]?.[cz]?.[cx] !== AIR) {
+        return; // occupied
+      }
+      const next = new Map(strokeRef.current ?? []);
+      next.set(key, value);
+      strokeRef.current = next;
+      setStroke(next);
+      return;
+    }
+    const value = tool === 'erase' ? AIR : activeColorIndex;
+    if (tool === 'paint' && value < 0) return; // empty palette
+    // Stepping half a cell AGAINST the normal lands inside the voxel
+    // that OWNS the hit face.
     const vx = Math.floor(local.x - n.x * 0.5);
     const vy = Math.floor(local.y - n.y * 0.5);
     const vz = Math.floor(local.z - n.z * 0.5);
-    const { w, h, d } = selectedPartData.size;
     if (vx < 0 || vx >= w || vy < 0 || vy >= h || vz < 0 || vz >= d) return;
     const key = `${vx},${vy},${vz}`;
     const cur =
@@ -180,6 +212,43 @@ export function VoxelScene({
     strokeRef.current = next;
     setStroke(next);
   };
+
+  // Attach cells outside the current grid, previewed as ghost cubes
+  // (the grid itself grows only at commit — regrowing mid-stroke would
+  // shift the part's local frame under the drag).
+  const ghost = useMemo(() => {
+    if (
+      tool !== 'attach' ||
+      stroke === null ||
+      stroke.size === 0 ||
+      selectedPart === null ||
+      selectedPartData === undefined
+    ) {
+      return null;
+    }
+    const { w, h, d } = selectedPartData.size;
+    const cells: [number, number, number][] = [];
+    for (const [k] of stroke) {
+      const [x, y, z] = k.split(',').map(Number) as [number, number, number];
+      if (x < 0 || x >= w || y < 0 || y >= h || z < 0 || z >= d) {
+        cells.push([x, y, z]);
+      }
+    }
+    if (cells.length === 0) return null;
+    const pal = partPalettes?.get(selectedPart) ?? cvox.palette;
+    const c = pal[activeColorIndex];
+    const color =
+      c === undefined ? 0xffffff : (c.r << 16) | (c.g << 8) | c.b;
+    return { cells, color };
+  }, [
+    tool,
+    stroke,
+    selectedPart,
+    selectedPartData,
+    partPalettes,
+    cvox,
+    activeColorIndex,
+  ]);
 
   const voxelStroke: VoxelStrokeHandlers | null =
     voxelActive && selectedPart !== null && !hiddenParts.has(selectedPart)
@@ -202,6 +271,7 @@ export function VoxelScene({
             strokeHit(e);
           },
           snapshot: strokeSnapshot,
+          ghost,
         }
       : null;
 
@@ -545,6 +615,9 @@ export function VoxelScene({
             <PartMesh
               part={part}
               palette={partPalettes?.get(part.name) ?? cvox.palette}
+              raycastDisabled={
+                part.name === selectedPart && voxelStroke?.snapshot != null
+              }
             />
             {/* Invisible stroke-start hit proxy — see RiggedParts. */}
             {part.name === selectedPart &&
@@ -557,6 +630,18 @@ export function VoxelScene({
                   />
                 </group>
               )}
+            {part.name === selectedPart &&
+              voxelStroke?.ghost != null &&
+              voxelStroke.ghost.cells.map(([x, y, z]) => (
+                <mesh
+                  key={`${x},${y},${z}`}
+                  position={[x + 0.5, y + 0.5, z + 0.5]}
+                  raycast={ghostNoRaycast}
+                >
+                  <boxGeometry args={[1, 1, 1]} />
+                  <meshStandardMaterial color={voxelStroke.ghost!.color} />
+                </mesh>
+              ))}
             {part.name === selectedPart && (
               <PartGizmos
                 part={part}
