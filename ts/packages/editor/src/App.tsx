@@ -2185,6 +2185,22 @@ export function App() {
     [mutateManifestPart],
   );
 
+  // Rotate-gizmo drag commit: same one-undo shape. All-zero = identity
+  // drops the field, matching the inspector's checkbox convention
+  // (absent `rotation` is the SPEC default).
+  const handleGizmoRotatePart = useCallback(
+    (partName: string, rotation: [number, number, number]) => {
+      mutateManifestPart(null, partName, (entry) => {
+        if (rotation.every((v) => v === 0)) {
+          const { rotation: _drop, ...rest } = entry;
+          return rest;
+        }
+        return { ...entry, rotation };
+      });
+    },
+    [mutateManifestPart],
+  );
+
   const handleChangePartRotation = useCallback(
     (partName: string, axis: 0 | 1 | 2, value: number) => {
       mutateManifestPart(`part:rot:${partName}:${axis}`, partName, (entry) => {
@@ -2831,15 +2847,16 @@ export function App() {
   // tools stay visible (the toolbar is the locked design) but disabled.
   const previewToolDisabled = useMemo(() => {
     const d: Partial<Record<PreviewTool, string>> = {
-      rotate: 'Not implemented yet',
       attach: 'Not implemented yet',
       erase: 'Not implemented yet',
       paint: 'Not implemented yet',
     };
     if (effectiveViewMode !== 'rig') {
       d.move = 'Switch to Rig view to move parts';
+      d.rotate = 'Switch to Rig view to rotate parts';
     } else if (manifestParseError !== null) {
       d.move = 'Fix the manifest syntax error first';
+      d.rotate = 'Fix the manifest syntax error first';
     }
     return d;
   }, [effectiveViewMode, manifestParseError]);
@@ -3257,6 +3274,7 @@ export function App() {
                   onSelectPart={setSelectedPartName}
                   tool={effectivePreviewTool}
                   onMovePart={handleGizmoMovePart}
+                  onRotatePart={handleGizmoRotatePart}
                   framingKey={framingKey}
                 />
               )}

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import { OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import type { Object3D } from 'three';
@@ -32,13 +32,15 @@ interface Props {
   // Click-to-select: a part click selects it; a click that hits nothing
   // (r3f fires onPointerMissed only for non-drag clicks) deselects.
   onSelectPart: (name: string | null) => void;
-  // Active preview tool (design §2.1). This component acts on 'move'
-  // (rig view only — the App disables it elsewhere); everything else
-  // behaves as 'select' here.
+  // Active preview tool (design §2.1). This component acts on 'move' /
+  // 'rotate' (rig view only — the App disables them elsewhere);
+  // everything else behaves as 'select' here.
   tool: PreviewTool;
-  // Move-gizmo drag commit: the selected part's new parent-relative
-  // manifest position, once per completed drag.
+  // Transform-gizmo drag commits, once per completed drag: the selected
+  // part's new parent-relative manifest position / rest rotation (ZXY
+  // euler degrees; all-zero = drop the field).
   onMovePart: (name: string, position: [number, number, number]) => void;
+  onRotatePart: (name: string, rotation: [number, number, number]) => void;
   // Bumped by the App on model LOAD. Camera framing (orbit target +
   // radius) recomputes only then and on view switch — never on edits,
   // so a gizmo drag can't move the viewpoint under the user.
@@ -74,6 +76,7 @@ export function VoxelScene({
   onSelectPart,
   tool,
   onMovePart,
+  onRotatePart,
   framingKey,
 }: Props) {
   const rigMode = viewMode !== 'cvox' && manifest !== undefined;
@@ -91,10 +94,15 @@ export function VoxelScene({
     },
     [],
   );
-  const moveTarget =
-    rigMode && tool === 'move' && selectedPart !== null && !hiddenParts.has(selectedPart)
-      ? partObjects.current.get(selectedPart) ?? null
-      : null;
+  const transformMode =
+    tool === 'move' ? 'translate' : tool === 'rotate' ? 'rotate' : null;
+  // The selected part's geometry pivot rotation — the rotate commit
+  // factors it back out of the composed group quaternion (§7.7).
+  const selectedPivotRot = useMemo<[number, number, number] | undefined>(() => {
+    if (selectedPart === null) return undefined;
+    const rot = cvox.parts.find((p) => p.name === selectedPart)?.pivot.rot;
+    return rot === undefined ? undefined : [rot.x, rot.y, rot.z];
+  }, [cvox, selectedPart]);
 
   const roots = useMemo(() => buildRigTree(cvox, manifest), [cvox, manifest]);
 
@@ -171,13 +179,60 @@ export function VoxelScene({
           </group>
         ))
       )}
-      {moveTarget !== null && selectedPart !== null && (
-        <TransformGizmo
-          target={moveTarget}
-          onCommitPosition={(p) => onMovePart(selectedPart, p)}
-        />
-      )}
+      {rigMode &&
+        transformMode !== null &&
+        selectedPart !== null &&
+        !hiddenParts.has(selectedPart) && (
+          <TransformGizmoHost
+            registry={partObjects}
+            partName={selectedPart}
+            mode={transformMode}
+            pivotRot={selectedPivotRot}
+            onCommitPosition={(p) => onMovePart(selectedPart, p)}
+            onCommitRotation={(r) => onRotatePart(selectedPart, r)}
+          />
+        )}
       <OrbitControls target={target} makeDefault />
     </Canvas>
+  );
+}
+
+// Resolves the selected part's rig group from the registry INSIDE the
+// canvas: <Canvas> children commit in r3f's own React root, so only an
+// effect in here is guaranteed to run AFTER the groups' callback refs
+// of the same pass. (A DOM-side effect in VoxelScene runs before the
+// r3f subtree commits — it would read a still-empty registry when the
+// rig remounts, e.g. returning from cvox view with a transform tool
+// active, and the gizmo would never appear.) When the first render of
+// a pass misses, the effect bumps and the second render resolves.
+function TransformGizmoHost({
+  registry,
+  partName,
+  mode,
+  pivotRot,
+  onCommitPosition,
+  onCommitRotation,
+}: {
+  registry: { current: Map<string, Object3D> };
+  partName: string;
+  mode: 'translate' | 'rotate';
+  pivotRot: [number, number, number] | undefined;
+  onCommitPosition: (position: [number, number, number]) => void;
+  onCommitRotation: (rotation: [number, number, number]) => void;
+}) {
+  const [, bump] = useReducer((c: number) => c + 1, 0);
+  const target = registry.current.get(partName) ?? null;
+  useEffect(() => {
+    if (target === null && registry.current.has(partName)) bump();
+  });
+  if (target === null) return null;
+  return (
+    <TransformGizmo
+      target={target}
+      mode={mode}
+      pivotRot={pivotRot}
+      onCommitPosition={onCommitPosition}
+      onCommitRotation={onCommitRotation}
+    />
   );
 }
