@@ -100,6 +100,19 @@ export interface GizmoVisibility {
   frame: boolean;
 }
 
+// Preview toolbar tools (docs/preview-editing-design.md §2.1). 'select'
+// is the safe default: nothing model-mutating can happen in it. A tool
+// that isn't usable in the current view is disabled in the toolbar and
+// the effective tool falls back to 'select' without losing the user's
+// choice.
+export type PreviewTool =
+  | 'select'
+  | 'move'
+  | 'rotate'
+  | 'attach'
+  | 'erase'
+  | 'paint';
+
 // A keyframe selected in the animation timeline: one attribute (rot/pos/
 // scale/visible) of one part at one time-key. The per-attribute model means
 // selection is an (attribute, time) pair, not a whole-keyframe marker.

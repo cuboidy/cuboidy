@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { composePartRotation, type Palette, type Pose } from '@cuboidy/core';
+import type { Object3D } from 'three';
 import type { RigNode } from '../lib/rig.js';
 import type { GizmoVisibility } from '../lib/types.js';
 import { PartGizmos } from './PartGizmos.js';
@@ -23,6 +24,10 @@ interface Props {
   // Click-to-select: fired with the clicked part's name. The caller
   // owns deselection (Canvas onPointerMissed).
   onSelectPart: (name: string) => void;
+  // Exposes each part's outer rig group (whose local transform IS the
+  // parent-relative manifest position/rotation) so the owner can attach
+  // a transform gizmo to it. Called with null on unmount.
+  registerObject?: ((name: string, obj: Object3D | null) => void) | undefined;
 }
 
 // Renders the rig forest as nested three.js groups so a parent's animated
@@ -42,6 +47,7 @@ export function RiggedParts({
   selectedPart,
   gizmos,
   onSelectPart,
+  registerObject,
 }: Props) {
   return (
     <>
@@ -56,6 +62,7 @@ export function RiggedParts({
           selectedPart={selectedPart}
           gizmos={gizmos}
           onSelectPart={onSelectPart}
+          registerObject={registerObject}
         />
       ))}
     </>
@@ -78,6 +85,7 @@ interface NodeProps {
   selectedPart: string | null;
   gizmos: GizmoVisibility;
   onSelectPart: (name: string) => void;
+  registerObject?: ((name: string, obj: Object3D | null) => void) | undefined;
 }
 
 function RigNodeView({
@@ -89,6 +97,7 @@ function RigNodeView({
   selectedPart,
   gizmos,
   onSelectPart,
+  registerObject,
 }: NodeProps) {
   const part = node.part;
   const pose = poses?.get(part.name) ?? REST_POSE;
@@ -131,7 +140,11 @@ function RigNodeView({
     // scaled by this part's animated scale (SPEC §7.7 scopes S_anim to the
     // part's own (v_local − pivot.pos), and §6.2 places children at the
     // pivot in parent space).
-    <group position={groupPos} quaternion={quaternion}>
+    <group
+      position={groupPos}
+      quaternion={quaternion}
+      ref={(obj: Object3D | null) => registerObject?.(part.name, obj)}
+    >
       {/* Scale group: applies S_anim. The −pivot offset lives INSIDE it so
           the scale is centered on pivot.pos (scaling (v_local − pivot.pos),
           not (v_local) − pivot). At rest scale [1,1,1] this is a no-op. */}
@@ -172,6 +185,7 @@ function RigNodeView({
           selectedPart={selectedPart}
           gizmos={gizmos}
           onSelectPart={onSelectPart}
+          registerObject={registerObject}
         />
       ))}
     </group>

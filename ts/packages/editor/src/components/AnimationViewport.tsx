@@ -25,6 +25,8 @@ interface Props {
   gizmos: GizmoVisibility;
   // Click-to-select — see VoxelScene.
   onSelectPart: (name: string | null) => void;
+  // Camera-framing freeze against edits — see VoxelScene.
+  framingKey: number;
   onCreateClip: () => void;
 }
 
@@ -42,6 +44,7 @@ export function AnimationViewport({
   selectedPart,
   gizmos,
   onSelectPart,
+  framingKey,
   onCreateClip,
 }: Props) {
   const {
@@ -59,14 +62,18 @@ export function AnimationViewport({
   } = session;
 
   const roots = useMemo(() => buildRigTree(cvox, manifest), [cvox, manifest]);
+  // Framing recomputes on load only (framingKey), never on edits — see
+  // VoxelScene for the rationale.
+  /* eslint-disable react-hooks/exhaustive-deps */
   const center = useMemo<[number, number, number]>(
     () => computeSceneCenter(cvox, manifest, 'rig'),
-    [cvox, manifest],
+    [framingKey],
   );
   const radius = useMemo(() => {
     const span = computeSceneSpan(cvox, manifest, 'rig');
     return Math.max(span.w, span.h, span.d) * 1.8;
-  }, [cvox, manifest]);
+  }, [framingKey]);
+  /* eslint-enable react-hooks/exhaustive-deps */
   const gridSize = useMemo(() => {
     const raw = Math.max(
       20,

@@ -61,6 +61,7 @@ import { KeyInspectorPanel } from './components/KeyInspectorPanel.js';
 import { PalettePanel } from './components/PalettePanel.js';
 import { PartProperties } from './components/PartProperties.js';
 import { PartTree } from './components/PartTree.js';
+import { PreviewToolbar } from './components/PreviewToolbar.js';
 import { SaveButton } from './components/SaveButton.js';
 import { SettingsMenu } from './components/SettingsMenu.js';
 import { SourceEditor } from './components/SourceEditor.js';
@@ -98,6 +99,7 @@ import type {
   GizmoVisibility,
   LoadResult,
   LoadedSource,
+  PreviewTool,
   ViewMode,
 } from './lib/types.js';
 
@@ -537,6 +539,16 @@ export function App() {
   const handleToggleGizmo = useCallback((kind: keyof GizmoVisibility) => {
     setGizmoVis((v) => ({ ...v, [kind]: !v[kind] }));
   }, []);
+  // Active preview tool (design §2.1). Kept as the user's raw choice —
+  // the effective tool (computed below with the availability map) falls
+  // back to 'select' while the choice isn't usable in the current view,
+  // and comes back when it is.
+  const [previewTool, setPreviewTool] = useState<PreviewTool>('select');
+  // Bumped on model load; the 3D viewports recompute their camera
+  // framing (orbit target + distance) only when this changes or the
+  // view switches — never on document edits, so moving a part can't
+  // drag the viewpoint along.
+  const [framingKey, setFramingKey] = useState(0);
   // Selected part for the right-panel inspector. Null = nothing
   // selected (right panel hides the properties section). Pruned at
   // render time if the name no longer exists in cvox.parts so stale
@@ -704,6 +716,7 @@ export function App() {
       setCreating(null);
       setCvoxParseError(null);
       setManifestParseError(null);
+      setFramingKey((k) => k + 1);
       const hasManifest =
         result.source !== undefined &&
         result.source.kind === 'folder' &&
@@ -2160,6 +2173,18 @@ export function App() {
     [mutateManifestPart],
   );
 
+  // Move-gizmo drag commit (design §3): the whole drag lands as ONE
+  // whole-position write = one undo entry (vs the per-axis coalescing
+  // tags of the inspector's number inputs). mutateManifestPart creates
+  // the manifest entry if the part didn't have one — dragging an
+  // unplaced part places it.
+  const handleGizmoMovePart = useCallback(
+    (partName: string, position: [number, number, number]) => {
+      mutateManifestPart(null, partName, (entry) => ({ ...entry, position }));
+    },
+    [mutateManifestPart],
+  );
+
   const handleChangePartRotation = useCallback(
     (partName: string, axis: 0 | 1 | 2, value: number) => {
       mutateManifestPart(`part:rot:${partName}:${axis}`, partName, (entry) => {
@@ -2800,6 +2825,27 @@ export function App() {
         ? 'cvox'
         : viewMode;
 
+  // Preview toolbar availability (design §2.1/§2.2): a disabled tool
+  // carries its reason as the tooltip. Move edits the manifest, so it
+  // needs the rig view and a clean manifest AST. The not-yet-built
+  // tools stay visible (the toolbar is the locked design) but disabled.
+  const previewToolDisabled = useMemo(() => {
+    const d: Partial<Record<PreviewTool, string>> = {
+      rotate: 'Not implemented yet',
+      attach: 'Not implemented yet',
+      erase: 'Not implemented yet',
+      paint: 'Not implemented yet',
+    };
+    if (effectiveViewMode !== 'rig') {
+      d.move = 'Switch to Rig view to move parts';
+    } else if (manifestParseError !== null) {
+      d.move = 'Fix the manifest syntax error first';
+    }
+    return d;
+  }, [effectiveViewMode, manifestParseError]);
+  const effectivePreviewTool: PreviewTool =
+    previewToolDisabled[previewTool] !== undefined ? 'select' : previewTool;
+
   // The display model: all geometry files' parts merged (Phase C), with
   // the SPEC §6.10 palette precedence applied for rendering — a manifest-
   // bound external palette wins over the inline one. Editing surfaces
@@ -3132,7 +3178,16 @@ export function App() {
               {/* Panel-local toolbar: the view-mode switch belongs to the
                   Preview panel, so it floats over the 3D's top-right rather
                   than the global header (panel-system design A2). The gizmo
-                  toggles sit beside it — they only affect this panel too. */}
+                  toggles sit beside it — they only affect this panel too.
+                  The tool switch (preview-editing design §2.1) floats over
+                  the top-left. */}
+              <div className="preview-toolbar-overlay">
+                <PreviewToolbar
+                  tool={effectivePreviewTool}
+                  disabled={previewToolDisabled}
+                  onSetTool={setPreviewTool}
+                />
+              </div>
               <div className="view-mode-overlay">
                 <div
                   className="gizmo-toggles"
@@ -3187,6 +3242,7 @@ export function App() {
                   selectedPart={effectiveSelectedPart}
                   gizmos={gizmoVis}
                   onSelectPart={setSelectedPartName}
+                  framingKey={framingKey}
                   onCreateClip={handleCreateAnimationClip}
                 />
               ) : (
@@ -3199,6 +3255,9 @@ export function App() {
                   selectedPart={effectiveSelectedPart}
                   gizmos={gizmoVis}
                   onSelectPart={setSelectedPartName}
+                  tool={effectivePreviewTool}
+                  onMovePart={handleGizmoMovePart}
+                  framingKey={framingKey}
                 />
               )}
             </>

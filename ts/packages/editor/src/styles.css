@@ -482,6 +482,66 @@ svg.lucide {
   color: #fff;
 }
 
+/* Preview tool switch (preview-editing design §2.1): floats over the
+   3D's top-left, mirroring the view-mode overlay's chrome. Transform
+   tools │ voxel tools, exactly one active. */
+.preview-toolbar-overlay {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 5;
+}
+
+.preview-toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: rgba(14, 17, 22, 0.78);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.preview-toolbar button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  background: transparent;
+  color: var(--txt-2);
+  border: none;
+  border-radius: var(--r-2);
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+
+.preview-toolbar button:hover:not(:disabled):not(.active) {
+  background: var(--bg-3);
+  color: var(--txt-1);
+}
+
+.preview-toolbar button.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.preview-toolbar button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.preview-toolbar .tool-divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 3px;
+  background: var(--line);
+}
+
 /* ─── Main / Sidebar / Scene ──────────────────────────────────────── */
 
 .main {
