@@ -3,7 +3,7 @@ import { composePartRotation, type Palette, type Pose } from '@cuboidy/core';
 import type { Object3D } from 'three';
 import type { RigNode } from '../lib/rig.js';
 import type { GizmoVisibility } from '../lib/types.js';
-import { PartGizmos } from './PartGizmos.js';
+import { PartGizmos, type GizmoPicking } from './PartGizmos.js';
 import { PartMesh } from './PartMesh.js';
 
 interface Props {
@@ -28,6 +28,8 @@ interface Props {
   // parent-relative manifest position/rotation) so the owner can attach
   // a transform gizmo to it. Called with null on unmount.
   registerObject?: ((name: string, obj: Object3D | null) => void) | undefined;
+  // Marker picking for the SELECTED part's gizmos — see PartGizmos.
+  picking?: GizmoPicking | null | undefined;
 }
 
 // Renders the rig forest as nested three.js groups so a parent's animated
@@ -48,6 +50,7 @@ export function RiggedParts({
   gizmos,
   onSelectPart,
   registerObject,
+  picking,
 }: Props) {
   return (
     <>
@@ -63,6 +66,7 @@ export function RiggedParts({
           gizmos={gizmos}
           onSelectPart={onSelectPart}
           registerObject={registerObject}
+          picking={picking}
         />
       ))}
     </>
@@ -86,6 +90,7 @@ interface NodeProps {
   gizmos: GizmoVisibility;
   onSelectPart: (name: string) => void;
   registerObject?: ((name: string, obj: Object3D | null) => void) | undefined;
+  picking?: GizmoPicking | null | undefined;
 }
 
 function RigNodeView({
@@ -98,6 +103,7 @@ function RigNodeView({
   gizmos,
   onSelectPart,
   registerObject,
+  picking,
 }: NodeProps) {
   const part = node.part;
   const pose = poses?.get(part.name) ?? REST_POSE;
@@ -156,8 +162,18 @@ function RigNodeView({
             // An orbit drag ends in a click too — r3f's delta (px moved
             // between down and up) tells them apart. A hidden part lets
             // the ray pass through to whatever is behind it (three's
-            // raycaster ignores `visible`, so guard here).
+            // raycaster ignores `visible`, so guard here). A ray that
+            // also hit a gizmo marker yields to it: the marker usually
+            // sits INSIDE the mesh, so the part surface is the nearer
+            // hit and would otherwise swallow the pick.
             if (!meshVisible || e.delta > 2) return;
+            if (
+              e.intersections.some(
+                (i) => i.object.userData['gizmoMarker'] === true,
+              )
+            ) {
+              return;
+            }
             e.stopPropagation();
             onSelectPart(part.name);
           }}
@@ -170,7 +186,7 @@ function RigNodeView({
               the scale group), so the frame follows animated scale while
               the pivot marker — the scale center — stays put. */}
           {part.name === selectedPart && (
-            <PartGizmos part={part} show={gizmos} />
+            <PartGizmos part={part} show={gizmos} picking={picking ?? null} />
           )}
         </group>
       </group>
@@ -186,6 +202,7 @@ function RigNodeView({
           gizmos={gizmos}
           onSelectPart={onSelectPart}
           registerObject={registerObject}
+          picking={picking}
         />
       ))}
     </group>

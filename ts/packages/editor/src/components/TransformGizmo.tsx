@@ -14,14 +14,21 @@ import { quatFromEulerZXYDeg } from '@cuboidy/core';
 interface Props {
   target: Object3D;
   mode: 'translate' | 'rotate';
-  // The target part's geometry-side pivot rotation (§7.7 q_pivot).
-  // The rig group's quaternion is the composed q_rotation ⊗ q_pivot
-  // (⊗ q_anim ≡ identity at rest), so committing a rotate drag factors
-  // q_pivot back out to recover the manifest rest rotation.
-  pivotRot: [number, number, number] | undefined;
+  // Default translation snap step (design §2.5): 1.0 for part bodies,
+  // 0.5 for pivot / socket markers. Shift always drops to 0.1.
+  snapCoarse: number;
+  // Rotations to factor OUT of the target's quaternion before the
+  // euler conversion on a rotate commit — the rig group carries the
+  // §7.7 composite q_rotation ⊗ q_pivot, and only one factor belongs
+  // to the value being edited. Part-body rotate: factorOutRight =
+  // pivot.rot (keeps q_rotation). Pivot rotate: factorOutLeft = the
+  // manifest rest rotation (keeps q_pivot). Sockets: neither (their
+  // quaternion is stored as-is).
+  factorOutLeft: [number, number, number] | undefined;
+  factorOutRight: [number, number, number] | undefined;
   onCommitPosition: (position: [number, number, number]) => void;
   // Euler degrees, ZXY intrinsic (§4). [0,0,0] = identity; the App
-  // drops the manifest field for it (inspector convention).
+  // drops the field for it (inspector convention).
   onCommitRotation: (rotation: [number, number, number]) => void;
 }
 
@@ -74,6 +81,13 @@ interface FlippableGizmo {
 //
 // 4. The plane handles' corner L-brackets are decorative clutter —
 //    dropped (the quad alone reads fine).
+//
+// 5. The center XYZ free-move handle is dropped: arrows + planes are
+//    the predictable moves (design feedback — free screen-plane
+//    dragging reads as "the marker itself is being dragged"), and it
+//    sat exactly on top of the pivot/socket markers, fighting their
+//    click-to-toggle. Pickers raycast even while invisible, so the
+//    picker is dead-ended rather than hidden.
 function patchGizmo(controls: object): () => void {
   const g = (controls as { gizmo: unknown }).gizmo as FlippableGizmo &
     Object3D;
@@ -99,6 +113,26 @@ function patchGizmo(controls: object): () => void {
       isLine?: boolean;
     })[]) {
       if (h.tag === 'helper') continue;
+      if (h.name === 'XYZ') {
+        // 5 — drop the center free-move handle.
+        if (grp === g.picker.translate) {
+          const origRaycast = h.raycast;
+          h.raycast = () => {};
+          restores.push(() => {
+            h.raycast = origRaycast;
+          });
+        } else {
+          const orig = h.updateMatrixWorld;
+          h.updateMatrixWorld = (force?: boolean) => {
+            h.visible = false;
+            orig.call(h, force);
+          };
+          restores.push(() => {
+            h.updateMatrixWorld = orig;
+          });
+        }
+        continue;
+      }
       const planeBracket =
         h.isLine === true &&
         (h.name === 'XY' || h.name === 'YZ' || h.name === 'XZ');
@@ -239,7 +273,9 @@ function round1(v: number): number {
 export function TransformGizmo({
   target,
   mode,
-  pivotRot,
+  snapCoarse,
+  factorOutLeft,
+  factorOutRight,
   onCommitPosition,
   onCommitRotation,
 }: Props) {
@@ -276,13 +312,18 @@ export function TransformGizmo({
     return patchGizmo(controls);
   }, []);
 
-  // Composed group quaternion → manifest rest rotation in ZXY euler
-  // degrees, rounded to the 0.1° grid: q_rest = q ⊗ q_pivot⁻¹ (§7.7).
+  // Composed target quaternion → the edited factor in ZXY euler
+  // degrees, rounded to the 0.1° grid:
+  //   q_edited = q_left⁻¹ ⊗ q ⊗ q_right⁻¹    (§7.7 factoring)
   const extractRestEuler = (q: Quaternion): [number, number, number] => {
     const rest = q.clone();
-    if (pivotRot !== undefined) {
-      const [px, py, pz, pw] = quatFromEulerZXYDeg(pivotRot);
+    if (factorOutRight !== undefined) {
+      const [px, py, pz, pw] = quatFromEulerZXYDeg(factorOutRight);
       rest.multiply(new Quaternion(px, py, pz, pw).invert());
+    }
+    if (factorOutLeft !== undefined) {
+      const [px, py, pz, pw] = quatFromEulerZXYDeg(factorOutLeft);
+      rest.premultiply(new Quaternion(px, py, pz, pw).invert());
     }
     const e = new Euler().setFromQuaternion(rest, 'ZXY');
     const D = 180 / Math.PI;
@@ -294,7 +335,7 @@ export function TransformGizmo({
       ref={controlsRef}
       object={target}
       mode={mode}
-      translationSnap={fine ? 0.1 : 1}
+      translationSnap={fine ? 0.1 : snapCoarse}
       rotationSnap={((fine ? 1 : 15) * Math.PI) / 180}
       onMouseDown={() => {
         startPos.current = [

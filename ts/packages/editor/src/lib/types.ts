@@ -113,6 +113,15 @@ export type PreviewTool =
   | 'erase'
   | 'paint';
 
+// What the transform tools are gripping within the selected part
+// (design §2.4): the part body itself, its pivot marker, or one of its
+// socket markers. Picked by clicking the marker; resets to the body on
+// selection change.
+export type TransformSubTarget =
+  | { kind: 'part' }
+  | { kind: 'pivot' }
+  | { kind: 'socket'; socket: string };
+
 // A keyframe selected in the animation timeline: one attribute (rot/pos/
 // scale/visible) of one part at one time-key. The per-attribute model means
 // selection is an (attribute, time) pair, not a whole-keyframe marker.

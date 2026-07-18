@@ -10,6 +10,7 @@ import {
   AIR,
   InlineAnimationSchema,
   addAttrAtTime,
+  composePartRotation,
   deleteAttrAtKey,
   duplicatePart,
   isIdentifier,
@@ -20,6 +21,7 @@ import {
   parseCvox,
   parseManifest,
   parsePaletteFile,
+  quatRotateVec3,
   serializeColor,
   serializeCvox,
   setAttrAtKey,
@@ -2201,6 +2203,162 @@ export function App() {
     [mutateManifestPart],
   );
 
+  // Pivot drag commit — ALWAYS compensated (design §2.3): ONE
+  // dispatchEdit rewrites the geometry pivot AND the manifest so the
+  // rendered model doesn't move, only the marker does. The part's own
+  // position gains q_local·Δ (q_local = q_rotation ⊗ q_pivot — its
+  // voxels are drawn at −pivot inside the rotated frame); each DIRECT
+  // child loses Δ (children live inside that same rotated frame, so
+  // the parent's compensation would carry them by exactly +Δ there).
+  // Compensation values are derived math, rounded to 0.001 — tight
+  // enough to keep the invariant, sane enough for the file.
+  const handleGizmoMovePivot = useCallback(
+    (partName: string, pos: [number, number, number]) => {
+      if (!flushAllReparse()) return;
+      dispatchEdit(null, (current) => {
+        const src = current?.source;
+        if (src === undefined) return current;
+        const part = mergeGeometries(src).parts.find(
+          (p) => p.name === partName,
+        );
+        if (part === undefined) return current;
+        const op = part.pivot.pos;
+        if (op.x === pos[0] && op.y === pos[1] && op.z === pos[2]) {
+          return current;
+        }
+        const delta: [number, number, number] = [
+          pos[0] - op.x,
+          pos[1] - op.y,
+          pos[2] - op.z,
+        ];
+        const nextSrc = mapGeometryFiles(src, (cvox) => {
+          const i = cvox.parts.findIndex((p) => p.name === partName);
+          if (i < 0) return null;
+          const parts = cvox.parts.slice();
+          parts[i] = {
+            ...parts[i]!,
+            pivot: {
+              ...parts[i]!.pivot,
+              pos: { x: pos[0], y: pos[1], z: pos[2] },
+            },
+          };
+          return { ...cvox, parts };
+        });
+        if (nextSrc === src) return current;
+        if (nextSrc.kind !== 'folder' || nextSrc.manifest === undefined) {
+          // No rig to keep in place — a plain geometry edit.
+          return { ...current, source: nextSrc };
+        }
+        const round3 = (v: number) => Math.round(v * 1000) / 1000;
+        const m = nextSrc.manifest;
+        const parts = m.parts.slice();
+        const idx = parts.findIndex((p) => p.name === partName);
+        const base: ManifestPart = idx >= 0 ? parts[idx]! : { name: partName };
+        const pivotRot = part.pivot.rot;
+        const qLocal = composePartRotation(
+          base.rotation,
+          pivotRot === undefined
+            ? undefined
+            : [pivotRot.x, pivotRot.y, pivotRot.z],
+        );
+        const off = quatRotateVec3(qLocal, delta);
+        const bp = base.position ?? [0, 0, 0];
+        const moved: ManifestPart = {
+          ...base,
+          position: [
+            round3(bp[0] + off[0]),
+            round3(bp[1] + off[1]),
+            round3(bp[2] + off[2]),
+          ],
+        };
+        if (idx >= 0) parts[idx] = moved;
+        else parts.push(moved);
+        for (let i = 0; i < parts.length; i++) {
+          const p = parts[i]!;
+          if (p.parent !== partName || p.name === partName) continue;
+          const cp = p.position ?? [0, 0, 0];
+          parts[i] = {
+            ...p,
+            position: [
+              round3(cp[0] - delta[0]),
+              round3(cp[1] - delta[1]),
+              round3(cp[2] - delta[2]),
+            ],
+          };
+        }
+        const nextManifest: Manifest = { ...m, parts };
+        const baseFile =
+          nextSrc.manifestFile ?? { name: 'cuboidy.json', text: '' };
+        return {
+          ...current,
+          source: {
+            ...nextSrc,
+            manifest: nextManifest,
+            manifestFile: {
+              ...baseFile,
+              text: JSON.stringify(nextManifest, null, 2) + '\n',
+            },
+          },
+        };
+      });
+      setManifestParseError(null);
+    },
+    [dispatchEdit, flushAllReparse],
+  );
+
+  // Pivot rotate commit — writes the geometry-side pivot.rot (§7.7
+  // q_pivot; the gizmo factored the manifest rotation out upstream).
+  // All-zero drops the optional rot.
+  const handleGizmoRotatePivot = useCallback(
+    (partName: string, rot: [number, number, number]) => {
+      mutateCvoxPart(null, partName, (p) => {
+        if (rot.every((v) => v === 0)) {
+          const { rot: _drop, ...pivRest } = p.pivot;
+          return { ...p, pivot: pivRest };
+        }
+        return {
+          ...p,
+          pivot: { ...p.pivot, rot: { x: rot[0], y: rot[1], z: rot[2] } },
+        };
+      });
+    },
+    [mutateCvoxPart],
+  );
+
+  // Socket drag commits — part-local cvox edits through the shared
+  // geometry mutation (one undo each).
+  const handleGizmoMoveSocket = useCallback(
+    (partName: string, socketName: string, pos: [number, number, number]) => {
+      mutateCvoxPart(null, partName, (p) => ({
+        ...p,
+        sockets: p.sockets.map((s) =>
+          s.name === socketName
+            ? { ...s, pos: { x: pos[0], y: pos[1], z: pos[2] } }
+            : s,
+        ),
+      }));
+    },
+    [mutateCvoxPart],
+  );
+
+  const handleGizmoRotateSocket = useCallback(
+    (partName: string, socketName: string, rot: [number, number, number]) => {
+      mutateCvoxPart(null, partName, (p) => ({
+        ...p,
+        sockets: p.sockets.map((s) => {
+          if (s.name !== socketName) return s;
+          // All-zero = identity — drop the optional rot entirely.
+          if (rot.every((v) => v === 0)) {
+            const { rot: _drop, ...rest } = s;
+            return rest;
+          }
+          return { ...s, rot: { x: rot[0], y: rot[1], z: rot[2] } };
+        }),
+      }));
+    },
+    [mutateCvoxPart],
+  );
+
   const handleChangePartRotation = useCallback(
     (partName: string, axis: 0 | 1 | 2, value: number) => {
       mutateManifestPart(`part:rot:${partName}:${axis}`, partName, (entry) => {
@@ -2851,15 +3009,27 @@ export function App() {
       erase: 'Not implemented yet',
       paint: 'Not implemented yet',
     };
-    if (effectiveViewMode !== 'rig') {
-      d.move = 'Switch to Rig view to move parts';
-      d.rotate = 'Switch to Rig view to rotate parts';
-    } else if (manifestParseError !== null) {
-      d.move = 'Fix the manifest syntax error first';
-      d.rotate = 'Fix the manifest syntax error first';
+    // Transform edits write geometry files (pivot/socket) and the
+    // manifest (part placement, pivot compensation) — any of them
+    // mid-edit unparseable disables the tools, matching the inspector.
+    const parseBroken =
+      manifestParseError !== null ||
+      cvoxParseError !== null ||
+      fileParseErrors.size > 0;
+    if (effectiveViewMode === 'anim') {
+      d.move = 'Rest editing lives in the Rig and Cvox views';
+      d.rotate = 'Rest editing lives in the Rig and Cvox views';
+    } else if (parseBroken) {
+      d.move = 'Fix the syntax errors first';
+      d.rotate = 'Fix the syntax errors first';
     }
     return d;
-  }, [effectiveViewMode, manifestParseError]);
+  }, [
+    effectiveViewMode,
+    manifestParseError,
+    cvoxParseError,
+    fileParseErrors,
+  ]);
   const effectivePreviewTool: PreviewTool =
     previewToolDisabled[previewTool] !== undefined ? 'select' : previewTool;
 
@@ -3275,6 +3445,10 @@ export function App() {
                   tool={effectivePreviewTool}
                   onMovePart={handleGizmoMovePart}
                   onRotatePart={handleGizmoRotatePart}
+                  onMovePivot={handleGizmoMovePivot}
+                  onRotatePivot={handleGizmoRotatePivot}
+                  onMoveSocket={handleGizmoMoveSocket}
+                  onRotateSocket={handleGizmoRotateSocket}
                   framingKey={framingKey}
                 />
               )}
