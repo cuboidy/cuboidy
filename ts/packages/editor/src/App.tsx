@@ -2333,12 +2333,13 @@ export function App() {
 
   // One completed voxel-tool stroke (design §2.6) — every painted /
   // erased / attached cell of the drag lands as ONE geometry edit =
-  // one undo. Attach cells may lie outside the grid: the grid grows to
-  // fit (§2.7), and negative-direction growth shifts voxels, pivot.pos
-  // and every socket.pos together — the render is unchanged because
-  // the −pivot draw offset cancels the shift exactly (no manifest
-  // compensation needed). The cvox view, which draws raw coordinates,
-  // re-origins once at commit.
+  // one undo. The grid is then FITTED to the result's solid cells
+  // (§2.7): attach grows it, erase shrinks it, and pre-existing empty
+  // margins (lint W04) heal along the way. Either direction shifts
+  // voxels, pivot.pos and every socket.pos together — the render is
+  // unchanged because the −pivot draw offset cancels the shift exactly
+  // (no manifest compensation needed). The cvox view, which draws raw
+  // coordinates, re-origins once at commit.
   const handleStrokeVoxels = useCallback(
     (partName: string, edits: readonly VoxelEdit[]) => {
       if (edits.length === 0) return;
@@ -2347,20 +2348,46 @@ export function App() {
       );
       mutateCvoxPart(null, partName, (p) => {
         const { w, h, d } = p.size;
-        let minX = 0;
-        let minY = 0;
-        let minZ = 0;
-        let maxX = w - 1;
-        let maxY = h - 1;
-        let maxZ = d - 1;
+        // Tight bounds of the result's solid cells, and whether any
+        // cell actually changes.
+        let minX = Infinity;
+        let minY = Infinity;
+        let minZ = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+        let maxZ = -Infinity;
+        let changed = false;
+        const consider = (x: number, y: number, z: number) => {
+          if (x < minX) minX = x;
+          if (y < minY) minY = y;
+          if (z < minZ) minZ = z;
+          if (x > maxX) maxX = x;
+          if (y > maxY) maxY = y;
+          if (z > maxZ) maxZ = z;
+        };
+        for (let y = 0; y < h; y++) {
+          for (let z = 0; z < d; z++) {
+            for (let x = 0; x < w; x++) {
+              const base = p.voxels[y]![z]![x]!;
+              const nv = byKey.get(`${x},${y},${z}`);
+              if (nv !== undefined && nv !== base) changed = true;
+              if ((nv ?? base) !== AIR) consider(x, y, z);
+            }
+          }
+        }
         for (const e of edits) {
-          if (e.value === AIR) continue; // erases can't grow the grid
-          if (e.x < minX) minX = e.x;
-          if (e.y < minY) minY = e.y;
-          if (e.z < minZ) minZ = e.z;
-          if (e.x > maxX) maxX = e.x;
-          if (e.y > maxY) maxY = e.y;
-          if (e.z > maxZ) maxZ = e.z;
+          const inB =
+            e.x >= 0 && e.x < w && e.y >= 0 && e.y < h && e.z >= 0 && e.z < d;
+          if (inB || e.value === AIR) continue;
+          changed = true;
+          consider(e.x, e.y, e.z);
+        }
+        if (!changed) return p;
+        if (minX === Infinity) {
+          // Every solid cell erased — keep a 1³ empty part (W05 flags
+          // it; deleting the part stays an explicit tree operation).
+          // Origin unchanged, so pivot/sockets stay put.
+          return { ...p, size: { w: 1, h: 1, d: 1 }, voxels: [[[AIR]]] };
         }
         const sx = -minX;
         const sy = -minY;
@@ -2369,19 +2396,13 @@ export function App() {
         const nh = maxY - minY + 1;
         const nd = maxZ - minZ + 1;
         if (sx === 0 && sy === 0 && sz === 0 && nw === w && nh === h && nd === d) {
-          // In-place — no growth.
-          let changed = false;
+          // Bounds already tight — in-place cell edits only.
           const voxels = p.voxels.map((layer, y) =>
             layer.map((row, z) =>
-              row.map((v, x) => {
-                const nv = byKey.get(`${x},${y},${z}`);
-                if (nv === undefined || nv === v) return v;
-                changed = true;
-                return nv;
-              }),
+              row.map((v, x) => byKey.get(`${x},${y},${z}`) ?? v),
             ),
           );
-          return changed ? { ...p, voxels } : p;
+          return { ...p, voxels };
         }
         const voxels: number[][][] = [];
         for (let y = 0; y < nh; y++) {
