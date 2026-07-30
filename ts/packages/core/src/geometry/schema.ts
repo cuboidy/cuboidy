@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Identifier } from '../identifier-schema.js';
-import { MAX_PALETTE } from '../cvox/palette.js';
+import { MAX_PALETTE } from './palette.js';
 
 // SPEC §7: the Zod schema for a geometry file (`voxels.json`). Single source of
 // truth for both the runtime reader and the published JSON Schema artifact, so

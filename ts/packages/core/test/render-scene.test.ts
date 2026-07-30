@@ -6,8 +6,8 @@ import {
   type Voxel,
 } from '../src/render/scene.js';
 import { QUAT_IDENTITY, quatFromEulerZXYDeg } from '../src/rig-transform.js';
-import { AIR } from '../src/cvox/voxel-row.js';
-import type { Palette, Part } from '../src/cvox/types.js';
+import { AIR } from '../src/geometry/voxel-row.js';
+import type { Palette, Part } from '../src/geometry/types.js';
 
 const PALETTE: Palette = [
   { r: 255, g: 0, b: 0, a: 255 },

@@ -1,7 +1,7 @@
 import type { Diagnostic } from '../diagnostic.js';
 import { isInlineAnimation, type InlineAnimation } from '../animation.js';
-import type { Cvox, Palette, Part } from '../cvox/types.js';
-import { AIR } from '../cvox/voxel-row.js';
+import type { Cvox, Palette, Part } from '../geometry/types.js';
+import { AIR } from '../geometry/voxel-row.js';
 import type { Manifest } from '../manifest.js';
 
 // SPEC §11 cross-file validation, v0.7 project shape: a manifest plus one
@@ -18,7 +18,7 @@ export interface ProjectInput {
   // Resolved §6.3 external animations by clip name, when the caller
   // loaded them. Inline animations come from `manifest` directly.
   externalAnims?: ReadonlyMap<string, { path: string; anim: InlineAnimation }>;
-  // Every .cvox path present in the package (for the W07 unreferenced
+  // Every geometry path present in the package (for the W07 unreferenced
   // check). Absent → the check is skipped (caller can't enumerate files).
   packageCvoxPaths?: readonly string[];
 }
@@ -130,7 +130,7 @@ export function validateProject(input: ProjectInput): Diagnostic[] {
     }
   }
 
-  // W07 — a .cvox present in the package but not referenced by the
+  // W07 — a geometry file present in the package but not referenced by the
   // manifest geometry list. Compares package-relative paths verbatim.
   if (input.packageCvoxPaths !== undefined) {
     const referenced = new Set(geometries.map((g) => g.path));
@@ -157,7 +157,7 @@ export function validateCrossFile(
 ): Diagnostic[] {
   return validateProject({
     manifest,
-    geometries: [{ path: 'voxels.cvox', cvox: voxelDef }],
+    geometries: [{ path: 'voxels.json', cvox: voxelDef }],
   });
 }
 

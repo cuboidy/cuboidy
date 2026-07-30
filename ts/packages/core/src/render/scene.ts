@@ -1,5 +1,5 @@
-import type { Palette, Part } from '../cvox/types.js';
-import { AIR } from '../cvox/voxel-row.js';
+import type { Palette, Part } from '../geometry/types.js';
+import { AIR } from '../geometry/voxel-row.js';
 import { quatRotateVec3, type WorldTransform } from '../rig-transform.js';
 import type { Rgb } from './framebuffer.js';
 import type { Vec3 } from './vec.js';

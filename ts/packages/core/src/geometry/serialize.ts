@@ -1,6 +1,6 @@
-import { serializeColor } from '../cvox/serialize.js';
-import { indexToChar } from '../cvox/voxel-row.js';
-import type { Cvox, Part, Pivot, Size, Socket, Vec3 } from '../cvox/types.js';
+import { serializeColor } from './palette.js';
+import { indexToChar } from './voxel-row.js';
+import type { Cvox, Part, Pivot, Size, Socket, Vec3 } from './types.js';
 import type { GeometryDoc } from './schema.js';
 
 // SPEC §7: canonical emission of a geometry file. Two layers, because callers

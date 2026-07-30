@@ -4,57 +4,60 @@ Shared negative fixtures for all Cuboidy implementations (TS, C#, ...).
 Each subdirectory is named after a structural diagnostic code from `SPEC.md`
 §11; every file inside that subdirectory must fail with that code.
 
+Both file kinds are JSON, so a fixture only fails structurally — a malformed
+*document* is the JSON parser's business and needs no shared fixture.
+
 ## Layout
 
 ```
 fixtures/
 ├── README.md
-├── cvox/
+├── geometry/                          SPEC §7 — a geometry file
 │   ├── missing/
-│   │   ├── palette.cvox            no `palette` declaration anywhere
-│   │   ├── parts.cvox              palette declared but no `part`
-│   │   ├── voxels.cvox             part has size but no voxels block
-│   │   ├── voxels-unclosed.cvox    voxels block reaches EOF without `}`
-│   │   ├── stray-comma.cvox        `,` outside any voxels block
-│   │   ├── stray-open-brace.cvox   `{` outside its valid scope (after `voxels`)
-│   │   ├── stray-close-brace.cvox  `}` outside any voxels block
-│   │   └── stray-rot.cvox          `rot` outside pivot/socket
+│   │   ├── parts.json                 no `parts` key
+│   │   ├── parts-empty.json           `parts` present but empty
+│   │   ├── size.json                  part has voxels but no `size`
+│   │   └── voxels.json                part has size but no `voxels`
 │   ├── duplicate/
-│   │   ├── palette.cvox            two `palette` declarations
-│   │   └── voxels.cvox             two voxels blocks in a single part
-│   ├── invalid-value/
-│   │   ├── bad-voxel-char.cvox     voxel cell outside [.0-9a-zA-Z]
-│   │   └── size-zero.cvox          size dimension 0 is below the v0.3 min
+│   │   ├── part-name.json             two parts share a name
+│   │   └── socket-name.json           two sockets in one part share a name
 │   ├── unknown/
-│   │   └── unknown-keyword.cvox    non-reserved identifier at top level
+│   │   ├── unknown-field.json         unrecognised top-level key
+│   │   └── unknown-part-field.json    unrecognised key on a part
+│   ├── invalid-value/
+│   │   ├── bad-voxel-char.json        voxel cell outside [.0-9a-zA-Z]
+│   │   ├── bad-color.json             palette entry is not #RGB/#RGBA/#RRGGBB/#RRGGBBAA
+│   │   ├── bad-part-name.json         part name fails the §5 identifier rule
+│   │   ├── palette-index.json         cell indexes past the declared palette
+│   │   └── size-zero.json             size dimension 0 is below the minimum
 │   └── wrong-arity/
-│       ├── row-width.cvox          row width does not match W
-│       ├── row-count.cvox          rows in a layer-section does not match D
-│       └── section-count.cvox      layer-section count does not match H
-└── json/
+│       ├── row-width.json             row length does not match W
+│       ├── row-count.json             rows in a layer do not match D
+│       ├── layer-count.json           layer count does not match H
+│       └── size-arity.json            `size` is not a triple
+└── manifest/                          SPEC §6 — cuboidy.json
     └── missing/
-        ├── name.json             missing top-level `name`
-        └── parts.json            missing or empty `parts`
+        ├── name.json                  missing top-level `name`
+        └── parts.json                 missing or empty `parts`
 ```
-
-Add a `// ...` comment on the first line of each cvox file documenting the
-specific intent. JSON files (which have no comment syntax) document intent
-through the filename alone.
 
 ## Cross-implementation parity
 
 A new implementation passes parity testing when, for every fixture, it
 returns the diagnostic code matching its enclosing subdirectory name. The
 TypeScript reference impl checks this automatically via
-`ts/packages/core/test/fixtures-parity.test.ts`.
+`ts/packages/core/test/fixtures-parity.test.ts`, which also fails if a code
+directory is empty — so adding a directory means adding a fixture.
 
 ## Naming convention
 
 ```
-fixtures/<kind>/<code>/<descriptor>.<ext>
+fixtures/<kind>/<code>/<descriptor>.json
 ```
 
-- `<kind>` = `cvox` or `json`
+- `<kind>` = `geometry` or `manifest`
 - `<code>` = `missing` / `duplicate` / `unknown` / `invalid-value` / `wrong-arity`
 - `<descriptor>` = a short kebab-case identifier of what the file tests
-- `<ext>` = `cvox` or `json`
+
+JSON has no comment syntax, so a fixture documents its intent through the
+filename and the table above.

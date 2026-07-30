@@ -9,7 +9,7 @@ import {
   runQuery,
   type Query,
 } from '../src/cli/query-runner.js';
-import { geoFromText } from './helpers/geometry.js';
+import { geo } from './helpers/geometry.js';
 
 const REPO_ROOT = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -19,10 +19,9 @@ const REPO_ROOT = resolve(
 async function makeModel(files: Record<string, string>): Promise<string> {
   const dir = await mkdtemp(resolve(tmpdir(), 'cuboidy-query-test-'));
   for (const [name, content] of Object.entries(files)) {
-    const geometry = name.endsWith('.cvox');
-    const path = resolve(dir, geometry ? name.replace(/\.cvox$/, '.json') : name);
+    const path = resolve(dir, name);
     await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, geometry ? geoFromText(content) : content, 'utf-8');
+    await writeFile(path, content, 'utf-8');
   }
   return dir;
 }
@@ -92,7 +91,7 @@ describe('parseCoreArg', () => {
 describe('runQuery — crown model (integer-only)', () => {
   const dir = resolve(REPO_ROOT, 'models/crown');
 
-  // Crown geometry recap (models/crown/voxels.cvox):
+  // Crown geometry recap (models/crown/voxels.json):
   //   size 3 2 3, pivot 1 0 1 (= manifest position 1,0,1 → world pivot
   //   identical to part-local pivot, so voxel (x,y,z) lands at world
   //   (x, y, z) for x∈0..2, y∈0..1, z∈0..2).
@@ -166,8 +165,10 @@ describe('runQuery — half-voxel offsets', () => {
   // for — cuboidy-query must still answer correctly.
   async function makeHalfVoxelModel(): Promise<string> {
     return makeModel({
-      'voxels.cvox':
-        'palette #F00\npart p\nsize 1 1 1\npivot 0 0 0\nvoxels { 0 }',
+      'voxels.json': geo(
+        [{ name: 'p', size: [1, 1, 1], pivot: [0, 0, 0], voxels: [['0']] }],
+        ['#F00'],
+      ),
       'cuboidy.json': JSON.stringify({
         name: 'half',
         parts: [{ name: 'p', position: [2.5, 1, 3] }],
@@ -206,10 +207,13 @@ describe('runQuery — half-voxel offsets', () => {
     // a 4-cell string from x=2.5 to x=4 at step 0.5:
     //   2.5→0, 3→., 3.5→., 4→0   ⇒   "0..0"
     const dir = await makeModel({
-      'voxels.cvox':
-        'palette #F00\n' +
-        'part p\nsize 1 1 1\npivot 0 0 0\nvoxels { 0 }\n' +
-        'part q\nsize 1 1 1\npivot 0 0 0\nvoxels { 0 }',
+      'voxels.json': geo(
+        [
+          { name: 'p', size: [1, 1, 1], pivot: [0, 0, 0], voxels: [['0']] },
+          { name: 'q', size: [1, 1, 1], pivot: [0, 0, 0], voxels: [['0']] },
+        ],
+        ['#F00'],
+      ),
       'cuboidy.json': JSON.stringify({
         name: 'mixed',
         parts: [
@@ -236,7 +240,7 @@ describe('runQuery — IO + arg errors', () => {
     expect(r.exitCode).toBe(2);
   });
 
-  it('returns exit 2 when voxels.cvox is missing', async () => {
+  it('returns exit 2 when voxels.json is missing', async () => {
     const dir = await makeModel({});
     const r = await runQuery(dir, {
       queries: [{ kind: 'at', x: 0, y: 0, z: 0 }],
@@ -251,11 +255,13 @@ describe('runQuery — IO + arg errors', () => {
 describe('runQuery — rest rotations', () => {
   it('warns about axis-aligned voxels and answers at the rotated placement', async () => {
     const dir = await makeModel({
-      'voxels.cvox': [
-        'palette #FF0000 #00FF00',
-        'part body\n    size 1 1 1\n    pivot 0 0 0\n    voxels { 0 }',
-        'part arm\n    size 1 1 1\n    pivot 0 0 0\n    voxels { 1 }',
-      ].join('\n'),
+      'voxels.json': geo(
+        [
+          { name: 'body', size: [1, 1, 1], pivot: [0, 0, 0], voxels: [['0']] },
+          { name: 'arm', size: [1, 1, 1], pivot: [0, 0, 0], voxels: [['1']] },
+        ],
+        ['#FF0000', '#00FF00'],
+      ),
       'cuboidy.json': JSON.stringify({
         name: 'm',
         parts: [

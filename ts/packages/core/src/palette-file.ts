@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { MAX_PALETTE, parseHexColor } from './cvox/palette.js';
-import type { Palette } from './cvox/types.js';
+import { MAX_PALETTE, parseHexColor } from './geometry/palette.js';
+import type { Palette } from './geometry/types.js';
 import { err, ok, type Result } from './result.js';
 
 // SPEC §6.10 (v0.7): external palette file — a shareable palette bound to

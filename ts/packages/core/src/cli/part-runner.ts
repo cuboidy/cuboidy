@@ -8,8 +8,8 @@ import {
   mirrorPart,
   remapPartPalette,
   type Axis,
-} from '../cvox/transform.js';
-import type { Cvox, Part } from '../cvox/types.js';
+} from '../geometry/transform.js';
+import type { Cvox, Part } from '../geometry/types.js';
 
 // `cuboidy-part`: author concrete geometry by copying or flipping a part.
 // `duplicate` copies a part into a (same or other) cvox file; `mirror`

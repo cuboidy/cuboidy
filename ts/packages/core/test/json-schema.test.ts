@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { buildManifestJsonSchema } from '../src/json-schema.js';
 import { parseManifest } from '../src/manifest.js';
-import { RESERVED_KEYWORDS } from '../src/cvox/reserved.js';
+import { RESERVED_KEYWORDS } from '../src/identifier.js';
 import { IDENTIFIER_RE } from '../src/identifier.js';
 import { readFixtureJson } from './helpers/fixtures.js';
 
@@ -63,12 +63,12 @@ describe('cuboidy.schema.json — validation parity with parseManifest', () => {
     await expectParity('crown', 'models/crown/cuboidy.json');
   });
 
-  it('rejects fixtures/json/missing/name.json', async () => {
-    await expectParity('missing name', 'fixtures/json/missing/name.json');
+  it('rejects fixtures/manifest/missing/name.json', async () => {
+    await expectParity('missing name', 'fixtures/manifest/missing/name.json');
   });
 
-  it('rejects fixtures/json/missing/parts.json (empty parts)', async () => {
-    await expectParity('missing parts', 'fixtures/json/missing/parts.json');
+  it('rejects fixtures/manifest/missing/parts.json (empty parts)', async () => {
+    await expectParity('missing parts', 'fixtures/manifest/missing/parts.json');
   });
 });
 

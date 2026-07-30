@@ -1,21 +1,23 @@
-import { RESERVED_KEYWORDS } from './cvox/reserved.js';
-
-// SPEC §5: canonical identifier rule, shared by both file formats
-// (cuboidy.json names via manifest.ts Zod schema, cvox part/socket names
-// via cvox/expect.ts expectIdentifier). Two conditions: (1) regex shape
-// — first char letter or underscore, rest letters/digits/underscores/
-// hyphens; (2) not a reserved cvox keyword — keeps cross-file
-// referential integrity (a manifest name a cvox file couldn't write
-// without lexical ambiguity would be unusable).
+// SPEC §5: the canonical identifier rule, shared by every name in the format —
+// model, part, socket and animation — across both `cuboidy.json` and the
+// geometry file. Two conditions: (1) the regex shape, first char a letter or
+// underscore, rest letters/digits/underscores/hyphens; (2) not one of the
+// reserved keywords below.
 //
-// The reserved-keyword guard lets cvox accept bare `part head` instead of
-// `part "head"` for identifier slots: the keyword `part` is rejected by
-// isIdentifier, so `part part` correctly errors as "invalid identifier"
-// rather than parsing as a part named `part`.
-//
-// Punctuation tokens (`{`, `}`, `,`) are not consulted — they fail the
-// IDENTIFIER_RE anyway, so the reserved set the identifier rule needs is
-// just the keyword subset.
+// The reserved list is inherited from the text container that preceded JSON:
+// there, a bare `part part` was lexically ambiguous, so rejecting the keyword
+// as an identifier was load-bearing. JSON has no such ambiguity. SPEC §5 keeps
+// the rule anyway — it costs nothing, no model uses these names, and lifting it
+// would be a separate breaking change to a rule both files currently share.
+export const RESERVED_KEYWORDS: readonly string[] = [
+  'palette',
+  'part',
+  'size',
+  'pivot',
+  'socket',
+  'voxels',
+  'rot',
+];
 
 const RESERVED_KEYWORD_SET = new Set(RESERVED_KEYWORDS);
 

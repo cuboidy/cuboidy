@@ -3,8 +3,8 @@ import {
   duplicatePart,
   mirrorPart,
   remapPartPalette,
-} from '../src/cvox/transform.js';
-import type { Color, Part } from '../src/cvox/types.js';
+} from '../src/geometry/transform.js';
+import type { Color, Part } from '../src/geometry/types.js';
 
 const RED: Color = { r: 255, g: 0, b: 0, a: 255 };
 const BLUE: Color = { r: 0, g: 0, b: 255, a: 255 };

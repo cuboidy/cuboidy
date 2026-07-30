@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseManifest } from '../src/manifest.js';
 import { parseGeometryText } from '../src/geometry/parse.js';
-import { geoFromText } from './helpers/geometry.js';
+import { geo } from './helpers/geometry.js';
 import { validateCrossFile, validateProject } from '../src/lint/cross-file.js';
 import { readFixtureJson, readFixtureText } from './helpers/fixtures.js';
 
@@ -11,7 +11,7 @@ async function loadModel(folder: string) {
   );
   if (!manifestR.ok) throw new Error(`manifest parse failed: ${manifestR.message}`);
   const voxelDef = parseGeometryText(await readFixtureText(`${folder}/voxels.json`));
-  if (!voxelDef.ok) throw new Error(`cvox parse failed: ${voxelDef.message}`);
+  if (!voxelDef.ok) throw new Error(`geometry parse failed: ${voxelDef.message}`);
   return { manifest: manifestR.value, voxelDef: voxelDef.value };
 }
 
@@ -102,18 +102,21 @@ describe('validateCrossFile', () => {
 // SPEC §11 (v0.7): project-shaped validation — multiple geometry files,
 // palette binding resolution, unreferenced-file warning.
 describe('validateProject (v0.7)', () => {
-  function cvoxOrThrow(text: string) {
-    const r = parseGeometryText(geoFromText(text));
-    if (!r.ok) throw new Error(`cvox parse failed: ${r.message}`);
+  function geometryOrThrow(text: string) {
+    const r = parseGeometryText(text);
+    if (!r.ok) throw new Error(`geometry parse failed: ${r.message}`);
     return r.value;
   }
-  const bodyCvox = cvoxOrThrow(
-    'palette #F00 #0F0\npart body\nsize 1 1 1\nvoxels { 1 }',
-  );
+  const oneVoxel = (name: string, cell: string, palette?: string[]) =>
+    geometryOrThrow(
+      geo([{ name, size: [1, 1, 1], voxels: [[cell]] }], palette),
+    );
+
+  const bodyCvox = oneVoxel('body', '1', ['#F00', '#0F0']);
   // No inline palette; uses index 0 (valid only when a palette is bound).
-  const bareCvox = cvoxOrThrow('part gear\nsize 1 1 1\nvoxels { 0 }');
+  const bareCvox = oneVoxel('gear', '0');
   // No inline palette; all air (never needs a palette).
-  const airCvox = cvoxOrThrow('part ghost\nsize 1 1 1\nvoxels { . }');
+  const airCvox = oneVoxel('ghost', '.');
 
   it('errors on a part name defined in two geometry files', () => {
     const manifest = manifestOrThrow({
@@ -231,7 +234,7 @@ describe('validateProject (v0.7)', () => {
     expect(diags[0]?.severity).toBe('hint');
   });
 
-  it('W07: warns on a package .cvox not referenced by the geometry list', () => {
+  it('W07: warns on a package geometry file not referenced by the geometry list', () => {
     const manifest = manifestOrThrow({
       name: 't',
       geometry: ['body.json'],

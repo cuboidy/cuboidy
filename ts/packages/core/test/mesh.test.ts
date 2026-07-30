@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { AIR } from '../src/cvox/voxel-row.js';
+import { AIR } from '../src/geometry/voxel-row.js';
 import { buildMesh } from '../src/mesh.js';
-import type { Color, Part } from '../src/cvox/types.js';
+import type { Color, Part } from '../src/geometry/types.js';
 
 const RED: Color = { r: 255, g: 0, b: 0, a: 255 };
 const GREEN: Color = { r: 0, g: 255, b: 0, a: 255 };

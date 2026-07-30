@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isIdentifier, IDENTIFIER_RE } from '../src/identifier.js';
-import { RESERVED_KEYWORDS } from '../src/cvox/reserved.js';
+import { RESERVED_KEYWORDS } from '../src/identifier.js';
 import { ManifestPartSchema } from '../src/manifest.js';
 
 // SPEC §5: identifier rule shared by cvox identifier slots (part/socket
@@ -49,7 +49,7 @@ describe('isIdentifier', () => {
   });
 
   describe('cross-file parity with manifest schema', () => {
-    // Both cvox/expect.ts (via isIdentifier) and manifest.ts (via
+    // Both the geometry schema (via isIdentifier) and manifest.ts (via
     // .refine(isIdentifier)) source the §5 rule from this module. If they
     // ever diverge, a name accepted by one file format would be unusable
     // in the other — cross-file lint would emit confusing diagnostics.

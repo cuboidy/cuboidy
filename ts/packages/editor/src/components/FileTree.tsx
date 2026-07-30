@@ -26,7 +26,7 @@ interface Props {
   onDeleteFile: (path: string) => void;
   // Delete a folder and every file under it (one undo).
   onDeleteFolder: (dir: string) => void;
-  // Append an unreferenced .cvox to the manifest geometry list so its
+  // Append an unreferenced geometry file to the manifest list so its
   // parts load (the tree's "not loaded" rows).
   onAddFileToModel: (path: string) => void;
 }
@@ -47,7 +47,7 @@ const CREATABLE_RE = /^[^\\:]+\.(json|md|txt)$/i;
 // model is a file map, so an empty folder has no on-disk representation).
 // Double-click renames a file or folder (its name only — moving between
 // folders is drag-and-drop, below); the hover × deletes (a folder ×
-// deletes everything under it). An unreferenced .cvox row carries a
+// deletes everything under it). An unreferenced geometry row carries a
 // "load" button that adds it to the manifest geometry list. The manifest
 // anchor is never renamable/deletable; the primary geometry is renamable
 // only when a manifest records it, and never deletable.
@@ -197,7 +197,7 @@ export function FileTree({
   const hasManifestFile = isFolder && source.manifestFile !== undefined;
 
   // Normalized refs the manifest's geometry list loads (default = the
-  // primary alone). A package .cvox outside this set is inert — lint
+  // primary alone). A package geometry file outside this set is inert — lint
   // W07 — so its row is dimmed with a "not loaded" badge and a hover
   // "+" that references it.
   const loadedGeometry = useMemo(() => {
@@ -291,7 +291,7 @@ export function FileTree({
   // A file rename edits only the filename (last segment) — moving between
   // folders is drag-and-drop's job. The new name lands in the same
   // folder, must be a valid creatable file, and keeps the file's type
-  // (geometry stays .cvox, a bound palette stays .json — §8).
+  // (every reference is .json — §8).
   const validateRename = (oldPath: string) => (name: string) => {
     if (name === baseName(oldPath)) return true;
     if (name.includes('/')) return false;
@@ -676,7 +676,7 @@ export function FileTree({
 interface RowOps {
   renameReason: string | null;
   deleteReason: string | null;
-  // Add-to-model "+": 'hidden' unless the file is an unreferenced .cvox.
+  // Add-to-model "+": 'hidden' unless the file is unreferenced geometry.
   addReason: string | null;
 }
 

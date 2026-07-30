@@ -14,7 +14,7 @@ export type LintRuleId =
   // W06: cross-file — an `<x>-l` / `<x>-r` manifest pair whose positions are
   // not X-symmetric about the parent (likely a hand-mirrored asymmetry bug).
   | 'W06'
-  // W07: cross-file — a .cvox file exists in the package but is not
+  // W07: cross-file — a geometry file exists in the package but is not
   // referenced by the manifest `geometry` list (SPEC §6.9 v0.7).
   | 'W07'
   | 'H01'

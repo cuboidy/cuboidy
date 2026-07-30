@@ -95,7 +95,7 @@ const ghostNoRaycast = () => null;
 
 // Renders the model in one of two static modes:
 //   - Cvox view: every part sits at world origin [0,0,0], the literal
-//     .cvox-local convention. Multi-part files overlap; the sidebar
+//     file-local convention. Multi-part files overlap; the sidebar
 //     visibility toggles are the way to peel layers.
 //   - Rig view: the rest pose through the SAME RiggedParts transform
 //     tree the animation view uses (poses = null), so both views agree

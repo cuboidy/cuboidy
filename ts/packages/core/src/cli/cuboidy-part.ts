@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { runPart, type PartOp } from './part-runner.js';
-import type { Axis } from '../cvox/transform.js';
+import type { Axis } from '../geometry/transform.js';
 
 // CLI shell for `cuboidy-part`. All real work lives in part-runner.ts.
 //   duplicate <from.json> <fromPart> <to.json> <toPart>  — copy a part

@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { mkdtemp, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { formatDiagnostic, runLint } from '../src/cli/lint-runner.js';
-import { geoFromText } from './helpers/geometry.js';
+import { geo } from './helpers/geometry.js';
 
 const REPO_ROOT = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -16,13 +16,18 @@ const REPO_ROOT = resolve(
 async function makeModel(files: Record<string, string>): Promise<string> {
   const dir = await mkdtemp(resolve(tmpdir(), 'cuboidy-lint-test-'));
   for (const [name, content] of Object.entries(files)) {
-    const geometry = name.endsWith('.cvox');
-    const path = resolve(dir, geometry ? name.replace(/\.cvox$/, '.json') : name);
+    const path = resolve(dir, name);
     await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, geometry ? geoFromText(content) : content, 'utf-8');
+    await writeFile(path, content, 'utf-8');
   }
   return dir;
 }
+
+// The one-voxel geometry most of these cases just need something valid for.
+// Omitting `colors` leaves the file palette-less, which is what the §6.10
+// binding cases want.
+const ONE_VOXEL = (name: string, colors?: string[]) =>
+  geo([{ name, size: [1, 1, 1], voxels: [['0']] }], colors);
 
 describe('runLint — fixture parity (exit 0)', () => {
   it('wolf model lints clean', async () => {
@@ -72,17 +77,32 @@ describe('runLint — W06 mirror symmetry (geometric)', () => {
         { name: 'arm-r', parent: 'body', position: positions['arm-r'] },
       ],
     });
-  const BODY = 'part body\nsize 1 1 1\npivot 0 0 0\nvoxels { 0 }';
+  const BODY = {
+    name: 'body',
+    size: [1, 1, 1] as [number, number, number],
+    pivot: [0, 0, 0] as [number, number, number],
+    voxels: [['0']],
+  };
+  // Both arms share a shape; only the pivot and the manifest positions vary
+  // per case, which is exactly what W06 reasons about.
+  const arms = (
+    size: [number, number, number],
+    pivot: [number, number, number],
+    voxels: string[][],
+  ) =>
+    geo(
+      [
+        BODY,
+        { name: 'arm-l', size, pivot, voxels },
+        { name: 'arm-r', size, pivot, voxels },
+      ],
+      ['#F00'],
+    );
 
   it('warns when an l/r pair is geometrically asymmetric', async () => {
     // Same voxels, same pivot, positions NOT mirrored → truly lopsided.
     const dir = await makeModel({
-      'voxels.cvox': [
-        'palette #F00',
-        BODY,
-        'part arm-l\nsize 2 1 1\npivot 0 0 0\nvoxels { 00 }',
-        'part arm-r\nsize 2 1 1\npivot 0 0 0\nvoxels { 00 }',
-      ].join('\n'),
+      'voxels.json': arms([2, 1, 1], [0, 0, 0], [['00']]),
       'cuboidy.json': manifest({
         'arm-l': [-2, 0, 0],
         'arm-r': [1, 0, 0], // mirrored would be [0, 0, 0] here
@@ -99,12 +119,7 @@ describe('runLint — W06 mirror symmetry (geometric)', () => {
     // parent plane at x = −1 and x = 0. The old positions-only rule
     // (−1 ≠ −0) flagged this even though the geometry is symmetric.
     const dir = await makeModel({
-      'voxels.cvox': [
-        'palette #F00',
-        BODY,
-        'part arm-l\nsize 1 2 1\npivot 0 0 0\nvoxels { 0 , 0 }',
-        'part arm-r\nsize 1 2 1\npivot 0 0 0\nvoxels { 0 , 0 }',
-      ].join('\n'),
+      'voxels.json': arms([1, 2, 1], [0, 0, 0], [['0'], ['0']]),
       'cuboidy.json': manifest({
         'arm-l': [-1, 0, 0],
         'arm-r': [0, 0, 0],
@@ -118,12 +133,7 @@ describe('runLint — W06 mirror symmetry (geometric)', () => {
     // Asymmetric voxel pattern copied verbatim (not mirrored): the old
     // positions-only rule was blind to this.
     const dir = await makeModel({
-      'voxels.cvox': [
-        'palette #F00',
-        BODY,
-        'part arm-l\nsize 2 1 1\npivot 1 0 0\nvoxels { 0. }',
-        'part arm-r\nsize 2 1 1\npivot 1 0 0\nvoxels { 0. }',
-      ].join('\n'),
+      'voxels.json': arms([2, 1, 1], [1, 0, 0], [['0.']]),
       'cuboidy.json': manifest({
         'arm-l': [-2, 0, 0],
         'arm-r': [2, 0, 0],
@@ -148,8 +158,8 @@ describe('runLint — IO failures', () => {
 
 describe('runLint — parse errors propagate as exit 1', () => {
   it('a malformed geometry file → error diag + exit 1', async () => {
-    // Written verbatim: a `.json` key bypasses the text bridge, which by
-    // construction can only produce valid documents.
+    // Written verbatim rather than through geo(), which by construction can
+    // only produce valid documents.
     const dir = await makeModel({
       'voxels.json': '{ "parts": [] }', // schema-invalid: needs at least one part
     });
@@ -160,7 +170,7 @@ describe('runLint — parse errors propagate as exit 1', () => {
 
   it('cuboidy.json with broken JSON → error + exit 1', async () => {
     const dir = await makeModel({
-      'voxels.cvox': 'palette #F00\npart p\nsize 1 1 1\nvoxels { 0 }',
+      'voxels.json': ONE_VOXEL('p', ['#F00']),
       'cuboidy.json': '{ broken',
     });
     const r = await runLint(dir);
@@ -175,8 +185,10 @@ describe('runLint — parse errors propagate as exit 1', () => {
 describe('runLint — voxel lint diagnostics', () => {
   it('emits W01 warning for out-of-bounds pivot, exit 0 by default', async () => {
     const dir = await makeModel({
-      'voxels.cvox':
-        'palette #F00\npart p\nsize 1 1 1\npivot 9 0 0\nvoxels { 0 }',
+      'voxels.json': geo(
+        [{ name: 'p', size: [1, 1, 1], pivot: [9, 0, 0], voxels: [['0']] }],
+        ['#F00'],
+      ),
     });
     const r = await runLint(dir);
     expect(r.exitCode).toBe(0); // warnings don't fail by default
@@ -187,8 +199,10 @@ describe('runLint — voxel lint diagnostics', () => {
 
   it('--strict promotes warnings to exit 1', async () => {
     const dir = await makeModel({
-      'voxels.cvox':
-        'palette #F00\npart p\nsize 1 1 1\npivot 9 0 0\nvoxels { 0 }',
+      'voxels.json': geo(
+        [{ name: 'p', size: [1, 1, 1], pivot: [9, 0, 0], voxels: [['0']] }],
+        ['#F00'],
+      ),
     });
     const r = await runLint(dir, { strict: true });
     expect(r.exitCode).toBe(1);
@@ -197,7 +211,7 @@ describe('runLint — voxel lint diagnostics', () => {
   it('--strict does not escalate when only hints are present', async () => {
     // H01 (CamelCase name) is a hint, never an error even under --strict.
     const dir = await makeModel({
-      'voxels.cvox': 'palette #F00\npart Bad\nsize 1 1 1\nvoxels { 0 }',
+      'voxels.json': ONE_VOXEL('Bad', ['#F00']),
     });
     const r = await runLint(dir, { strict: true });
     expect(r.exitCode).toBe(0);
@@ -209,7 +223,7 @@ describe('runLint — voxel lint diagnostics', () => {
 describe('runLint — cross-file diagnostics', () => {
   it('reports cross-file missing part as error + exit 1', async () => {
     const dir = await makeModel({
-      'voxels.cvox': 'palette #F00\npart body\nsize 1 1 1\nvoxels { 0 }',
+      'voxels.json': ONE_VOXEL('body', ['#F00']),
       'cuboidy.json': JSON.stringify({
         name: 'm',
         parts: [{ name: 'body' }, { name: 'ghost' }],
@@ -225,10 +239,12 @@ describe('runLint — cross-file diagnostics', () => {
 describe('runLint — v0.7 project shape (geometry list + palette binding)', () => {
   const paletteJson = JSON.stringify({ colors: ['#F00', '#0F0'] });
 
-  it('multi-cvox model with a bound palette lints clean', async () => {
+  it('multi-file geometry with a bound palette lints clean', async () => {
     const dir = await makeModel({
-      'body.cvox': 'part body\nsize 1 1 1\nvoxels { 0 }',
-      'gear/hat.cvox': 'part hat\nsize 1 1 1\nvoxels { 1 }',
+      'body.json': ONE_VOXEL('body'),
+      'gear/hat.json': geo([
+        { name: 'hat', size: [1, 1, 1], voxels: [['1']] },
+      ]),
       'palette.json': paletteJson,
       'cuboidy.json': JSON.stringify({
         name: 'm',
@@ -259,8 +275,8 @@ describe('runLint — v0.7 project shape (geometry list + palette binding)', () 
 
   it('W07: an unreferenced geometry file in the package warns', async () => {
     const dir = await makeModel({
-      'voxels.cvox': 'palette #F00\npart body\nsize 1 1 1\nvoxels { 0 }',
-      'scratch.cvox': 'palette #F00\npart junk\nsize 1 1 1\nvoxels { 0 }',
+      'voxels.json': ONE_VOXEL('body', ['#F00']),
+      'scratch.json': ONE_VOXEL('junk', ['#F00']),
       'cuboidy.json': JSON.stringify({
         name: 'm',
         parts: [{ name: 'body' }],
@@ -274,7 +290,7 @@ describe('runLint — v0.7 project shape (geometry list + palette binding)', () 
 
   it('a broken palette file is an error and suppresses cross-file noise', async () => {
     const dir = await makeModel({
-      'body.cvox': 'part body\nsize 1 1 1\nvoxels { 0 }',
+      'body.json': ONE_VOXEL('body'),
       'palette.json': JSON.stringify({ colors: [] }),
       'cuboidy.json': JSON.stringify({
         name: 'm',
@@ -291,7 +307,7 @@ describe('runLint — v0.7 project shape (geometry list + palette binding)', () 
 
   it('palette-less geometry without a binding errors cross-file', async () => {
     const dir = await makeModel({
-      'voxels.cvox': 'part body\nsize 1 1 1\nvoxels { 0 }',
+      'voxels.json': ONE_VOXEL('body'),
       'cuboidy.json': JSON.stringify({
         name: 'm',
         parts: [{ name: 'body' }],
@@ -306,13 +322,13 @@ describe('runLint — v0.7 project shape (geometry list + palette binding)', () 
 });
 
 describe('runLint — external animations (SPEC §6.3 / §11.5)', () => {
-  const GEO = 'palette #F00\npart body\nsize 1 1 1\nvoxels { 0 }';
+  const GEO = ONE_VOXEL('body', ['#F00']);
   const manifestWith = (animations: unknown) =>
     JSON.stringify({ name: 'm', parts: [{ name: 'body' }], animations });
 
   it('a missing external animation file is an error (exit 1)', async () => {
     const dir = await makeModel({
-      'voxels.cvox': GEO,
+      'voxels.json': GEO,
       'cuboidy.json': manifestWith({ walk: 'anims/missing.json' }),
     });
     const r = await runLint(dir);
@@ -323,7 +339,7 @@ describe('runLint — external animations (SPEC §6.3 / §11.5)', () => {
 
   it('an unparsable external animation file is an error', async () => {
     const dir = await makeModel({
-      'voxels.cvox': GEO,
+      'voxels.json': GEO,
       'anims/walk.json': '{ broken',
       'cuboidy.json': manifestWith({ walk: 'anims/walk.json' }),
     });
@@ -333,7 +349,7 @@ describe('runLint — external animations (SPEC §6.3 / §11.5)', () => {
 
   it('a schema-invalid external animation file is an error', async () => {
     const dir = await makeModel({
-      'voxels.cvox': GEO,
+      'voxels.json': GEO,
       'anims/walk.json': JSON.stringify({
         duration: 1,
         loop: true,
@@ -350,7 +366,7 @@ describe('runLint — external animations (SPEC §6.3 / §11.5)', () => {
 
   it('a valid external animation lints clean', async () => {
     const dir = await makeModel({
-      'voxels.cvox': GEO,
+      'voxels.json': GEO,
       'anims/walk.json': JSON.stringify({
         duration: 1,
         loop: true,
@@ -365,7 +381,7 @@ describe('runLint — external animations (SPEC §6.3 / §11.5)', () => {
 
   it('warns when an animation targets a part missing from the manifest', async () => {
     const dir = await makeModel({
-      'voxels.cvox': GEO,
+      'voxels.json': GEO,
       'cuboidy.json': manifestWith({
         walk: {
           duration: 1,
@@ -386,7 +402,7 @@ describe('runLint — external animations (SPEC §6.3 / §11.5)', () => {
 describe('formatDiagnostic — SPEC §11.7 format', () => {
   it('uses ruleId in brackets when present', () => {
     const line = formatDiagnostic({
-      file: 'voxels.cvox',
+      file: 'voxels.json',
       diag: {
         code: 'invalid-value',
         severity: 'warning',
@@ -395,19 +411,19 @@ describe('formatDiagnostic — SPEC §11.7 format', () => {
       },
     });
     expect(line).toBe(
-      'voxels.cvox: warning: pivot [9, 0, 0] outside grid bounds [W01]',
+      'voxels.json: warning: pivot [9, 0, 0] outside grid bounds [W01]',
     );
   });
 
   it('falls back to structural code when no ruleId', () => {
     const line = formatDiagnostic({
-      file: 'voxels.cvox',
+      file: 'voxels.json',
       diag: {
         code: 'missing',
         severity: 'error',
         message: 'part p missing size',
       },
     });
-    expect(line).toBe('voxels.cvox: error: part p missing size [missing]');
+    expect(line).toBe('voxels.json: error: part p missing size [missing]');
   });
 });

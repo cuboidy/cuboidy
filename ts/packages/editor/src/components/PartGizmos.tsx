@@ -37,7 +37,7 @@ interface Props {
 }
 
 // Selection gizmos for one part, drawn in the part's LOCAL voxel frame
-// (the [0..w]×[0..h]×[0..d] box the .cvox voxels live in). Rendering
+// (the [0..w]×[0..h]×[0..d] box the part's voxels live in). Rendering
 // them inside the same group as the PartMesh means every view (cvox /
 // rig / anim) carries them through its own transforms for free —
 // including animated scale, where the frame keeps hugging the scaled

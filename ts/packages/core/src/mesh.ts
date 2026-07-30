@@ -1,5 +1,5 @@
-import { AIR } from './cvox/voxel-row.js';
-import type { Palette, Part } from './cvox/types.js';
+import { AIR } from './geometry/voxel-row.js';
+import type { Palette, Part } from './geometry/types.js';
 
 // Engine-agnostic mesh data for a single Part. Colors are sRGB in 0..1,
 // matching the palette's color space (SPEC §10). Renderers that need

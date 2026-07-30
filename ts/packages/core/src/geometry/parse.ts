@@ -1,8 +1,8 @@
 import { GeometrySchema, type GeometryDoc } from './schema.js';
 import { locateJsonPath } from './locate.js';
-import { parseHexColor } from '../cvox/palette.js';
-import { charToIndex } from '../cvox/voxel-row.js';
-import type { Color, Cvox, Part, Pivot, Socket, Vec3 } from '../cvox/types.js';
+import { parseHexColor } from './palette.js';
+import { charToIndex } from './voxel-row.js';
+import type { Color, Cvox, Part, Pivot, Socket, Vec3 } from './types.js';
 import { err, ok, type CuboidyErrorCode, type Result } from '../result.js';
 
 // SPEC §7: reads a geometry file into the same AST every downstream consumer

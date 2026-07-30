@@ -2,9 +2,9 @@ import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { parseManifest } from '../manifest.js';
 import type { Manifest, ManifestPart } from '../manifest.js';
-import type { Color, Palette, Part, Vec3 } from '../cvox/types.js';
-import { AIR } from './../cvox/voxel-row.js';
-import { MAX_PALETTE } from '../cvox/palette.js';
+import type { Color, Palette, Part, Vec3 } from '../geometry/types.js';
+import { AIR } from './../geometry/voxel-row.js';
+import { MAX_PALETTE } from '../geometry/palette.js';
 import {
   computeRestWorldTransforms,
   type Vec3Tuple,

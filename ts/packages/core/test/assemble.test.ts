@@ -7,37 +7,38 @@ import {
   loadAndAssemble,
   stringifyCoord,
 } from '../src/cli/assemble.js';
-import { geoFromText } from './helpers/geometry.js';
+import { geo } from './helpers/geometry.js';
 
 // SPEC §6.10 through the inspection-CLI assembly layer: manifest geometry
 // lists and external palette binding — the same project resolution lint
 // and the editor use.
 
-// Geometry fixtures are authored in the compact text syntax and written out as
-// JSON — see geoFromText in helpers/geometry.ts. A `.cvox` key marks "this
-// value is geometry"; the file that lands on disk is `.json`, which is what the
-// manifests below reference and what the loader reads.
 async function makeModel(files: Record<string, string>): Promise<string> {
   const dir = await mkdtemp(resolve(tmpdir(), 'cuboidy-assemble-test-'));
   for (const [name, content] of Object.entries(files)) {
-    const geometry = name.endsWith('.cvox');
-    const path = resolve(dir, geometry ? name.replace(/\.cvox$/, '.json') : name);
+    const path = resolve(dir, name);
     await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, geometry ? geoFromText(content) : content, 'utf-8');
+    await writeFile(path, content, 'utf-8');
   }
   return dir;
 }
 
-const ONE_VOXEL = (color: string) =>
-  `palette ${color}\npart p\n    size 1 1 1\n    pivot 0 0 0\n    voxels { 0 }`;
+// A single-voxel part `p`, with however many colours the case needs in the
+// palette (only index 0 is used).
+const ONE_VOXEL = (...colors: string[]) =>
+  geo([{ name: 'p', size: [1, 1, 1], pivot: [0, 0, 0], voxels: [['0']] }], colors);
 
 describe('loadAndAssemble — geometry list', () => {
   it('loads a package whose manifest lists geometry files (no voxels.json)', async () => {
     const dir = await makeModel({
-      'body.cvox':
-        'palette #FF0000\npart body\n    size 1 1 1\n    pivot 0 0 0\n    voxels { 0 }',
-      'gear/hat.cvox':
-        'palette #00FF00\npart hat\n    size 1 1 1\n    pivot 0 0 0\n    voxels { 0 }',
+      'body.json': geo(
+        [{ name: 'body', size: [1, 1, 1], pivot: [0, 0, 0], voxels: [['0']] }],
+        ['#FF0000'],
+      ),
+      'gear/hat.json': geo(
+        [{ name: 'hat', size: [1, 1, 1], pivot: [0, 0, 0], voxels: [['0']] }],
+        ['#00FF00'],
+      ),
       'cuboidy.json': JSON.stringify({
         name: 'm',
         geometry: ['body.json', 'gear/hat.json'],
@@ -79,8 +80,9 @@ describe('loadAndAssemble — geometry list', () => {
 describe('loadAndAssemble — §6.10 external palette', () => {
   it('binds an external palette over a palette-less geometry file', async () => {
     const dir = await makeModel({
-      'voxels.cvox':
-        'part p\n    size 2 1 1\n    pivot 0 0 0\n    voxels { 01 }',
+      'voxels.json': geo([
+        { name: 'p', size: [2, 1, 1], pivot: [0, 0, 0], voxels: [['01']] },
+      ]),
       'palette.json': '{ "colors": ["#112233", "#445566"] }',
       'cuboidy.json': JSON.stringify({
         name: 'm',
@@ -100,8 +102,9 @@ describe('loadAndAssemble — §6.10 external palette', () => {
 
   it('rejects a bound palette shorter than the used indices (exit 1)', async () => {
     const dir = await makeModel({
-      'voxels.cvox':
-        'part p\n    size 2 1 1\n    pivot 0 0 0\n    voxels { 01 }',
+      'voxels.json': geo([
+        { name: 'p', size: [2, 1, 1], pivot: [0, 0, 0], voxels: [['01']] },
+      ]),
       'palette.json': '{ "colors": ["#112233"] }',
       'cuboidy.json': JSON.stringify({
         name: 'm',
@@ -118,8 +121,9 @@ describe('loadAndAssemble — §6.10 external palette', () => {
 
   it('rejects color indices with neither inline palette nor binding (exit 1)', async () => {
     const dir = await makeModel({
-      'voxels.cvox':
-        'part p\n    size 1 1 1\n    pivot 0 0 0\n    voxels { 0 }',
+      'voxels.json': geo([
+        { name: 'p', size: [1, 1, 1], pivot: [0, 0, 0], voxels: [['0']] },
+      ]),
       'cuboidy.json': JSON.stringify({ name: 'm', parts: [{ name: 'p' }] }),
     });
     const r = await loadAndAssemble(dir);
@@ -133,9 +137,11 @@ describe('loadAndAssemble — §6.10 external palette', () => {
 describe('loadAndAssemble — merged inline palettes', () => {
   it('dedupes shared colors and remaps later files into the merged palette', async () => {
     const dir = await makeModel({
-      'a.cvox': ONE_VOXEL('#FF0000 #00FF00'),
-      'b.cvox':
-        'palette #0000FF #FF0000\npart q\n    size 2 1 1\n    pivot 0 0 0\n    voxels { 01 }',
+      'a.json': ONE_VOXEL('#FF0000', '#00FF00'),
+      'b.json': geo(
+        [{ name: 'q', size: [2, 1, 1], pivot: [0, 0, 0], voxels: [['01']] }],
+        ['#0000FF', '#FF0000'],
+      ),
       'cuboidy.json': JSON.stringify({
         name: 'm',
         geometry: ['a.json', 'b.json'],
@@ -156,15 +162,17 @@ describe('loadAndAssemble — merged inline palettes', () => {
 // pivot placement is exact (a child of a rotated parent lands where the
 // rig puts it); each part's own voxels stay axis-aligned in the grid.
 describe('loadAndAssemble — rest rotations', () => {
-  const TWO_PARTS = [
-    'palette #FF0000 #00FF00',
-    'part body\n    size 1 1 1\n    pivot 0 0 0\n    voxels { 0 }',
-    'part arm\n    size 1 1 1\n    pivot 0 0 0\n    voxels { 1 }',
-  ].join('\n');
+  const TWO_PARTS = geo(
+    [
+      { name: 'body', size: [1, 1, 1], pivot: [0, 0, 0], voxels: [['0']] },
+      { name: 'arm', size: [1, 1, 1], pivot: [0, 0, 0], voxels: [['1']] },
+    ],
+    ['#FF0000', '#00FF00'],
+  );
 
   it("places a child's voxels at the parent-rotated pivot (float noise cleaned)", async () => {
     const dir = await makeModel({
-      'voxels.cvox': TWO_PARTS,
+      'voxels.json': TWO_PARTS,
       'cuboidy.json': JSON.stringify({
         name: 'm',
         parts: [
@@ -184,7 +192,7 @@ describe('loadAndAssemble — rest rotations', () => {
 
   it('exposes rotation-aware world transforms on resolvedParts', async () => {
     const dir = await makeModel({
-      'voxels.cvox': TWO_PARTS,
+      'voxels.json': TWO_PARTS,
       'cuboidy.json': JSON.stringify({
         name: 'm',
         parts: [
@@ -207,11 +215,19 @@ describe('loadAndAssemble — rest rotations', () => {
 
   it('gridRotationWarnings names rotated parts; silent otherwise', async () => {
     const dir = await makeModel({
-      'voxels.cvox': [
-        'palette #FF0000 #00FF00',
-        'part body\n    size 1 1 1\n    pivot 0 0 0 rot 0 45 0\n    voxels { 0 }',
-        'part arm\n    size 1 1 1\n    pivot 0 0 0\n    voxels { 1 }',
-      ].join('\n'),
+      'voxels.json': geo(
+        [
+          {
+            name: 'body',
+            size: [1, 1, 1],
+            pivot: [0, 0, 0],
+            pivotRot: [0, 45, 0],
+            voxels: [['0']],
+          },
+          { name: 'arm', size: [1, 1, 1], pivot: [0, 0, 0], voxels: [['1']] },
+        ],
+        ['#FF0000', '#00FF00'],
+      ),
       'cuboidy.json': JSON.stringify({
         name: 'm',
         parts: [
@@ -233,7 +249,7 @@ describe('loadAndAssemble — rest rotations', () => {
 
   it('emits no rotation warnings for an unrotated model', async () => {
     const dir = await makeModel({
-      'voxels.cvox': TWO_PARTS,
+      'voxels.json': TWO_PARTS,
       'cuboidy.json': JSON.stringify({
         name: 'm',
         parts: [{ name: 'body' }, { name: 'arm', position: [3, 0, 0] }],

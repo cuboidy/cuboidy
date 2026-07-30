@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import type { Palette } from '../cvox/types.js';
-import { indexToChar } from '../cvox/voxel-row.js';
+import type { Palette } from '../geometry/types.js';
+import { indexToChar } from '../geometry/voxel-row.js';
 import { encodePng } from '../render/png.js';
 import type { Rgb } from '../render/framebuffer.js';
 import type { Angle } from '../render/camera.js';

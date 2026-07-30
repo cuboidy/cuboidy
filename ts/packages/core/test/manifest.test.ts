@@ -40,7 +40,7 @@ describe('parseManifest', () => {
   });
 
   it('rejects manifest without name (missing)', async () => {
-    const json = await readFixtureJson('fixtures/json/missing/name.json');
+    const json = await readFixtureJson('fixtures/manifest/missing/name.json');
     const r = parseManifest(json);
     expect(r.ok).toBe(false);
     if (!r.ok) {
@@ -53,7 +53,7 @@ describe('parseManifest', () => {
   });
 
   it('rejects manifest with empty parts (missing)', async () => {
-    const json = await readFixtureJson('fixtures/json/missing/parts.json');
+    const json = await readFixtureJson('fixtures/manifest/missing/parts.json');
     const r = parseManifest(json);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe('missing');

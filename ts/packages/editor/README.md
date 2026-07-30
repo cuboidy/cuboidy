@@ -25,7 +25,7 @@ npm run preview        # serves dist/ on a local port
 
 ## What the editor does
 
-**Loading** — drop (or pick) a model folder, a single `.cvox` file, or
+**Loading** — drop (or pick) a model folder, a single geometry file, or
 a packed `.cuboidy` ZIP. Folder loads resolve the whole SPEC §6.9/§6.10
 project: the manifest's `geometry` list, the external palette binding,
 and external animation files. Load problems appear in the Console panel
@@ -34,7 +34,7 @@ and as red names in the Files tree.
 **Views** — a dockable panel layout (drag tabs to split/rearrange) with
 three 3D modes:
 
-- **Cvox view** — every part at the origin, the literal `.cvox` reading
+- **Geometry view** — every part at the origin, the literal file reading
 - **Rig view** — the assembled rest pose (manifest hierarchy, §7.7
   transforms including `pivot.rot`)
 - **Anim view** — animation playback (loop-aware) plus the keyframe
@@ -44,8 +44,8 @@ three 3D modes:
 
 **Editing** — everything goes through one undo/redo history:
 
-- Source text for any package file (cvox, manifest, palette, animation
-  JSON) with debounced reparse; structural edits synchronously land any
+- Source text for any package file (geometry, manifest, palette,
+  animation) with debounced reparse; structural edits synchronously land any
   pending reparse first and refuse to run on unparseable text
 - Part operations: create (with target-file picker), rename, delete,
   drag-and-drop reparenting, move between geometry files (voxel colors

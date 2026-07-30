@@ -7,7 +7,7 @@ export {
 export type { Manifest, ManifestPart } from './manifest.js';
 
 export { PaletteFileSchema, parsePaletteFile } from './palette-file.js';
-export { MAX_PALETTE } from './cvox/palette.js';
+export { MAX_PALETTE } from './geometry/palette.js';
 
 export {
   AnimationsSchema,
@@ -58,20 +58,16 @@ export {
 export { GeometrySchema, GeometryPartSchema } from './geometry/schema.js';
 export type { GeometryDoc, GeometryDocPart } from './geometry/schema.js';
 
-// Retired text format — still exported while the migration finishes so the
-// remaining cvox tests and the test-fixture bridge can reach it. Removed in
-// the deletion phase (docs/json-migration.md).
-export { parseCvox } from './cvox/parse.js';
-export { serializeColor, serializeCvox } from './cvox/serialize.js';
+export { serializeColor } from './geometry/palette.js';
 export {
   duplicatePart,
   mirrorGeometry,
   mirrorPart,
   remapPartPalette,
   type Axis,
-} from './cvox/transform.js';
+} from './geometry/transform.js';
 
-export { AIR } from './cvox/voxel-row.js';
+export { AIR } from './geometry/voxel-row.js';
 export type {
   Color,
   Cvox,
@@ -81,7 +77,7 @@ export type {
   Size,
   Socket,
   Vec3,
-} from './cvox/types.js';
+} from './geometry/types.js';
 
 export {
   normalizeRefPath,

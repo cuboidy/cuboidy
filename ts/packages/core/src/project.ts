@@ -1,7 +1,7 @@
 import type { Diagnostic } from './diagnostic.js';
 import { InlineAnimationSchema, type InlineAnimation } from './animation.js';
 import { parseGeometryText } from './geometry/parse.js';
-import type { Cvox, Palette } from './cvox/types.js';
+import type { Cvox, Palette } from './geometry/types.js';
 import { manifestGeometry, type Manifest } from './manifest.js';
 import { parsePaletteFile } from './palette-file.js';
 
@@ -24,7 +24,7 @@ export interface ProjectDiagnostic {
 }
 
 export interface ProjectPaths {
-  // Geometry refs (§6.9) with the ["voxels.cvox"] default applied,
+  // Geometry refs (§6.9) with the ["voxels.json"] default applied,
   // normalized. List order is preserved (the first entry is the model's
   // primary file).
   geometry: string[];

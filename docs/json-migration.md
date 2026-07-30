@@ -176,22 +176,51 @@ typechecks and builds.
 
 ### Phase 4 — delete
 
-Remove from `ts/packages/core/src/cvox/`: `tokenize`, `cursor`, `expect`,
-`comment`, `numbers`, `header`, `reserved`, `parse`, `serialize`, `part`,
-`size`, `pivot`, `socket`, `voxels`, and the text half of `palette` — roughly
-900–1,000 lines. Delete the nine `test/cvox-*.test.ts` files (~1,680 lines),
-porting only the semantic cases: dimension agreement, palette index range,
-identifier rules, socket uniqueness, default pivot.
+`src/cvox/` is gone. The thirteen text-only modules (`tokenize`, `cursor`,
+`expect`, `comment`, `numbers`, `header`, `parse`, `part`, `size`, `pivot`,
+`socket`, `voxels`, `vec3`) and the text halves of `palette` and `serialize`
+were deleted; the nine `test/cvox-*.test.ts` files went with them. What was
+never about the container moved to `src/geometry/`:
 
-Then `README.md`, `docs/cvox-authoring.md` (delete or rewrite as
-`docs/geometry-authoring.md`), and the `.cuboidy` packaging description.
+| Moved to | From | Why it survives |
+|---|---|---|
+| `geometry/types.ts` | `cvox/types.ts` | the AST is format-independent |
+| `geometry/transform.ts` | `cvox/transform.ts` | mirror/duplicate/remap operate on the AST |
+| `geometry/voxel-row.ts` | `cvox/voxel-row.ts` | the §7.10 alphabet, minus the row scanner |
+| `geometry/palette.ts` | `cvox/palette.ts` + `serializeColor` | the §7.4 colour codec, minus `PaletteParser` |
+| `identifier.ts` | `cvox/reserved.ts` | the reserved list is now purely a §5 identifier rule |
 
-`bench/` keeps `eval/`; the tiktoken comparison (`compare-tokens.py`,
-`generate-dataset.mjs`, `RESULTS.md`) is superseded — keep it as the historical
-record of why the earlier numbers were wrong, or delete it, but do not cite it.
+No semantic case was lost. The rules the cvox tests guarded — dimension
+agreement, palette index range, identifier rules, socket uniqueness, default
+pivot — were already covered by `geometry-parse.test.ts`; the writer's omission
+rules moved to a new `geometry-serialize.test.ts`, which the text-only
+`cvox-serialize.test.ts` had been the sole guard for.
 
-*Verify:* no `.cvox` string remains outside `bench/` and the migration history;
-full test suite green; every CLI runs against every model.
+The parity fixtures were the other half of the work, because they are the
+cross-implementation contract, not just tests: `fixtures/cvox/` → deleted,
+`fixtures/json/` → `fixtures/manifest/`, and a new `fixtures/geometry/` with 15
+JSON documents covering all five §11.2 codes. Seven of the cvox fixtures had no
+JSON analogue at all (stray `,`, unclosed `voxels {`, duplicate `palette` — all
+tokenizer artifacts), and JSON gained cases cvox could not express structurally
+(duplicate part name, duplicate socket name, unknown part field). The parity
+test now also fails on an empty code directory, so a directory cannot silently
+lose its coverage.
+
+The ~46 geometry fixtures in the loader/CLI tests were authored in the text
+syntax and written out through a `geoFromText` bridge; all of them are now
+`geo()` document literals and the bridge is deleted.
+
+Docs: `docs/cvox-authoring.md` → `docs/geometry-authoring.md` (the loop,
+coordinate model, pivot advice and case study were never about the container —
+only the syntax examples changed). `README.md`'s "Token efficiency" section
+made the claim this migration disproved and is replaced by what was actually
+measured. `bench/RESULTS.md` keeps its numbers behind a SUPERSEDED banner: it is
+the record of how the wrong answer was reached, and the scripts beside it no
+longer run.
+
+*Verify:* no `.cvox` string remains outside `bench/`, `docs/` history and the
+`geometry`-extension guard in the manifest schema; full test suite green; every
+CLI runs against every model.
 
 ## Known trap
 

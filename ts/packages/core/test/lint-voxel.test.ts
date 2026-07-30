@@ -1,15 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { parseCvox } from '../src/cvox/parse.js';
 import { lintCvox } from '../src/lint/voxel-rules.js';
-import type { Cvox } from '../src/cvox/types.js';
+import type { Cvox } from '../src/geometry/types.js';
 import { readFixtureText } from './helpers/fixtures.js';
 import { parseGeometryText } from '../src/geometry/parse.js';
+import { geo, type PartSpec } from './helpers/geometry.js';
 
-function unwrap(input: string): Cvox {
-  const r = parseCvox(input);
+// Builds the AST these rules run on by going through the real reader, so a
+// case can never assert against a shape the reader would not produce.
+function model(parts: PartSpec[], palette?: string[]): Cvox {
+  const r = parseGeometryText(geo(parts, palette));
   if (!r.ok) throw new Error(`parse failed: ${r.message}`);
   return r.value;
 }
+
+const RED = ['#F00'];
 
 // Lint helper: returns the diagnostics filtered to a specific ruleId, for
 // targeted assertions. Each rule's positive/negative cases assert via this
@@ -18,20 +22,34 @@ function ofRule(cvox: Cvox, ruleId: string) {
   return lintCvox(cvox).filter((d) => d.ruleId === ruleId);
 }
 
+const SOLID_2x2x2: string[][] = [
+  ['00', '00'],
+  ['00', '00'],
+];
+
 describe('lintCvox — W01 pivot outside grid bounds', () => {
   it('does not fire when pivot is inside the bounding box', () => {
-    const cvox = unwrap('palette #F00\npart p\nsize 2 2 2\npivot 1 1 1\nvoxels { 00 00 , 00 00 }');
+    const cvox = model(
+      [{ name: 'p', size: [2, 2, 2], pivot: [1, 1, 1], voxels: SOLID_2x2x2 }],
+      RED,
+    );
     expect(ofRule(cvox, 'W01')).toEqual([]);
   });
 
   it('does not fire when pivot is on the boundary (inclusive)', () => {
     // [W, H, D] corner is still in-bounds — coords span 0..size.dim inclusive.
-    const cvox = unwrap('palette #F00\npart p\nsize 2 2 2\npivot 2 2 2\nvoxels { 00 00 , 00 00 }');
+    const cvox = model(
+      [{ name: 'p', size: [2, 2, 2], pivot: [2, 2, 2], voxels: SOLID_2x2x2 }],
+      RED,
+    );
     expect(ofRule(cvox, 'W01')).toEqual([]);
   });
 
   it('fires when pivot x exceeds W', () => {
-    const cvox = unwrap('palette #F00\npart p\nsize 2 1 2\npivot 3 0 1\nvoxels { 00 00 }');
+    const cvox = model(
+      [{ name: 'p', size: [2, 1, 2], pivot: [3, 0, 1], voxels: [['00', '00']] }],
+      RED,
+    );
     const diags = ofRule(cvox, 'W01');
     expect(diags).toHaveLength(1);
     expect(diags[0]?.severity).toBe('warning');
@@ -39,22 +57,44 @@ describe('lintCvox — W01 pivot outside grid bounds', () => {
   });
 
   it('fires when pivot has negative coordinate', () => {
-    const cvox = unwrap('palette #F00\npart p\nsize 2 1 2\npivot -1 0 1\nvoxels { 00 00 }');
+    const cvox = model(
+      [{ name: 'p', size: [2, 1, 2], pivot: [-1, 0, 1], voxels: [['00', '00']] }],
+      RED,
+    );
     expect(ofRule(cvox, 'W01')).toHaveLength(1);
   });
 });
 
 describe('lintCvox — W02 socket outside grid bounds', () => {
   it('does not fire when socket is inside the bounding box', () => {
-    const cvox = unwrap(
-      'palette #F00\npart p\nsize 2 2 2\nsocket s 1 1 1\nvoxels { 00 00 , 00 00 }',
+    const cvox = model(
+      [
+        {
+          name: 'p',
+          size: [2, 2, 2],
+          voxels: SOLID_2x2x2,
+          sockets: [{ name: 's', pos: [1, 1, 1] }],
+        },
+      ],
+      RED,
     );
     expect(ofRule(cvox, 'W02')).toEqual([]);
   });
 
   it('fires once per offending socket, in declaration order', () => {
-    const cvox = unwrap(
-      'palette #F00\npart p\nsize 2 1 2\nsocket a 5 0 0\nsocket b 0 0 -1\nvoxels { 00 00 }',
+    const cvox = model(
+      [
+        {
+          name: 'p',
+          size: [2, 1, 2],
+          voxels: [['00', '00']],
+          sockets: [
+            { name: 'a', pos: [5, 0, 0] },
+            { name: 'b', pos: [0, 0, -1] },
+          ],
+        },
+      ],
+      RED,
     );
     const diags = ofRule(cvox, 'W02');
     expect(diags).toHaveLength(2);
@@ -65,13 +105,19 @@ describe('lintCvox — W02 socket outside grid bounds', () => {
 
 describe('lintCvox — W03 palette index unused', () => {
   it('does not fire when every palette index is referenced', () => {
-    const cvox = unwrap('palette #F00 #0F0\npart p\nsize 2 1 2\nvoxels { 01 10 }');
+    const cvox = model(
+      [{ name: 'p', size: [2, 1, 2], voxels: [['01', '10']] }],
+      ['#F00', '#0F0'],
+    );
     expect(ofRule(cvox, 'W03')).toEqual([]);
   });
 
   it('fires for each unused index', () => {
     // 3-color palette but only index 0 is used.
-    const cvox = unwrap('palette #F00 #0F0 #00F\npart p\nsize 2 1 2\nvoxels { 00 00 }');
+    const cvox = model(
+      [{ name: 'p', size: [2, 1, 2], voxels: [['00', '00']] }],
+      ['#F00', '#0F0', '#00F'],
+    );
     const diags = ofRule(cvox, 'W03');
     expect(diags).toHaveLength(2);
     expect(diags[0]?.message).toMatch(/palette index 1/);
@@ -81,8 +127,12 @@ describe('lintCvox — W03 palette index unused', () => {
   it('counts usage across all parts, not just one', () => {
     // Index 1 is used only by part b; without cross-part scanning, W03 would
     // incorrectly fire.
-    const cvox = unwrap(
-      'palette #F00 #0F0\npart a\nsize 1 1 1\nvoxels { 0 }\npart b\nsize 1 1 1\nvoxels { 1 }',
+    const cvox = model(
+      [
+        { name: 'a', size: [1, 1, 1], voxels: [['0']] },
+        { name: 'b', size: [1, 1, 1], voxels: [['1']] },
+      ],
+      ['#F00', '#0F0'],
     );
     expect(ofRule(cvox, 'W03')).toEqual([]);
   });
@@ -90,7 +140,7 @@ describe('lintCvox — W03 palette index unused', () => {
   it('does not count AIR (.) as usage', () => {
     // Palette has 1 color but every cell is AIR — index 0 is unused, fires.
     // (W05 also fires; that's tested separately.)
-    const cvox = unwrap('palette #F00\npart p\nsize 1 1 1\nvoxels { . }');
+    const cvox = model([{ name: 'p', size: [1, 1, 1], voxels: [['.']] }], RED);
     expect(ofRule(cvox, 'W03')).toHaveLength(1);
   });
 });
@@ -98,8 +148,9 @@ describe('lintCvox — W03 palette index unused', () => {
 describe('lintCvox — W04 / W05 emptiness', () => {
   it('W04 fires per empty layer in an otherwise-solid part', () => {
     // y=0 solid, y=1 empty, y=2 solid → W04 for y=1 only.
-    const cvox = unwrap(
-      'palette #F00\npart p\nsize 1 3 1\nvoxels { 0 , . , 0 }',
+    const cvox = model(
+      [{ name: 'p', size: [1, 3, 1], voxels: [['0'], ['.'], ['0']] }],
+      RED,
     );
     const w04 = ofRule(cvox, 'W04');
     expect(w04).toHaveLength(1);
@@ -108,66 +159,83 @@ describe('lintCvox — W04 / W05 emptiness', () => {
   });
 
   it('W05 fires when every layer is empty, and W04 is suppressed', () => {
-    const cvox = unwrap('palette #F00\npart p\nsize 1 2 1\nvoxels { . , . }');
+    const cvox = model(
+      [{ name: 'p', size: [1, 2, 1], voxels: [['.'], ['.']] }],
+      RED,
+    );
     expect(ofRule(cvox, 'W05')).toHaveLength(1);
     expect(ofRule(cvox, 'W04')).toEqual([]); // suppressed
   });
 
   it('neither fires when every layer has at least one solid cell', () => {
-    const cvox = unwrap('palette #F00\npart p\nsize 2 2 2\nvoxels { 00 00 , 00 00 }');
+    const cvox = model(
+      [{ name: 'p', size: [2, 2, 2], voxels: SOLID_2x2x2 }],
+      RED,
+    );
     expect(ofRule(cvox, 'W04')).toEqual([]);
     expect(ofRule(cvox, 'W05')).toEqual([]);
   });
 });
 
 describe('lintCvox — H01 part name convention', () => {
+  const named = (name: string) =>
+    model([{ name, size: [1, 1, 1], voxels: [['0']] }], RED);
+
   it('accepts lower_snake_case', () => {
-    const cvox = unwrap('palette #F00\npart head_top\nsize 1 1 1\nvoxels { 0 }');
-    expect(ofRule(cvox, 'H01')).toEqual([]);
+    expect(ofRule(named('head_top'), 'H01')).toEqual([]);
   });
 
   it('accepts lower-kebab-case', () => {
-    const cvox = unwrap('palette #F00\npart head-top\nsize 1 1 1\nvoxels { 0 }');
-    expect(ofRule(cvox, 'H01')).toEqual([]);
+    expect(ofRule(named('head-top'), 'H01')).toEqual([]);
   });
 
   it('accepts a single lowercase word with digits', () => {
-    const cvox = unwrap('palette #F00\npart arm1\nsize 1 1 1\nvoxels { 0 }');
-    expect(ofRule(cvox, 'H01')).toEqual([]);
+    expect(ofRule(named('arm1'), 'H01')).toEqual([]);
   });
 
   it('fires for CamelCase', () => {
-    const cvox = unwrap('palette #F00\npart Head\nsize 1 1 1\nvoxels { 0 }');
-    expect(ofRule(cvox, 'H01')).toHaveLength(1);
+    expect(ofRule(named('Head'), 'H01')).toHaveLength(1);
   });
 
   it('fires for leading underscore', () => {
-    const cvox = unwrap('palette #F00\npart _head\nsize 1 1 1\nvoxels { 0 }');
-    expect(ofRule(cvox, 'H01')).toHaveLength(1);
+    expect(ofRule(named('_head'), 'H01')).toHaveLength(1);
   });
 
   it('fires for trailing separator', () => {
-    const cvox = unwrap('palette #F00\npart head_\nsize 1 1 1\nvoxels { 0 }');
-    expect(ofRule(cvox, 'H01')).toHaveLength(1);
+    expect(ofRule(named('head_'), 'H01')).toHaveLength(1);
   });
 });
 
 describe('lintCvox — H02 fractional pivot', () => {
   it('does not fire for integer pivots', () => {
-    const cvox = unwrap('palette #F00\npart p\nsize 2 2 2\npivot 1 0 1\nvoxels { 00 00 , 00 00 }');
+    const cvox = model(
+      [{ name: 'p', size: [2, 2, 2], pivot: [1, 0, 1], voxels: SOLID_2x2x2 }],
+      RED,
+    );
     expect(ofRule(cvox, 'H02')).toEqual([]);
   });
 
   it('does not fire when the fractional pivot equals the geometric default', () => {
     // size 3 → default pivot [1.5, 0, 1.5]; not a typo, just the center.
-    const cvox = unwrap('palette #F00\npart p\nsize 3 1 3\nvoxels { 000 000 000 }');
+    const cvox = model(
+      [{ name: 'p', size: [3, 1, 3], voxels: [['000', '000', '000']] }],
+      RED,
+    );
     expect(ofRule(cvox, 'H02')).toEqual([]);
   });
 
   it('fires when pivot is fractional and not the default', () => {
     // size 4 → default [2, 0, 2] (integer); user wrote 2.5 → likely typo.
-    const cvox = unwrap(
-      'palette #F00\npart p\nsize 4 1 4\npivot 2.5 0 2\nvoxels { 0000 0000 0000 0000 }',
+    const cvox = model(
+      [
+        {
+          name: 'p',
+          size: [4, 1, 4],
+          pivot: [2.5, 0, 2],
+          voxels: [['0000', '0000', '0000', '0000']],
+        },
+      ],
+      RED,
     );
     const diags = ofRule(cvox, 'H02');
     expect(diags).toHaveLength(1);
@@ -196,8 +264,17 @@ describe('lintCvox — corpus parity', () => {
 
 describe('lintCvox — output structure', () => {
   it('every diagnostic carries a ruleId matching the W/H pattern', () => {
-    const cvox = unwrap(
-      'palette #F00 #0F0\npart Bad\nsize 2 1 2\npivot 5 0 0\nsocket s 9 0 0\nvoxels { .. .. }',
+    const cvox = model(
+      [
+        {
+          name: 'Bad',
+          size: [2, 1, 2],
+          pivot: [5, 0, 0],
+          voxels: [['..', '..']],
+          sockets: [{ name: 's', pos: [9, 0, 0] }],
+        },
+      ],
+      ['#F00', '#0F0'],
     );
     const diags = lintCvox(cvox);
     expect(diags.length).toBeGreaterThan(0);
@@ -208,8 +285,12 @@ describe('lintCvox — output structure', () => {
   });
 
   it('per-part rules run in part declaration order', () => {
-    const cvox = unwrap(
-      'palette #F00\npart Bad1\nsize 1 1 1\nvoxels { . }\npart Bad2\nsize 1 1 1\nvoxels { . }',
+    const cvox = model(
+      [
+        { name: 'Bad1', size: [1, 1, 1], voxels: [['.']] },
+        { name: 'Bad2', size: [1, 1, 1], voxels: [['.']] },
+      ],
+      RED,
     );
     const h01 = ofRule(cvox, 'H01');
     expect(h01).toHaveLength(2);

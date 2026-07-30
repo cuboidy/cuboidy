@@ -1,5 +1,5 @@
-import type { Palette, Vec3 } from '../cvox/types.js';
-import { AIR, indexToChar } from '../cvox/voxel-row.js';
+import type { Palette, Vec3 } from '../geometry/types.js';
+import { AIR, indexToChar } from '../geometry/voxel-row.js';
 import {
   gridRotationWarnings,
   loadAndAssemble,

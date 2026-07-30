@@ -16,7 +16,7 @@ import {
 //
 // `leadingIcon`, when given, renders a per-keystroke icon before the
 // field (file rows pass `fileIcon` so the glyph tracks the typed
-// extension live — type `.json` and it flips from the .cvox box to the
+// extension live — type `.md` and it flips from the JSON braces to the
 // braces icon). Rows without an icon (folders, parts) just omit it.
 export function InlineNameInput({
   initial,

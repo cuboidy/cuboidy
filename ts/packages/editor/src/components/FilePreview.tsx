@@ -6,7 +6,7 @@ interface Props {
 
 // Read-only raw text view of a loaded file. Future stages will replace
 // this with type-specific editors:
-//   - voxels.cvox → palette editor + per-part voxel painter (A2-rig-4)
+//   - voxels.json → palette editor + per-part voxel painter (A2-rig-4)
 //   - cuboidy.json → rig editor (A2-rig-5)
 //   - anims/*.json → animation timeline (A2-rig-6)
 // For now, the raw text gives users an immediate way to inspect what's

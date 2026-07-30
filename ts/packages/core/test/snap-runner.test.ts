@@ -11,7 +11,7 @@ import {
   type SnapOptions,
 } from '../src/cli/snap-runner.js';
 import { loadAndAssemble } from '../src/cli/assemble.js';
-import { geoFromText } from './helpers/geometry.js';
+import { geo } from './helpers/geometry.js';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const CROWN = resolve(REPO_ROOT, 'models/crown');
@@ -43,10 +43,9 @@ function opts(over: Partial<SnapOptions> = {}): SnapOptions {
 async function makeModel(files: Record<string, string>): Promise<string> {
   const dir = await mkdtemp(resolve(tmpdir(), 'cuboidy-snap-test-'));
   for (const [name, content] of Object.entries(files)) {
-    const geometry = name.endsWith('.cvox');
-    const path = resolve(dir, geometry ? name.replace(/\.cvox$/, '.json') : name);
+    const path = resolve(dir, name);
     await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, geometry ? geoFromText(content) : content, 'utf-8');
+    await writeFile(path, content, 'utf-8');
   }
   return dir;
 }
@@ -127,7 +126,10 @@ describe('runSnap — filesystem', () => {
 
   it('returns exit 1 for a model with no visible voxels', async () => {
     const dir = await makeModel({
-      'voxels.cvox': 'palette #F00\npart p\nsize 1 1 1\npivot 0 0 0\nvoxels { . }',
+      'voxels.json': geo(
+        [{ name: 'p', size: [1, 1, 1], pivot: [0, 0, 0], voxels: [['.']] }],
+        ['#F00'],
+      ),
       'cuboidy.json': JSON.stringify({ name: 'empty', parts: [{ name: 'p' }] }),
     });
     const r = await runSnap(dir, opts({ outDir: dir }));
@@ -135,7 +137,7 @@ describe('runSnap — filesystem', () => {
     expect(r.text).toMatch(/no visible voxels/);
   });
 
-  it('returns exit 2 when voxels.cvox is missing', async () => {
+  it('returns exit 2 when voxels.json is missing', async () => {
     const dir = await makeModel({});
     const r = await runSnap(dir, opts({ outDir: dir }));
     expect(r.exitCode).toBe(2);
@@ -147,11 +149,23 @@ describe('runSnap — rest rotations', () => {
     // A 6-voxel boom resting at 45° about Z: rendered as true oriented
     // cubes (the old grid path drew it horizontal and warned).
     const dir = await makeModel({
-      'voxels.cvox': [
-        'palette #888888 #FF3B30',
-        'part torso\nsize 2 1 2\npivot 1 0 1\nvoxels { 00\n00 }',
-        'part boom\nsize 6 1 1\npivot 0 0 0\nvoxels { 000001 }',
-      ].join('\n'),
+      'voxels.json': geo(
+        [
+          {
+            name: 'torso',
+            size: [2, 1, 2],
+            pivot: [1, 0, 1],
+            voxels: [['00', '00']],
+          },
+          {
+            name: 'boom',
+            size: [6, 1, 1],
+            pivot: [0, 0, 0],
+            voxels: [['000001']],
+          },
+        ],
+        ['#888888', '#FF3B30'],
+      ),
       'cuboidy.json': JSON.stringify({
         name: 'boom45',
         parts: [
@@ -176,7 +190,9 @@ describe('runSnap — rest rotations', () => {
 describe('renderSnapshots — v0.7 project shapes', () => {
   it('renders a palette-less model with a §6.10 bound palette', async () => {
     const dir = await makeModel({
-      'voxels.cvox': 'part p\nsize 2 1 1\npivot 0 0 0\nvoxels { 01 }',
+      'voxels.json': geo([
+        { name: 'p', size: [2, 1, 1], pivot: [0, 0, 0], voxels: [['01']] },
+      ]),
       'palette.json': JSON.stringify({ colors: ['#F00', '#0F0'] }),
       'cuboidy.json': JSON.stringify({
         name: 'bound',
@@ -192,12 +208,16 @@ describe('renderSnapshots — v0.7 project shapes', () => {
     for (const tile of out.tiles) expect(isPng(tile.png)).toBe(true);
   });
 
-  it('renders a multi-geometry model spanning two cvox files', async () => {
+  it('renders a multi-geometry model spanning two geometry files', async () => {
     const dir = await makeModel({
-      'body.cvox':
-        'palette #F00 #0F0\npart arm\nsize 2 1 1\npivot 0 0 0\nvoxels { 01 }',
-      'arms.cvox':
-        'palette #F00 #0F0\npart arm_r\nsize 2 1 1\npivot 2 0 0\nvoxels { 10 }',
+      'body.json': geo(
+        [{ name: 'arm', size: [2, 1, 1], pivot: [0, 0, 0], voxels: [['01']] }],
+        ['#F00', '#0F0'],
+      ),
+      'arms.json': geo(
+        [{ name: 'arm_r', size: [2, 1, 1], pivot: [2, 0, 0], voxels: [['10']] }],
+        ['#F00', '#0F0'],
+      ),
       'cuboidy.json': JSON.stringify({
         name: 'multi',
         geometry: ['body.json', 'arms.json'],

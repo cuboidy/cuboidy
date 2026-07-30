@@ -22,22 +22,30 @@ Files are JSON + plain text only. The format is designed to be:
 
 ## At a glance
 
-A minimal Cuboidy voxel definition (`voxels.cvox`) — a `crown` part, 3×2×3 voxels, gold:
+A minimal Cuboidy voxel definition (`voxels.json`) — a `crown` part, 3×2×3 voxels, gold:
 
-```
-palette #FFD700                    // gold
-
-part crown
-    size 3 2 3
-    pivot 1 0 1
-    voxels {
-        000 000 000                // layer 0 — solid base
-        ,
-        0.0 ... 0.0                // layer 1 — 4 corner pillars (hollow top)
+```json
+{
+  "version": "0.9",
+  "palette": ["#FFD700"],
+  "parts": [
+    {
+      "name": "crown",
+      "size": [3, 2, 3],
+      "pivot": { "pos": [1, 0, 1] },
+      "voxels": [
+        ["000", "000", "000"],
+        ["0.0", "...", "0.0"]
+      ]
     }
+  ]
+}
 ```
 
-Identifier names (part / socket) are bare tokens. The identifier rule (§5) excludes reserved keywords (`part`, `size`, `pivot`, …), so `part part` correctly fails as "invalid identifier" rather than parsing as a part literally named `part`. The `voxels { … }` block holds the voxel data; comma separates Y-layers (positional indexing). Inside the block, anything but `,` and `}` is interpreted as a voxel row — even strings that spell reserved words like `rot` or `size` are unambiguously voxel data. See SPEC §7 for the full grammar.
+`voxels` is positionally indexed: one entry per Y-layer, one string per Z row,
+one character per X cell. `.` is air; every other character is a palette index
+(`0-9a-zA-Z`, hence the 62-colour cap). `size` is `[W, H, D]` and the arrays
+must agree with it. See SPEC §7 for the full shape.
 
 ## Folder layout
 
@@ -46,7 +54,7 @@ A Cuboidy model is a **folder**, not a single file:
 ```
 my-model/
 ├── cuboidy.json        manifest: rig hierarchy + animations (+ references)
-├── voxels.cvox       voxel definition: palette + per-part grid + pivots + sockets
+├── voxels.json       voxel definition: palette + per-part grid + pivots + sockets
 └── anims/            (optional) shared animations
     └── walk.json
 ```
@@ -60,7 +68,7 @@ my-model.cuboidy        packed package (ZIP of the folder above)
 | File | Role | Format | Validation |
 |---|---|---|---|
 | `cuboidy.json` | manifest (fixed name) | JSON | `parseManifest()` (TS reference impl) + shared JSON Schema (`schema/cuboidy.schema.json`) |
-| `voxels.cvox` | voxel definition | custom text | `parseCvox()` (TS reference impl) + `cuboidy-lint` CLI |
+| `voxels.json` | voxel definition | JSON | `parseGeometry()` (TS reference impl) + shared JSON Schema (`schema/cuboidy-geometry.schema.json`) + `cuboidy-lint` CLI |
 | `anims/*.json` | optional shared animations | JSON | same inline-animation schema + semantic rules (§6.6), resolved and checked by lint and the inspection CLIs |
 | `*.cuboidy` | packed package | ZIP | both, after extraction (packed format is reserved for a future spec version) |
 
@@ -72,7 +80,7 @@ Models live under `models/`:
 - `models/cat/` — quadruped with pointy ears, vertical tail, and belly markings; idle tail-twitch animation
 - `models/crown/` — single-part static accessory, designed to attach to wolf's `hat` socket
 - `models/boy/`, `models/girl/` — humanoid rigs (head / body / arms / legs) in standard, `-chibi`, and `-mini` proportions
-- `models/robo-mini/` — v0.7+ project-feature demo: manifest `geometry` list (two `.cvox` files) and external `palette.json` binding (§6.9/§6.10)
+- `models/robo-mini/` — v0.7+ project-feature demo: manifest `geometry` list (two geometry files) and external `palette.json` binding (§6.9/§6.10)
 
 ## Inspecting models
 
@@ -87,62 +95,50 @@ Four CLIs assemble a model (rest pose — translation only, pivot/animation rota
 
   The default is the seven-view **standard** set: four three-quarter corners from above plus front / right-side / top. Other groups: `cardinal` (six faces), `corners` (four), `all`; or list ids directly (`front back side left top bottom fr-up fl-up br-up bl-up`).
 
-- **`cuboidy-view <dir>`** — orthographic projections as **ASCII grids** of palette-index characters (the `voxels.cvox` alphabet), for a token-cheap textual read.
+- **`cuboidy-view <dir>`** — orthographic projections as **ASCII grids** of palette-index characters (the `voxels.json` alphabet), for a token-cheap textual read.
 - **`cuboidy-query <dir> --at=x,y,z`** — exact voxel lookup at world coordinates (fractional-safe; the precise tool when half-voxel offsets are present).
 - **`cuboidy-lint <dir>`** — voxel-definition + cross-file lint.
 - **`cuboidy-part`** — author concrete geometry (the way symmetric limbs / repeated parts are made — an AI generator runs this instead of hand-writing mirrored voxels):
-  - `cuboidy-part duplicate <from.cvox> <fromPart> <to.cvox> <toPart>` — copy a part (cross-file copies remap the palette so colors are preserved).
-  - `cuboidy-part mirror <file.cvox> <part> [axis]` — reflect a part **in place** across `axis` (default `x`). A bilateral pair is *duplicate, then mirror the copy*.
+  - `cuboidy-part duplicate <from.json> <fromPart> <to.json> <toPart>` — copy a part (cross-file copies remap the palette so colors are preserved).
+  - `cuboidy-part mirror <file.json> <part> [axis]` — reflect a part **in place** across `axis` (default `x`). A bilateral pair is *duplicate, then mirror the copy*.
 
-## Token efficiency
+## Token cost
 
-Cuboidy is designed to be cheap to send to an LLM. Measured with real
-tokenizers (tiktoken `o200k_base` / `cl100k_base`) on an 8-model dataset:
+Cuboidy is meant to be cheap to send to an LLM, and for a long time this
+section claimed a bespoke text format was how that was achieved. That claim was
+measured in 2026-07 and did not hold.
 
-Sorted from largest to smallest. The baseline is canonical CVOX (the
-form Cuboidy actually ships); other formats are compared against it.
+In a real authoring turn — spec in, model out — **reasoning is 77-93% of the
+output cost**. The geometry file is around 7% of what a sample costs to
+generate; the rest is the model thinking about shape. A 30-50% difference in
+file size therefore moves the bill by single digits, which does not pay for a
+bespoke parser, its grammar specification, and a barrier to every non-Claude
+implementation. On quality, a blind pairwise vote over four briefs went **4-0
+for JSON** (p = 0.125 — suggestive, not significant), and one non-Claude model
+could not produce the text format at all while writing the JSON manifest
+correctly.
 
-| Format                                  | Total tokens | vs CVOX canonical | Readability |
-| --------------------------------------- | -----------: | ----------------: | :---------: |
-| JSON, pretty-printed                    |        7,295 |          +214.7 % |    ★★★☆☆    |
-| JSON with voxel rows as strings, pretty |        4,114 |           +77.5 % |    ★★★★☆    |
-| JSON, minified                          |        2,954 |           +27.4 % |    ★☆☆☆☆    |
-| **CVOX, canonical (indented)**          |    **2,318** |  **0 % (baseline)** | **★★★★★** |
-| JSON str + minified                     |        1,881 |           −18.9 % |    ★★☆☆☆    |
-| **CVOX, unindented**                    |    **1,648** |       **−28.9 %** | **★★★★☆**   |
-| **CVOX, single-line**                   |    **1,526** |       **−34.2 %** | **★★☆☆☆**   |
+So geometry is JSON, and the efficiency work that matters happens elsewhere:
+the voxel-row alphabet keeps a grid at one character per cell, and
+`cuboidy-view` / `cuboidy-query` exist so a model can inspect a model without
+re-reading the whole file.
 
-Readability rubric (subjective, but applied consistently):
-**★★★★★** indented + multi-line + bare keywords (CVOX-native);
-**★★★★☆** indented or per-row line breaks with semantic chunks visible;
-**★★★☆☆** structured but voxel data buried in nested-int stacks;
-**★★☆☆☆** single-line but voxel rows still visible as tokens or strings;
-**★☆☆☆☆** single-line, all structural punctuation crammed together.
-
-Taking canonical CVOX as the baseline, pretty-printed JSON costs
-**~3.15× more tokens** for the same data while being *less* readable
-(voxel cells one per line). And because SPEC §7 lets any whitespace
-separate tokens, the *same* `.cvox` can be stored canonical for humans
-and diffs, then stripped to unindented form (`★★★★☆`) for LLM prompts —
-**~29 % fewer tokens** without losing the line-by-line structure.
-
-Full methodology, dataset, and per-model numbers in
-[`bench/RESULTS.md`](bench/RESULTS.md).
+Evidence, method and the limits of the sample: [`docs/eval/`](docs/eval/).
 
 ## Roadmap
 
 - [x] Spec document (`SPEC.md`) — v0.9 draft (multi-file geometry, shareable external palettes, keyframe easing, per-part rest rotation)
 - [x] Reference parser (TypeScript) — `ts/packages/core/`, full v0.9 grammar (554 tests)
 - [x] Shared project loader — `resolveProject()`: manifest geometry list, external palette, external animations; used by lint, the inspection CLIs and the editor
-- [x] Cross-file lint — project-shaped validation (`validateProject`): manifest↔geometry part matching, cross-file duplicate names, palette resolution/range, animation target checks, W06 geometric l/r symmetry, W07 unreferenced `.cvox`, H03 shadowed inline palette
-- [x] Shared parity fixtures — `fixtures/cvox/<code>/` and `fixtures/json/<code>/`, contract for cross-implementation conformance
+- [x] Cross-file lint — project-shaped validation (`validateProject`): manifest↔geometry part matching, cross-file duplicate names, palette resolution/range, animation target checks, W06 geometric l/r symmetry, W07 unreferenced geometry file, H03 shadowed inline palette
+- [x] Shared parity fixtures — `fixtures/geometry/<code>/` and `fixtures/manifest/<code>/`, contract for cross-implementation conformance
 - [x] JSON Schema for `cuboidy.json` — `schema/cuboidy.schema.json` (Draft 2020-12, derived from the Zod ManifestSchema; reference via `"$schema": "https://cuboidy.com/schema/cuboidy.schema.json"` or the GitHub raw URL)
-- [x] Canonical serializer (reader-tolerant / writer-strict) — `serializeCvox(cvox)` produces canonical text; round-trip with `parseCvox` verified. **File header preserved** (SPEC §7.11.1); inline comments are advisory and intentionally not preserved (v0.6+ policy)
+- [x] Canonical serializer (reader-tolerant / writer-strict) — `serializeGeometry()` emits one canonical form per model; round-trip with `parseGeometry` verified as a byte-level fixed point on every shipped model
 - [x] Voxel definition linter — `lintCvox(cvox)` library (W01–W05 + H01–H02) and `cuboidy-lint <dir>` CLI (SPEC §11.7 output, `--strict` for warnings-as-errors)
 - [x] Model inspection CLIs — `cuboidy-view` (ASCII projection), `cuboidy-query` (exact coordinate lookup), and `cuboidy-snap` (multi-angle PNG renders; contact sheet + per-angle, dependency-free) for human / multimodal review
 - [x] Image snapshots — `cuboidy-snap <dir>` renders a model to PNG from several angles, the raster counterpart to `cuboidy-view`, for visual review and AI-assisted editing
 - [ ] Reference parser (C#)
-- [~] Web-based editor (`ts/packages/editor/`) — loads folders / `.cvox` / `.cuboidy` ZIPs; Cvox / Rig / Anim views; part, palette and keyframe-animation editing with undo/redo; project-aware save/export (FSA writeback or ZIP); Playwright E2E suite. Run locally with `cd ts/packages/editor && npm run dev`
+- [~] Web-based editor (`ts/packages/editor/`) — loads folders / geometry files / `.cuboidy` ZIPs; Geometry / Rig / Anim views; part, palette and keyframe-animation editing with undo/redo; project-aware save/export (FSA writeback or ZIP); Playwright E2E suite. Run locally with `cd ts/packages/editor && npm run dev`
 - [ ] Rig vocabulary docs (quadruped / biped / winged / ...)
 - [ ] Packed format spec (`.cuboidy` ZIP)
 

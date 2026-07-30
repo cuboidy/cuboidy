@@ -1,5 +1,23 @@
 # Token efficiency: CVOX vs JSON
 
+> **SUPERSEDED — do not cite.** This benchmark measured file bytes with an
+> OpenAI tokenizer on synthetic grids built from `solid()`/`hollow()` fills. It
+> priced file size alone and never measured reasoning cost or output quality,
+> which is where the real difference turned out to be. Its conclusion — that
+> the bespoke text format was materially cheaper to send to an LLM — did not
+> survive measurement: reasoning is 77-93% of an authoring turn's output cost,
+> so the geometry file is around 7% of the bill.
+>
+> `.cvox` was removed in 2026-07 and geometry is JSON. The evidence that
+> replaced this document is in [`../docs/eval/`](../docs/eval/); the decision
+> and its consequences are in
+> [`../docs/json-migration.md`](../docs/json-migration.md).
+>
+> Kept as the historical record of how the earlier numbers were reached, and of
+> the fact that they were reached the wrong way. The scripts alongside it
+> (`generate-dataset.mjs`, `compare-tokens.py`, `verify-cvox.mjs`) reference a
+> format that no longer exists and no longer run.
+
 How many LLM tokens does Cuboidy's `.cvox` format actually save versus an
 equivalent JSON encoding of the same data? This document measures it on a
 small dataset using real tokenizers (tiktoken — `o200k_base` for GPT-4o /

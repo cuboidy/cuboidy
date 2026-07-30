@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { IDENTIFIER_RE } from './identifier.js';
-import { RESERVED_KEYWORDS } from './cvox/reserved.js';
+import { RESERVED_KEYWORDS } from './identifier.js';
 
 // SPEC §5: the shared Zod schema for an identifier slot — model / part /
 // socket / animation names. Split into `.regex()` + `.refine()` so the

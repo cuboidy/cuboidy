@@ -2,7 +2,7 @@
   "name": "@cuboidy/editor",
   "version": "0.0.0",
   "private": true,
-  "description": "Cuboidy web-based editor: cvox/rig/anim views, part + palette + keyframe-animation editing with undo/redo, project-aware save/export",
+  "description": "Cuboidy web-based editor: geometry/rig/anim views, part + palette + keyframe-animation editing with undo/redo, project-aware save/export",
   "license": "MIT",
   "type": "module",
   "scripts": {

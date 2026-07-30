@@ -1,0 +1,8 @@
+{
+  "version": "0.9",
+  "palette": ["#FF0000"],
+  "parts": [
+    { "name": "body", "size": [1, 1, 1], "voxels": [["0"]] },
+    { "name": "body", "size": [1, 1, 1], "voxels": [["0"]] }
+  ]
+}

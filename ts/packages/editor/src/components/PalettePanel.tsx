@@ -49,7 +49,7 @@ interface Props {
 
 // Palette editing as a panel. All edits route through the callbacks;
 // the parent writes them to where the palette LIVES (palette.json or
-// the primary .cvox).
+// the primary geometry file).
 //
 // Delete behavior:
 //   - Unused color: silent delete.

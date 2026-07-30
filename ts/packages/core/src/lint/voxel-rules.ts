@@ -1,6 +1,6 @@
 import type { Diagnostic } from '../diagnostic.js';
-import type { Cvox, Part, Size, Vec3 } from '../cvox/types.js';
-import { AIR } from '../cvox/voxel-row.js';
+import type { Cvox, Part, Size, Vec3 } from '../geometry/types.js';
+import { AIR } from '../geometry/voxel-row.js';
 
 // SPEC §11.3 (W01–W05) + §11.4 (H01–H02): semantic lint over a parsed Cvox.
 // `lintCvox` runs AFTER `parseCvox` has accepted the input, so every rule

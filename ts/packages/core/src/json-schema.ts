@@ -6,7 +6,7 @@
 
 import { z } from 'zod';
 import { IDENTIFIER_RE } from './identifier.js';
-import { RESERVED_KEYWORDS } from './cvox/reserved.js';
+import { RESERVED_KEYWORDS } from './identifier.js';
 import { ManifestSchema } from './manifest.js';
 import { GeometrySchema } from './geometry/schema.js';
 

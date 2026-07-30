@@ -13,9 +13,10 @@ export function refPathPattern(ext: string): string {
   return `^(?!/)(?!.*//)[^\\\\:]+${ext.replace('.', '\\.')}$`;
 }
 
-// SPEC §8 reference path, parameterized by the required extension
-// (`.cvox` for geometry entries, `.json` for the palette binding and
-// animation references). Syntax-only: whether the target exists — and
+// SPEC §8 reference path, parameterized by the required extension — `.json`
+// for every reference kind now that geometry is JSON too, but kept a parameter
+// because the rule is about the path shape, not the suffix.
+// Syntax-only: whether the target exists — and
 // whether a `../` path is loadable at all — is the consuming tool's
 // concern. Refinements (not one regex) so each violation gets a
 // specific message; `.meta()` carries the equivalent `pattern` into the

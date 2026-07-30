@@ -1369,7 +1369,7 @@ export function App() {
     [dispatchEdit],
   );
 
-  // Reference an existing-but-unreferenced .cvox from the manifest's
+  // Reference an existing-but-unreferenced geometry file from the manifest's
   // geometry list so its parts join the model (the fix-it for lint W07:
   // files outside the list are ignored). Re-resolves the derived maps in
   // the same edit, so one undo both drops the reference and unloads the

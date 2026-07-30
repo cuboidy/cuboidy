@@ -6,7 +6,7 @@ import {
   projectFilePaths,
   resolveProject,
 } from '../src/project.js';
-import { geoFromText } from './helpers/geometry.js';
+import { geo } from './helpers/geometry.js';
 
 // SPEC §6.10: the shared project-resolution layer — geometry list and
 // palette binding.
@@ -50,8 +50,8 @@ describe('resolveProject', () => {
   });
   // resolveProject is handed file *contents*, so these must be the JSON the
   // loader will actually read.
-  const BODY = geoFromText('part arm\n    size 2 1 1\n    voxels { 01 }');
-  const ARMS = geoFromText('part arm_l\n    size 2 1 1\n    voxels { 10 }');
+  const BODY = geo([{ name: 'arm', size: [2, 1, 1], voxels: [['01']] }]);
+  const ARMS = geo([{ name: 'arm_l', size: [2, 1, 1], voxels: [['10']] }]);
 
   it('loads geometry files in list order plus the bound palette', () => {
     const r = resolveProject(
