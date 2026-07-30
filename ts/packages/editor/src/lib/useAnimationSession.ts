@@ -117,7 +117,9 @@ export function useAnimationSession({
   onClearPartTrack,
   onPasteAnimKeyframe,
 }: Params): AnimationSession {
-  const animations = manifest?.animations ?? {};
+  // Memoized because the `?? {}` default is a fresh object each render —
+  // as a raw dependency it would make every memo below it recompute.
+  const animations = useMemo(() => manifest?.animations ?? {}, [manifest]);
   const inlineNames = useMemo(
     () =>
       Object.keys(animations).filter((n) => {

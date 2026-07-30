@@ -127,3 +127,48 @@ test('A-6: undo right after editing a non-primary file stays consistent', async 
     page.locator('.tree-name', { hasText: /^leg-l$/ }),
   ).toBeVisible();
 });
+
+// The A-6 tests above both freeze the clock, so they only ever exercise
+// the debounce-still-PENDING path — the one the flush guard handles.
+// This covers the gap: once the debounce has fired and REPORTED an
+// error, the timer ref is null, so `flushPendingManifestReparse` returns
+// true with nothing to flush and the guard lets a structural edit
+// through against the last-good AST.
+test('A-6 gap: a structural edit after the debounce reported an error', async ({
+  page,
+}) => {
+  // KNOWN BUG — expected to fail until the edit guard stops keying off
+  // the debounce timer. Playwright reports "expected to fail but passed"
+  // once it is fixed, which is the signal to drop this line.
+  test.fail();
+
+  const row = (name: string) =>
+    page.locator('.tree-row').filter({
+      has: page.locator('.tree-name', { hasText: new RegExp(`^${name}$`) }),
+    });
+
+  await loadFolder(page, ROBO_MINI);
+  await openTab(page, 'cuboidy.json');
+  const textarea = page.locator('.source-textarea').first();
+  const original = await textarea.inputValue();
+
+  // Break the manifest (schema-invalid but well-formed JSON) and let the
+  // real 300ms debounce fire, so the error is CONFIRMED, not pending.
+  const broken = original.replace('"name": "robo-mini"', '"name": 42');
+  expect(broken).not.toBe(original);
+  await textarea.fill(broken);
+  await expect(page.locator('.parse-error-banner')).toBeVisible();
+
+  // Reparent by drag — the one manifest-writing entry point not gated on
+  // manifestParseError (PartTree's dndEnabled only checks a manifest exists).
+  await openTab(page, 'Parts');
+  await row('leg-l').dragTo(row('head'));
+
+  // The drag must actually have landed, or the assertion below proves nothing.
+  await expect(row('head').locator('.tree-caret-btn')).toBeVisible();
+
+  // The typed text must survive: serializing the last-good AST over it
+  // silently discards what the user wrote.
+  await openTab(page, 'cuboidy.json');
+  await expect(textarea).toHaveValue(broken);
+});

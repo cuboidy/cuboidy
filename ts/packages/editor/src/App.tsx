@@ -1113,7 +1113,7 @@ export function App() {
         };
       });
     },
-    [dispatchEdit, cancelPendingGeometryReparse],
+    [dispatchEdit, flushGeometryReparse],
   );
 
   // Re-point (or clear, path = null) the manifest's palette binding from
@@ -1184,7 +1184,7 @@ export function App() {
       });
       setManifestParseError(null);
     },
-    [dispatchEdit, cancelPendingManifestReparse],
+    [dispatchEdit, flushPendingManifestReparse],
   );
 
   // Move the primary's inline palette out to palette.json and bind it
@@ -1236,7 +1236,7 @@ export function App() {
       };
     });
     setManifestParseError(null);
-  }, [dispatchEdit, cancelPendingGeometryReparse, cancelPendingManifestReparse]);
+  }, [dispatchEdit, flushAllReparse]);
 
   // The reverse: copy the bound palette into the primary's inline
   // declaration and drop the binding. The palette.json file is kept
@@ -1273,7 +1273,7 @@ export function App() {
       };
     });
     setManifestParseError(null);
-  }, [dispatchEdit, cancelPendingGeometryReparse, cancelPendingManifestReparse]);
+  }, [dispatchEdit, flushAllReparse]);
 
   // ── File CRUD (Phase D). Folder sources with a files map only; each
   // operation is one dispatchEdit = one atomic undo step. The manifest
@@ -1631,7 +1631,7 @@ export function App() {
         return { ...current, source: nextSrc };
       });
     },
-    [dispatchEdit, cancelPendingGeometryReparse],
+    [dispatchEdit, flushGeometryReparse],
   );
 
   // Rewrite ONE part's geometry (pivot / sockets), routed to whichever
@@ -1814,7 +1814,7 @@ export function App() {
       setSelectedPartName(name);
       setCreating(null);
     },
-    [dispatchEdit, cancelPendingGeometryReparse, cancelPendingManifestReparse],
+    [dispatchEdit, flushAllReparse],
   );
 
   // Move a part's declaration to another geometry file, atomically (one
@@ -1869,7 +1869,7 @@ export function App() {
         return { ...current, source: nextSrc };
       });
     },
-    [dispatchEdit, cancelPendingGeometryReparse],
+    [dispatchEdit, flushGeometryReparse],
   );
 
   // Rename a part everywhere it's referenced, atomically (one dispatchEdit =
@@ -1962,7 +1962,7 @@ export function App() {
         return next;
       });
     },
-    [dispatchEdit, cancelPendingGeometryReparse, cancelPendingManifestReparse],
+    [dispatchEdit, flushAllReparse],
   );
 
   // Delete a part, cleaning up its references atomically (one undo). Removes
@@ -2045,7 +2045,7 @@ export function App() {
         return next;
       });
     },
-    [dispatchEdit, cancelPendingGeometryReparse, cancelPendingManifestReparse],
+    [dispatchEdit, flushAllReparse],
   );
 
   // Manifest source-text edit (manifest tab textarea typing). Same
@@ -3073,6 +3073,7 @@ export function App() {
     history,
     cancelPendingGeometryReparse,
     cancelPendingManifestReparse,
+    cancelAllFileReparse,
     revalidateRestored,
   ]);
 
@@ -3088,6 +3089,7 @@ export function App() {
     history,
     cancelPendingGeometryReparse,
     cancelPendingManifestReparse,
+    cancelAllFileReparse,
     revalidateRestored,
   ]);
 

@@ -142,19 +142,22 @@ function RigNodeView({
 }: NodeProps) {
   const part = node.part;
   const pose = poses?.get(part.name) ?? REST_POSE;
-  const base = node.manifestPart?.position ?? [0, 0, 0];
+  const basePos = node.manifestPart?.position;
   const restRot = node.manifestPart?.rotation;
   const piv = part.pivot.pos;
   const pivotRot = part.pivot.rot;
 
-  const groupPos = useMemo<[number, number, number]>(
-    () => [
+  // The `?? [0, 0, 0]` default lives INSIDE the memo: as a dependency it
+  // would be a fresh array on every render for any unpositioned part,
+  // defeating the memo entirely.
+  const groupPos = useMemo<[number, number, number]>(() => {
+    const base = basePos ?? [0, 0, 0];
+    return [
       base[0] + pose.pos[0],
       base[1] + pose.pos[1],
       base[2] + pose.pos[2],
-    ],
-    [base, pose.pos],
-  );
+    ];
+  }, [basePos, pose.pos]);
 
   // q_total = q_rotation · q_pivot · q_anim (SPEC §7.7): the animation
   // rotation applies first in the rest-local frame, then the geometry-side
