@@ -9,9 +9,9 @@ interface Props {
 
 // Dropdown-style Export menu. Always available when something is loaded;
 // the visible items depend on what's actually exportable:
-//   - geometry-only: just the geometry file
-//   - folder + manifest: geometry / cuboidy.json / .cuboidy ZIP
-//   - folder + no manifest: geometry + .cuboidy ZIP containing only it
+//   - lone geometry file: just that file
+//   - package + manifest: geometry / cuboidy.json / .cuboidy ZIP
+//   - package + no manifest: geometry + .cuboidy ZIP containing only it
 //
 // Closes on outside click and on Escape. The dropdown is positioned
 // relative to the trigger button via CSS, so we don't need a portal.
@@ -51,21 +51,22 @@ export function ExportMenu({ source }: Props) {
   }, [source, close]);
 
   const handleDownloadManifest = useCallback(() => {
-    if (source.kind === 'folder' && source.manifestFile !== undefined) {
+    if (source.manifestFile !== undefined) {
       downloadFile(source.manifestFile.name, source.manifestFile.text);
     }
     close();
   }, [source, close]);
 
   const handleDownloadZip = useCallback(async () => {
-    if (source.kind !== 'folder') return;
+    // No package name = a lone geometry file; there is nothing to bundle.
+    if (source.folderName === undefined) return;
     const base = source.folderName.replace(/\.cuboidy$/i, '');
     await downloadAsZip(source, `${base}.cuboidy`);
     close();
   }, [source, close]);
 
-  const isFolder = source.kind === 'folder';
-  const hasManifest = isFolder && source.manifestFile !== undefined;
+  const isFolder = source.folderName !== undefined;
+  const hasManifest = source.manifestFile !== undefined;
 
   return (
     <div className="export-menu" ref={containerRef}>

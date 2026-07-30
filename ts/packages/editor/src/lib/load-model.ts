@@ -146,8 +146,9 @@ function buildGeometryOnlyResult(name: string, text: string): LoadResult {
   if (!geometryR.ok) {
     return { error: geometryR.message, geometryFileName: name };
   }
+  // No folderName: this is a lone file, not a package (see LoadedSource).
   const source: LoadedSource = {
-    kind: 'geometry-only',
+    synthetic: false,
     geometry: geometryR.value,
     geometryFile: { name, text },
   };
@@ -208,7 +209,6 @@ function buildFolderResult(
   }
 
   const source: LoadedSource = {
-    kind: 'folder',
     folderName,
     synthetic: false,
     ...(opts.handle !== undefined && { handle: opts.handle }),

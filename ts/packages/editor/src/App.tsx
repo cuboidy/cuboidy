@@ -126,7 +126,7 @@ function mergeGeometries(src: LoadedSource): {
   files: ReadonlyMap<string, string>;
 } {
   const files = new Map<string, string>();
-  if (src.kind !== 'folder' || src.geometries === undefined) {
+  if (src.geometries === undefined) {
     return { parts: src.geometry.parts, files };
   }
   const parts: Part[] = [];
@@ -178,22 +178,22 @@ function remapPartPalette(
   return { part: { ...part, voxels }, palette };
 }
 
-// Apply `fn` to every geometry file's AST (or the single geometry for
-// geometry-only / synthetic sources). Returns the source with each CHANGED
-// file kept fully in sync: geometries map, the files snapshot (so
-// export sees the edit), and — when the primary file changed — the live
-// geometry/geometryFile pair the rest of the editor reads. `fn` returns null
-// for "no change to this file".
 function pathBasename(path: string): string {
   const i = path.lastIndexOf('/');
   return i === -1 ? path : path.slice(i + 1);
 }
 
-function mapGeometryFiles<S extends LoadedSource>(
-  src: S,
+// Apply `fn` to every geometry file AST (or the lone geometry when the
+// source has no geometries map). Returns the source with each CHANGED
+// file kept fully in sync: geometries map, the files snapshot (so
+// export sees the edit), and — when the primary file changed — the live
+// geometry/geometryFile pair the rest of the editor reads. `fn` returns
+// null for "no change to this file".
+function mapGeometryFiles(
+  src: LoadedSource,
   fn: (geometry: Geometry, path: string) => Geometry | null,
-): S {
-  if (src.kind !== 'folder' || src.geometries === undefined) {
+): LoadedSource {
+  if (src.geometries === undefined) {
     const next = fn(src.geometry, src.geometryFile.name);
     if (next === null) return src;
     return {
@@ -235,21 +235,20 @@ function mapGeometryFiles<S extends LoadedSource>(
 // geometry AND external animation files. `fn` returns null for "no
 // change to this clip". Two clips may reference one file; they carry
 // the same parsed object, so `fn` rewrites the shared file identically.
-function rewriteExternalAnims<S extends LoadedSource>(
-  src: S,
+function rewriteExternalAnims(
+  src: LoadedSource,
   fn: (anim: InlineAnimation) => InlineAnimation | null,
-): S {
-  if (src.kind !== 'folder' || src.externalAnims === undefined) return src;
-  const folder: Extract<LoadedSource, { kind: 'folder' }> = src;
+): LoadedSource {
+  if (src.externalAnims === undefined) return src;
   let anims: Map<string, { path: string; anim: InlineAnimation }> | null = null;
   let files: Map<string, FileEntry> | null = null;
-  for (const [clip, rec] of folder.externalAnims!) {
+  for (const [clip, rec] of src.externalAnims) {
     const built = fn(rec.anim);
     if (built === null || built === rec.anim) continue;
-    if (anims === null) anims = new Map(folder.externalAnims);
+    if (anims === null) anims = new Map(src.externalAnims);
     anims.set(clip, { path: rec.path, anim: built });
-    if (folder.files !== undefined) {
-      if (files === null) files = new Map(folder.files);
+    if (src.files !== undefined) {
+      if (files === null) files = new Map(src.files);
       files.set(rec.path, {
         name: rec.path,
         text: JSON.stringify(built, null, 2) + '\n',
@@ -257,17 +256,10 @@ function rewriteExternalAnims<S extends LoadedSource>(
     }
   }
   if (anims === null) return src;
-  const next: Extract<LoadedSource, { kind: 'folder' }> = {
-    ...folder,
-    externalAnims: anims,
-    ...(files !== null && { files }),
-  };
-  return next as S;
+  return { ...src, externalAnims: anims, ...(files !== null && { files }) };
 }
 
-type FolderSource = Extract<LoadedSource, { kind: 'folder' }>;
-
-// Pure per-file rename/move over a folder source: a full-path rename IS
+// Pure per-file rename/move over the source: a full-path rename IS
 // a move (§8). Returns the updated source, or null if disallowed (the
 // manifest anchor, a name clash in the target, a manifest-less geometry
 // file, or a reference losing its §8 extension). Kept side-effect-free
@@ -275,10 +267,10 @@ type FolderSource = Extract<LoadedSource, { kind: 'folder' }>;
 // manifest / palette / external-anim reference-following lives in ONE
 // place shared by single-file rename and whole-folder move.
 function renameFileInSource(
-  src: FolderSource,
+  src: LoadedSource,
   from: string,
   to: string,
-): FolderSource | null {
+): LoadedSource | null {
   if (src.files === undefined) return null;
   if (from === to || to === '' || to.startsWith('../')) return null;
   if (src.manifestFile?.name === from) return null; // the anchor
@@ -311,7 +303,7 @@ function renameFileInSource(
   const removedFiles = new Set(src.removedFiles ?? []);
   removedFiles.add(from);
   removedFiles.delete(to);
-  let next: FolderSource = { ...src, files, removedFiles };
+  let next: LoadedSource = { ...src, files, removedFiles };
 
   if (src.geometries?.has(from) === true) {
     const geometries = new Map(src.geometries);
@@ -387,17 +379,17 @@ function renameFileInSource(
 // destination/name) and rename (newDir = parent/newName). Returns null
 // (whole-move aborts) if the folder holds no files or any file rejects.
 function moveFolderInSource(
-  src: FolderSource,
+  src: LoadedSource,
   from: string,
   newDir: string,
-): FolderSource | null {
+): LoadedSource | null {
   if (src.files === undefined) return null;
   if (newDir === from || newDir === '') return null;
   if (newDir.startsWith(`${from}/`)) return null; // into itself
   const prefix = `${from}/`;
   const moving = [...src.files.keys()].filter((p) => p.startsWith(prefix)).sort();
   if (moving.length === 0) return null;
-  let next: FolderSource = src;
+  let next: LoadedSource = src;
   for (const p of moving) {
     const stepped = renameFileInSource(next, p, `${newDir}${p.slice(from.length)}`);
     if (stepped === null) return null; // abort the whole move
@@ -406,13 +398,13 @@ function moveFolderInSource(
   return next;
 }
 
-// Pure single-file delete over a folder source: drop the file, mark it
+// Pure single-file delete over the source: drop the file, mark it
 // removed (Save deletes it from disk; undo restores it), and prune every
 // manifest reference to it (geometry list, bound palette + its resolved
 // record, external-anim clips). Returns null if the file is pinned (the
 // anchor or primary geometry) or already gone. Extracted from
 // handleDeleteFile so a folder delete can fold it over the subtree.
-function deleteFileInSource(src: FolderSource, p: string): FolderSource | null {
+function deleteFileInSource(src: LoadedSource, p: string): LoadedSource | null {
   if (src.files === undefined) return null;
   if (src.manifestFile?.name === p) return null; // the anchor
   if (src.geometryFile.name === p) return null; // primary geometry
@@ -421,7 +413,7 @@ function deleteFileInSource(src: FolderSource, p: string): FolderSource | null {
   files.delete(p);
   const removedFiles = new Set(src.removedFiles ?? []);
   removedFiles.add(p);
-  let next: FolderSource = { ...src, files, removedFiles };
+  let next: LoadedSource = { ...src, files, removedFiles };
   if (src.geometries?.has(p) === true) {
     const geometries = new Map(src.geometries);
     geometries.delete(p);
@@ -656,7 +648,7 @@ export function App() {
     dispatch({
       type: 'amend',
       apply: (current) => {
-        if (current?.source?.kind !== 'folder') return current;
+        if (current?.source === undefined) return current;
         const src = current.source;
         const refs = resolveProjectRefs(
           result.value,
@@ -702,7 +694,7 @@ export function App() {
     window.clearTimeout(reparseManifestTimer.current);
     reparseManifestTimer.current = null;
     const src = loadedRef.current?.source;
-    if (src === undefined || src.kind !== 'folder') return true;
+    if (src === undefined) return true;
     const text = src.manifestFile?.text;
     if (text === undefined) return true;
     return landManifestReparse(text);
@@ -728,7 +720,6 @@ export function App() {
       setFramingKey((k) => k + 1);
       const hasManifest =
         result.source !== undefined &&
-        result.source.kind === 'folder' &&
         result.source.manifest !== undefined;
       setViewMode(hasManifest ? 'rig' : 'geometry');
       setLayout((l) => openPanelById(l, 'preview'));
@@ -737,7 +728,6 @@ export function App() {
       // silently hidden behind the Timeline tab.
       if (
         result.source !== undefined &&
-        result.source.kind === 'folder' &&
         (result.source.manifestError !== undefined ||
           (result.source.projectErrors?.length ?? 0) > 0)
       ) {
@@ -847,7 +837,6 @@ export function App() {
       const current = loadedRef.current?.source;
       const isGeometry =
         current !== undefined &&
-        current.kind === 'folder' &&
         isGeometryPath(path, current.geometryFile.name, current.manifest);
       if (isGeometry) {
         const r = parseGeometryText(text);
@@ -862,7 +851,6 @@ export function App() {
             const src = current?.source;
             if (
               src === undefined ||
-              src.kind !== 'folder' ||
               src.geometries?.has(path) !== true
             ) {
               return current;
@@ -891,7 +879,7 @@ export function App() {
           type: 'amend',
           apply: (current) => {
             const src = current?.source;
-            if (src === undefined || src.kind !== 'folder') {
+            if (src === undefined) {
               return current;
             }
             let next = src;
@@ -933,7 +921,6 @@ export function App() {
         const src = current?.source;
         if (
           src === undefined ||
-          src.kind !== 'folder' ||
           src.files === undefined
         ) {
           return current;
@@ -969,7 +956,7 @@ export function App() {
     for (const t of timers.values()) window.clearTimeout(t);
     timers.clear();
     const src = loadedRef.current?.source;
-    if (src === undefined || src.kind !== 'folder') return true;
+    if (src === undefined) return true;
     let ok = true;
     for (const path of paths) {
       const text = src.files?.get(path)?.text;
@@ -1004,7 +991,7 @@ export function App() {
     (next: Palette, tag?: string) => {
       dispatchEdit(tag ?? null, (current) => {
         const src = current?.source;
-        if (src === undefined || src.kind !== 'folder') return current;
+        if (src === undefined) return current;
         if (src.manifest?.palette === undefined) return current;
         const path = normalizePath(src.manifest.palette);
         const files = src.files !== undefined ? new Map(src.files) : undefined;
@@ -1038,11 +1025,10 @@ export function App() {
         const src = current?.source;
         if (src === undefined) return current;
         const bound =
-          src.kind === 'folder' &&
           src.manifest?.palette !== undefined &&
           src.externalPalette !== undefined;
         const palette =
-          bound && src.kind === 'folder'
+          bound
             ? src.externalPalette!
             : src.geometry.palette;
         if (index < 0 || index >= palette.length) return current;
@@ -1088,7 +1074,7 @@ export function App() {
           };
         };
         const nextSrc = mapGeometryFiles(src, (geometry) => shift(geometry));
-        if (!bound || nextSrc.kind !== 'folder' || src.kind !== 'folder') {
+        if (!bound) {
           return { ...current, source: nextSrc };
         }
         const path = normalizePath(src.manifest!.palette!);
@@ -1126,7 +1112,6 @@ export function App() {
         const src = current?.source;
         if (
           src === undefined ||
-          src.kind !== 'folder' ||
           src.manifest === undefined
         ) {
           return current;
@@ -1196,7 +1181,6 @@ export function App() {
       const src = current?.source;
       if (
         src === undefined ||
-        src.kind !== 'folder' ||
         src.manifest === undefined ||
         src.files === undefined ||
         src.manifest.palette !== undefined
@@ -1247,7 +1231,6 @@ export function App() {
       const src = current?.source;
       if (
         src === undefined ||
-        src.kind !== 'folder' ||
         src.manifest?.palette === undefined ||
         src.externalPalette === undefined
       ) {
@@ -1286,7 +1269,6 @@ export function App() {
         const src = current?.source;
         if (
           src === undefined ||
-          src.kind !== 'folder' ||
           src.files === undefined
         ) {
           return current;
@@ -1380,7 +1362,6 @@ export function App() {
         const src = current?.source;
         if (
           src === undefined ||
-          src.kind !== 'folder' ||
           src.files === undefined ||
           src.manifest === undefined
         ) {
@@ -1444,7 +1425,6 @@ export function App() {
         const src = current?.source;
         if (
           src === undefined ||
-          src.kind !== 'folder' ||
           src.files === undefined
         ) {
           return current;
@@ -1479,7 +1459,6 @@ export function App() {
         const src = current?.source;
         if (
           src === undefined ||
-          src.kind !== 'folder' ||
           src.files === undefined
         ) {
           return current;
@@ -1544,7 +1523,6 @@ export function App() {
         const src = current?.source;
         if (
           src === undefined ||
-          src.kind !== 'folder' ||
           src.files === undefined
         ) {
           return current;
@@ -1581,7 +1559,6 @@ export function App() {
         const src = current?.source;
         if (
           src === undefined ||
-          src.kind !== 'folder' ||
           src.files === undefined
         ) {
           return current;
@@ -1590,7 +1567,7 @@ export function App() {
           .filter((k) => k.startsWith(prefix))
           .sort();
         if (targets.length === 0) return current;
-        let next: FolderSource = src;
+        let next: LoadedSource = src;
         for (const k of targets) {
           const stepped = deleteFileInSource(next, k);
           if (stepped === null) return current; // a pinned file aborts
@@ -1678,9 +1655,8 @@ export function App() {
     const src = loaded?.source;
     if (src === undefined) return;
     // Parenting writes the manifest, so it needs a clean manifest AST — with a
-    // manifest syntax error, fall back to a root part (geometry-only, no clobber).
+    // manifest syntax error, fall back to a root part (geometry only, no clobber).
     const canParent =
-      src.kind === 'folder' &&
       src.manifest !== undefined &&
       manifestParseError === null;
     const parent =
@@ -1771,12 +1747,11 @@ export function App() {
         // as it's still a loaded geometry file; else the primary.
         const target =
           file !== undefined &&
-          src.kind === 'folder' &&
           src.geometries?.has(file) === true
             ? file
             : src.geometryFile.name;
         const targetGeometry =
-          src.kind === 'folder' && target !== src.geometryFile.name
+          target !== src.geometryFile.name
             ? (src.geometries?.get(target) ?? src.geometry)
             : src.geometry;
         const seed = targetGeometry.palette.length > 0 ? 0 : AIR;
@@ -1792,7 +1767,7 @@ export function App() {
             ? { ...geometry, parts: [...geometry.parts, newPart] }
             : null,
         );
-        if (parent !== null && src.kind === 'folder' && src.manifest !== undefined) {
+        if (parent !== null && src.manifest !== undefined) {
           const parts: ManifestPart[] = [...src.manifest.parts, { name, parent }];
           const nextManifest: Manifest = { ...src.manifest, parts };
           const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
@@ -1831,7 +1806,6 @@ export function App() {
         const src = current?.source;
         if (
           src === undefined ||
-          src.kind !== 'folder' ||
           src.geometries === undefined ||
           !src.geometries.has(targetPath)
         ) {
@@ -1910,7 +1884,7 @@ export function App() {
           }
           return { ...anim, parts: nextTracks };
         });
-        if (src.kind === 'folder' && src.manifest !== undefined) {
+        if (src.manifest !== undefined) {
           const m = src.manifest;
           const nextMParts: ManifestPart[] = m.parts.map((mp) => {
             let nmp: ManifestPart = mp;
@@ -1989,7 +1963,7 @@ export function App() {
           const { [name]: _dropped, ...restTracks } = anim.parts;
           return { ...anim, parts: restTracks };
         });
-        if (src.kind === 'folder' && src.manifest !== undefined) {
+        if (src.manifest !== undefined) {
           const m = src.manifest;
           const grandparent = m.parts.find((mp) => mp.name === name)?.parent;
           const nextMParts: ManifestPart[] = [];
@@ -2050,11 +2024,11 @@ export function App() {
 
   // Manifest source-text edit (manifest tab textarea typing). Same
   // shape as the geometry counterpart but uses JSON.parse + parseManifest.
-  // Folder-only: geometry-only sources have no manifest file to edit.
+  // No-ops on a source with no manifest file to edit.
   const handleEditManifestText = useCallback(
     (nextText: string) => {
       dispatchEdit('text:manifest', (current) => {
-        if (current?.source?.kind !== 'folder') return current;
+        if (current?.source === undefined) return current;
         const src = current.source;
         const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
         return {
@@ -2091,7 +2065,7 @@ export function App() {
     ) => {
       if (!flushPendingManifestReparse()) return;
       dispatchEdit(tag, (current) => {
-        if (current?.source?.kind !== 'folder') return current;
+        if (current?.source === undefined) return current;
         const src = current.source;
         if (src.manifest === undefined) return current;
         const parts = src.manifest.parts.slice();
@@ -2124,7 +2098,7 @@ export function App() {
     (tag: string | null, build: (m: Manifest) => Manifest) => {
       if (!flushPendingManifestReparse()) return;
       dispatchEdit(tag, (current) => {
-        if (current?.source?.kind !== 'folder') return current;
+        if (current?.source === undefined) return current;
         const src = current.source;
         if (src.manifest === undefined) return current;
         const nextManifest = build(src.manifest);
@@ -2271,7 +2245,7 @@ export function App() {
           return { ...geometry, parts };
         });
         if (nextSrc === src) return current;
-        if (nextSrc.kind !== 'folder' || nextSrc.manifest === undefined) {
+        if (nextSrc.manifest === undefined) {
           // No rig to keep in place — a plain geometry edit.
           return { ...current, source: nextSrc };
         }
@@ -2532,21 +2506,17 @@ export function App() {
       const manifest = synthesizeManifest(src.geometry, src.geometryFile.name);
       const manifestText = JSON.stringify(manifest, null, 2) + '\n';
       const manifestFile = { name: 'cuboidy.json', text: manifestText };
-      let next: LoadedSource;
-      if (src.kind === 'geometry-only') {
-        next = {
-          kind: 'folder',
-          folderName: manifest.name,
-          synthetic: true,
-          geometry: src.geometry,
-          geometryFile: src.geometryFile,
-          manifest,
-          manifestFile,
-        };
-      } else {
-        next = { ...src, synthetic: true, manifest, manifestFile };
-        delete (next as { manifestError?: string }).manifestError;
-      }
+      // A successful synthesis clears any stale load-time manifest error.
+      const { manifestError: _dropped, ...rest } = src;
+      const next: LoadedSource = {
+        ...rest,
+        // A lone-file load becomes a package here, taking its name from
+        // the manifest just synthesized; a real folder keeps its own.
+        folderName: src.folderName ?? manifest.name,
+        synthetic: true,
+        manifest,
+        manifestFile,
+      };
       return { ...current, source: next };
     });
     // View switches live OUTSIDE the apply closure — reducer appliers must
@@ -2573,7 +2543,7 @@ export function App() {
     ) => {
       if (!flushPendingManifestReparse()) return;
       dispatchEdit(tag, (current) => {
-        if (current?.source?.kind !== 'folder') return current;
+        if (current?.source === undefined) return current;
         const src = current.source;
         if (src.manifest === undefined) return current;
         const prev = src.manifest.animations?.[animName];
@@ -2775,7 +2745,7 @@ export function App() {
   const handleCreateAnimationClip = useCallback(() => {
     if (!flushPendingManifestReparse()) return;
     dispatchEdit(null, (current) => {
-      if (current?.source?.kind !== 'folder') return current;
+      if (current?.source === undefined) return current;
       const src = current.source;
       if (src.manifest === undefined) return current;
       const existing = src.manifest.animations ?? {};
@@ -2814,7 +2784,7 @@ export function App() {
       if (oldName === newName || !isIdentifier(newName)) return;
       if (!flushPendingManifestReparse()) return;
       dispatchEdit(null, (current) => {
-        if (current?.source?.kind !== 'folder') return current;
+        if (current?.source === undefined) return current;
         const src = current.source;
         if (src.manifest === undefined) return current;
         const animations = src.manifest.animations;
@@ -2861,7 +2831,7 @@ export function App() {
     (name: string) => {
       if (!flushPendingManifestReparse()) return;
       dispatchEdit(null, (current) => {
-        if (current?.source?.kind !== 'folder') return current;
+        if (current?.source === undefined) return current;
         const src = current.source;
         if (src.manifest === undefined) return current;
         const animations = src.manifest.animations;
@@ -2909,7 +2879,7 @@ export function App() {
     (name: string) => {
       if (!flushPendingManifestReparse()) return;
       dispatchEdit(null, (current) => {
-        if (current?.source?.kind !== 'folder') return current;
+        if (current?.source === undefined) return current;
         const src = current.source;
         if (src.manifest === undefined || src.files === undefined) {
           return current;
@@ -2955,7 +2925,7 @@ export function App() {
     (name: string) => {
       if (!flushPendingManifestReparse()) return;
       dispatchEdit(null, (current) => {
-        if (current?.source?.kind !== 'folder') return current;
+        if (current?.source === undefined) return current;
         const src = current.source;
         if (src.manifest === undefined) return current;
         const ref = src.manifest.animations?.[name];
@@ -3017,7 +2987,7 @@ export function App() {
     }
     const geometryR = parseGeometryText(src.geometryFile.text);
     setGeometryParseError(geometryR.ok ? null : geometryR.message);
-    if (src.kind === 'folder' && src.manifestFile !== undefined) {
+    if (src.manifestFile !== undefined) {
       let err: string | null = null;
       try {
         const r = parseManifest(JSON.parse(src.manifestFile.text));
@@ -3036,7 +3006,7 @@ export function App() {
     // well-formedness.
     setFileParseErrors(() => {
       const next = new Map<string, string>();
-      if (src.kind !== 'folder' || src.files === undefined) return next;
+      if (src.files === undefined) return next;
       for (const [path, entry] of src.files) {
         if (path === src.geometryFile.name) continue; // covered by geometryParseError
         if (path === src.manifestFile?.name) continue;
@@ -3124,7 +3094,7 @@ export function App() {
 
   const source = loaded?.source;
   const rigAvailable =
-    source !== undefined && source.kind === 'folder' && source.manifest !== undefined;
+    source !== undefined && source.manifest !== undefined;
   // The anim view doubles as the animation editor, so it's reachable for any
   // rigged model (a manifest with no animations shows an empty state with a
   // "Create animation" action). Same requirement as rig view: a manifest.
@@ -3204,7 +3174,7 @@ export function App() {
   // every clip uniformly. Unresolved refs (load errors) stay strings and
   // are filtered out downstream as before.
   const animManifest = useMemo(() => {
-    if (source?.kind !== 'folder' || source.manifest === undefined) {
+    if (source?.manifest === undefined) {
       return undefined;
     }
     const m = source.manifest;
@@ -3229,7 +3199,7 @@ export function App() {
   // the Externalize / Inline toggle.
   const clipRefs = useMemo(() => {
     const m = new Map<string, string>();
-    if (source?.kind === 'folder' && source.manifest?.animations !== undefined) {
+    if (source?.manifest?.animations !== undefined) {
       for (const [name, anim] of Object.entries(source.manifest.animations)) {
         if (typeof anim === 'string') m.set(name, normalizePath(anim));
       }
@@ -3242,7 +3212,7 @@ export function App() {
   }, [source, merged]);
   const renderGeometry = useMemo(() => {
     if (modelGeometry === undefined) return undefined;
-    if (source?.kind !== 'folder' || source.externalPalette === undefined) {
+    if (source?.externalPalette === undefined) {
       return modelGeometry;
     }
     return { ...modelGeometry, palette: source.externalPalette };
@@ -3253,8 +3223,7 @@ export function App() {
   // relevant for unbound multi-file models.
   const partPalettes = useMemo(() => {
     if (
-      source?.kind !== 'folder' ||
-      source.geometries === undefined ||
+      source?.geometries === undefined ||
       source.geometries.size <= 1 ||
       source.externalPalette !== undefined
     ) {
@@ -3274,7 +3243,7 @@ export function App() {
   // even while unresolved — the panel then disables with a reason), else
   // the primary's inline.
   const paletteTarget = useMemo(() => {
-    if (source?.kind === 'folder' && source.manifest?.palette !== undefined) {
+    if (source?.manifest?.palette !== undefined) {
       return {
         kind: 'external' as const,
         path: normalizePath(source.manifest.palette),
@@ -3288,7 +3257,7 @@ export function App() {
   // file, plus the current binding even when broken (the select shows
   // reality). Sorted for a stable menu.
   const paletteBindingChoices = useMemo(() => {
-    if (source?.kind !== 'folder' || source.files === undefined) return [];
+    if (source?.files === undefined) return [];
     const manifestName = source.manifestFile?.name ?? 'cuboidy.json';
     const out: string[] = [];
     for (const [path, entry] of source.files) {
@@ -3344,7 +3313,7 @@ export function App() {
           return source?.geometryFile.name ?? 'voxels.json';
         case 'manifest':
           return (
-            (source?.kind === 'folder' ? source.manifestFile?.name : undefined) ??
+            source?.manifestFile?.name ??
             'cuboidy.json'
           );
         default:
@@ -3409,7 +3378,7 @@ export function App() {
       const id: LeafId =
         path === src.geometryFile.name
           ? 'geometry'
-          : src.kind === 'folder' && src.manifestFile?.name === path
+          : src.manifestFile?.name === path
             ? 'manifest'
             : filePanel(path);
       setLayout((l) => openPanelById(l, id));
@@ -3421,17 +3390,14 @@ export function App() {
   const treeFileErrors = useMemo(() => {
     const m = new Map<string, string>();
     if (source === undefined) return m;
-    if (source.kind === 'folder') {
-      for (const pe of source.projectErrors ?? []) m.set(pe.file, pe.message);
-    }
+    for (const pe of source.projectErrors ?? []) m.set(pe.file, pe.message);
     for (const [p, msg] of fileParseErrors) m.set(p, msg);
     const mErr =
       manifestParseError ??
-      (source.kind === 'folder' ? source.manifestError : undefined);
+      source.manifestError;
     if (
       mErr !== undefined &&
       mErr !== null &&
-      source.kind === 'folder' &&
       source.manifestFile !== undefined
     ) {
       m.set(source.manifestFile.name, mErr);
@@ -3473,14 +3439,13 @@ export function App() {
   // `fill` their leaf and manage their own scrolling (3D canvas, textareas).
   const getPanel = (id: LeafId): PanelContent | null => {
     if (source === undefined) return null;
-    const manifest = source.kind === 'folder' ? source.manifest : undefined;
+    const manifest = source.manifest;
     const title = panelTitle(id);
     // Dynamic per-file editor tabs (v0.7): any package file the Files
     // tree opened that isn't the primary geometry / manifest pair.
     const fpath = filePanelPath(id);
     if (fpath !== null) {
-      const entry =
-        source.kind === 'folder' ? source.files?.get(fpath) : undefined;
+      const entry = source.files?.get(fpath);
       if (entry === undefined) {
         return {
           title,
@@ -3574,7 +3539,6 @@ export function App() {
                 />
               </div>
               {effectiveViewMode === 'anim' &&
-              source.kind === 'folder' &&
               animManifest !== undefined ? (
                 <AnimationViewport
                   geometry={renderGeometry ?? source.geometry}
@@ -3592,7 +3556,7 @@ export function App() {
               ) : (
                 <VoxelScene
                   geometry={renderGeometry ?? source.geometry}
-                  manifest={source.kind === 'folder' ? source.manifest : undefined}
+                  manifest={source.manifest}
                   viewMode={effectiveViewMode}
                   hiddenParts={hiddenParts}
                   partPalettes={partPalettes}
@@ -3677,7 +3641,7 @@ export function App() {
           title,
           fill: true,
           body:
-            source.kind === 'folder' && source.manifestFile !== undefined ? (
+            source.manifestFile !== undefined ? (
               <SourceEditor
                 text={source.manifestFile.text}
                 {...(manifestParseError !== null && {
@@ -3742,7 +3706,7 @@ export function App() {
         // Insertion order of `geometries` is geometry-list order, so the
         // first entry is the primary (the single-file default).
         const geometryPaths =
-          source.kind === 'folder' && (source.geometries?.size ?? 0) > 1
+          (source.geometries?.size ?? 0) > 1
             ? [...(source.geometries?.keys() ?? [])]
             : undefined;
         return {
@@ -3794,7 +3758,6 @@ export function App() {
                 <PartTree
                   parts={modelParts}
                   partFiles={
-                    source.kind === 'folder' &&
                     (source.geometries?.size ?? 0) > 1
                       ? partFiles
                       : undefined
@@ -3832,7 +3795,7 @@ export function App() {
         // Multi-geometry: the inspector shows a defining-file field whose
         // change moves the part. Same source as the parts panel picker.
         const movePaths =
-          source.kind === 'folder' && (source.geometries?.size ?? 0) > 1
+          (source.geometries?.size ?? 0) > 1
             ? [...(source.geometries?.keys() ?? [])]
             : undefined;
         return {
@@ -3883,16 +3846,11 @@ export function App() {
         // A binding that didn't resolve (missing / invalid file) shows an
         // empty palette + a disabled reason rather than silently falling
         // back to inline (which the binding shadows anyway).
-        const unresolved =
-          external &&
-          (source.kind !== 'folder' || source.externalPalette === undefined);
+        const unresolved = external && source.externalPalette === undefined;
         const effective = external
-          ? source.kind === 'folder'
-            ? (source.externalPalette ?? [])
-            : []
+          ? (source.externalPalette ?? [])
           : source.geometry.palette;
         const bindable =
-          source.kind === 'folder' &&
           source.manifest !== undefined &&
           source.files !== undefined;
         return {
@@ -3959,13 +3917,13 @@ export function App() {
         }
         const manifestErr =
           manifestParseError ??
-          (source.kind === 'folder' ? source.manifestError : undefined) ??
+          source.manifestError ??
           null;
         if (manifestErr !== null) {
           entries.push({
             severity: 'error',
             source:
-              (source.kind === 'folder' ? source.manifestFile?.name : undefined) ??
+              source.manifestFile?.name ??
               'cuboidy.json',
             message: (
               <>
@@ -3974,7 +3932,7 @@ export function App() {
             ),
           });
         }
-        if (source.kind === 'folder' && source.projectErrors !== undefined) {
+        if (source.projectErrors !== undefined) {
           for (const pe of source.projectErrors) {
             entries.push({
               severity: 'error',
@@ -4048,7 +4006,7 @@ export function App() {
               </div>
               <span className="header-divider" aria-hidden="true" />
               <div className="header-group">
-                {source.kind === 'folder' && <SaveButton source={source} />}
+                <SaveButton source={source} />
                 <ExportMenu source={source} />
               </div>
               <span className="header-divider" aria-hidden="true" />

@@ -13,7 +13,7 @@ interface Props {
   fileErrors: ReadonlyMap<string, string>;
   onOpenPath: (path: string) => void;
   onCreateManifest: () => void;
-  // File CRUD (v0.7 Phase D). Only meaningful for folder sources with a
+  // File CRUD (v0.7 Phase D). Only meaningful for sources carrying a
   // files map; the tree hides the affordances otherwise.
   onCreateFile: (path: string) => void;
   onRenameFile: (oldPath: string, newPath: string) => void;
@@ -135,16 +135,12 @@ export function FileTree({
 
   const allPaths = useMemo(() => {
     const paths = new Set<string>();
-    if (source.kind === 'folder') {
-      if (source.files !== undefined) {
-        for (const path of source.files.keys()) paths.add(path);
-      }
-      paths.add(source.geometryFile.name);
-      if (source.manifestFile !== undefined) {
-        paths.add(source.manifestFile.name);
-      }
-    } else {
-      paths.add(source.geometryFile.name);
+    if (source.files !== undefined) {
+      for (const path of source.files.keys()) paths.add(path);
+    }
+    paths.add(source.geometryFile.name);
+    if (source.manifestFile !== undefined) {
+      paths.add(source.manifestFile.name);
     }
     return paths;
   }, [source]);
@@ -189,19 +185,20 @@ export function FileTree({
       ? selected.path
       : null;
 
-  const isFolder = source.kind === 'folder';
-  const canEdit = isFolder && source.files !== undefined;
+  // A lone geometry file has no package around it (LoadedSource): the
+  // tree draws a flat file row rather than a collapsible package root.
+  const isFolder = source.folderName !== undefined;
+  const canEdit = source.files !== undefined;
   const anchor = isFolder ? (source.manifestFile?.name ?? 'cuboidy.json') : null;
   const primary = source.geometryFile.name;
-  const hasManifest = isFolder && source.manifest !== undefined;
-  const hasManifestFile = isFolder && source.manifestFile !== undefined;
+  const hasManifest = source.manifest !== undefined;
+  const hasManifestFile = source.manifestFile !== undefined;
 
   // Normalized refs the manifest's geometry list loads (default = the
   // primary alone). A package geometry file outside this set is inert — lint
   // W07 — so its row is dimmed with a "not loaded" badge and a hover
   // "+" that references it.
   const loadedGeometry = useMemo(() => {
-    if (source.kind !== 'folder') return null;
     const refs =
       source.manifest !== undefined
         ? manifestGeometry(source.manifest)
@@ -214,7 +211,7 @@ export function FileTree({
   // not be mistaken for stray geometry.
   const referencedNonGeometry = useMemo(() => {
     const out = new Set<string>();
-    if (source.kind !== 'folder' || source.manifest === undefined) return out;
+    if (source.manifest === undefined) return out;
     if (source.manifest.palette !== undefined) {
       out.add(normalizePath(source.manifest.palette));
     }
@@ -228,7 +225,7 @@ export function FileTree({
   // left is "a .json the model does not otherwise account for" — the manifest,
   // the bound palette and the referenced clips are all known here.
   const isUnreferenced = (path: string): boolean => {
-    if (loadedGeometry === null || source.kind !== 'folder') return false;
+    if (loadedGeometry === null) return false;
     const norm = normalizePath(path);
     if (!norm.toLowerCase().endsWith('.json')) return false;
     if (loadedGeometry.has(norm)) return false;
@@ -1093,7 +1090,5 @@ function FileNode({
 }
 
 function canCreateManifest(source: LoadedSource): boolean {
-  if (source.kind === 'geometry-only') return true;
-  if (source.kind === 'folder' && source.manifest === undefined) return true;
-  return false;
+  return source.manifest === undefined;
 }

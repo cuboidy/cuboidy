@@ -6,73 +6,74 @@ import type {
   Palette,
 } from '@cuboidy/core';
 
-// What the editor currently has loaded. Two discriminated kinds keep the
-// possible states explicit; the absence of `handle` in the folder kind
-// signals "no in-place writeback" (Save will fall back to download).
+// What the editor currently has loaded.
 //
-// Both kinds carry the originating file text alongside the parsed AST so
-// the editor can re-export untouched files verbatim (preserving raw
-// formatting and comments that the parser dropped). Once edits land,
-// the source-of-truth for affected files will be the AST plus a re-
-// serialize, but for now (read-only viewer) text passthrough is enough.
+// ONE shape, not a discriminated union. A lone geometry file used to be
+// its own `kind`, but only two places ever actually branched on that
+// (whether the Files tree draws a package root, and whether Export
+// offers a ZIP) while every other reader paid for it with a
+// `kind !== 'folder'` narrowing guard it did nothing with. Those two
+// places now read `folderName`, and everything else just reads the
+// optional field it cares about.
+//
+// The source carries the originating file text alongside the parsed AST
+// so the editor can re-export untouched files verbatim (preserving raw
+// formatting the parser dropped). A structural edit re-serializes the
+// AST into that text; a source-panel edit reparses the text into the AST.
 
 export interface FileEntry {
   name: string;
   text: string;
 }
 
-export type LoadedSource =
-  | {
-      kind: 'geometry-only';
-      geometry: Geometry;
-      geometryFile: FileEntry;
-    }
-  | {
-      kind: 'folder';
-      folderName: string;
-      // Synthetic folders are created in-editor (Create manifest from a
-      // bare-geometry load). They have no original disk location, so Save
-      // must always go through a file picker / download path.
-      synthetic: boolean;
-      // FSA-aware drop or showDirectoryPicker on Chrome/Edge populates
-      // this. When present, Save can write back to the original folder.
-      handle?: FileSystemDirectoryHandle;
-      geometry: Geometry;
-      geometryFile: FileEntry;
-      // Manifest is optional inside a folder — a folder that contains
-      // only voxels.json (no cuboidy.json) is a valid folder load.
-      manifest?: Manifest;
-      manifestFile?: FileEntry;
-      manifestError?: string;
-      // ── v0.7 project layer (SPEC §6.9/§6.10), populated at load ──
-      // Every text file in the package, keyed by /-relative path. The two
-      // LIVE-edited files above (geometryFile / manifestFile) hold the current
-      // text; this map holds the load-time snapshot of everything else.
-      // Absent on synthetic folders (they have no other files).
-      files?: ReadonlyMap<string, FileEntry>;
-      // All geometry files that parsed, keyed by their (normalized)
-      // manifest `geometry` ref. Includes the primary (= geometryFile) entry.
-      // The editor still edits only the primary until Phase C.
-      geometries?: ReadonlyMap<string, Geometry>;
-      // Parsed manifest-bound palette (§6.10). Rendering prefers this
-      // over the geometry file's own palette, matching the spec precedence.
-      externalPalette?: Palette;
-      // Resolved external animations (§6.3 string refs), keyed by CLIP
-      // name. The manifest keeps the reference path; clip edits
-      // re-serialize into the referenced file (files map), never into
-      // the manifest.
-      externalAnims?: ReadonlyMap<string, { path: string; anim: InlineAnimation }>;
-      // Load problems in referenced files beyond the primary pair
-      // (missing/unparsable geometry refs, palette issues). Surfaced in
-      // the Console panel.
-      projectErrors?: ReadonlyArray<{ file: string; message: string }>;
-      // Paths deleted (or renamed away) in the editor since load. Save
-      // removes them from disk (ignoring already-gone ones, so the set
-      // never needs clearing); ZIP export omits them naturally. Part of
-      // the undoable source state — undo restores the file AND unmarks
-      // the removal.
-      removedFiles?: ReadonlySet<string>;
-    };
+export interface LoadedSource {
+  // The package's display name (the Files tree root). ABSENT means the
+  // load was a single geometry file with no package around it: the tree
+  // draws a flat file row instead of a root, and Export offers no ZIP.
+  // "Create manifest" gives such a load a name, promoting it to a package.
+  folderName?: string;
+  // Synthetic packages are created in-editor (Create manifest from a
+  // bare-geometry load). They have no original disk location, so Save
+  // must always go through a file picker / download path.
+  synthetic: boolean;
+  // FSA-aware drop or showDirectoryPicker on Chrome/Edge populates
+  // this. When present, Save can write back to the original folder.
+  handle?: FileSystemDirectoryHandle;
+  geometry: Geometry;
+  geometryFile: FileEntry;
+  // Optional: a folder containing only voxels.json (no cuboidy.json) is
+  // a valid load, as is a bare geometry file.
+  manifest?: Manifest;
+  manifestFile?: FileEntry;
+  manifestError?: string;
+  // ── v0.7 project layer (SPEC §6.9/§6.10), populated at load ──
+  // Every text file in the package, keyed by /-relative path. The two
+  // LIVE-edited files above (geometryFile / manifestFile) hold the current
+  // text; this map holds the load-time snapshot of everything else.
+  // Absent on synthetic packages (they have no other files).
+  files?: ReadonlyMap<string, FileEntry>;
+  // All geometry files that parsed, keyed by their (normalized)
+  // manifest `geometry` ref. Includes the primary (= geometryFile) entry.
+  geometries?: ReadonlyMap<string, Geometry>;
+  // Parsed manifest-bound palette (§6.10). Rendering prefers this
+  // over the geometry file's own palette, matching the spec precedence.
+  externalPalette?: Palette;
+  // Resolved external animations (§6.3 string refs), keyed by CLIP
+  // name. The manifest keeps the reference path; clip edits
+  // re-serialize into the referenced file (files map), never into
+  // the manifest.
+  externalAnims?: ReadonlyMap<string, { path: string; anim: InlineAnimation }>;
+  // Load problems in referenced files beyond the primary pair
+  // (missing/unparsable geometry refs, palette issues). Surfaced in
+  // the Console panel.
+  projectErrors?: ReadonlyArray<{ file: string; message: string }>;
+  // Paths deleted (or renamed away) in the editor since load. Save
+  // removes them from disk (ignoring already-gone ones, so the set
+  // never needs clearing); ZIP export omits them naturally. Part of
+  // the undoable source state — undo restores the file AND unmarks
+  // the removal.
+  removedFiles?: ReadonlySet<string>;
+}
 
 // Result of attempting a load. `source` is undefined on hard parse
 // failures; `error` is the user-facing message in that case.

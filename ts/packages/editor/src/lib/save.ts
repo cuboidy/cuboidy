@@ -36,7 +36,7 @@ declare global {
 // already takes text and writes text.
 
 export async function saveToFolder(
-  source: Extract<LoadedSource, { kind: 'folder' }>,
+  source: LoadedSource,
 ): Promise<void> {
   if (source.handle === undefined) {
     throw new Error('No folder handle — cannot save in place');
@@ -69,7 +69,7 @@ export function downloadFile(name: string, text: string): void {
 }
 
 export async function downloadAsZip(
-  source: Extract<LoadedSource, { kind: 'folder' }>,
+  source: LoadedSource,
   zipName: string,
 ): Promise<void> {
   // Whole package (v0.7): every file collected at load, with the two

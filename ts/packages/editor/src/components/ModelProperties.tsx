@@ -3,7 +3,7 @@ import type { Manifest } from '@cuboidy/core';
 import { TextInput } from './TextInput.js';
 
 interface Props {
-  // The model manifest (cuboidy.json). Undefined for a geometry-only source or a
+  // The model manifest (cuboidy.json). Undefined for a lone geometry file or a
   // folder that has no manifest yet — the panel then offers to create one.
   manifest: Manifest | undefined;
   // Blocked while the manifest source has syntax errors: a form edit would

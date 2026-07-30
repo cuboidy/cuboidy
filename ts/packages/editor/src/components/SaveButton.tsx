@@ -4,10 +4,10 @@ import type { LoadedSource } from '../lib/types.js';
 import { saveToFolder } from '../lib/save.js';
 
 interface Props {
-  source: Extract<LoadedSource, { kind: 'folder' }>;
+  source: LoadedSource;
 }
 
-// In-place save button. Only renders when the folder source carries a
+// In-place save button. Only renders when the source carries a
 // FSA handle — i.e. Chrome/Edge drop or showDirectoryPicker. On browsers
 // without FSA, the user instead uses Export → Download as .cuboidy.
 //
