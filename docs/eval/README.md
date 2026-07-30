@@ -78,6 +78,8 @@ Two qualitative observations survive re-reading:
   with broad shoulders *and* a short muzzle impossible, and it held the geometry
   file down to the 7% of output where format differences cannot matter.
 - **Change one variable at a time.** See the Opus run.
-- **`bench/RESULTS.md` should not be cited.** It used tiktoken — an OpenAI
-  tokenizer — on synthetic grids built from `solid()`/`hollow()` fills, priced
-  file size alone, and never measured quality or reasoning.
+- **The old `bench/RESULTS.md` was measured the wrong way** and has been
+  deleted. It used tiktoken — an OpenAI tokenizer — on synthetic grids built
+  from `solid()`/`hollow()` fills, priced file size alone, and never measured
+  quality or reasoning. If its numbers resurface from git history, they are not
+  evidence.

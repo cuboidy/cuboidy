@@ -22,9 +22,7 @@ dist/
 build/
 *.tsbuildinfo
 
-# bench: generated artifacts (regenerate via scripts in bench/)
-bench/dataset/
-bench/out/
+# bench: eval run outputs (renders, samples, votes)
 bench/eval/out/
 
 # API credentials for local eval runs — never commit

@@ -10,8 +10,8 @@ assuming them — see "Why" below.
 | `76fe4a1` | phase 4: `src/cvox/` deleted, survivors moved, fixtures rebuilt, docs |
 | `19f29f6` | the `Cvox` → `Geometry` rename across core and the editor |
 
-Final state: core 467 tests green, editor E2E 7/7, all five CLIs exit 0 on all
-13 models, `GeometrySchema` validates 15/15 shipped geometry files. The only
+Final state: core 465 tests green, editor E2E 7/7, all five CLIs exit 0 on all
+12 models, `GeometrySchema` validates 13/13 shipped geometry files. The only
 `.cvox` strings left in `ts/` are three comments that name the removed format
 on purpose.
 
@@ -38,7 +38,7 @@ Claude can author is not an open format.
 The earlier `bench/RESULTS.md` numbers do not contradict this: they were
 measured with tiktoken (an OpenAI tokenizer) on synthetic grids built from
 `solid()`/`hollow()` fills, priced file size alone, and never measured
-generation quality or reasoning tokens.
+generation quality or reasoning tokens. That benchmark was deleted in phase 4.
 
 ## Locked decisions
 
@@ -226,13 +226,15 @@ Docs: `docs/cvox-authoring.md` → `docs/geometry-authoring.md` (the loop,
 coordinate model, pivot advice and case study were never about the container —
 only the syntax examples changed). `README.md`'s "Token efficiency" section
 made the claim this migration disproved and is replaced by what was actually
-measured. `bench/RESULTS.md` keeps its numbers behind a SUPERSEDED banner: it is
-the record of how the wrong answer was reached, and the scripts beside it no
-longer run.
+measured. The old tiktoken benchmark (`bench/RESULTS.md`, `compare-tokens.py`,
+`generate-dataset.mjs`, `verify-cvox.mjs` and its generated dataset) is deleted:
+its scripts referenced a format that no longer exists, and leaving a wrong
+answer in the tree invites it being cited again. Git history keeps it; the
+evidence that replaced it is in `docs/eval/`.
 
-*Verify:* no `.cvox` string remains outside `bench/`, `docs/` history and the
-`geometry`-extension guard in the manifest schema; full test suite green; every
-CLI runs against every model.
+*Verify:* no `.cvox` string remains outside `docs/` history and three comments
+that name the removed format on purpose; full test suite green; every CLI runs
+against every model.
 
 ## Known trap
 
