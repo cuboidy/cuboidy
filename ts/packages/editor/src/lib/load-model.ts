@@ -204,7 +204,7 @@ function buildFolderResult(
     path: primary,
     geometry: geometryR.value,
   });
-  const { geometries, externalPalette, externalAnims, projectErrors } = refs;
+  const { geometries, externalAnims, projectErrors } = refs;
   const resolvedPrimary = geometries.get(primary) ?? geometryR.value;
 
   const files = new Map<string, FileEntry>();
@@ -223,7 +223,6 @@ function buildFolderResult(
     ...(manifestError !== undefined && { manifestError }),
     files,
     geometries,
-    ...(externalPalette !== undefined && { externalPalette }),
     ...(externalAnims !== undefined && { externalAnims }),
     ...(projectErrors.length > 0 && { projectErrors }),
   };
@@ -234,11 +233,32 @@ function buildFolderResult(
 
 export interface ResolvedProjectRefs {
   // Geometry ASTs — including the primary's entry, so callers replacing
-  // the live geometry should read it back from here.
+  // the live geometry should read it back from here. A file that declared a
+  // §7.4 palette REFERENCE has had it resolved: `palette` holds the colors
+  // and `paletteRef` records where they came from.
   geometries: Map<string, Geometry>;
-  externalPalette?: Palette;
   externalAnims?: Map<string, { path: string; anim: InlineAnimation }>;
   projectErrors: Array<{ file: string; message: string }>;
+}
+
+// A geometry file that points at a palette (§7.4) carries only the reference
+// after parsing — resolving it needs the package around the file. Everywhere
+// the editor (re)parses a geometry AST runs it through here, so a live-edited
+// file renders the same colors the loader produced.
+export function withResolvedPalette(
+  geometry: Geometry,
+  getText: (path: string) => string | undefined,
+): Geometry {
+  if (geometry.paletteRef === undefined) return geometry;
+  const text = getText(normalizePath(geometry.paletteRef));
+  if (text === undefined) return geometry;
+  try {
+    const r = parsePaletteFile(JSON.parse(text));
+    if (r.ok) return { ...geometry, palette: r.value };
+  } catch {
+    // Unresolvable — the palette stays empty and the Console explains why.
+  }
+  return geometry;
 }
 
 // Resolve the manifest's references — geometry list, §6.10 palette
@@ -278,29 +298,18 @@ export function resolveProjectRefs(
     else geometries.set(ref, r.value);
   }
 
-  let externalPalette: Palette | undefined;
-  if (manifest?.palette !== undefined) {
-    const ref = normalizePath(manifest.palette);
-    const text = getText(ref);
-    if (text === undefined) {
-      projectErrors.push({
-        file: ref,
-        message: ref.startsWith('../')
-          ? 'outside the package — workspace references are not supported yet'
-          : 'referenced as the manifest palette but not found',
-      });
-    } else {
-      try {
-        const pR = parsePaletteFile(JSON.parse(text));
-        if (pR.ok) externalPalette = pR.value;
-        else projectErrors.push({ file: ref, message: pR.message });
-      } catch (e) {
-        projectErrors.push({
-          file: ref,
-          message: `JSON parse: ${(e as Error).message}`,
-        });
-      }
+  // §7.4 palette references, resolved per geometry file and cached by path
+  // so files sharing one palette read it once and report at most one error.
+  const paletteCache = new Map<string, Palette | null>();
+  for (const [path, geometry] of geometries) {
+    if (geometry.paletteRef === undefined) continue;
+    const ref = normalizePath(geometry.paletteRef);
+    let palette = paletteCache.get(ref);
+    if (palette === undefined) {
+      palette = readPaletteRef(ref, getText, projectErrors);
+      paletteCache.set(ref, palette);
     }
+    if (palette !== null) geometries.set(path, { ...geometry, palette });
   }
 
   // External animations (§6.3 string refs): each references a JSON file
@@ -343,10 +352,40 @@ export function resolveProjectRefs(
 
   return {
     geometries,
-    ...(externalPalette !== undefined && { externalPalette }),
     ...(externalAnims.size > 0 && { externalAnims }),
     projectErrors,
   };
+}
+
+// Read + validate one referenced palette file (§6.10). null (plus a project
+// error) when it is missing or malformed; the referring geometry then keeps
+// its empty palette and cross-file lint explains the consequence.
+function readPaletteRef(
+  ref: string,
+  getText: (path: string) => string | undefined,
+  projectErrors: Array<{ file: string; message: string }>,
+): Palette | null {
+  const text = getText(ref);
+  if (text === undefined) {
+    projectErrors.push({
+      file: ref,
+      message: ref.startsWith('../')
+        ? 'outside the package — workspace references are not supported yet'
+        : 'referenced as a geometry palette but not found',
+    });
+    return null;
+  }
+  try {
+    const r = parsePaletteFile(JSON.parse(text));
+    if (r.ok) return r.value;
+    projectErrors.push({ file: ref, message: r.message });
+  } catch (e) {
+    projectErrors.push({
+      file: ref,
+      message: `JSON parse: ${(e as Error).message}`,
+    });
+  }
+  return null;
 }
 
 // ── path helpers ─────────────────────────────────────────────────────

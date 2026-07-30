@@ -13,12 +13,14 @@ import {
 // its behaviour down here is what makes it safe to route the REST of the
 // editor's hand-maintained derived state through it.
 
-const GEOM = (name: string, color: string): string =>
+const GEOM = (name: string, palette: string[] | string): string =>
   JSON.stringify({
     version: '0.9',
-    palette: [color],
+    palette,
     parts: [{ name, size: [1, 1, 1], voxels: [['0']] }],
   });
+// Inline-palette fixture, the common case.
+const GEOMC = (name: string, color: string): string => GEOM(name, [color]);
 
 function geom(text: string): Geometry {
   const r = parseGeometryText(text);
@@ -71,7 +73,7 @@ describe('isGeometryPath', () => {
   });
 
   it('rejects package files the manifest does not list as geometry', () => {
-    const m = manifest({ geometry: ['body.json'], palette: 'palette.json' });
+    const m = manifest({ geometry: ['body.json'] });
     expect(isGeometryPath('palette.json', 'body.json', m)).toBe(false);
     expect(isGeometryPath('anims/wave.json', 'body.json', m)).toBe(false);
     expect(isGeometryPath('README.md', 'body.json', m)).toBe(false);
@@ -84,7 +86,7 @@ describe('isGeometryPath', () => {
 
 describe('resolveProjectRefs — geometry list', () => {
   it('with no manifest, resolves the primary alone', () => {
-    const primary = { path: 'voxels.json', geometry: geom(GEOM('a', '#FF0000')) };
+    const primary = { path: 'voxels.json', geometry: geom(GEOMC('a', '#FF0000')) };
     const refs = resolveProjectRefs(undefined, texts({}), primary);
     expect([...refs.geometries.keys()]).toEqual(['voxels.json']);
     expect(refs.geometries.get('voxels.json')).toBe(primary.geometry);
@@ -94,10 +96,10 @@ describe('resolveProjectRefs — geometry list', () => {
   it("prefers the primary's in-memory AST over its file text", () => {
     // The live-edited primary is authoritative: a stale file-map snapshot
     // must not win, or a mid-edit AST would be silently rolled back.
-    const primary = { path: 'voxels.json', geometry: geom(GEOM('live', '#FF0000')) };
+    const primary = { path: 'voxels.json', geometry: geom(GEOMC('live', '#FF0000')) };
     const refs = resolveProjectRefs(
       manifest({ geometry: ['voxels.json'] }),
-      texts({ 'voxels.json': GEOM('stale', '#000000') }),
+      texts({ 'voxels.json': GEOMC('stale', '#000000') }),
       primary,
     );
     expect(refs.geometries.get('voxels.json')).toBe(primary.geometry);
@@ -105,10 +107,10 @@ describe('resolveProjectRefs — geometry list', () => {
   });
 
   it('parses every non-primary geometry file, in list order', () => {
-    const primary = { path: 'body.json', geometry: geom(GEOM('body', '#FF0000')) };
+    const primary = { path: 'body.json', geometry: geom(GEOMC('body', '#FF0000')) };
     const refs = resolveProjectRefs(
       manifest({ geometry: ['body.json', 'limbs.json'] }),
-      texts({ 'limbs.json': GEOM('arm', '#00FF00') }),
+      texts({ 'limbs.json': GEOMC('arm', '#00FF00') }),
       primary,
     );
     expect([...refs.geometries.keys()]).toEqual(['body.json', 'limbs.json']);
@@ -117,10 +119,10 @@ describe('resolveProjectRefs — geometry list', () => {
   });
 
   it('normalizes reference paths before lookup', () => {
-    const primary = { path: 'body.json', geometry: geom(GEOM('body', '#FF0000')) };
+    const primary = { path: 'body.json', geometry: geom(GEOMC('body', '#FF0000')) };
     const refs = resolveProjectRefs(
       manifest({ geometry: ['body.json', './gear/../limbs.json'] }),
-      texts({ 'limbs.json': GEOM('arm', '#00FF00') }),
+      texts({ 'limbs.json': GEOMC('arm', '#00FF00') }),
       primary,
     );
     expect(refs.geometries.has('limbs.json')).toBe(true);
@@ -128,10 +130,10 @@ describe('resolveProjectRefs — geometry list', () => {
   });
 
   it('reports a missing geometry file without dropping the others', () => {
-    const primary = { path: 'body.json', geometry: geom(GEOM('body', '#FF0000')) };
+    const primary = { path: 'body.json', geometry: geom(GEOMC('body', '#FF0000')) };
     const refs = resolveProjectRefs(
       manifest({ geometry: ['body.json', 'gone.json', 'limbs.json'] }),
-      texts({ 'limbs.json': GEOM('arm', '#00FF00') }),
+      texts({ 'limbs.json': GEOMC('arm', '#00FF00') }),
       primary,
     );
     expect([...refs.geometries.keys()]).toEqual(['body.json', 'limbs.json']);
@@ -141,7 +143,7 @@ describe('resolveProjectRefs — geometry list', () => {
   });
 
   it('reports an unparseable geometry file', () => {
-    const primary = { path: 'body.json', geometry: geom(GEOM('body', '#FF0000')) };
+    const primary = { path: 'body.json', geometry: geom(GEOMC('body', '#FF0000')) };
     const refs = resolveProjectRefs(
       manifest({ geometry: ['body.json', 'broken.json'] }),
       texts({ 'broken.json': '{ not json' }),
@@ -152,7 +154,7 @@ describe('resolveProjectRefs — geometry list', () => {
   });
 
   it('flags a reference that escapes the package', () => {
-    const primary = { path: 'body.json', geometry: geom(GEOM('body', '#FF0000')) };
+    const primary = { path: 'body.json', geometry: geom(GEOMC('body', '#FF0000')) };
     const refs = resolveProjectRefs(
       manifest({ geometry: ['body.json', '../shared/limbs.json'] }),
       texts({}),
@@ -162,56 +164,89 @@ describe('resolveProjectRefs — geometry list', () => {
   });
 });
 
-describe('resolveProjectRefs — palette binding', () => {
-  const primary = () => ({
+describe('resolveProjectRefs — palette references', () => {
+  // A geometry file that POINTS at a palette file (§7.4). Resolution fills
+  // its `palette` in; the reference itself is kept.
+  const pointer = () => ({
     path: 'voxels.json',
-    geometry: geom(GEOM('a', '#FF0000')),
+    geometry: geom(GEOM('a', 'palette.json')),
+  });
+  const inline = () => ({
+    path: 'voxels.json',
+    geometry: geom(GEOMC('a', '#FF0000')),
   });
 
-  it('resolves a bound palette file', () => {
+  it('resolves a referenced palette into the geometry that points at it', () => {
     const refs = resolveProjectRefs(
-      manifest({ palette: 'palette.json' }),
+      manifest(),
       texts({ 'palette.json': '{"colors":["#112233","#445566"]}' }),
-      primary(),
+      pointer(),
     );
-    expect(refs.externalPalette).toHaveLength(2);
-    expect(refs.externalPalette?.[0]).toMatchObject({ r: 0x11, g: 0x22, b: 0x33 });
+    const g = refs.geometries.get('voxels.json');
+    expect(g?.palette).toHaveLength(2);
+    expect(g?.palette[0]).toMatchObject({ r: 0x11, g: 0x22, b: 0x33 });
+    expect(g?.paletteRef).toBe('palette.json');
     expect(refs.projectErrors).toEqual([]);
   });
 
-  it('leaves the palette unresolved when the file is missing', () => {
+  it('resolves one shared palette into every file pointing at it', () => {
     const refs = resolveProjectRefs(
-      manifest({ palette: 'palette.json' }),
-      texts({}),
-      primary(),
+      manifest({ geometry: ['voxels.json', 'limbs.json'] }),
+      texts({
+        'limbs.json': GEOM('b', 'palette.json'),
+        'palette.json': '{"colors":["#112233","#445566"]}',
+      }),
+      pointer(),
     );
-    expect(refs.externalPalette).toBeUndefined();
+    expect(refs.projectErrors).toEqual([]);
+    for (const path of ['voxels.json', 'limbs.json']) {
+      expect(refs.geometries.get(path)?.palette).toHaveLength(2);
+      expect(refs.geometries.get(path)?.paletteRef).toBe('palette.json');
+    }
+  });
+
+  it('reports a shared palette that is missing exactly once', () => {
+    const refs = resolveProjectRefs(
+      manifest({ geometry: ['voxels.json', 'limbs.json'] }),
+      texts({ 'limbs.json': GEOM('b', 'palette.json') }),
+      pointer(),
+    );
+    // Two files, one missing palette — one diagnostic, not two.
+    expect(refs.projectErrors).toHaveLength(1);
     expect(refs.projectErrors[0]?.file).toBe('palette.json');
   });
 
-  it('leaves the palette unresolved when the file is not valid JSON', () => {
+  it('reports a missing palette file', () => {
+    const refs = resolveProjectRefs(manifest(), texts({}), pointer());
+    expect(refs.geometries.get('voxels.json')?.palette).toEqual([]);
+    expect(refs.projectErrors[0]?.file).toBe('palette.json');
+  });
+
+  it('reports a palette file that is not valid JSON', () => {
     const refs = resolveProjectRefs(
-      manifest({ palette: 'palette.json' }),
+      manifest(),
       texts({ 'palette.json': '{ oops' }),
-      primary(),
+      pointer(),
     );
-    expect(refs.externalPalette).toBeUndefined();
+    expect(refs.geometries.get('voxels.json')?.palette).toEqual([]);
     expect(refs.projectErrors[0]?.message).toMatch(/JSON parse/);
   });
 
-  it('leaves the palette unresolved when the shape is wrong', () => {
+  it('reports a palette file whose shape is wrong', () => {
     const refs = resolveProjectRefs(
-      manifest({ palette: 'palette.json' }),
+      manifest(),
       texts({ 'palette.json': '{"colours":["#112233"]}' }),
-      primary(),
+      pointer(),
     );
-    expect(refs.externalPalette).toBeUndefined();
+    expect(refs.geometries.get('voxels.json')?.palette).toEqual([]);
     expect(refs.projectErrors).toHaveLength(1);
   });
 
-  it('reports nothing when no binding is declared', () => {
-    const refs = resolveProjectRefs(manifest(), texts({}), primary());
-    expect(refs.externalPalette).toBeUndefined();
+  it('leaves an inline palette alone', () => {
+    const refs = resolveProjectRefs(manifest(), texts({}), inline());
+    const g = refs.geometries.get('voxels.json');
+    expect(g?.paletteRef).toBeUndefined();
+    expect(g?.palette).toHaveLength(1);
     expect(refs.projectErrors).toEqual([]);
   });
 });
@@ -219,7 +254,7 @@ describe('resolveProjectRefs — palette binding', () => {
 describe('resolveProjectRefs — external animations', () => {
   const primary = () => ({
     path: 'voxels.json',
-    geometry: geom(GEOM('a', '#FF0000')),
+    geometry: geom(GEOMC('a', '#FF0000')),
   });
   const CLIP = '{"duration":1,"loop":true,"parts":{}}';
 
@@ -304,7 +339,7 @@ describe('loadFromFileList', () => {
     const r = await loadFromFileList(
       fileList([
         { name: 'cuboidy.json', text: MANIFEST, rel: 'robo/cuboidy.json' },
-        { name: 'body.json', text: GEOM('a', '#FF0000'), rel: 'robo/body.json' },
+        { name: 'body.json', text: GEOMC('a', '#FF0000'), rel: 'robo/body.json' },
       ]),
     );
     expect(r.error).toBeUndefined();
@@ -323,7 +358,7 @@ describe('loadFromFileList', () => {
     const r = await loadFromFileList(
       fileList([
         { name: 'cuboidy.json', text: MANIFEST, rel: '' },
-        { name: 'body.json', text: GEOM('a', '#FF0000'), rel: '' },
+        { name: 'body.json', text: GEOMC('a', '#FF0000'), rel: '' },
       ]),
     );
     expect(r.error).toBeUndefined();
@@ -335,7 +370,7 @@ describe('loadFromFileList', () => {
     const r = await loadFromFileList(
       fileList([
         { name: 'cuboidy.json', text: MANIFEST, rel: 'robo/cuboidy.json' },
-        { name: 'body.json', text: GEOM('a', '#FF0000'), rel: 'robo/body.json' },
+        { name: 'body.json', text: GEOMC('a', '#FF0000'), rel: 'robo/body.json' },
         { name: 'thumb.png', text: 'not really a png', rel: 'robo/thumb.png' },
       ]),
     );

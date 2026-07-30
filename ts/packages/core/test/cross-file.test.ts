@@ -113,10 +113,16 @@ describe('validateProject (v0.7)', () => {
     );
 
   const bodyCvox = oneVoxel('body', '1', ['#F00', '#0F0']);
-  // No inline palette; uses index 0 (valid only when a palette is bound).
+  // No palette at all; uses index 0 (an error — nothing defines that color).
   const bareCvox = oneVoxel('gear', '0');
-  // No inline palette; all air (never needs a palette).
+  // No palette; all air (never needs one).
   const airCvox = oneVoxel('ghost', '.');
+  // A file that POINTS at a palette file. resolveProject fills `palette` in
+  // before validateProject sees it, so these fixtures do that by hand.
+  const resolved = (name: string, cell: string, colors: number) => ({
+    ...oneVoxel(name, cell, 'palette.json'),
+    palette: Array.from({ length: colors }, (_, i) => ({ r: i, g: 0, b: 0, a: 255 })),
+  });
 
   it('errors on a part name defined in two geometry files', () => {
     const manifest = manifestOrThrow({
@@ -180,33 +186,49 @@ describe('validateProject (v0.7)', () => {
     ).toEqual([]);
   });
 
-  it('a bound palette satisfies a palette-less file', () => {
+  it('a resolved palette reference satisfies the file that points at it', () => {
     const manifest = manifestOrThrow({
       name: 't',
       geometry: ['gear.json'],
-      palette: 'palette.json',
       parts: [{ name: 'gear' }],
     });
     const diags = validateProject({
       manifest,
-      geometries: [{ path: 'gear.json', geometry: bareCvox }],
-      externalPalette: [{ r: 0, g: 0, b: 0, a: 255 }],
+      geometries: [{ path: 'gear.json', geometry: resolved('gear', '0', 1) }],
     });
     expect(diags).toEqual([]);
   });
 
-  it('errors when the bound palette is shorter than the used indices', () => {
+  it('reports a reference that did not resolve, naming it', () => {
+    const manifest = manifestOrThrow({
+      name: 't',
+      geometry: ['gear.json'],
+      parts: [{ name: 'gear' }],
+    });
+    const diags = validateProject({
+      manifest,
+      geometries: [
+        // paletteRef set but palette still empty = the project layer could
+        // not read it, and already said so; this names the consequence.
+        { path: 'gear.json', geometry: oneVoxel('gear', '0', 'palette.json') },
+      ],
+    });
+    expect(diags).toHaveLength(1);
+    expect(diags[0]?.code).toBe('missing');
+    expect(diags[0]?.message).toContain('palette.json');
+  });
+
+  it('errors when a referenced palette is shorter than the used indices', () => {
     const manifest = manifestOrThrow({
       name: 't',
       geometry: ['body.json'],
-      palette: 'palette.json',
       parts: [{ name: 'body' }],
     });
-    // bodyCvox uses index 1; the bound palette has a single color.
+    // The file uses index 1; the palette it points at holds one color. Only
+    // cross-file validation can catch this — parse time never saw the file.
     const diags = validateProject({
       manifest,
-      geometries: [{ path: 'body.json', geometry: bodyCvox }],
-      externalPalette: [{ r: 0, g: 0, b: 0, a: 255 }],
+      geometries: [{ path: 'body.json', geometry: resolved('body', '1', 1) }],
     });
     expect(
       diags.some(
@@ -215,24 +237,6 @@ describe('validateProject (v0.7)', () => {
     ).toBe(true);
   });
 
-  it('H03: hints when a binding shadows an inline palette', () => {
-    const manifest = manifestOrThrow({
-      name: 't',
-      geometry: ['body.json'],
-      palette: 'palette.json',
-      parts: [{ name: 'body' }],
-    });
-    const diags = validateProject({
-      manifest,
-      geometries: [{ path: 'body.json', geometry: bodyCvox }],
-      externalPalette: [
-        { r: 0, g: 0, b: 0, a: 255 },
-        { r: 1, g: 1, b: 1, a: 255 },
-      ],
-    });
-    expect(diags.map((d) => d.ruleId)).toEqual(['H03']);
-    expect(diags[0]?.severity).toBe('hint');
-  });
 
   it('W07: warns on a package geometry file not referenced by the geometry list', () => {
     const manifest = manifestOrThrow({

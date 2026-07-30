@@ -17,7 +17,7 @@ import { err, ok, type CuboidyErrorCode, type Result } from '../result.js';
 export function parseGeometry(json: unknown): Result<Geometry> {
   const result = GeometrySchema.safeParse(json);
   if (!result.success) {
-    const issue = result.error.issues[0]!;
+    const issue = unwrapUnion(result.error.issues[0]!, json);
     const label = issue.path.length > 0 ? issue.path.join('.') : '<root>';
     // Zod describes an absent field by the type it wanted ("expected tuple,
     // received undefined"), which reads as a type error to someone who simply
@@ -56,13 +56,19 @@ export function parseGeometryText(text: string): Result<Geometry> {
 // ----- AST construction -------------------------------------------------
 
 function toAst(doc: GeometryDoc): Geometry {
-  return {
+  const geometry: Geometry = {
     // An absent palette is an EMPTY array in the AST, not a missing field:
     // length 0 is the unambiguous "declared none" signal the rest of the
     // codebase already keys on (§7.4), and it round-trips back to absent.
-    palette: (doc.palette ?? []).map(toColor),
+    palette: Array.isArray(doc.palette) ? doc.palette.map(toColor) : [],
     parts: doc.parts.map(toPart),
   };
+  // A reference stays UNRESOLVED here — parsing one file cannot see the
+  // package around it. resolveProject reads `paletteRef` and fills
+  // `palette` in, so nothing downstream of it has to care which form the
+  // author used.
+  if (typeof doc.palette === 'string') geometry.paletteRef = doc.palette;
+  return geometry;
 }
 
 function toColor(hex: string): Color {
@@ -130,6 +136,34 @@ interface ZodIssueLike {
   code: string;
   path: ReadonlyArray<PropertyKey>;
   message: string;
+}
+
+// §7.4's `palette` is a union — inline colors OR a §8 reference path — and a
+// union failure surfaces as ONE `invalid_union` issue whose own message is a
+// generic "invalid input", with the real diagnoses tucked into one issue list
+// per branch. Report the branch the author was evidently aiming at (an array
+// value → the colors branch, anything else → the reference branch) so both the
+// message and the §11.2 code stay as specific as they were before the union.
+function unwrapUnion(issue: ZodIssueLike, input: unknown): ZodIssueLike {
+  if (issue.code !== 'invalid_union') return issue;
+  const branches = (issue as { errors?: ZodIssueLike[][] }).errors ?? [];
+  if (branches.length === 0) return issue;
+  const wrote = valueAtPath(input, issue.path);
+  const picked =
+    (Array.isArray(wrote) ? branches[0] : branches[branches.length - 1]) ??
+    branches[0]!;
+  const first = picked[0];
+  if (first === undefined) return issue;
+  return { ...first, path: [...issue.path, ...first.path] };
+}
+
+function valueAtPath(input: unknown, path: ReadonlyArray<PropertyKey>): unknown {
+  let cur: unknown = input;
+  for (const key of path) {
+    if (cur === null || typeof cur !== 'object') return undefined;
+    cur = (cur as Record<PropertyKey, unknown>)[key];
+  }
+  return cur;
 }
 
 // Mirrors parseManifest's mapping so both files report the same §11.2

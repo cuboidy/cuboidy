@@ -9,13 +9,21 @@
       "type": "string"
     },
     "palette": {
-      "minItems": 1,
-      "maxItems": 62,
-      "type": "array",
-      "items": {
-        "type": "string",
-        "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
-      }
+      "anyOf": [
+        {
+          "minItems": 1,
+          "maxItems": 62,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+          }
+        },
+        {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*//)[^\\\\:]+\\.json$"
+        }
+      ]
     },
     "parts": {
       "minItems": 1,

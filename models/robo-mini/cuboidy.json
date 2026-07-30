@@ -1,7 +1,6 @@
 {
   "name": "robo-mini",
   "geometry": ["body.json", "limbs.json"],
-  "palette": "palette.json",
   "parts": [
     { "name": "body",  "position": [0, 2, 0] },
     { "name": "head",  "parent": "body", "position": [0, 4, 0] },

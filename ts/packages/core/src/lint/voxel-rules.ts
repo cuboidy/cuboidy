@@ -61,7 +61,14 @@ function checkSocketBounds(part: Part, out: Diagnostic[]): void {
 // (in any part). AIR is excluded by construction since `AIR === -1`.
 // Reported per-index in declaration order. A 1-color palette with no
 // solid voxels (W05 case) still triggers W03 alongside W05.
+//
+// Skipped entirely for a REFERENCED palette (§7.4): those colors belong to
+// the palette file, not to this geometry file, and a color this file has no
+// use for is very likely used by a sibling that shares the same palette.
+// "Declared but unused" is only a meaningful complaint about a declaration
+// the file actually owns.
 function checkUnusedPalette(geometry: Geometry, out: Diagnostic[]): void {
+  if (geometry.paletteRef !== undefined) return;
   const used = new Set<number>();
   for (const part of geometry.parts) {
     for (const layer of part.voxels) {

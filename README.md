@@ -130,7 +130,7 @@ Evidence, method and the limits of the sample: [`docs/eval/`](docs/eval/).
 - [x] Spec document (`SPEC.md`) — v0.9 draft (multi-file geometry, shareable external palettes, keyframe easing, per-part rest rotation)
 - [x] Reference parser (TypeScript) — `ts/packages/core/`, full v0.9 grammar (554 tests)
 - [x] Shared project loader — `resolveProject()`: manifest geometry list, external palette, external animations; used by lint, the inspection CLIs and the editor
-- [x] Cross-file lint — project-shaped validation (`validateProject`): manifest↔geometry part matching, cross-file duplicate names, palette resolution/range, animation target checks, W06 geometric l/r symmetry, W07 unreferenced geometry file, H03 shadowed inline palette
+- [x] Cross-file lint — project-shaped validation (`validateProject`): manifest↔geometry part matching, cross-file duplicate names, palette resolution/range, animation target checks, W06 geometric l/r symmetry, W07 unreferenced geometry file
 - [x] Shared parity fixtures — `fixtures/geometry/<code>/` and `fixtures/manifest/<code>/`, contract for cross-implementation conformance
 - [x] JSON Schema for `cuboidy.json` — `schema/cuboidy.schema.json` (Draft 2020-12, derived from the Zod ManifestSchema; reference via `"$schema": "https://cuboidy.com/schema/cuboidy.schema.json"` or the GitHub raw URL)
 - [x] Canonical serializer (reader-tolerant / writer-strict) — `serializeGeometry()` emits one canonical form per model; round-trip with `parseGeometry` verified as a byte-level fixed point on every shipped model

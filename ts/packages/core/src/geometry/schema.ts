@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Identifier } from '../identifier-schema.js';
+import { refPath } from '../ref-path.js';
 import { MAX_PALETTE } from './palette.js';
 
 // SPEC §7: the Zod schema for a geometry file (`voxels.json`). Single source of
@@ -72,14 +73,23 @@ export const GeometrySchema = z
   .object({
     // Spec version string, same field and semantics as the manifest's.
     version: z.string().optional(),
-    // Absent → the model binds an external palette via the manifest (§6.10),
-    // or every voxel is air.
-    palette: z.array(HexColor).min(1).max(MAX_PALETTE).optional(),
+    // SPEC §7.4: EITHER this file's own colors, OR a §8 reference to a
+    // palette file (§6.10) it shares with other geometry files. One field
+    // with two forms — the same shape the manifest's `animations` values
+    // already use (§6.3) — so there is no precedence rule to define.
+    // Absent → every voxel is air.
+    palette: z
+      .union([z.array(HexColor).min(1).max(MAX_PALETTE), refPath('.json')])
+      .optional(),
     parts: z.array(GeometryPartSchema).min(1),
   })
   .strict()
   .superRefine((doc, ctx) => {
-    const paletteSize = doc.palette?.length ?? null;
+    // Only an INLINE palette gives the index range at parse time. A
+    // reference is resolved by the project layer, so its range check moves
+    // to cross-file validation (§11.6) — the same split §7.4 already had
+    // for palette-less files.
+    const paletteSize = Array.isArray(doc.palette) ? doc.palette.length : null;
     const names = new Set<string>();
 
     for (const [i, part] of doc.parts.entries()) {

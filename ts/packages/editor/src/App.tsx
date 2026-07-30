@@ -259,6 +259,74 @@ function rewriteExternalAnims(
   return { ...src, externalAnims: anims, ...(files !== null && { files }) };
 }
 
+// Canonical text for an external palette file (§6.10).
+function paletteFileText(palette: Palette): string {
+  return JSON.stringify({ colors: palette.map(serializeColor) }, null, 2) + '\n';
+}
+
+// Does this geometry file resolve against the palette file at `ref`?
+function sharesPalette(geometry: Geometry, ref: string): boolean {
+  return (
+    geometry.paletteRef !== undefined &&
+    normalizePath(geometry.paletteRef) === ref
+  );
+}
+
+// Every (path, AST) pair in the model, with the LIVE primary preferred over
+// its load-time snapshot — the same rule mergeGeometries applies.
+function geometryEntries(src: LoadedSource): Array<[string, Geometry]> {
+  if (src.geometries === undefined) {
+    return [[src.geometryFile.name, src.geometry]];
+  }
+  return [...src.geometries].map(([path, g]) => [
+    path,
+    path === src.geometryFile.name ? src.geometry : g,
+  ]);
+}
+
+function geometryAt(src: LoadedSource, path: string): Geometry | undefined {
+  if (path === src.geometryFile.name) return src.geometry;
+  return src.geometries?.get(path);
+}
+
+// Every §7.4 palette path the model's geometry files currently point at.
+// The manifest is not consulted: since v0.9 a palette is referenced by the
+// geometry file that uses it, never model-wide.
+function geometryPaletteRefs(src: LoadedSource): ReadonlySet<string> {
+  const out = new Set<string>();
+  const add = (g: Geometry): void => {
+    if (g.paletteRef !== undefined) out.add(normalizePath(g.paletteRef));
+  };
+  add(src.geometry);
+  for (const g of src.geometries?.values() ?? []) add(g);
+  return out;
+}
+
+// Re-point every geometry file whose palette reference names `from`.
+// `to === null` DROPS the reference — used when the palette file itself is
+// deleted. Those files then keep the colors they last resolved, which the
+// serializer writes back out inline: strictly better than a dangling
+// reference, which would be a guaranteed load error next time.
+function repointPaletteRef(
+  src: LoadedSource,
+  from: string,
+  to: string | null,
+): LoadedSource {
+  return mapGeometryFiles(src, (geometry) => {
+    if (
+      geometry.paletteRef === undefined ||
+      normalizePath(geometry.paletteRef) !== from
+    ) {
+      return null;
+    }
+    if (to === null) {
+      const { paletteRef: _drop, ...rest } = geometry;
+      return rest;
+    }
+    return { ...geometry, paletteRef: to };
+  });
+}
+
 // Pure per-file rename/move over the source: a full-path rename IS
 // a move (§8). Returns the updated source, or null if disallowed (the
 // manifest anchor, a name clash in the target, a manifest-less geometry
@@ -286,10 +354,8 @@ function renameFileInSource(
     if (src.manifest === undefined) return null;
     if (!to.toLowerCase().endsWith('.json')) return null;
   }
-  const isBoundPalette =
-    src.manifest?.palette !== undefined &&
-    normalizePath(src.manifest.palette) === from;
-  if (isBoundPalette && !to.toLowerCase().endsWith('.json')) return null;
+  const isPaletteRef = geometryPaletteRefs(src).has(from);
+  if (isPaletteRef && !to.toLowerCase().endsWith('.json')) return null;
   const isAnimRef =
     src.manifest?.animations !== undefined &&
     Object.values(src.manifest.animations).some(
@@ -339,10 +405,6 @@ function renameFileInSource(
       m = { ...m, geometry };
       changed = true;
     }
-    if (isBoundPalette) {
-      m = { ...m, palette: to };
-      changed = true;
-    }
     if (m.animations !== undefined) {
       const rebuilt: NonNullable<Manifest['animations']> = {};
       let animChanged = false;
@@ -371,6 +433,9 @@ function renameFileInSource(
       };
     }
   }
+  // A palette file rename is followed by the geometry files that point
+  // at it, in this same step (one undo).
+  if (isPaletteRef) next = repointPaletteRef(next, from, to);
   return next;
 }
 
@@ -446,15 +511,6 @@ function deleteFileInSource(src: LoadedSource, p: string): LoadedSource | null {
       m = { ...m, geometry: m.geometry.filter((g) => normalizePath(g) !== p) };
       changed = true;
     }
-    if (m.palette !== undefined && normalizePath(m.palette) === p) {
-      // Deleting the bound palette drops the binding too — a dangling
-      // reference would just be a guaranteed load error.
-      const { palette: _dropped, ...rest } = m;
-      m = rest;
-      changed = true;
-      const { externalPalette: _x, ...srcRest } = next;
-      next = srcRest;
-    }
     // Deleting an external animation file removes the clips that
     // referenced it and their resolved records, in this same step.
     if (m.animations !== undefined) {
@@ -489,7 +545,19 @@ function deleteFileInSource(src: LoadedSource, p: string): LoadedSource | null {
       };
     }
   }
+  // Deleting the palette file itself: the geometry files that pointed at
+  // it keep the colors they last resolved, written back out inline.
+  if (geometryPaletteRefs(src).has(p)) next = repointPaletteRef(next, p, null);
   return next;
+}
+
+// What the Palette panel is pointed at: one geometry file, its resolved
+// colors, and — when those colors live in a shared palette file — the path
+// they came from.
+interface PaletteTargetInfo {
+  file: string;
+  palette: Palette;
+  ref?: string;
 }
 
 // A model-wide-unique part name (§5): `base` if free, else `base-2`, `-3`…
@@ -659,7 +727,6 @@ export function App() {
         // reparse also clears any stale load-time manifest error).
         const {
           manifestError: _err,
-          externalPalette: _pal,
           externalAnims: _anims,
           projectErrors: _proj,
           ...rest
@@ -673,9 +740,6 @@ export function App() {
             manifest: result.value,
             geometries: refs.geometries,
             ...(primaryNext !== undefined && { geometry: primaryNext }),
-            ...(refs.externalPalette !== undefined && {
-              externalPalette: refs.externalPalette,
-            }),
             ...(refs.externalAnims !== undefined && {
               externalAnims: refs.externalAnims,
             }),
@@ -883,12 +947,16 @@ export function App() {
               return current;
             }
             let next = src;
-            if (
-              src.manifest?.palette !== undefined &&
-              normalizePath(src.manifest.palette) === path
-            ) {
+            // Editing a palette FILE re-resolves it into every geometry
+            // that points at it (§7.4), so the 3D view tracks the edit.
+            if (geometryPaletteRefs(src).has(path)) {
               const pR = parsePaletteFile(json);
-              if (pR.ok) next = { ...next, externalPalette: pR.value };
+              if (pR.ok) {
+                const colors = pR.value;
+                next = mapGeometryFiles(next, (g) =>
+                  sharesPalette(g, path) ? { ...g, palette: colors } : null,
+                );
+              }
             }
             if (src.externalAnims !== undefined) {
               let anims: Map<
@@ -982,281 +1050,162 @@ export function App() {
     return geomOk && manifestOk;
   }, [flushGeometryReparse, flushPendingManifestReparse]);
 
-  // ── Palette editing (Phase F). The panel edits the EFFECTIVE palette
-  // (§6.10): a manifest binding routes writes to palette.json, else to
-  // the primary file's inline declaration (via handleEditGeometry). ──
+  // ── Palette editing. SPEC §7.4: a palette belongs to a GEOMETRY FILE,
+  // either spelled out inline or referenced from a shared palette file. So
+  // every operation here names the file it acts on — the panel picks that
+  // from the selected part. A reference routes the write to the palette
+  // file, and therefore to every geometry file sharing it; an inline
+  // palette is rewritten in place. There is no model-wide palette and no
+  // precedence rule left to reconcile. ──
 
-  // Overwrite the bound external palette's colors (edit / add).
-  const handleEditExternalPalette = useCallback(
-    (next: Palette, tag?: string) => {
+  // Overwrite a file's palette colors (edit / add).
+  const handleEditPalette = useCallback(
+    (file: string, next: Palette, tag?: string) => {
+      if (!flushGeometryReparse()) return;
       dispatchEdit(tag ?? null, (current) => {
         const src = current?.source;
         if (src === undefined) return current;
-        if (src.manifest?.palette === undefined) return current;
-        const path = normalizePath(src.manifest.palette);
-        const files = src.files !== undefined ? new Map(src.files) : undefined;
-        files?.set(path, {
-          name: path,
-          text:
-            JSON.stringify({ colors: next.map(serializeColor) }, null, 2) +
-            '\n',
-        });
-        return {
-          ...current,
-          source: {
-            ...src,
-            externalPalette: next,
-            ...(files !== undefined && { files }),
-          },
-        };
-      });
-    },
-    [dispatchEdit],
-  );
-
-  // Delete an (unused) color: every higher index shifts down, so the
-  // voxels of every file resolving against this palette are remapped in
-  // the same edit. Bound palette → all geometry files; inline → the
-  // primary only (other files resolve against their own palettes).
-  const handleDeletePaletteColor = useCallback(
-    (index: number) => {
-      if (!flushGeometryReparse()) return;
-      dispatchEdit(null, (current) => {
-        const src = current?.source;
-        if (src === undefined) return current;
-        const bound =
-          src.manifest?.palette !== undefined &&
-          src.externalPalette !== undefined;
-        const palette =
-          bound
-            ? src.externalPalette!
-            : src.geometry.palette;
-        if (index < 0 || index >= palette.length) return current;
-        const inScope = (geometry: Geometry): boolean =>
-          bound || geometry === src.geometry;
-        // Refuse while any in-scope voxel still uses the color.
-        const scopeParts =
-          bound ? mergeGeometries(src).parts : src.geometry.parts;
-        for (const p of scopeParts) {
-          for (const layer of p.voxels) {
-            for (const row of layer) {
-              if (row.includes(index)) return current;
-            }
-          }
+        const geometry = geometryAt(src, file);
+        if (geometry === undefined) return current;
+        if (geometry.paletteRef === undefined) {
+          const nextSrc = mapGeometryFiles(src, (g, path) =>
+            path === file ? { ...g, palette: next } : null,
+          );
+          return nextSrc === src ? current : { ...current, source: nextSrc };
         }
-        const nextPalette = palette.filter((_, i) => i !== index);
-        const shift = (geometry: Geometry): Geometry | null => {
-          if (!inScope(geometry)) return null;
-          let fileChanged = false;
-          const parts: Part[] = geometry.parts.map((p) => {
-            let partChanged = false;
-            const voxels = p.voxels.map((layer) =>
-              layer.map((row) =>
-                row.map((idx) => {
-                  if (idx !== AIR && idx > index) {
-                    partChanged = true;
-                    return idx - 1;
-                  }
-                  return idx;
-                }),
-              ),
-            );
-            if (!partChanged) return p;
-            fileChanged = true;
-            return { ...p, voxels };
-          });
-          const isPrimaryInlineHolder = !bound && geometry === src.geometry;
-          if (!fileChanged && !isPrimaryInlineHolder) return null;
-          return {
-            ...geometry,
-            parts: fileChanged ? parts : geometry.parts,
-            ...(isPrimaryInlineHolder && { palette: nextPalette }),
-          };
-        };
-        const nextSrc = mapGeometryFiles(src, (geometry) => shift(geometry));
-        if (!bound) {
-          return { ...current, source: nextSrc };
-        }
-        const path = normalizePath(src.manifest!.palette!);
+        // Referenced: the palette FILE is the source of truth. Refresh the
+        // resolved copy on every geometry pointing at it so the 3D view
+        // updates without a reload.
+        const ref = normalizePath(geometry.paletteRef);
+        const withColors = mapGeometryFiles(src, (g) =>
+          sharesPalette(g, ref) ? { ...g, palette: next } : null,
+        );
         const files =
-          nextSrc.files !== undefined ? new Map(nextSrc.files) : undefined;
-        files?.set(path, {
-          name: path,
-          text:
-            JSON.stringify(
-              { colors: nextPalette.map(serializeColor) },
-              null,
-              2,
-            ) + '\n',
-        });
+          withColors.files !== undefined ? new Map(withColors.files) : undefined;
+        files?.set(ref, { name: ref, text: paletteFileText(next) });
         return {
           ...current,
-          source: {
-            ...nextSrc,
-            externalPalette: nextPalette,
-            ...(files !== undefined && { files }),
-          },
+          source: { ...withColors, ...(files !== undefined && { files }) },
         };
       });
     },
     [dispatchEdit, flushGeometryReparse],
   );
 
-  // Re-point (or clear, path = null) the manifest's palette binding from
-  // the panel's picker. Pure binding switch — no colors are copied
-  // (Externalize / Inline do that). One undo.
-  const handleChangePaletteBinding = useCallback(
-    (path: string | null) => {
-      if (!flushPendingManifestReparse()) return;
+  // Delete an (unused) color: every higher index shifts down, so the voxels
+  // of every file resolving against this palette are remapped in the SAME
+  // edit — a shared palette means all its referrers, an inline one only its
+  // own file. Refuses while any in-scope voxel still uses the color.
+  const handleDeletePaletteColor = useCallback(
+    (file: string, index: number) => {
+      if (!flushGeometryReparse()) return;
       dispatchEdit(null, (current) => {
         const src = current?.source;
-        if (
-          src === undefined ||
-          src.manifest === undefined
-        ) {
-          return current;
-        }
-        const currentBinding =
-          src.manifest.palette !== undefined
-            ? normalizePath(src.manifest.palette)
+        if (src === undefined) return current;
+        const geometry = geometryAt(src, file);
+        if (geometry === undefined) return current;
+        const palette = geometry.palette;
+        if (index < 0 || index >= palette.length) return current;
+        const ref =
+          geometry.paletteRef !== undefined
+            ? normalizePath(geometry.paletteRef)
             : undefined;
-        const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
-        if (path === null) {
-          if (currentBinding === undefined) return current;
-          const { palette: _dropped, ...restManifest } = src.manifest;
-          const { externalPalette: _x, ...restSrc } = src;
-          return {
-            ...current,
-            source: {
-              ...restSrc,
-              manifest: restManifest,
-              manifestFile: {
-                ...baseFile,
-                text: JSON.stringify(restManifest, null, 2) + '\n',
-              },
-            },
-          };
-        }
-        const norm = normalizePath(path);
-        if (currentBinding === norm) return current;
-        // Resolve the new binding now so the render/panel switch is
-        // immediate; an unresolvable choice leaves externalPalette unset
-        // (panel disables with a reason, Console explains on reload).
-        let external: Palette | undefined;
-        const text = src.files?.get(norm)?.text;
-        if (text !== undefined) {
-          try {
-            const r = parsePaletteFile(JSON.parse(text));
-            if (r.ok) external = r.value;
-          } catch {
-            // Falls through — binding set, resolution empty.
+        const inScope = (g: Geometry, path: string): boolean =>
+          ref === undefined ? path === file : sharesPalette(g, ref);
+
+        for (const [path, g] of geometryEntries(src)) {
+          if (!inScope(g, path)) continue;
+          for (const part of g.parts) {
+            for (const layer of part.voxels) {
+              for (const row of layer) {
+                if (row.includes(index)) return current;
+              }
+            }
           }
         }
-        const nextManifest: Manifest = { ...src.manifest, palette: norm };
-        const { externalPalette: _x, ...restSrc } = src;
+
+        const nextPalette = palette.filter((_, i) => i !== index);
+        const nextSrc = mapGeometryFiles(src, (g, path) => {
+          if (!inScope(g, path)) return null;
+          const parts: Part[] = g.parts.map((part) => {
+            let changed = false;
+            const voxels = part.voxels.map((layer) =>
+              layer.map((row) =>
+                row.map((idx) => {
+                  if (idx !== AIR && idx > index) {
+                    changed = true;
+                    return idx - 1;
+                  }
+                  return idx;
+                }),
+              ),
+            );
+            return changed ? { ...part, voxels } : part;
+          });
+          return { ...g, parts, palette: nextPalette };
+        });
+        if (ref === undefined) return { ...current, source: nextSrc };
+        const files =
+          nextSrc.files !== undefined ? new Map(nextSrc.files) : undefined;
+        files?.set(ref, { name: ref, text: paletteFileText(nextPalette) });
         return {
           ...current,
-          source: {
-            ...restSrc,
-            manifest: nextManifest,
-            manifestFile: {
-              ...baseFile,
-              text: JSON.stringify(nextManifest, null, 2) + '\n',
-            },
-            ...(external !== undefined && { externalPalette: external }),
-          },
+          source: { ...nextSrc, ...(files !== undefined && { files }) },
         };
       });
-      setManifestParseError(null);
     },
-    [dispatchEdit, flushPendingManifestReparse],
+    [dispatchEdit, flushGeometryReparse],
   );
 
-  // Move the primary's inline palette out to palette.json and bind it
-  // (§6.10) — the inline declaration is dropped (the binding would
-  // shadow it anyway, H03). One undo.
-  const handleExternalizePalette = useCallback(() => {
-    if (!flushAllReparse()) return;
-    dispatchEdit(null, (current) => {
-      const src = current?.source;
-      if (
-        src === undefined ||
-        src.manifest === undefined ||
-        src.files === undefined ||
-        src.manifest.palette !== undefined
-      ) {
-        return current;
-      }
-      const palette = src.geometry.palette;
-      if (palette.length === 0) return current;
-      let path = 'palette.json';
-      let n = 2;
-      while (src.files.has(path)) path = `palette-${n++}.json`;
-      // Drop the inline declaration from the primary (empty = absent).
-      const stripped = mapGeometryFiles(src, (geometry, p) =>
-        p === src.geometryFile.name ? { ...geometry, palette: [] } : null,
-      );
-      const files = new Map(stripped.files ?? src.files);
-      files.set(path, {
-        name: path,
-        text:
-          JSON.stringify({ colors: palette.map(serializeColor) }, null, 2) +
-          '\n',
+  // Move ONE file's inline palette out to a palette file and point at it.
+  // The colors are unchanged — only where they live. One undo.
+  const handleExternalizePalette = useCallback(
+    (file: string) => {
+      if (!flushGeometryReparse()) return;
+      dispatchEdit(null, (current) => {
+        const src = current?.source;
+        if (src === undefined || src.files === undefined) return current;
+        const geometry = geometryAt(src, file);
+        if (geometry === undefined) return current;
+        if (geometry.paletteRef !== undefined) return current;
+        if (geometry.palette.length === 0) return current;
+        let path = 'palette.json';
+        let n = 2;
+        while (src.files.has(path)) path = `palette-${n++}.json`;
+        const nextSrc = mapGeometryFiles(src, (g, at) =>
+          at === file ? { ...g, paletteRef: path } : null,
+        );
+        const files = new Map(nextSrc.files ?? src.files);
+        files.set(path, {
+          name: path,
+          text: paletteFileText(geometry.palette),
+        });
+        return { ...current, source: { ...nextSrc, files } };
       });
-      const nextManifest: Manifest = { ...src.manifest, palette: path };
-      const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
-      return {
-        ...current,
-        source: {
-          ...stripped,
-          files,
-          externalPalette: palette,
-          manifest: nextManifest,
-          manifestFile: {
-            ...baseFile,
-            text: JSON.stringify(nextManifest, null, 2) + '\n',
-          },
-        },
-      };
-    });
-    setManifestParseError(null);
-  }, [dispatchEdit, flushAllReparse]);
+    },
+    [dispatchEdit, flushGeometryReparse],
+  );
 
-  // The reverse: copy the bound palette into the primary's inline
-  // declaration and drop the binding. The palette.json file is kept
-  // (it may be shared) — delete it from the Files tree if orphaned.
-  const handleInlinePalette = useCallback(() => {
-    if (!flushAllReparse()) return;
-    dispatchEdit(null, (current) => {
-      const src = current?.source;
-      if (
-        src === undefined ||
-        src.manifest?.palette === undefined ||
-        src.externalPalette === undefined
-      ) {
-        return current;
-      }
-      const palette = src.externalPalette;
-      const withInline = mapGeometryFiles(src, (geometry, p) =>
-        p === src.geometryFile.name ? { ...geometry, palette } : null,
-      );
-      const { palette: _dropped, ...restManifest } = src.manifest;
-      const { externalPalette: _x, ...restSrc } = withInline;
-      const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
-      return {
-        ...current,
-        source: {
-          ...restSrc,
-          manifest: restManifest,
-          manifestFile: {
-            ...baseFile,
-            text: JSON.stringify(restManifest, null, 2) + '\n',
-          },
-        },
-      };
-    });
-    setManifestParseError(null);
-  }, [dispatchEdit, flushAllReparse]);
+  // The reverse: keep the colors, drop the reference so they are written
+  // into the geometry file itself. The palette file stays (it may be shared)
+  // — delete it from the Files tree if it is truly orphaned.
+  const handleInlinePalette = useCallback(
+    (file: string) => {
+      if (!flushGeometryReparse()) return;
+      dispatchEdit(null, (current) => {
+        const src = current?.source;
+        if (src === undefined) return current;
+        if (geometryAt(src, file)?.paletteRef === undefined) return current;
+        const nextSrc = mapGeometryFiles(src, (g, path) => {
+          if (path !== file) return null;
+          const { paletteRef: _drop, ...rest } = g;
+          return rest;
+        });
+        return nextSrc === src ? current : { ...current, source: nextSrc };
+      });
+    },
+    [dispatchEdit, flushGeometryReparse],
+  );
 
   // ── File CRUD (Phase D). Folder sources with a files map only; each
   // operation is one dispatchEdit = one atomic undo step. The manifest
@@ -1380,7 +1329,6 @@ export function App() {
         );
         const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
         const {
-          externalPalette: _pal,
           externalAnims: _anims,
           projectErrors: _proj,
           ...rest
@@ -1397,9 +1345,6 @@ export function App() {
             },
             geometries: refs.geometries,
             ...(primaryNext !== undefined && { geometry: primaryNext }),
-            ...(refs.externalPalette !== undefined && {
-              externalPalette: refs.externalPalette,
-            }),
             ...(refs.externalAnims !== undefined && {
               externalAnims: refs.externalAnims,
             }),
@@ -1826,7 +1771,14 @@ export function App() {
         if (part === undefined) return current;
         let moved = part;
         let toPalette = toGeometry.palette;
-        if (src.externalPalette === undefined) {
+        // Color indices are portable only when both files resolve against
+        // the SAME palette; otherwise the moved voxels must be remapped.
+        const samePalette =
+          fromGeometry.paletteRef !== undefined &&
+          toGeometry.paletteRef !== undefined &&
+          normalizePath(fromGeometry.paletteRef) ===
+            normalizePath(toGeometry.paletteRef);
+        if (!samePalette) {
           const remapped = remapPartPalette(part, fromGeometry.palette, toPalette);
           moved = remapped.part;
           toPalette = remapped.palette;
@@ -3210,23 +3162,13 @@ export function App() {
     if (source === undefined || merged === undefined) return undefined;
     return { palette: source.geometry.palette, parts: merged.parts };
   }, [source, merged]);
-  const renderGeometry = useMemo(() => {
-    if (modelGeometry === undefined) return undefined;
-    if (source?.externalPalette === undefined) {
-      return modelGeometry;
-    }
-    return { ...modelGeometry, palette: source.externalPalette };
-  }, [modelGeometry, source]);
-  // Per-part render palettes (SPEC §6.10): with a binding, one palette
-  // covers everything (renderGeometry above); WITHOUT one, each part
-  // resolves against its own defining file's inline palette — only
-  // relevant for unbound multi-file models.
+  // Per-part render palettes (SPEC §7.4): every part resolves against its
+  // own defining file's palette. Only needed for multi-file models — with
+  // one file, modelGeometry's palette already covers everything. Files
+  // sharing a palette file resolve to equal colors, so this is a no-op for
+  // them in practice; it exists for files that keep their own.
   const partPalettes = useMemo(() => {
-    if (
-      source?.geometries === undefined ||
-      source.geometries.size <= 1 ||
-      source.externalPalette !== undefined
-    ) {
+    if (source?.geometries === undefined || source.geometries.size <= 1) {
       return undefined;
     }
     const m = new Map<string, Palette>();
@@ -3238,45 +3180,26 @@ export function App() {
     }
     return m;
   }, [source]);
-  // What the Palette panel edits — the model's EFFECTIVE palette per the
-  // §6.10 precedence: the bound external file (binding presence decides,
-  // even while unresolved — the panel then disables with a reason), else
-  // the primary's inline.
-  const paletteTarget = useMemo(() => {
-    if (source?.manifest?.palette !== undefined) {
-      return {
-        kind: 'external' as const,
-        path: normalizePath(source.manifest.palette),
-      };
-    }
-    return source !== undefined
-      ? { kind: 'inline' as const, file: source.geometryFile.name }
-      : undefined;
-  }, [source]);
-  // Binding picker choices: every package .json that parses as a palette
-  // file, plus the current binding even when broken (the select shows
-  // reality). Sorted for a stable menu.
-  const paletteBindingChoices = useMemo(() => {
-    if (source?.files === undefined) return [];
-    const manifestName = source.manifestFile?.name ?? 'cuboidy.json';
-    const out: string[] = [];
-    for (const [path, entry] of source.files) {
-      if (!path.toLowerCase().endsWith('.json') || path === manifestName) {
-        continue;
-      }
-      try {
-        if (parsePaletteFile(JSON.parse(entry.text)).ok) out.push(path);
-      } catch {
-        // Not JSON — not a palette candidate.
-      }
-    }
-    const binding =
-      source.manifest?.palette !== undefined
-        ? normalizePath(source.manifest.palette)
-        : undefined;
-    if (binding !== undefined && !out.includes(binding)) out.push(binding);
-    return out.sort();
-  }, [source]);
+  // What the Palette panel edits (§7.4): the palette of the geometry file
+  // that DEFINES the selected part — pick a part, edit its colors. With no
+  // selection it falls back to the primary file. `ref` is set when those
+  // colors live in a shared palette file, which is what the panel reports
+  // and what Inline / Externalize toggle.
+  const paletteTarget = useMemo((): PaletteTargetInfo | undefined => {
+    if (source === undefined) return undefined;
+    const file =
+      (effectiveSelectedPart !== null
+        ? partFiles?.get(effectiveSelectedPart)
+        : undefined) ?? source.geometryFile.name;
+    const geometry = geometryAt(source, file) ?? source.geometry;
+    return {
+      file,
+      palette: geometry.palette,
+      ...(geometry.paletteRef !== undefined && {
+        ref: normalizePath(geometry.paletteRef),
+      }),
+    };
+  }, [source, effectiveSelectedPart, partFiles]);
 
   // Dock layout tree (resizable, rearrangeable). In-memory only — layout is
   // session-scoped by design (no persistence); "Reset layout" restores it.
@@ -3474,7 +3397,7 @@ export function App() {
         const stripPalette =
           (effectiveSelectedPart !== null
             ? partPalettes?.get(effectiveSelectedPart)
-            : undefined) ?? (renderGeometry ?? source.geometry).palette;
+            : undefined) ?? (modelGeometry ?? source.geometry).palette;
         const clampedColor =
           stripPalette.length === 0
             ? -1
@@ -3541,7 +3464,7 @@ export function App() {
               {effectiveViewMode === 'anim' &&
               animManifest !== undefined ? (
                 <AnimationViewport
-                  geometry={renderGeometry ?? source.geometry}
+                  geometry={modelGeometry ?? source.geometry}
                   manifest={animManifest}
                   hiddenParts={hiddenParts}
                   session={animSession}
@@ -3555,7 +3478,7 @@ export function App() {
                 />
               ) : (
                 <VoxelScene
-                  geometry={renderGeometry ?? source.geometry}
+                  geometry={modelGeometry ?? source.geometry}
                   manifest={source.manifest}
                   viewMode={effectiveViewMode}
                   hiddenParts={hiddenParts}
@@ -3840,61 +3763,59 @@ export function App() {
         };
       }
       case 'palette': {
-        const target =
-          paletteTarget ?? ({ kind: 'inline', file: source.geometryFile.name } as const);
-        const external = target.kind === 'external';
-        // A binding that didn't resolve (missing / invalid file) shows an
-        // empty palette + a disabled reason rather than silently falling
-        // back to inline (which the binding shadows anyway).
-        const unresolved = external && source.externalPalette === undefined;
-        const effective = external
-          ? (source.externalPalette ?? [])
-          : source.geometry.palette;
-        const bindable =
-          source.manifest !== undefined &&
-          source.files !== undefined;
+        const target: PaletteTargetInfo = paletteTarget ?? {
+          file: source.geometryFile.name,
+          palette: source.geometry.palette,
+        };
+        const shared = target.ref !== undefined;
+        // A reference that didn't resolve (missing / invalid file) shows an
+        // empty palette plus a reason, rather than silently pretending the
+        // geometry file declares no colors.
+        const unresolved = shared && target.palette?.length === 0;
+        // Usage counts span every file resolving against this palette: a
+        // shared one covers its referrers, an inline one just its own file.
+        const scopeParts = shared
+          ? (merged?.parts ?? source.geometry.parts).filter((p) => {
+              const g = geometryAt(source, partFiles?.get(p.name) ?? '');
+              return g !== undefined && sharesPalette(g, target.ref!);
+            })
+          : (geometryAt(source, target.file)?.parts ?? source.geometry.parts);
         return {
           title: 'Palette',
           body: (
             <PalettePanel
-              palette={effective}
-              // Usage spans the files resolving against this palette:
-              // bound → the whole model; inline → the primary file.
-              parts={
-                external ? (merged?.parts ?? source.geometry.parts) : source.geometry.parts
-              }
-              target={target}
+              palette={target.palette ?? []}
+              parts={scopeParts}
+              target={{
+                file: target.file,
+                ...(target.ref !== undefined && { ref: target.ref }),
+              }}
               disabled={
-                external
-                  ? manifestParseError !== null || unresolved
-                  : geometryParseError !== null
+                geometryParseError !== null ||
+                fileParseErrors.size > 0 ||
+                unresolved
               }
               disabledReason={
-                external
-                  ? unresolved
-                    ? `The bound palette (${target.path}) is missing or invalid — fix the file or pick another binding above.`
-                    : 'Manifest source has syntax errors — fix to enable palette editing.'
+                unresolved
+                  ? `The palette ${target.file} points at (${target.ref}) is missing or invalid — fix that file to edit these colors.`
                   : undefined
               }
-              onChange={(next, tag) =>
-                external
-                  ? handleEditExternalPalette(next, tag)
-                  : handleEditGeometry({ ...source.geometry, palette: next }, tag)
+              onChange={(next, tag) => handleEditPalette(target.file, next, tag)}
+              onDeleteColor={(index) =>
+                handleDeletePaletteColor(target.file, index)
               }
-              onDeleteColor={handleDeletePaletteColor}
               onExternalize={
-                !external &&
-                bindable &&
-                source.geometry.palette.length > 0
-                  ? handleExternalizePalette
+                !shared &&
+                source.files !== undefined &&
+                (target.palette?.length ?? 0) > 0
+                  ? () => handleExternalizePalette(target.file)
                   : undefined
               }
               onInline={
-                external && !unresolved ? handleInlinePalette : undefined
+                shared && !unresolved
+                  ? () => handleInlinePalette(target.file)
+                  : undefined
               }
-              bindingChoices={bindable ? paletteBindingChoices : undefined}
-              onChangeBinding={bindable ? handleChangePaletteBinding : undefined}
-              bindingDisabled={manifestParseError !== null}
             />
           ),
         };

@@ -35,9 +35,11 @@ export const ManifestSchema = z
       // constraint into the generated JSON Schema.
       .meta({ uniqueItems: true })
       .optional(),
-    // SPEC §6.10 (v0.7): external palette binding. When present it applies
-    // to every geometry file and takes precedence over inline palettes.
-    palette: refPath('.json').optional(),
+    // NOTE: no `palette` here. A palette is declared by the geometry file
+    // that uses it (§7.4) — inline, or as a reference to a shared palette
+    // file (§6.10). Keeping it out of the manifest is what removes the
+    // precedence rule (and its H03 shadowing hint) entirely: references
+    // run manifest → geometry → palette, never manifest → palette as well.
     parts: z.array(ManifestPartSchema).min(1),
     animations: AnimationsSchema.optional(),
   })

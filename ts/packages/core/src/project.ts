@@ -28,11 +28,25 @@ export interface ProjectPaths {
   // normalized. List order is preserved (the first entry is the model's
   // primary file).
   geometry: string[];
-  // Normalized §6.10 palette binding, when the manifest has one.
-  palette?: string;
   // Normalized §6.3 external animation refs (deduped — two clips may
   // share one file).
   animations: string[];
+}
+
+// A geometry file's §7.4 palette reference, normalized. Only discoverable
+// AFTER the geometry files are read, so callers that stage IO in one pass
+// (the CLIs read every path up front) need this second round.
+export function palettePathsOf(
+  geometries: ReadonlyArray<GeometryFile>,
+): string[] {
+  return [
+    ...new Set(
+      geometries
+        .map((g) => g.geometry.paletteRef)
+        .filter((r): r is string => r !== undefined)
+        .map(normalizeRefPath),
+    ),
+  ];
 }
 
 // The package-relative files a project references. Callers read these
@@ -41,10 +55,6 @@ export function projectFilePaths(manifest: Manifest | null): ProjectPaths {
   const geometry = (
     manifest !== null ? manifestGeometry(manifest) : ['voxels.json']
   ).map(normalizeRefPath);
-  const palette =
-    manifest?.palette !== undefined
-      ? normalizeRefPath(manifest.palette)
-      : undefined;
   const animations = [
     ...new Set(
       Object.values(manifest?.animations ?? {})
@@ -52,14 +62,18 @@ export function projectFilePaths(manifest: Manifest | null): ProjectPaths {
         .map(normalizeRefPath),
     ),
   ];
-  return { geometry, ...(palette !== undefined && { palette }), animations };
+  // NOTE: palettes are absent here on purpose — a §7.4 reference lives
+  // INSIDE a geometry file, so it is only discoverable once those are read.
+  // Callers that stage IO up front do a second round via palettePathsOf().
+  return { geometry, animations };
 }
 
 export interface ResolvedProject {
-  // Geometry files that parsed, in manifest list order.
+  // Geometry files that parsed, in manifest list order. A file that
+  // declared a §7.4 palette REFERENCE has had it resolved: `geometry.palette`
+  // holds the colors and `geometry.paletteRef` records where they came from,
+  // so consumers never branch on which form the author used.
   geometries: GeometryFile[];
-  // Parsed §6.10 palette when the manifest binds one and it loaded.
-  externalPalette?: Palette;
   // Resolved §6.3 external animations, keyed by CLIP name (two clips may
   // reference the same file). Only entries that loaded and validated.
   externalAnims: Map<string, { path: string; anim: InlineAnimation }>;
@@ -71,15 +85,18 @@ export interface ResolvedProject {
   complete: boolean;
 }
 
-export function resolveProject(
+// Phase one of resolveProject: parse the manifest's geometry files. Exposed
+// because §7.4 palette references live INSIDE those files, so a caller that
+// stages its IO up front (the CLIs read from disk) has to parse geometry
+// before it knows which palette files to fetch. Cheap enough to run twice —
+// a package holds a handful of small files.
+export function resolveGeometries(
   manifest: Manifest | null,
   files: ReadonlyMap<string, string>,
-): ResolvedProject {
+): { geometries: GeometryFile[]; diagnostics: ProjectDiagnostic[] } {
   const diagnostics: ProjectDiagnostic[] = [];
-  const paths = projectFilePaths(manifest);
-
-  const parsed: GeometryFile[] = [];
-  for (const ref of paths.geometry) {
+  const geometries: GeometryFile[] = [];
+  for (const ref of projectFilePaths(manifest).geometry) {
     const text = files.get(ref);
     if (text === undefined) {
       diagnostics.push({
@@ -100,48 +117,31 @@ export function resolveProject(
       });
       continue;
     }
-    parsed.push({ path: ref, geometry: r.value });
+    geometries.push({ path: ref, geometry: r.value });
   }
+  return { geometries, diagnostics };
+}
 
-  let externalPalette: Palette | undefined;
-  if (paths.palette !== undefined) {
-    const text = files.get(paths.palette);
-    if (text === undefined) {
-      diagnostics.push({
-        file: paths.palette,
-        diag: {
-          code: 'missing',
-          severity: 'error',
-          message: `cannot read ${paths.palette}`,
-        },
-      });
-    } else {
-      let json: unknown;
-      let jsonOk = false;
-      try {
-        json = JSON.parse(text);
-        jsonOk = true;
-      } catch (e) {
-        diagnostics.push({
-          file: paths.palette,
-          diag: {
-            code: 'invalid-value',
-            severity: 'error',
-            message: `JSON parse: ${(e as Error).message}`,
-          },
-        });
-      }
-      if (jsonOk) {
-        const pR = parsePaletteFile(json);
-        if (pR.ok) externalPalette = pR.value;
-        else {
-          diagnostics.push({
-            file: paths.palette,
-            diag: { code: pR.code, severity: 'error', message: pR.message },
-          });
-        }
-      }
+export function resolveProject(
+  manifest: Manifest | null,
+  files: ReadonlyMap<string, string>,
+): ResolvedProject {
+  const { geometries: parsed, diagnostics } = resolveGeometries(manifest, files);
+
+  // §7.4 palette references, resolved per geometry file. Filling `palette`
+  // in HERE is what keeps every consumer downstream free of "inline or
+  // reference?" branches. Cached by path so two files sharing one palette
+  // read it once and report at most one diagnostic.
+  const paletteCache = new Map<string, Palette | null>();
+  for (const g of parsed) {
+    if (g.geometry.paletteRef === undefined) continue;
+    const path = normalizeRefPath(g.geometry.paletteRef);
+    let palette = paletteCache.get(path);
+    if (palette === undefined) {
+      palette = readPalette(path, files, diagnostics);
+      paletteCache.set(path, palette);
     }
+    if (palette !== null) g.geometry = { ...g.geometry, palette };
   }
 
   // External animations (§6.3 string refs): each names a JSON file
@@ -199,11 +199,50 @@ export function resolveProject(
 
   return {
     geometries: parsed,
-    ...(externalPalette !== undefined && { externalPalette }),
     externalAnims,
     diagnostics,
     complete: diagnostics.length === 0,
   };
+}
+
+// Read + validate one referenced palette file (§6.10). Returns null and
+// records a diagnostic when it is missing or malformed; the referring
+// geometry then keeps its empty palette, and cross-file validation reports
+// the resulting index problems in terms the author can act on.
+function readPalette(
+  path: string,
+  files: ReadonlyMap<string, string>,
+  diagnostics: ProjectDiagnostic[],
+): Palette | null {
+  const text = files.get(path);
+  if (text === undefined) {
+    diagnostics.push({
+      file: path,
+      diag: { code: 'missing', severity: 'error', message: `cannot read ${path}` },
+    });
+    return null;
+  }
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch (e) {
+    diagnostics.push({
+      file: path,
+      diag: {
+        code: 'invalid-value',
+        severity: 'error',
+        message: `JSON parse: ${(e as Error).message}`,
+      },
+    });
+    return null;
+  }
+  const pR = parsePaletteFile(json);
+  if (pR.ok) return pR.value;
+  diagnostics.push({
+    file: path,
+    diag: { code: pR.code, severity: 'error', message: pR.message },
+  });
+  return null;
 }
 
 // Minimal posix-style normalize for SPEC §8 reference paths and package

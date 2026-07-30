@@ -42,7 +42,7 @@ describe('runLint — fixture parity (exit 0)', () => {
     expect(r.exitCode).toBe(0);
   });
 
-  it('robo-mini model (geometry list + palette binding) lints clean', async () => {
+  it('robo-mini model (geometry list + shared palette) lints clean', async () => {
     const r = await runLint(resolve(REPO_ROOT, 'models/robo-mini'), {
       strict: true,
     });
@@ -236,20 +236,26 @@ describe('runLint — cross-file diagnostics', () => {
   });
 });
 
-describe('runLint — v0.7 project shape (geometry list + palette binding)', () => {
+describe('runLint — project shape (geometry list + shared palette)', () => {
   const paletteJson = JSON.stringify({ colors: ['#F00', '#0F0'] });
 
-  it('multi-file geometry with a bound palette lints clean', async () => {
+  it('multi-file geometry sharing one palette file lints clean', async () => {
     const dir = await makeModel({
-      'body.json': ONE_VOXEL('body'),
-      'gear/hat.json': geo([
-        { name: 'hat', size: [1, 1, 1], voxels: [['1']] },
-      ]),
+      // Both files point at the SAME palette and between them use both
+      // colors. Neither is faulted for the one it does not use: W03 asks
+      // about a declaration the file owns, and these files own neither.
+      'body.json': geo(
+        [{ name: 'body', size: [1, 1, 1], pivot: [0, 0, 0], voxels: [['0']] }],
+        'palette.json',
+      ),
+      'gear/hat.json': geo(
+        [{ name: 'hat', size: [1, 1, 1], voxels: [['1']] }],
+        'palette.json',
+      ),
       'palette.json': paletteJson,
       'cuboidy.json': JSON.stringify({
         name: 'm',
         geometry: ['body.json', 'gear/hat.json'],
-        palette: 'palette.json',
         parts: [{ name: 'body' }, { name: 'hat', parent: 'body' }],
       }),
     });
@@ -290,12 +296,14 @@ describe('runLint — v0.7 project shape (geometry list + palette binding)', () 
 
   it('a broken palette file is an error and suppresses cross-file noise', async () => {
     const dir = await makeModel({
-      'body.json': ONE_VOXEL('body'),
+      'body.json': geo(
+        [{ name: 'body', size: [1, 1, 1], pivot: [0, 0, 0], voxels: [['0']] }],
+        'palette.json',
+      ),
       'palette.json': JSON.stringify({ colors: [] }),
       'cuboidy.json': JSON.stringify({
         name: 'm',
         geometry: ['body.json'],
-        palette: 'palette.json',
         parts: [{ name: 'body' }],
       }),
     });
@@ -305,7 +313,7 @@ describe('runLint — v0.7 project shape (geometry list + palette binding)', () 
     expect(r.diagnostics[0]?.diag.code).toBe('wrong-arity');
   });
 
-  it('palette-less geometry without a binding errors cross-file', async () => {
+  it('geometry using indices with no palette at all errors cross-file', async () => {
     const dir = await makeModel({
       'voxels.json': ONE_VOXEL('body'),
       'cuboidy.json': JSON.stringify({

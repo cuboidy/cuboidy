@@ -55,9 +55,6 @@ export interface LoadedSource {
   // All geometry files that parsed, keyed by their (normalized)
   // manifest `geometry` ref. Includes the primary (= geometryFile) entry.
   geometries?: ReadonlyMap<string, Geometry>;
-  // Parsed manifest-bound palette (§6.10). Rendering prefers this
-  // over the geometry file's own palette, matching the spec precedence.
-  externalPalette?: Palette;
   // Resolved external animations (§6.3 string refs), keyed by CLIP
   // name. The manifest keeps the reference path; clip edits
   // re-serialize into the referenced file (files map), never into

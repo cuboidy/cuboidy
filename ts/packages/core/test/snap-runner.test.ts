@@ -188,17 +188,14 @@ describe('runSnap — rest rotations', () => {
 });
 
 describe('renderSnapshots — v0.7 project shapes', () => {
-  it('renders a palette-less model with a §6.10 bound palette', async () => {
+  it('renders a model whose geometry references a palette file', async () => {
     const dir = await makeModel({
-      'voxels.json': geo([
-        { name: 'p', size: [2, 1, 1], pivot: [0, 0, 0], voxels: [['01']] },
-      ]),
+      'voxels.json': geo(
+        [{ name: 'p', size: [2, 1, 1], pivot: [0, 0, 0], voxels: [['01']] }],
+        'palette.json',
+      ),
       'palette.json': JSON.stringify({ colors: ['#F00', '#0F0'] }),
-      'cuboidy.json': JSON.stringify({
-        name: 'bound',
-        palette: 'palette.json',
-        parts: [{ name: 'p' }],
-      }),
+      'cuboidy.json': JSON.stringify({ name: 'bound', parts: [{ name: 'p' }] }),
     });
     const loaded = await loadAndAssemble(dir);
     expect(loaded.ok).toBe(true);

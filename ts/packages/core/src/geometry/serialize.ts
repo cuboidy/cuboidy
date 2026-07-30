@@ -16,11 +16,17 @@ export const SPEC_VERSION = '0.9';
 
 export function toGeometryDoc(geometry: Geometry): GeometryDoc {
   const doc: GeometryDoc = { version: SPEC_VERSION, parts: geometry.parts.map(toPart) };
-  // An empty palette means the file declared none (§7.4) and binds an external
-  // one via the manifest; absence must round-trip.
-  if (geometry.palette.length > 0) {
+  // §7.4: a file that pointed at a palette file keeps pointing at it. This
+  // branch must come FIRST — `palette` is populated once the project layer
+  // resolves the reference, and emitting those colors inline would silently
+  // detach the file from the palette it shares with its siblings.
+  if (geometry.paletteRef !== undefined) {
+    doc.palette = geometry.paletteRef;
+  } else if (geometry.palette.length > 0) {
     doc.palette = geometry.palette.map(serializeColor);
   }
+  // An empty palette with no reference means the file declared none (§7.4);
+  // absence must round-trip.
   return doc;
 }
 
@@ -84,7 +90,11 @@ export function formatGeometryDoc(doc: GeometryDoc): string {
   const out: string[] = ['{'];
   out.push(`  "version": ${JSON.stringify(doc.version ?? SPEC_VERSION)},`);
   if (doc.palette !== undefined) {
-    out.push(`  "palette": [${doc.palette.map((c) => JSON.stringify(c)).join(', ')}],`);
+    const value =
+      typeof doc.palette === 'string'
+        ? JSON.stringify(doc.palette)
+        : `[${doc.palette.map((c) => JSON.stringify(c)).join(', ')}]`;
+    out.push(`  "palette": ${value},`);
   }
   out.push('  "parts": [');
   doc.parts.forEach((part, i) => {

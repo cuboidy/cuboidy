@@ -134,9 +134,7 @@ describe('cuboidy.schema.json — parity corpus (runtime-invalid inputs)', () =>
     }
   });
 
-  it('rejects §8-violating palette and animation refs', () => {
-    expectBothReject('palette x.txt', { ...base, palette: 'x.txt' });
-    expectBothReject('palette /abs.json', { ...base, palette: '/abs.json' });
+  it('rejects §8-violating animation refs', () => {
     expectBothReject('anim /abs.json', {
       ...base,
       animations: { walk: '/abs.json' },

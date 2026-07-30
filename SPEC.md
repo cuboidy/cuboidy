@@ -5,11 +5,13 @@
 
 **Changes in this draft revision (v0.9), geometry container:** The geometry file moves from the bespoke `.cvox` text format to **JSON** — `voxels.json` (§7). The data model is unchanged: parts, sizes, pivots, sockets and the positional H×D×W voxel grid all keep their meaning, and voxel rows remain strings in the same `[.0-9a-zA-Z]` alphabet (`"0220"`), so a grid still reads as a grid. What goes away is the container: the lexical structure, the grammar, the reserved-token machinery and comments (§7.2, §7.3, §7.11 are retired; the reserved-keyword list they defined moves to §5, where it still constrains identifiers). Surviving subsections keep their numbers so cross-references stay valid. Rationale: the text format existed to be token-cheap and AI-authorable, and neither claim survived measurement — reasoning dominates generation cost, so the file size difference moves the total by single digits, while a hand-written parser blocks every third-party implementation. Evidence and the migration plan are in `docs/eval/` and `docs/json-migration.md`.
 
+**Also in v0.9, palette ownership:** The palette moves from the manifest to the **geometry file that uses it**. The manifest's top-level `palette` binding (added in v0.7) is **removed**; a geometry file's `palette` field (§7.4) now takes either form: an array of hex colors, or a **§8 reference path** to a shared palette file (§6.10). References therefore run `cuboidy.json` → geometry → palette, a tree — replacing the v0.7 arrangement where the manifest reached past the geometry file and overrode it. What goes away with the override is the concept of precedence: a file spells its colors out or points at a file that does, never both, so there is nothing to shadow and lint hint **H03** is retired. Index-range validation is unchanged in principle — checked at parse time for an inline palette, cross-file for a referenced one (§11.6) — and a geometry file stays independently well-formed either way. Migration: move `"palette": "x.json"` from `cuboidy.json` into each geometry file that uses those colors. Models with inline palettes are unaffected.
+
 **Also in v0.9:** Added an optional per-part **`rotation`** field to the manifest part object (§6.2) — the part's **rest rotation** in parent space: 3 Euler angles in degrees, ZXY intrinsic order (§4), applied around the part's pivot. It composes **outside** the geometry file's `pivot.rot` and inside the parent's transform, so the full §7.7 rotation becomes `q_total = q_rotation · q_pivot · q_anim`; keyframe `rot` values remain relative to the (now two-term) rest rotation, and children ride a parent's rest rotation like any other parent transform (§6.2 rigid hierarchy). Absent → identity, so existing models are unchanged. Tooling note: `cuboidy-snap` renders rest rotations (both `rotation` and `pivot.rot`) as true oriented cubes; the integer-lattice projections (`cuboidy-view` / `cuboidy-query`) place a rotated part's **pivot** exactly where the rig puts it but keep the part's own voxels axis-aligned, and emit a warning saying so.
 
 **Changes in v0.8:** Added **per-attribute keyframe easing** (§6.5, §6.7). A keyframe gains an optional `ease` object mapping an attribute (`rot` / `pos` / `scale`) to the interpolation curve of that attribute's **outgoing** segment (this keyframe → the next). Curves are 20 named presets — `linear` (default), `step`, and `in` / `out` / `in-out` variants of `sine` / `quad` / `cubic` / `back` / `elastic` / `bounce` — applied as a remap of normalized segment progress before linear interpolation (`visible` always steps and cannot be eased). `ease` is deliberately **exempt from §6.5 carryover**: a curve applies only where it is written, and only to its own attribute — it never propagates to later keyframes or leaks onto other attributes. Custom cubic-bezier curves remain reserved for a future revision. This revision also **removes part reuse** (the `clone` / `mirror` reuse-clause added in v0.6): every part is now concrete voxel data, and symmetric or repeated geometry is authored by copy/mirror tooling that emits plain voxels. `clone` and `mirror` are no longer reserved keywords (now **7**, §7.3.1) and the `Part.from` AST field is gone.
 
-**Changes in v0.7:** The package generalizes from the fixed two-file layout to **manifest-anchored references**. (1) **Multiple geometry files**: the manifest gains an optional top-level `geometry` array (§6.9) listing the package's `.cvox` files by reference path (§8); absent → the previous fixed `["voxels.cvox"]`, so existing models are unchanged. Part names remain unique across the whole model (§5) — a name defined in two geometry files is a cross-file `duplicate` error. (2) **Shareable palettes**: the cvox `palette` declaration is relaxed from "exactly one" to **"at most one"** (§7.4); a new external palette file (`{ "colors": [...] }`, §6.10) can be bound model-wide via the manifest's optional top-level `palette` reference. The binding **takes precedence over inline palettes** (enabling palette swapping / skins; a shadowed inline palette lints as hint **H03**), and a palette-less file's voxel index-range validation moves from parse time to cross-file validation. (3) New lint **W07**: a `.cvox` file present in the package but not referenced by `geometry`. `cuboidy.json` remains the package's only fixed filename (the load anchor); every other file is named freely and found by reference. External animation files were already specified in v0.6 (§6.3, §8) and are unchanged.
+**Changes in v0.7:** The package generalizes from the fixed two-file layout to **manifest-anchored references**. (1) **Multiple geometry files**: the manifest gains an optional top-level `geometry` array (§6.9) listing the package's `.cvox` files by reference path (§8); absent → the previous fixed `["voxels.cvox"]`, so existing models are unchanged. Part names remain unique across the whole model (§5) — a name defined in two geometry files is a cross-file `duplicate` error. (2) **Shareable palettes**: the cvox `palette` declaration is relaxed from "exactly one" to **"at most one"** (§7.4); a new external palette file (`{ "colors": [...] }`, §6.10) can be bound model-wide via the manifest's optional top-level `palette` reference. The binding **takes precedence over inline palettes** (enabling palette swapping / skins; a shadowed inline palette lints as hint **H03**), and a palette-less file's voxel index-range validation moves from parse time to cross-file validation. *(The manifest-level binding, its precedence rule and H03 were all removed in v0.9 — the reference moved into the geometry file; see the top of this changelog.)* (3) New lint **W07**: a `.cvox` file present in the package but not referenced by `geometry`. `cuboidy.json` remains the package's only fixed filename (the load anchor); every other file is named freely and found by reference. External animation files were already specified in v0.6 (§6.3, §8) and are unchanged.
 
 **Changes in v0.6:** Added **part reuse** — a `clone` / `mirror` reuse-clause in the part header. *(Removed in v0.8; see the top of this changelog. The companion lint **W06**, §11.6, which flags an `l`/`r` pair whose assembled geometry is not mirror-symmetric, remains.)*
 
@@ -54,7 +56,7 @@ Cuboidy is **not** a triangle-mesh format. It does not specify skin weights, UV 
 |---|---|
 | **Cuboidy format** | The spec defined by this document |
 | **Cuboidy model** (or **package**) | A single asset, stored as a folder |
-| **Manifest** | `cuboidy.json` — the package's fixed-name anchor: rig hierarchy, animations, and references to every other file (geometry list, palette binding) |
+| **Manifest** | `cuboidy.json` — the package's fixed-name anchor: rig hierarchy, animations, and the geometry list |
 | **Geometry file** | A JSON file (§7) — shape, optional inline palette, pivot, sockets. Default (when the manifest lists none): `voxels.json` |
 | **Palette file** | A `.json` file of shareable colors (§6.10), bound model-wide via the manifest |
 | **Packed Cuboidy** | `<name>.cuboidy` — ZIP archive of the package (reserved; not specified in v0.9) |
@@ -84,11 +86,10 @@ A larger package, fully reference-driven:
 
 ```
 wolf/
-├── cuboidy.json         { "geometry": ["body.json", "gear/hat.json"],
-│                          "palette": "palette.json", ... }
+├── cuboidy.json         { "geometry": ["body.json", "gear/hat.json"], ... }
 ├── palette.json         shared palette (§6.10)
-├── body.json            geometry (no inline palette needed)
-├── gear/hat.json
+├── body.json            geometry — { "palette": "palette.json", ... }
+├── gear/hat.json        geometry — points at the same palette
 └── anims/walk.json
 ```
 
@@ -167,7 +168,6 @@ The manifest is a standard JSON document (no comments, no trailing commas).
 | `name` | **yes** | string (identifier) | Model identifier |
 | `version` | no | string | Spec version this model targets. Absent → the current spec version (`"0.9"` in this draft) |
 | `geometry` | no | array of reference paths | The model's geometry files (§6.9). Absent → `["voxels.json"]` |
-| `palette` | no | reference path | Model-wide external palette binding (§6.10). Absent → each geometry file's inline palette |
 | `parts` | **yes** | array (non-empty) | At least one part |
 | `animations` | no | object | Map from animation name to definition. Absent → no animations |
 
@@ -325,16 +325,18 @@ This rule supports cross-rig sharing: a shared `quadruped_walk.json` that animat
 - The model's parts are the union of all listed files, in list order. **Part names are unique across the whole model** (§5) — a name defined in two geometry files is a cross-file `duplicate` error (§11.6).
 - A geometry file present in the package but not listed here is not part of the model and lints as **W07** (§11.6).
 
-### 6.10 Palette binding & external palette file
+### 6.10 External palette file
+
+A geometry file may keep its colors in a separate file and point at it, so several geometry files can share one palette (§7.4):
 
 ```json
 "palette": "palette.json"
 ```
 
-- A **reference path** (§8) ending in `.json`, applying to **every** geometry file (one binding per model; per-file bindings are reserved for a future version).
-- The bound palette **takes precedence over inline palettes**: a geometry file that also declares an inline `palette` (§7.4) is rendered with the bound one, and the shadowed inline palette lints as hint **H03** (§11.6). This precedence is what makes palette swapping work — binding a different palette file recolors the same geometry (skins).
-- With a binding present, geometry files may omit their inline palette entirely (§7.4 "at most one"); their voxel index-range validation happens cross-file against the bound palette (§11.6).
-- A geometry file whose voxels use color indices while **neither** an inline palette **nor** a binding exists is a cross-file `missing` error.
+- A **reference path** (§8) ending in `.json`, written in the **geometry file**, not the manifest. Each geometry file decides for itself; two files sharing a palette simply name the same path.
+- Swapping a palette file recolors every geometry file pointing at it (skins).
+- The referenced file's colors are the referring file's palette outright — there is no inline palette underneath to override, because `palette` is one field with two forms.
+- A geometry file whose voxels use color indices while it declares **no** palette in either form is a cross-file `missing` error, as is one whose reference does not resolve.
 
 The palette file itself is a standard JSON document:
 
@@ -371,7 +373,7 @@ at `schema/cuboidy-geometry.schema.json` plus the cross-field rules below.
 ```json
 {
   "version": "0.9",
-  "palette": ["#RRGGBB", …],
+  "palette": ["#RRGGBB", …],          // or "palette.json"
   "parts": [ { "name": …, "size": [W, H, D], "pivot": …, "sockets": …, "voxels": … } ]
 }
 ```
@@ -379,7 +381,7 @@ at `schema/cuboidy-geometry.schema.json` plus the cross-field rules below.
 | Field | Required | Notes |
 |---|---|---|
 | `version` | no | Spec version string. Same field and semantics as the manifest's `version` (§6.1) |
-| `palette` | no | Array of hex colors. Omit when the model binds an external palette via the manifest (§6.10), or when every voxel is air |
+| `palette` | no | Either an array of hex colors, or a §8 reference path to a shared palette file (§6.10). Omit only when every voxel is air |
 | `parts` | **yes** | Array of part objects, at least one |
 
 No other top-level fields are permitted (unknown field → `unknown`).
@@ -392,9 +394,11 @@ separate parser path.
 ### 7.4 Palette
 
 ```json
-"palette": ["#1A1A1A", "#F4C9A0", "#8A8F98"]
+"palette": ["#1A1A1A", "#F4C9A0", "#8A8F98"]   // this file's own colors
+"palette": "palette.json"                       // …or a shared palette (§6.10)
 ```
 
+- **One field, two forms** — an array of colors, or a §8 reference path ending in `.json`. A file cannot do both, so no precedence rule is needed and nothing can shadow anything. (The manifest's `animations` values take the same either/or shape, §6.3.)
 - **At most one** palette per file — it is a single field, so duplication is structurally impossible
 - Each color in hex: `#RGB`, `#RGBA`, `#RRGGBB`, or `#RRGGBBAA`
 - Color space: **sRGB**
@@ -407,7 +411,7 @@ separate parser path.
 
 Position-based indexing: reordering the palette requires rewriting voxel data. Tooling can automate this.
 
-When the file declares **no** palette, the index-range check is deferred to cross-file validation against the manifest-bound palette (§6.10, §11.6). Charset (`[.0-9a-zA-Z]`) and row-width checks still apply at parse time. A file **with** an inline palette must be valid against it at parse time regardless of any binding: the file stays independently well-formed, and the binding then re-validates the range cross-file (a shorter bound palette can make an internally-valid file a cross-file error).
+A file that spells its colors out is range-checked at **parse time** — it is independently well-formed. A file that **references** a palette cannot be: the length is unknown until the referenced file is read, so its index-range check is deferred to cross-file validation (§6.10, §11.6), exactly as a palette-less file's is. Charset (`[.0-9a-zA-Z]`) and row-width checks always apply at parse time.
 
 ### 7.5 Part object
 
@@ -590,12 +594,12 @@ this file declares none and its index range is checked cross-file:
 
 ## 8. Reference paths
 
-Used by every manifest reference field: `geometry` entries (§6.9), the `palette` binding (§6.10), and `animations` string values (§6.3).
+Used by every reference field: the manifest's `geometry` entries (§6.9) and `animations` string values (§6.3), and a geometry file's `palette` when written in reference form (§7.4).
 
 Rules:
 
 - Resolved **relative to the file containing the reference** (typically `cuboidy.json`)
-- Explicit extension required: `.json` for `geometry` entries, the `palette` binding and animation references
+- Explicit extension required: `.json` for `geometry` entries, `palette` references and animation references
 - Forward slashes `/` only
 - Absolute paths (leading `/`) are forbidden
 - URLs (`http://`, `https://`, `file://`) are forbidden
@@ -629,7 +633,6 @@ Reference cycles (a → b → a) are an error.
 | `cuboidy.json` | part `rotation` | absent → identity (`[0, 0, 0]`) |
 | `cuboidy.json` | part `parent` | absent → root |
 | `cuboidy.json` | `geometry` | absent → `["voxels.json"]` |
-| `cuboidy.json` | `palette` | absent → each geometry file's inline palette |
 | `cuboidy.json` | `animations` | absent → no animations |
 | `cuboidy.json` | `version` | absent → current spec version (`"0.9"` in this draft) |
 | Keyframe (first) | `rot` | `[0, 0, 0]` |
@@ -660,10 +663,10 @@ Cuboidy uses **five structural codes** to describe errors. The code names what *
 
 | Code | Meaning | Voxel-definition examples |
 |---|---|---|
-| `missing` | A required structural element is absent. | File contains no `part` declarations; `size` missing in a part; `voxels` missing in a part; `voxels { … }` block unclosed (EOF before `}`); a reserved word used outside its structurally valid scope (e.g. `size` before any `part`, `rot` outside `pivot` / `socket`). (A missing `palette` declaration is **not** an error as of v0.7 — §7.4; palette availability is validated cross-file, §11.6) |
+| `missing` | A required structural element is absent. | File contains no `part` declarations; `size` missing in a part; `voxels` missing in a part; `voxels { … }` block unclosed (EOF before `}`); a reserved word used outside its structurally valid scope (e.g. `size` before any `part`, `rot` outside `pivot` / `socket`). (A missing `palette` declaration is **not** an error — §7.4; palette availability is validated cross-file, §11.6) |
 | `duplicate` | A unique-constraint violation: an element that should appear at most once appears more than once. | Two `palette` declarations; duplicate `part` name; duplicate socket name within a part; duplicate `size` / `pivot` / `voxels` within a part |
 | `unknown` | An unrecognized name appears where the spec defines a closed set. | A non-keyword identifier appears where no statement is expected; a top-level token has no valid grammatical role |
-| `invalid-value` | A value is present but malformed. | Malformed color hex (`#GG`); voxel row contains a character outside `[.0-9a-zA-Z]`; voxel cell references a palette index that does not exist (only checked at parse time when the file declares an inline palette — §7.4); size dimension out of range `[1..1024]`, fractional, or non-numeric; non-numeric `pivot` / `socket` coord; expected `rot` marker but got something else; identifier failing the §5 rule (regex failure or reserved-keyword name like `part part`); identifier slot received a quoted string instead of a bare token (e.g. `part "head"`); numeric or color slot received a string token (e.g. `size "3" 1 1`) |
+| `invalid-value` | A value is present but malformed. | Malformed color hex (`#GG`); voxel row contains a character outside `[.0-9a-zA-Z]`; voxel cell references a palette index that does not exist (only checked at parse time when the file spells its colors out — a referenced palette is checked cross-file, §7.4); size dimension out of range `[1..1024]`, fractional, or non-numeric; non-numeric `pivot` / `socket` coord; expected `rot` marker but got something else; identifier failing the §5 rule (regex failure or reserved-keyword name like `part part`); identifier slot received a quoted string instead of a bare token (e.g. `part "head"`); numeric or color slot received a string token (e.g. `size "3" 1 1`) |
 | `wrong-arity` | An incorrect number of items. | Voxel-row width does not match declared `W`; a layer-section row count differs from declared `D`; layer-section count differs from declared `H`; palette has 0 colors or more than 62; wrong number of arguments to a keyword (`size` not 3, `pivot` not 3-or-7, `socket` not 4-or-8, `part` not 1) |
 
 Note: v0.1 used per-keyword codes (E01–E19). v0.2 restructured them into the five structural categories above. v0.3 removed the `layer` keyword and the active-layer concept (replaced by `voxels { … }` blocks), simplifying the precedence rules; the five codes are unchanged. The keyword/context survives in the message string and in the fixture filenames (`fixtures/geometry/<code>/<descriptor>.json`).
@@ -693,26 +696,25 @@ Manifest errors use the same five structural codes (§11.2). The TS reference im
 |---|---|
 | `missing` | Top-level `name` is absent; top-level `parts` is absent or empty; palette file's `colors` is absent (§6.10) |
 | `duplicate` | Duplicate part name; duplicate animation name (planned) |
-| `unknown` | A field other than `name` / `version` / `geometry` / `palette` / `parts` / `animations` is present at the top level; a field other than `name` / `parent` / `position` is present inside a part; a field other than `colors` in a palette file |
-| `invalid-value` | Wrong type for a field (e.g. `name` is a number); identifier failing the §5 regex; a `geometry` / `palette` / animation reference path violating §8 (wrong extension, backslash, absolute, URL/URI, empty segment); duplicate or empty `geometry` list; malformed color string in a palette file; `parent` references a non-existent part; parent chain contains a cycle; animation `duration` non-positive, non-finite, or less than the largest time key; time keys not decimal-number strings, not strictly increasing, or not starting at `"0.0"` |
+| `unknown` | A field other than `name` / `version` / `geometry` / `parts` / `animations` is present at the top level; a field other than `name` / `parent` / `position` is present inside a part; a field other than `colors` in a palette file |
+| `invalid-value` | Wrong type for a field (e.g. `name` is a number); identifier failing the §5 regex; a `geometry` / animation reference path violating §8 (wrong extension, backslash, absolute, URL/URI, empty segment); duplicate or empty `geometry` list; malformed color string in a palette file; `parent` references a non-existent part; parent chain contains a cycle; animation `duration` non-positive, non-finite, or less than the largest time key; time keys not decimal-number strings, not strictly increasing, or not starting at `"0.0"` |
 | `wrong-arity` | Palette file's `colors` is empty or exceeds 62 entries (§6.10) |
 
 Items marked "planned" are not yet implemented in the TS reference; the catch-all `invalid-value` may surface generic Zod messages for those cases until then. External animation files (§6.3 string refs) are validated with the same inline-animation rules when the project is resolved (lint, inspection CLIs, editor); a missing or invalid referenced file is an error there.
 
 ### 11.6 Cross-file rules
 
-Cross-file validation operates on the **project**: the manifest plus its referenced geometry files (§6.9) and the bound palette (§6.10) when present.
+Cross-file validation operates on the **project**: the manifest plus its referenced geometry files (§6.9) and any palette files those point at (§6.10, §7.4).
 
 | Code | Severity | Rule |
 |---|---|---|
 | `missing` | error | A manifest part name is not defined in **any** geometry file |
 | `duplicate` | error | The same part name is defined in **more than one** geometry file (§5 uniqueness is model-wide) |
 | `unknown` | warning | A geometry file defines a part not listed in `cuboidy.json` `parts` |
-| `missing` | error | A geometry file's voxels use color indices while **neither** an inline palette **nor** a manifest palette binding exists (§6.10) |
-| `invalid-value` | error | A geometry file references a palette index outside the **bound** palette's range (the binding replaces a possibly-longer inline palette — §7.4) |
+| `missing` | error | A geometry file's voxels use color indices while it declares no palette, or while its §7.4 palette reference does not resolve |
+| `invalid-value` | error | A geometry file references a palette index outside the range of the palette it **points at** (only a referenced palette reaches this check; an inline one is validated at parse time — §7.4) |
 | `invalid-value` | warning | **[W06]** an `<x>-l` / `<x>-r` part pair (same parent) whose occupied voxels are not mirror images across the parent's YZ plane, computed from manifest position + pivot + voxel occupancy. The check is geometric, not positional: a correctly mirrored part reflects its pivot too, so the matching hand-written position is often legitimately NOT the sign-opposite |
 | `invalid-value` | warning | **[W07]** a geometry file exists in the package but is not referenced by the manifest `geometry` list (usually a forgotten entry — §6.9) |
-| `invalid-value` | hint | **[H03]** a geometry file's inline palette is shadowed by the manifest `palette` binding (§6.10) |
 | `unknown` | warning | Animation targets a part not present in `cuboidy.json` `parts` (cross-rig sharing, §6.8) |
 | `unknown` | runtime error | Attempt to attach to a socket name not declared on the host part (planned) |
 
@@ -750,7 +752,7 @@ Concrete precedence:
    - **`unknown`** — non-reserved token with no valid grammatical role at this point. This includes extras left over after a keyword consumed its required args (e.g. the `9` in `size 1 1 1 9`, the `b` in `part a b`, the `5` in `pivot 1 0 1 5` — see per-keyword notes in §7.5–§7.9), and stray identifiers / numbers / quoted strings at top level (a misplaced `"foo"` at top-level reports `unknown` with "unexpected quoted string at top level")
 4. End-of-stream assembly — raised after all tokens are consumed (validation deferred because palette may be declared anywhere in the file, so voxel-row content cannot be validated at consumption time):
    - **`missing`** — no part declarations in the file; `size` missing in a part; `voxels` missing in a part
-   - **`invalid-value`** — voxel cell character outside `[.0-9a-zA-Z]`; voxel cell references a palette index outside the declared palette (skipped when the file declares no palette — deferred to cross-file validation, §7.4 / §11.6)
+   - **`invalid-value`** — voxel cell character outside `[.0-9a-zA-Z]`; voxel cell references a palette index outside the declared palette (skipped when the file declares none or references one — deferred to cross-file validation, §7.4 / §11.6)
    - **`wrong-arity`** — layer-section count differs from `H`; a layer-section row count differs from `D`; voxel row width does not match `W`
 
 **Too-many-args is never `wrong-arity`** (informational): the integrated parser (`parseCvox`, the sole parsing entry point) *cannot* return `wrong-arity` for too-many arguments to a keyword, because per §7.2 it consumes only the required count and lets the extras fall through to the main loop (diagnosed there as `unknown` for a stray identifier/number, or `invalid-value`). An argument-count `wrong-arity` therefore always means **too few** — the stream reached the next reserved token or EOF before the slot was filled. (Palette overflow — more than 62 colors — and voxel-grid dimension mismatches are the other `wrong-arity` cases; those are genuine count violations detected at consumption or at assembly.)
@@ -774,7 +776,6 @@ All reference examples pass the current lint rules at error level.
 ## 13. Future extensions (out of scope for v0.9)
 
 - **Packed format**: `<name>.cuboidy` (ZIP archive of the package)
-- **Per-geometry-file palette bindings**: a palette per `geometry` entry (v0.7 bindings are model-wide; §6.10)
 - **Named palette colors / metadata**: the palette file's object form (§6.10) reserves the room
 - **Multi-character palette encoding**: 2-character indices for palettes larger than 62
 - **Animation blending**: simultaneous animations with weighted contribution

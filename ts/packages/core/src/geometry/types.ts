@@ -47,11 +47,19 @@ export interface Part {
 }
 
 export interface Geometry {
-  // SPEC §7.4: at most one palette per file. An EMPTY array means the file
-  // declared none — a declared palette always has ≥ 1 color, so length 0 is
-  // unambiguous. Palette-less files rely on a manifest-bound external palette
-  // (§6.10); their voxel index-range validation moves to cross-file lint. The
-  // writer omits the key for an empty array, so absence round-trips.
+  // SPEC §7.4: the file's colors. An EMPTY array means the file declared no
+  // palette — a declared palette always has ≥ 1 color, so length 0 is
+  // unambiguous — OR that it declared `paletteRef` and the project layer has
+  // not resolved it yet. The writer omits the key for an empty array, so
+  // absence round-trips.
   palette: Palette;
+  // SPEC §7.4: set when the file spelled its `palette` as a §8 reference to a
+  // palette file (§6.10) instead of an inline array. The two are alternative
+  // forms of ONE document field, so no precedence rule is needed: a file
+  // either lists its colors or points at a file that does. Resolution belongs
+  // to the project layer (resolveProject), which fills `palette` in — so
+  // every consumer downstream of it reads colors the same way regardless of
+  // where they were written.
+  paletteRef?: string;
   parts: Part[];
 }

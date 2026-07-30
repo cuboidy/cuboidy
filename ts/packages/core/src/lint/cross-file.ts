@@ -1,6 +1,6 @@
 import type { Diagnostic } from '../diagnostic.js';
 import { isInlineAnimation, type InlineAnimation } from '../animation.js';
-import type { Geometry, Palette, Part } from '../geometry/types.js';
+import type { Geometry, Part } from '../geometry/types.js';
 import { AIR } from '../geometry/voxel-row.js';
 import type { Manifest } from '../manifest.js';
 
@@ -11,10 +11,10 @@ import type { Manifest } from '../manifest.js';
 // the filesystem).
 export interface ProjectInput {
   manifest: Manifest;
-  // The manifest's geometry files, in list order, that parsed successfully.
+  // The manifest's geometry files, in list order, that parsed successfully
+  // and had any §7.4 palette reference RESOLVED (resolveProject does this),
+  // so `geometry.palette` is the file's effective palette either way.
   geometries: ReadonlyArray<{ path: string; geometry: Geometry }>;
-  // Parsed palette.json when the manifest binds one (§6.10) and it loaded.
-  externalPalette?: Palette;
   // Resolved §6.3 external animations by clip name, when the caller
   // loaded them. Inline animations come from `manifest` directly.
   externalAnims?: ReadonlyMap<string, { path: string; anim: InlineAnimation }>;
@@ -24,7 +24,7 @@ export interface ProjectInput {
 }
 
 export function validateProject(input: ProjectInput): Diagnostic[] {
-  const { manifest, geometries, externalPalette } = input;
+  const { manifest, geometries } = input;
   const diags: Diagnostic[] = [];
 
   // Part name → defining file(s). Names are unique across the WHOLE model
@@ -97,35 +97,30 @@ export function validateProject(input: ProjectInput): Diagnostic[] {
     }
   }
 
-  // §6.10 palette resolution, per geometry file: the manifest binding wins
-  // over an inline palette; a file with neither can't use color indices.
+  // §7.4 palette availability, per geometry file. Nothing to reconcile here
+  // any more: a file declares its colors or points at a palette file, and
+  // the project layer has already read a reference in — so this only asks
+  // whether the colors a file uses actually exist.
   for (const { path, geometry } of geometries) {
-    const hasInline = geometry.palette.length > 0;
-    if (externalPalette !== undefined && hasInline) {
-      diags.push({
-        code: 'invalid-value',
-        severity: 'hint',
-        ruleId: 'H03',
-        message: `inline palette in ${path} is shadowed by the manifest palette binding`,
-      });
-    }
-    const effective = externalPalette ?? (hasInline ? geometry.palette : undefined);
     const maxIdx = maxUsedIndex(geometry);
     if (maxIdx === AIR) continue; // all air — no palette needed
-    if (effective === undefined) {
+    if (geometry.palette.length === 0) {
       diags.push({
         code: 'missing',
         severity: 'error',
-        message: `${path} uses color indices but no palette is available (no inline palette and no manifest palette binding)`,
+        message:
+          geometry.paletteRef !== undefined
+            ? `${path} uses color indices but its palette reference (${geometry.paletteRef}) did not resolve`
+            : `${path} uses color indices but declares no palette`,
       });
-    } else if (maxIdx >= effective.length) {
-      // Inline-only files were already range-checked at parse time; this
-      // re-check matters when the (possibly shorter) binding replaces the
-      // inline palette.
+    } else if (maxIdx >= geometry.palette.length) {
+      // An INLINE palette was already range-checked at parse time; this
+      // re-check is what covers a REFERENCED one, whose length is only
+      // known once the project layer has read the file.
       diags.push({
         code: 'invalid-value',
         severity: 'error',
-        message: `${path} references palette index ${maxIdx}, but the bound palette has ${effective.length} color(s)`,
+        message: `${path} references palette index ${maxIdx}, but its palette has ${geometry.palette.length} color(s)`,
       });
     }
   }

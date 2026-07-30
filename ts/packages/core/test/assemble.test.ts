@@ -10,7 +10,7 @@ import {
 import { geo } from './helpers/geometry.js';
 
 // SPEC §6.10 through the inspection-CLI assembly layer: manifest geometry
-// lists and external palette binding — the same project resolution lint
+// lists and per-file palette references — the same project resolution lint
 // and the editor use.
 
 async function makeModel(files: Record<string, string>): Promise<string> {
@@ -77,18 +77,15 @@ describe('loadAndAssemble — geometry list', () => {
   });
 });
 
-describe('loadAndAssemble — §6.10 external palette', () => {
-  it('binds an external palette over a palette-less geometry file', async () => {
+describe('loadAndAssemble — §7.4 referenced palette', () => {
+  it('resolves the palette a geometry file points at', async () => {
     const dir = await makeModel({
-      'voxels.json': geo([
-        { name: 'p', size: [2, 1, 1], pivot: [0, 0, 0], voxels: [['01']] },
-      ]),
+      'voxels.json': geo(
+        [{ name: 'p', size: [2, 1, 1], pivot: [0, 0, 0], voxels: [['01']] }],
+        'palette.json',
+      ),
       'palette.json': '{ "colors": ["#112233", "#445566"] }',
-      'cuboidy.json': JSON.stringify({
-        name: 'm',
-        palette: 'palette.json',
-        parts: [{ name: 'p' }],
-      }),
+      'cuboidy.json': JSON.stringify({ name: 'm', parts: [{ name: 'p' }] }),
     });
     const r = await loadAndAssemble(dir);
     expect(r.ok).toBe(true);
@@ -100,17 +97,14 @@ describe('loadAndAssemble — §6.10 external palette', () => {
     expect(r.assembly.grid.get(stringifyCoord(1, 0, 0))).toBe(1);
   });
 
-  it('rejects a bound palette shorter than the used indices (exit 1)', async () => {
+  it('rejects a referenced palette shorter than the used indices (exit 1)', async () => {
     const dir = await makeModel({
-      'voxels.json': geo([
-        { name: 'p', size: [2, 1, 1], pivot: [0, 0, 0], voxels: [['01']] },
-      ]),
+      'voxels.json': geo(
+        [{ name: 'p', size: [2, 1, 1], pivot: [0, 0, 0], voxels: [['01']] }],
+        'palette.json',
+      ),
       'palette.json': '{ "colors": ["#112233"] }',
-      'cuboidy.json': JSON.stringify({
-        name: 'm',
-        palette: 'palette.json',
-        parts: [{ name: 'p' }],
-      }),
+      'cuboidy.json': JSON.stringify({ name: 'm', parts: [{ name: 'p' }] }),
     });
     const r = await loadAndAssemble(dir);
     expect(r.ok).toBe(false);
@@ -119,7 +113,7 @@ describe('loadAndAssemble — §6.10 external palette', () => {
     expect(r.message).toMatch(/palette index 1/);
   });
 
-  it('rejects color indices with neither inline palette nor binding (exit 1)', async () => {
+  it('rejects color indices with no palette at all (exit 1)', async () => {
     const dir = await makeModel({
       'voxels.json': geo([
         { name: 'p', size: [1, 1, 1], pivot: [0, 0, 0], voxels: [['0']] },

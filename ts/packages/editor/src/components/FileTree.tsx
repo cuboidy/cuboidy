@@ -206,16 +206,18 @@ export function FileTree({
     return new Set(refs.map(normalizePath));
   }, [source]);
 
-  // Everything else the manifest accounts for: the palette binding and any
-  // externalized animation clip. Needed because these are `.json` too and must
-  // not be mistaken for stray geometry.
+  // Everything else the model accounts for: the palette files its geometry
+  // points at (§7.4) and any externalized animation clip. Needed because
+  // these are `.json` too and must not be mistaken for stray geometry.
   const referencedNonGeometry = useMemo(() => {
     const out = new Set<string>();
-    if (source.manifest === undefined) return out;
-    if (source.manifest.palette !== undefined) {
-      out.add(normalizePath(source.manifest.palette));
+    for (const g of source.geometries?.values() ?? [source.geometry]) {
+      if (g.paletteRef !== undefined) out.add(normalizePath(g.paletteRef));
     }
-    for (const clip of Object.values(source.manifest.animations ?? {})) {
+    if (source.geometry.paletteRef !== undefined) {
+      out.add(normalizePath(source.geometry.paletteRef));
+    }
+    for (const clip of Object.values(source.manifest?.animations ?? {})) {
       if (typeof clip === 'string') out.add(normalizePath(clip));
     }
     return out;

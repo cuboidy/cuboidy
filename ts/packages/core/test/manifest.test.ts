@@ -135,15 +135,15 @@ describe('parseManifest — part rotation (v0.9)', () => {
   });
 });
 
-// SPEC §6.9 / §6.10 (v0.7): geometry list + external palette binding.
-describe('parseManifest — geometry & palette (v0.7)', () => {
+// SPEC §6.9: the geometry list. A palette is NOT a manifest concern — it is
+// declared by the geometry file that uses it (§7.4).
+describe('parseManifest — geometry list', () => {
   const base = { name: 'test', parts: [{ name: 'body' }] };
 
-  it('accepts a geometry list and a palette binding', () => {
+  it('accepts a geometry list', () => {
     const r = parseManifest({
       ...base,
       geometry: ['body.json', 'gear/hat.json', '../shared/tail.json'],
-      palette: 'palette.json',
     });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
@@ -152,7 +152,12 @@ describe('parseManifest — geometry & palette (v0.7)', () => {
       'gear/hat.json',
       '../shared/tail.json',
     ]);
-    expect(r.value.palette).toBe('palette.json');
+  });
+
+  it('rejects a top-level palette (it moved to the geometry file)', () => {
+    const r = parseManifest({ ...base, palette: 'palette.json' });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('unknown');
   });
 
   it('manifestGeometry applies the ["voxels.json"] default', () => {
@@ -205,13 +210,7 @@ describe('parseManifest — geometry & palette (v0.7)', () => {
   });
 
   it('rejects a bare extension as a path', () => {
-    const r = parseManifest({ ...base, palette: '.json' });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('invalid-value');
-  });
-
-  it('rejects a palette binding that is not .json', () => {
-    const r = parseManifest({ ...base, palette: 'palette.geometry' });
+    const r = parseManifest({ ...base, geometry: ['.json'] });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe('invalid-value');
   });

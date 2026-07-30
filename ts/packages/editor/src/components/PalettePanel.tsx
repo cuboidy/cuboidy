@@ -1,18 +1,20 @@
 import { AIR, type Color, type Palette, type Part } from '@cuboidy/core';
 import { Plus, X } from 'lucide-react';
 
-// What the panel is editing — the model's EFFECTIVE palette per the
-// SPEC §6.10 precedence: the manifest-bound external file when a
-// binding exists, else the primary geometry file's inline declaration.
-export type PaletteTarget =
-  | { kind: 'external'; path: string }
-  | { kind: 'inline'; file: string };
+// What the panel is editing (SPEC §7.4): the palette of ONE geometry file
+// — the one defining the selected part. `ref` is set when those colors are
+// declared in a shared palette file rather than in the geometry file itself,
+// which is the only difference the panel surfaces.
+export interface PaletteTarget {
+  file: string;
+  ref?: string;
+}
 
 interface Props {
   // The effective palette being edited.
   palette: Palette;
-  // Every part of the model — usage counts (and the parent's delete
-  // remap) span all geometry files sharing this palette.
+  // The parts whose voxels resolve against this palette — usage counts
+  // (and the parent's delete remap) span every geometry file sharing it.
   parts: readonly Part[];
   target: PaletteTarget;
   // When the relevant source text doesn't parse, the state shown here is
@@ -28,28 +30,17 @@ interface Props {
   // Deleting a color shifts every higher index in every affected voxel —
   // a cross-file transaction the parent owns.
   onDeleteColor: (index: number) => void;
-  // Move the inline palette out to palette.json and bind it (undefined =
-  // not available, e.g. no manifest / already external).
+  // Move this file's colors out to a palette file and point at it
+  // (undefined = not available, e.g. already referenced / empty).
   onExternalize?: (() => void) | undefined;
-  // Copy the bound palette back into the primary file's inline
-  // declaration and drop the binding (the file is kept).
+  // Keep the colors but drop the reference, writing them into the geometry
+  // file itself (the palette file is kept — it may be shared).
   onInline?: (() => void) | undefined;
-  // Binding picker: package .json files that parse as palettes (plus the
-  // current binding, even if broken). undefined = binding not available
-  // (no manifest) → the header shows a static label instead.
-  bindingChoices?: readonly string[] | undefined;
-  // null = clear the binding (back to inline palettes).
-  onChangeBinding?: ((path: string | null) => void) | undefined;
-  // Rewriting the binding rewrites the manifest — blocked only while the
-  // manifest text doesn't parse. Deliberately separate from `disabled`:
-  // an UNRESOLVED binding disables color editing but the picker must
-  // stay usable (it's the recovery path).
-  bindingDisabled?: boolean;
 }
 
-// Palette editing as a panel. All edits route through the callbacks;
-// the parent writes them to where the palette LIVES (palette.json or
-// the primary geometry file).
+// Palette editing as a panel. All edits route through the callbacks; the
+// parent writes them to where the palette LIVES (a shared palette file, or
+// the geometry file itself).
 //
 // Delete behavior:
 //   - Unused color: silent delete.
@@ -69,9 +60,6 @@ export function PalettePanel({
   onDeleteColor,
   onExternalize,
   onInline,
-  bindingChoices,
-  onChangeBinding,
-  bindingDisabled = false,
 }: Props) {
   const usage = computePaletteUsage(palette, parts);
 
@@ -93,38 +81,16 @@ export function PalettePanel({
   return (
     <section className="palette-panel">
       <div className="palette-header">
-        {onChangeBinding !== undefined ? (
-          <select
-            className="palette-binding"
-            value={target.kind === 'external' ? target.path : ''}
-            disabled={bindingDisabled}
-            title="Which palette this model uses (the manifest `palette` binding — SPEC §6.10). Binding a file overrides every inline palette."
-            aria-label="Palette binding"
-            onChange={(e) =>
-              onChangeBinding(e.target.value === '' ? null : e.target.value)
-            }
-          >
-            <option value="">(inline)</option>
-            {bindingChoices?.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <span
-            className="palette-target"
-            title={
-              target.kind === 'external'
-                ? `Editing the manifest-bound palette (${target.path}) — applies to every geometry file`
-                : `Editing the inline palette declared in ${target.file}`
-            }
-          >
-            {target.kind === 'external'
-              ? target.path
-              : `${target.file} (inline)`}
-          </span>
-        )}
+        <span
+          className="palette-target"
+          title={
+            target.ref !== undefined
+              ? `${target.file} uses the shared palette ${target.ref} — editing here writes that file, so every geometry pointing at it changes`
+              : `Editing the palette declared inside ${target.file}`
+          }
+        >
+          {target.ref ?? `${target.file} (inline)`}
+        </span>
         <span className="palette-count">
           {palette.length} / {MAX_PALETTE}
         </span>
@@ -161,21 +127,21 @@ export function PalettePanel({
           </button>
         )}
       </div>
-      {!disabled && target.kind === 'inline' && onExternalize !== undefined && (
+      {!disabled && target.ref === undefined && onExternalize !== undefined && (
         <button
           type="button"
           className="btn btn-create btn-sm palette-storage-action"
-          title="Move this palette out to palette.json and bind it in the manifest (shareable across files and skins)"
+          title="Move these colors out to a palette file and point this geometry file at it (shareable with other geometry files)"
           onClick={onExternalize}
         >
           Externalize palette
         </button>
       )}
-      {!disabled && target.kind === 'external' && onInline !== undefined && (
+      {!disabled && target.ref !== undefined && onInline !== undefined && (
         <button
           type="button"
           className="btn btn-sm palette-storage-action"
-          title={`Copy the bound palette into the primary geometry file and drop the binding (${target.path} is kept)`}
+          title={`Write these colors into ${target.file} and drop the reference (${target.ref} is kept)`}
           onClick={onInline}
         >
           Inline palette

@@ -32,10 +32,6 @@
       },
       "uniqueItems": true
     },
-    "palette": {
-      "type": "string",
-      "pattern": "^(?!/)(?!.*//)[^\\\\:]+\\.json$"
-    },
     "parts": {
       "minItems": 1,
       "type": "array",

@@ -11,7 +11,9 @@ import {
   type WorldTransform,
 } from '../rig-transform.js';
 import {
+  palettePathsOf,
   projectFilePaths,
+  resolveGeometries,
   resolveProject,
   type GeometryFile,
 } from '../project.js';
@@ -19,7 +21,7 @@ import {
 // Shared assembly layer used by cuboidy-view (2D projection),
 // cuboidy-query (coordinate lookup) and cuboidy-snap (PNG rendering).
 // Reads a model directory THROUGH the shared project-resolution layer
-// (SPEC §6.9 geometry list, §6.10 palette binding, cross-file reuse), so
+// (SPEC §6.9 geometry list, §7.4 palette resolution), so
 // these tools interpret a package exactly like lint and the editor do.
 // The result is a world-space voxel grid keyed by **fractional**
 // coordinates. Rounding (if any) is the consumer's responsibility —
@@ -45,9 +47,9 @@ export interface Assembly {
   // clone/mirror parts are already materialized. The first entry is the
   // model's primary file (its header labels view output).
   geometries: readonly GeometryFile[];
-  // Effective palette for `grid` values: the §6.10 bound palette when the
-  // manifest has one, otherwise the geometry files' inline palettes merged
-  // (per-file indices remapped, duplicate colors deduped across files).
+  // Effective palette for `grid` values: every geometry file's resolved
+  // palette (§7.4), merged (per-file indices remapped, duplicate colors
+  // deduped across files).
   palette: Palette;
   // Topologically-sorted parts so consumers iterating in order see
   // parents before children. Useful when emitting per-part diagnostics.
@@ -120,18 +122,24 @@ export async function loadAndAssemble(dir: string): Promise<LoadResult | LoadErr
   }
   const manifest = mR.value;
 
-  // Read every referenced file (§6.9 geometry list, §6.10 palette, §6.3
+  // Read every referenced file (§6.9 geometry list, §6.3
   // external animations). An unreadable reference is a setup failure
   // (exit 2) — same policy the fixed voxels.json had before the manifest
   // could name other files.
   const paths = projectFilePaths(manifest);
-  const refs = [
-    ...paths.geometry,
-    ...(paths.palette !== undefined ? [paths.palette] : []),
-    ...paths.animations,
-  ];
   const files = new Map<string, string>();
-  for (const ref of refs) {
+  for (const ref of [...paths.geometry, ...paths.animations]) {
+    const text = await tryReadText(join(root, ref));
+    if (text === null) {
+      return { ok: false, message: `cannot read ${join(root, ref)}`, exitCode: 2 };
+    }
+    files.set(ref, text);
+  }
+  // §7.4 palette references live inside the geometry files, so they only
+  // become visible once those are read — hence a second round.
+  const staged = resolveGeometries(manifest, files);
+  for (const ref of palettePathsOf(staged.geometries)) {
+    if (files.has(ref)) continue;
     const text = await tryReadText(join(root, ref));
     if (text === null) {
       return { ok: false, message: `cannot read ${join(root, ref)}`, exitCode: 2 };
@@ -154,10 +162,7 @@ export async function loadAndAssemble(dir: string): Promise<LoadResult | LoadErr
     return { ok: false, message: `${manifestPath}: ${orderResult.error}`, exitCode: 1 };
   }
 
-  const pal = buildEffectivePalette(
-    project.geometries,
-    project.externalPalette,
-  );
+  const pal = buildEffectivePalette(project.geometries);
   if (!pal.ok) {
     return { ok: false, message: pal.message, exitCode: 1 };
   }
@@ -172,12 +177,12 @@ export async function loadAndAssemble(dir: string): Promise<LoadResult | LoadErr
 }
 
 // The effective palette for the assembled grid, plus a per-file index
-// remap into it (null = identity). With a §6.10 binding the bound palette
-// IS the effective palette (it takes precedence over inline ones). With
-// no binding, each file keeps its inline colors: the first palette-bearing
-// file maps identically and later files are appended with duplicate
-// colors deduped, so single-file models are byte-identical to the
-// pre-v0.7 behavior.
+// remap into it (null = identity). Every geometry file arrives with its
+// palette already resolved (§7.4 — written inline or read in from the
+// referenced file), so this is one merge: the first palette-bearing file
+// maps identically and later files are appended with duplicate colors
+// deduped. Files SHARING one palette file therefore all dedupe onto the
+// same entries and all map identically, which is the common case.
 interface EffectivePalette {
   palette: Palette;
   remap: Map<string, readonly number[] | null>;
@@ -190,25 +195,9 @@ type PaletteResult =
 
 function buildEffectivePalette(
   geometries: readonly GeometryFile[],
-  external: Palette | undefined,
 ): PaletteResult {
   const warnings: string[] = [];
   const maxIdxByFile = maxIndexByFile(geometries);
-
-  if (external !== undefined) {
-    const remap = new Map<string, readonly number[] | null>();
-    for (const g of geometries) {
-      const maxIdx = maxIdxByFile.get(g.path) ?? AIR;
-      if (maxIdx !== AIR && maxIdx >= external.length) {
-        return {
-          ok: false,
-          message: `${g.path} references palette index ${maxIdx}, but the bound palette has ${external.length} color(s)`,
-        };
-      }
-      remap.set(g.path, null);
-    }
-    return { ok: true, value: { palette: external, remap, warnings } };
-  }
 
   const merged: Color[] = [];
   const byKey = new Map<string, number>();
@@ -217,18 +206,26 @@ function buildEffectivePalette(
   for (const g of geometries) {
     const inline = g.geometry.palette;
     if (inline.length === 0) {
-      // §6.10: a palette-less file may only use color indices when a
-      // binding exists. Indices contributed by cross-file reuse don't
-      // count — they resolve against the referent file's palette.
+      // A file with no palette at all (§7.4) may not use color indices.
       const maxIdx = maxIdxByFile.get(g.path) ?? AIR;
       if (maxIdx !== AIR) {
         return {
           ok: false,
-          message: `${g.path} uses color indices but no palette is available (no inline palette and no manifest palette binding)`,
+          message: `${g.path} uses color indices but no palette is available`,
         };
       }
       remap.set(g.path, null);
       continue;
+    }
+    // An INLINE palette was range-checked at parse time, but a REFERENCED
+    // one could not be — its length is only known once the project layer
+    // has read the file it points at.
+    const maxIdx = maxIdxByFile.get(g.path) ?? AIR;
+    if (maxIdx >= inline.length) {
+      return {
+        ok: false,
+        message: `${g.path} references palette index ${maxIdx}, but its palette has ${inline.length} color(s)`,
+      };
     }
     if (first) {
       // First palette-bearing file: identity mapping, palette verbatim.
@@ -256,7 +253,7 @@ function buildEffectivePalette(
   }
   if (merged.length > MAX_PALETTE) {
     warnings.push(
-      `merged inline palettes hold ${merged.length} colors (max ${MAX_PALETTE}) — consider a shared manifest palette binding`,
+      `merged palettes hold ${merged.length} colors (max ${MAX_PALETTE}) — consider pointing the geometry files at one shared palette file`,
     );
   }
   return { ok: true, value: { palette: merged, remap, warnings } };

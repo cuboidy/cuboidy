@@ -2,7 +2,12 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { parseManifest } from '../manifest.js';
 import type { Manifest } from '../manifest.js';
-import { projectFilePaths, resolveProject } from '../project.js';
+import {
+  palettePathsOf,
+  projectFilePaths,
+  resolveGeometries,
+  resolveProject,
+} from '../project.js';
 import { validateProject } from '../lint/cross-file.js';
 import { lintGeometry } from '../lint/voxel-rules.js';
 import { parseGeometryText } from '../geometry/parse.js';
@@ -90,20 +95,23 @@ export async function runLint(
     }
   }
 
-  // Referenced files (§6.9 geometry list with default, §6.10 palette,
+  // Referenced files (§6.9 geometry list with default, §7.4 palettes,
   // §6.3 external animations) are read here and resolved through the
   // shared project layer — the same layer view/query/snap and the editor
   // use, so lint agrees with them about what the model contains.
   // Unreadable files stay OUT of the map; resolveProject reports them as
   // `missing` diagnostics.
   const paths = projectFilePaths(manifest);
-  const refs = [
-    ...paths.geometry,
-    ...(paths.palette !== undefined ? [paths.palette] : []),
-    ...paths.animations,
-  ];
   const files = new Map<string, string>();
-  for (const ref of refs) {
+  for (const ref of [...paths.geometry, ...paths.animations]) {
+    const text = await tryReadText(join(root, ref));
+    if (text !== null) files.set(ref, text);
+  }
+  // §7.4 palette references live inside the geometry files, so they only
+  // become visible once those are read — hence a second round. Unreadable
+  // ones stay out of the map and resolveProject reports them as `missing`.
+  for (const ref of palettePathsOf(resolveGeometries(manifest, files).geometries)) {
+    if (files.has(ref)) continue;
     const text = await tryReadText(join(root, ref));
     if (text !== null) files.set(ref, text);
   }
@@ -142,9 +150,6 @@ export async function runLint(
     for (const d of validateProject({
       manifest,
       geometries: project.geometries,
-      ...(project.externalPalette !== undefined && {
-        externalPalette: project.externalPalette,
-      }),
       externalAnims: project.externalAnims,
       packageCvoxPaths: await enumerateGeometryFiles(root),
     })) {

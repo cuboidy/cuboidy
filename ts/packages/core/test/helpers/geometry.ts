@@ -10,6 +10,9 @@ import type { GeometryDoc } from '../../src/geometry/schema.js';
 // container, and readable: `size` and the voxel rows sit where you expect.
 //
 //   geo([{ name: 'p', size: [1, 1, 1], voxels: [['0']] }], ['#FF0000'])
+//
+// `palette` takes either form §7.4 allows: an array of colors, or a §8
+// reference path to a shared palette file.
 
 export interface PartSpec {
   name: string;
@@ -20,7 +23,7 @@ export interface PartSpec {
   sockets?: Array<{ name: string; pos: [number, number, number]; rot?: [number, number, number] }>;
 }
 
-export function geo(parts: PartSpec[], palette?: string[]): string {
+export function geo(parts: PartSpec[], palette?: string[] | string): string {
   const doc: GeometryDoc = {
     version: SPEC_VERSION,
     parts: parts.map((p) => {
