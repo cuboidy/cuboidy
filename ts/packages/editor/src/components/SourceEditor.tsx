@@ -61,7 +61,10 @@ export function SourceEditor({ text, parseError, onChange }: Props) {
       </div>
       {parseError !== undefined && (
         <div className="parse-error-banner" role="alert">
-          <strong>Syntax error:</strong> {parseError}
+          {/* Not "Syntax error": most reports are schema violations in
+              well-formed JSON. The message carries the line, the path and
+              the cause, so the label only needs to mark severity. */}
+          <strong>Error:</strong> {parseError}
         </div>
       )}
     </div>

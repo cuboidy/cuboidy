@@ -8,9 +8,9 @@ interface Props {
 }
 
 // Segmented toggle for the 3D pane:
-//   - Cvox view: parts at origin (.cvox-faithful)
-//   - Rig view:  parts at manifest positions (requires a cuboidy.json)
-//   - Anim view: animation playback + keyframe editing (requires a manifest)
+//   - Geometry view: parts at origin (geometry-file-faithful)
+//   - Rig view:      parts at manifest positions (requires a cuboidy.json)
+//   - Anim view:     animation playback + keyframe editing (requires a manifest)
 // A view is disabled when its requirement is unmet; the tooltip explains why.
 
 export function ViewModeToggle({
@@ -28,7 +28,7 @@ export function ViewModeToggle({
         className={mode === 'cvox' ? 'active' : ''}
         onClick={() => onChange('cvox')}
       >
-        Cvox view
+        Geometry view
       </button>
       <button
         type="button"

@@ -3,7 +3,9 @@
 **Version:** 0.9 (draft)
 **Status:** Early draft. Subject to change before v1.0.
 
-**Changes in this draft revision (v0.9):** Added an optional per-part **`rotation`** field to the manifest part object (§6.2) — the part's **rest rotation** in parent space: 3 Euler angles in degrees, ZXY intrinsic order (§4), applied around the part's pivot. It composes **outside** the geometry file's `pivot.rot` and inside the parent's transform, so the full §7.7 rotation becomes `q_total = q_rotation · q_pivot · q_anim`; keyframe `rot` values remain relative to the (now two-term) rest rotation, and children ride a parent's rest rotation like any other parent transform (§6.2 rigid hierarchy). Absent → identity, so existing models are unchanged. Tooling note: `cuboidy-snap` renders rest rotations (both `rotation` and `pivot.rot`) as true oriented cubes; the integer-lattice projections (`cuboidy-view` / `cuboidy-query`) place a rotated part's **pivot** exactly where the rig puts it but keep the part's own voxels axis-aligned, and emit a warning saying so.
+**Changes in this draft revision (v0.9), geometry container:** The geometry file moves from the bespoke `.cvox` text format to **JSON** — `voxels.json` (§7). The data model is unchanged: parts, sizes, pivots, sockets and the positional H×D×W voxel grid all keep their meaning, and voxel rows remain strings in the same `[.0-9a-zA-Z]` alphabet (`"0220"`), so a grid still reads as a grid. What goes away is the container: the lexical structure, the grammar, the reserved-token machinery and comments (§7.2, §7.3, §7.11 are retired; the reserved-keyword list they defined moves to §5, where it still constrains identifiers). Surviving subsections keep their numbers so cross-references stay valid. Rationale: the text format existed to be token-cheap and AI-authorable, and neither claim survived measurement — reasoning dominates generation cost, so the file size difference moves the total by single digits, while a hand-written parser blocks every third-party implementation. Evidence and the migration plan are in `docs/eval/` and `docs/json-migration.md`.
+
+**Also in v0.9:** Added an optional per-part **`rotation`** field to the manifest part object (§6.2) — the part's **rest rotation** in parent space: 3 Euler angles in degrees, ZXY intrinsic order (§4), applied around the part's pivot. It composes **outside** the geometry file's `pivot.rot` and inside the parent's transform, so the full §7.7 rotation becomes `q_total = q_rotation · q_pivot · q_anim`; keyframe `rot` values remain relative to the (now two-term) rest rotation, and children ride a parent's rest rotation like any other parent transform (§6.2 rigid hierarchy). Absent → identity, so existing models are unchanged. Tooling note: `cuboidy-snap` renders rest rotations (both `rotation` and `pivot.rot`) as true oriented cubes; the integer-lattice projections (`cuboidy-view` / `cuboidy-query`) place a rotated part's **pivot** exactly where the rig puts it but keep the part's own voxels axis-aligned, and emit a warning saying so.
 
 **Changes in v0.8:** Added **per-attribute keyframe easing** (§6.5, §6.7). A keyframe gains an optional `ease` object mapping an attribute (`rot` / `pos` / `scale`) to the interpolation curve of that attribute's **outgoing** segment (this keyframe → the next). Curves are 20 named presets — `linear` (default), `step`, and `in` / `out` / `in-out` variants of `sine` / `quad` / `cubic` / `back` / `elastic` / `bounce` — applied as a remap of normalized segment progress before linear interpolation (`visible` always steps and cannot be eased). `ease` is deliberately **exempt from §6.5 carryover**: a curve applies only where it is written, and only to its own attribute — it never propagates to later keyframes or leaks onto other attributes. Custom cubic-bezier curves remain reserved for a future revision. This revision also **removes part reuse** (the `clone` / `mirror` reuse-clause added in v0.6): every part is now concrete voxel data, and symmetric or repeated geometry is authored by copy/mirror tooling that emits plain voxels. `clone` and `mirror` are no longer reserved keywords (now **7**, §7.3.1) and the `Part.from` AST field is gone.
 
@@ -53,7 +55,7 @@ Cuboidy is **not** a triangle-mesh format. It does not specify skin weights, UV 
 | **Cuboidy format** | The spec defined by this document |
 | **Cuboidy model** (or **package**) | A single asset, stored as a folder |
 | **Manifest** | `cuboidy.json` — the package's fixed-name anchor: rig hierarchy, animations, and references to every other file (geometry list, palette binding) |
-| **Geometry file** | A `.cvox` file — shape, optional inline palette, pivot, sockets. Default (when the manifest lists none): `voxels.cvox` |
+| **Geometry file** | A JSON file (§7) — shape, optional inline palette, pivot, sockets. Default (when the manifest lists none): `voxels.json` |
 | **Palette file** | A `.json` file of shareable colors (§6.10), bound model-wide via the manifest |
 | **Packed Cuboidy** | `<name>.cuboidy` — ZIP archive of the package (reserved; not specified in v0.9) |
 | **Part** | A rigid voxel sub-object, optionally parented in the hierarchy |
@@ -72,7 +74,7 @@ A Cuboidy model is stored as a folder. The folder's name is conventional and not
 ```
 my-model/
 ├── cuboidy.json         required — manifest (the anchor)
-├── voxels.cvox          geometry — the default when `geometry` is absent
+├── voxels.json          geometry — the default when `geometry` is absent
 └── anims/               optional — shared / external animation files
     ├── walk.json
     └── idle.json
@@ -82,15 +84,15 @@ A larger package, fully reference-driven:
 
 ```
 wolf/
-├── cuboidy.json         { "geometry": ["body.cvox", "gear/hat.cvox"],
+├── cuboidy.json         { "geometry": ["body.json", "gear/hat.json"],
 │                          "palette": "palette.json", ... }
 ├── palette.json         shared palette (§6.10)
-├── body.cvox            geometry (no inline palette needed)
-├── gear/hat.cvox
+├── body.json            geometry (no inline palette needed)
+├── gear/hat.json
 └── anims/walk.json
 ```
 
-Files not referenced from the manifest (other than `cuboidy.json` itself) are **ignored** — they are not part of the model. An unreferenced `.cvox` additionally lints as **W07** (§11.6), since it is usually a forgotten `geometry` entry. The `anims/` subfolder is conventional; referenced files may live anywhere in the package.
+Files not referenced from the manifest (other than `cuboidy.json` itself) are **ignored** — they are not part of the model. An unreferenced geometry file additionally lints as **W07** (§11.6), since it is usually a forgotten `geometry` entry. The `anims/` subfolder is conventional; referenced files may live anywhere in the package.
 
 ---
 
@@ -124,9 +126,16 @@ Names for parts, sockets, animations, and the model itself match:
 - ASCII only (no Unicode)
 - Hyphen `-` allowed (`leg-fl`, `ear-l`)
 - No leading digit or hyphen
-- **Must not match a reserved cvox keyword** (§7.3) — i.e., `palette`, `part`, `size`, `pivot`, `socket`, `voxels`, `rot` are not valid identifiers, even though they satisfy the regex above
+- **Must not match a reserved keyword** — `palette`, `part`, `size`, `pivot`, `socket`, `voxels`, `rot` are not valid identifiers, even though they satisfy the regex above
 
-In `voxels.cvox`, identifier names (the `part` name in §7.5 and the `socket` name in §7.8) are written as **bare tokens** — `part head`, `socket hat 1 0 0`. No quoting is needed because the reserved-keyword exclusion above makes bare names lexically unambiguous: `part part` is rejected as "invalid identifier" rather than parsing as a part named `part`. In `cuboidy.json`, names are plain JSON strings — JSON has its own string syntax — and the same identifier rule applies (the manifest schema uses the strengthened `isIdentifier`).
+The reserved-keyword exclusion is inherited from the text container that
+preceded JSON (§7 changelog), where a bare `part part` would otherwise have been
+ambiguous. JSON has no such ambiguity, so the rule is no longer load-bearing —
+it is kept because it costs nothing, no existing model uses those names, and
+lifting it would be a separate breaking change to a rule that `cuboidy.json`
+and `voxels.json` currently share. Both files apply it identically: names are
+plain JSON strings validated by the same `isIdentifier`, so any name valid in
+one is valid in the other.
 
 Uniqueness scopes:
 
@@ -146,7 +155,7 @@ The manifest is a standard JSON document (no comments, no trailing commas).
 {
   "name": "<identifier>",
   "version": "0.9",
-  "geometry": ["body.cvox", "gear/hat.cvox"],
+  "geometry": ["body.json", "gear/hat.json"],
   "palette": "palette.json",
   "parts": [ ... ],
   "animations": { ... }
@@ -157,7 +166,7 @@ The manifest is a standard JSON document (no comments, no trailing commas).
 |---|---|---|---|
 | `name` | **yes** | string (identifier) | Model identifier |
 | `version` | no | string | Spec version this model targets. Absent → the current spec version (`"0.9"` in this draft) |
-| `geometry` | no | array of reference paths | The model's geometry files (§6.9). Absent → `["voxels.cvox"]` |
+| `geometry` | no | array of reference paths | The model's geometry files (§6.9). Absent → `["voxels.json"]` |
 | `palette` | no | reference path | Model-wide external palette binding (§6.10). Absent → each geometry file's inline palette |
 | `parts` | **yes** | array (non-empty) | At least one part |
 | `animations` | no | object | Map from animation name to definition. Absent → no animations |
@@ -188,9 +197,9 @@ Rules:
 - A part MUST NOT name itself as its parent; this is a one-node cycle.
 - Cycles in the parent chain are an error.
 
-**Parent space is pivot-centered, not voxel-grid-centered.** A child's `position` is interpreted relative to the parent's *pivot*, not the corner of the parent's voxel grid. Moving a parent's pivot (e.g. by editing `pivot` in `voxels.cvox`) does **not** shift the children — the parent's voxels translate relative to the pivot, and the children stay attached at their pivot-relative offsets. This is the standard rig convention shared with glTF, Mixamo, and Minecraft Bedrock geometry.
+**Parent space is pivot-centered, not voxel-grid-centered.** A child's `position` is interpreted relative to the parent's *pivot*, not the corner of the parent's voxel grid. Moving a parent's pivot (e.g. by editing `pivot` in `voxels.json`) does **not** shift the children — the parent's voxels translate relative to the pivot, and the children stay attached at their pivot-relative offsets. This is the standard rig convention shared with glTF, Mixamo, and Minecraft Bedrock geometry.
 
-Per-part shape, pivot, and sockets live in `voxels.cvox`, not here. See §7.
+Per-part shape, pivot, and sockets live in `voxels.json`, not here. See §7.
 
 ### 6.3 Animation map
 
@@ -308,13 +317,13 @@ This rule supports cross-rig sharing: a shared `quadruped_walk.json` that animat
 ### 6.9 Geometry list
 
 ```json
-"geometry": ["body.cvox", "gear/hat.cvox"]
+"geometry": ["body.json", "gear/hat.json"]
 ```
 
-- An array of **reference paths** (§8), each ending in `.cvox`. Non-empty; duplicate entries are `invalid-value`.
-- Absent → **`["voxels.cvox"]`** (the pre-v0.7 fixed layout; existing models are unchanged).
+- An array of **reference paths** (§8), each ending in `.json`. Non-empty; duplicate entries are `invalid-value`.
+- Absent → **`["voxels.json"]`** (the pre-v0.7 fixed layout; existing models are unchanged).
 - The model's parts are the union of all listed files, in list order. **Part names are unique across the whole model** (§5) — a name defined in two geometry files is a cross-file `duplicate` error (§11.6).
-- A `.cvox` file present in the package but not listed here is not part of the model and lints as **W07** (§11.6).
+- A geometry file present in the package but not listed here is not part of the model and lints as **W07** (§11.6).
 
 ### 6.10 Palette binding & external palette file
 
@@ -345,169 +354,48 @@ A model may have at most **one active animation** at a time. Blending, layering,
 
 ---
 
-## 7. `voxels.cvox` — voxel definition
+## 7. `voxels.json` — voxel definition
 
-A plain-text file. Lexing uses a two-layer model (§7.1), parsing is recursive-descent on a single token stream (§7.2).
+A JSON file. It declares an optional palette and one or more parts; each part
+carries its size, pivot, sockets, and voxel grid. Validated by the JSON Schema
+at `schema/cuboidy-geometry.schema.json` plus the cross-field rules below.
 
-### 7.1 Lexical structure
+> **Retired subsections.** §7.2 (grammar), §7.3 (reserved tokens) and §7.11
+> (comments, file header) described the previous text container and no longer
+> apply — the reserved-keyword list they defined has moved to §5. The surviving
+> subsections keep their original numbers so existing cross-references stay
+> valid; the gaps are deliberate.
 
-Cuboidy's lexer emits tokens with one of two **kinds**: `bare` (whitespace-delimited) and `string` (a `"..."` literal). In v0.7 cvox grammar all slots — identifier (§7.5, §7.8), numeric (`size`, `pivot`, `socket` pos/rot), and color (`palette`) — accept only `bare`; any string-kind token surfaces as `invalid-value`. The string kind is preserved at the lexer layer for future extensibility but has no role in current productions. Within the bare-kind subset, the lexer recognises one unified category — **reserved tokens** — split by syntactic shape into two sub-categories. Both stop argument collection (§7.2), neither participates in identifier slots, and together they are the only bare tokens with grammatical significance outside of voxel data.
+### 7.1 File structure
 
-**The two lexical layers.** Lexing is organized as two layers, and the rest of the spec refers to them by number:
+```json
+{
+  "version": "0.9",
+  "palette": ["#RRGGBB", …],
+  "parts": [ { "name": …, "size": [W, H, D], "pivot": …, "sockets": …, "voxels": … } ]
+}
+```
 
-- **Layer 1 — universal.** Applies everywhere regardless of scope: the reserved punctuation `{` `}` `,`, `//` comments, and whitespace are recognized identically inside and outside every block. References to "§7.1 Layer 1" (e.g. §7.11) mean this universal layer.
-- **Layer 2 — context-scoped.** The alphabetic reserved keywords, each recognized as a statement-starter only within a specific scope — and reserving nothing inside `voxels { … }`, so any character sequence there is voxel data. References to "§7.1 Layer 2" (e.g. §7.9) mean this context-scoped keyword layer.
-
-**Reserved punctuation — universal scope (Layer 1)** (always recognized as 1-character tokens, anywhere in the file):
-
-| Token | Role | Need surrounding whitespace? |
+| Field | Required | Notes |
 |---|---|---|
-| `{` | open a `voxels` block | no — `voxels{` tokenizes as `voxels` + `{` |
-| `}` | close a `voxels` block | no — `},` tokenizes as `}` + `,` |
-| `,` | layer-section separator inside a `voxels` block | no — `0,0` tokenizes as `0` + `,` + `0` |
+| `version` | no | Spec version string. Same field and semantics as the manifest's `version` (§6.1) |
+| `palette` | no | Array of hex colors. Omit when the model binds an external palette via the manifest (§6.10), or when every voxel is air |
+| `parts` | **yes** | Array of part objects, at least one |
 
-These three tokens are **always significant**, including inside a `voxels { … }` block. They never appear inside another token (none of them is in the voxel-cell character set `[.0-9a-zA-Z]`), so they cannot collide with voxel data.
+No other top-level fields are permitted (unknown field → `unknown`).
 
-**Reserved keywords — context-scoped (Layer 2)** (the full set is flat — 7 words — but each is only recognized as a *statement-starting keyword* in a specific scope; full structural validity table in §7.3):
+Encoding, line endings and byte-order-mark rules are as in §9. Whitespace
+outside string literals is insignificant, so a file may be stored indented for
+review and minified for transmission without any change of meaning or a
+separate parser path.
 
-| Scope | Statement-starting keywords recognized here | Other lexical features |
-|---|---|---|
-| **top-level** (outside any `{ … }`) | `palette`, `part` | `#` introduces a color literal (palette arg) |
-| **`part` section** (between a `part` keyword and the next `part` or end of file) | `size`, `pivot`, `socket`, `voxels` (and `palette`, which is file-level but may appear textually here without closing the part — see §7.5) | — |
-| **`pivot` / `socket` declaration** (after the position triple) | `rot` (optional, introduces a rotation triple) | — |
-| **`voxels { … }` block** | **(none)** — alphabetic reserved keywords have no lexical privilege here; every token except the reserved punctuation `,` `}` is interpreted as a voxel-row string | — |
+### 7.4 Palette
 
-**Non-tokenized lexical primitives** (also universal — Layer 1 — but never produce tokens):
-
-| Element | Behavior |
-|---|---|
-| whitespace (space, tab, newline) | token separator; no syntactic significance |
-| `//` … end-of-line | comment, stripped before tokenization |
-
-**Lexical vs structural — two separate axes.** The set of *lexical* reserved tokens is fixed (7 keywords + 3 punctuation). What changes by scope is *structural validity* — which reserved token can appear here and what role it plays. A reserved keyword token never participates in identifier slots: the §5 identifier rule excludes reserved keywords, so bare `part part` fails `isIdentifier` and surfaces as "invalid identifier 'part'" rather than parsing as a part literally named `part`. Identifier slots take bare tokens — string-kind tokens (`"..."`) are rejected, since cvox identifiers are always bare. A name spelled like a reserved keyword cannot be expressed at all in cvox; the user must pick a different name (or wrap their model in a non-reserved synonym). To put a reserved-spelled string inside the voxel grid, write a row inside `voxels { … }` where alphabetic keywords have no lexical privilege. (The 3 reserved punctuation tokens never decay into voxel-row strings, however, because their characters fall outside `[.0-9a-zA-Z]`.)
-
-The framework generalizes naturally: each block-introducing keyword (currently `voxels`; future versions may add more) decides what is reserved inside its `{ … }`. The `voxels` keyword reserves no alphabetic keywords — so alphabetic reserved keywords from other scopes appearing inside `voxels { … }` are simply voxel-row strings.
-
-**Consequence — voxel data is lexically isolated:** a row written as `rot` or `size` or `part` is unambiguously voxel data. The user-visible rule is "alphabetic reserved keywords live outside `voxels { … }`; inside, anything goes — except the 3 reserved punctuation tokens, which always retain their structural role".
-
-### 7.1.1 Token table
-
-Every token has a **kind**: `bare` (whitespace-delimited; covers all cvox identifier slots and value slots) or `string` (a `"..."` literal). The string-kind is preserved at the lexer level for future extensibility, but no v0.9 production accepts it — every identifier, number, and color slot expects bare. Encountering a string-kind token in any slot surfaces as `invalid-value`. The patterns below describe the *text* of a token after kind-classification.
-
-| Token | Kind | Pattern | Example |
-|---|---|---|---|
-| **Reserved keyword** | bare | one of `palette`, `part`, `size`, `pivot`, `socket`, `voxels`, `rot` (per §7.1 scope rules) | `voxels` |
-| **Reserved punctuation** | bare | `{` `}` `,` (always 1-character tokens, universal scope) | `{` |
-| **Color literal** | bare | `#` followed by 3, 4, 6, or 8 hex digits | `#8B4513` |
-| **Number** | bare | integer or decimal, optional leading `-` (no exponent, no leading `.`) | `3`, `1.5`, `-2` |
-| **Voxel row** | bare | `[.0-9a-zA-Z]+` (only inside `voxels { … }`; length must equal `W`) | `000`, `0.0`, `101` |
-| **Identifier** | bare | §5 identifier rule (regex + not a reserved keyword); used for part/socket names | `head`, `leg-fl` |
-| **String literal** | string | `"` … `"` on a single line, content `[^"\n]*`. Text excludes the surrounding quotes. No v0.9 production accepts string-kind — reserved at the lexer layer for future use. | `"reserved"` |
-
-The `"..."` literal must open and close on the same physical line; the lexer does not match a `"` across a newline. An unmatched opening `"` is a **lexical error** — the tokenizer returns `invalid-value` immediately with a location pointing at the unmatched `"`, rather than producing an ambiguous partial token stream.
-
-A token's role is determined by its **scope** (§7.1) and **position** (§7.2 grammar). The same character sequence may be an identifier in one scope and a voxel-row string in another.
-
-Consequence: `size 3 3 3` and `size\n3\n3\n3` are equivalent input. `part crown` and `part\ncrown` are equivalent. Inside `voxels { … }`, rows can be inline, multi-line, or mixed. Indentation has no semantic meaning; it is purely a readability convention.
-
-**Declaration order is free within each scope:** at top-level, `palette` and `part` declarations may appear in any order; within a `part`, the `size`, `pivot`, `socket`, and `voxels` declarations may appear in any order. **Layer indices inside a `voxels` block are positional** — the first comma-separated section is layer 0, the second is layer 1, etc.
-
-Readers MUST accept any order and any whitespace shape. Writers (e.g. the editor's serializer) SHOULD normalize to a canonical form: palette first, parts in manifest order, metadata in `size → pivot → socket → voxels` order, each keyword on its own line with arguments on the same line, four-space indent under `part`, layers separated by `,` on its own line. This is the "be liberal in what you accept, conservative in what you produce" pattern.
-
-### 7.2 Grammar
-
-The grammar is given informally because element order is unconstrained within each scope. The actual rules are: the file contains **at most one** `palette` (v0.7 — a palette-less file relies on the manifest's palette binding, §6.10) and one or more `part` blocks, in any order; a `part` contains exactly one `size`, exactly one `voxels`, at most one `pivot`, and zero or more `socket` declarations, in any order.
-
-```
-file         := (palette-decl | part)+        (palette-decl at most once;
-                                              part appears 1 or more times;
-                                              any interleaving permitted)
-palette-decl := "palette" color+
-color        := "#" (3 | 4 | 6 | 8) hex-digits
-
-part         := "part" identifier part-body
-part-body    := (palette-decl | size-decl | pivot-decl | socket-decl | voxels-block)+
-                                              (any order; size exactly once;
-                                               voxels exactly once;
-                                               pivot at most once;
-                                               sockets any count;
-                                               palette remains file-level)
-
-size-decl    := "size" int int int
-pivot-decl   := "pivot" num num num ("rot" num num num)?
-socket-decl  := "socket" identifier num num num ("rot" num num num)?
-identifier   := /[a-zA-Z_][a-zA-Z0-9_-]*/     (kind='bare'; §5 rule —
-                                              MUST NOT match a reserved
-                                              keyword)
-
-voxels-block := "voxels" "{" layer-section ("," layer-section)* "}"
-layer-section := voxel-row*                   (exactly D rows per layer-section;
-                                              the i-th layer-section is layer i;
-                                              total layer-section count must equal H)
-voxel-row    := /[.0-9a-zA-Z]+/               (length must equal W;
-                                              chars are palette indices or `.`=air;
-                                              all reserved-word strings are valid
-                                              voxel-row tokens inside `voxels { … }`)
+```json
+"palette": ["#1A1A1A", "#F4C9A0", "#8A8F98"]
 ```
 
-Tokens are separated by any whitespace (space, tab, newline) or by the reserved punctuation `{` `}` `,` (which need no surrounding whitespace).
-
-**Argument collection rule (Postel reader semantics).** When the integrated parser (`parseCvox`, the format's single parsing entry point) is reading arguments to a keyword (`palette` colors, `part` identifier, `size` ints, `pivot` / `socket` nums, `voxels` opening `{`), it pulls tokens from the stream **until the next reserved token** — keyword or punctuation, whichever comes first — then takes exactly the count the keyword requires:
-
-- If fewer tokens are available than required (the stream reaches the next reserved token or EOF before the slot is filled), the keyword reports `wrong-arity`.
-- If more are available than required, the keyword consumes only its required count; the extras stay in the stream and are diagnosed by the main loop at the next iteration (typically `unknown` for a stray identifier, `invalid-value` for a stray number where no statement is expected). This is documented per-keyword in §7.5–§7.9.
-
-Concretely: `part rot` pulls 1 token whose text is `rot`, but `rot` is rejected by §5 `isIdentifier` (reserved-keyword guard), so the part header surfaces as `invalid-value`. `size 1 1 1 9` pulls 3 ints, sets the size, and leaves `9` for the main loop to diagnose as `unknown`. The §5 reserved-keyword rule is what makes "reserved tokens are not valid identifiers" enforceable at the identifier slot — no separate lexical guard is needed.
-
-**`palette` mid-part.** The `palette` keyword is file-level (§7.5): it may appear anywhere in the file, including inside the textual span of a `part` section. It does **not** close the surrounding part — the part remains open after the `palette` declaration is consumed. The grammar above includes `palette-decl` in the part-content alternatives only to express this textual interleaving rule; semantically the palette still belongs to the file, not to the surrounding part. This special-case applies only to `palette`; all other top-level statement starters (`part`) close the surrounding part.
-
-### 7.3 Reserved tokens
-
-The reserved-token set is **flat** — there is no concept of "sub-keyword". It has two sub-categories distinguished only by syntactic shape; both share the property "stops argument collection (§7.2) and never appears in an identifier slot".
-
-#### 7.3.1 Reserved keywords (7, alphabetic)
-
-```
-palette  part  size  pivot  socket  voxels  rot
-```
-
-#### 7.3.2 Reserved punctuation (3, symbol)
-
-```
-{   }   ,
-```
-
-#### 7.3.3 Structural validity
-
-Each reserved token has a single structurally valid position. Outside that position it is reported as `missing` (the required enclosing scope is absent).
-
-| Token | Structurally valid in |
-|---|---|
-| `palette` | top-level (exactly once per file) |
-| `part` | top-level |
-| `size` | within a `part` section (exactly once per part) |
-| `pivot` | within a `part` section (at most once per part) |
-| `socket` | within a `part` section (any count) |
-| `voxels` | within a `part` section (exactly once per part) |
-| `rot` | inside a `pivot` or `socket` declaration, immediately after the position triple |
-| `{` | immediately after the `voxels` keyword (opens a voxels block) |
-| `}` | inside a voxels block (closes it) |
-| `,` | inside a voxels block (separates layer-sections) |
-
-#### 7.3.4 Lexical privilege inside `voxels { … }`
-
-Inside a `voxels { … }` block, the **alphabetic reserved keywords lose their lexical privilege** — they are interpreted as voxel-row strings and validated against row-width and palette-index rules. A row spelling `rot`, `size`, or `part` is well-formed voxel data when the palette indices fall within range.
-
-The **3 reserved punctuation tokens retain their structural role inside the block**: `}` always closes the block, `,` always separates layer-sections, and `{` is reported as `invalid-value` (no nesting allowed). They cannot decay into voxel-row strings because their characters (`{`, `}`, `,`) fall outside the voxel-cell character set `[.0-9a-zA-Z]`.
-
-### 7.4 Palette declaration
-
-```
-palette <color>+
-```
-
-- **At most one** palette declaration per file (more is `duplicate`). A file MAY omit it when the model binds an external palette via the manifest (§6.10) — or when its voxels are all air
-- May appear **anywhere** in the file — before, between, or after part declarations
+- **At most one** palette per file — it is a single field, so duplication is structurally impossible
 - Each color in hex: `#RGB`, `#RGBA`, `#RRGGBB`, or `#RRGGBBAA`
 - Color space: **sRGB**
 - Maximum **62 colors** (palette indices `0..61`; more is `wrong-arity`)
@@ -519,33 +407,34 @@ palette <color>+
 
 Position-based indexing: reordering the palette requires rewriting voxel data. Tooling can automate this.
 
-When voxel rows are parsed before the palette is known (because palette appears later in the file), palette-index validation (the assembly-time `invalid-value` check) is deferred until file assembly completes.
+When the file declares **no** palette, the index-range check is deferred to cross-file validation against the manifest-bound palette (§6.10, §11.6). Charset (`[.0-9a-zA-Z]`) and row-width checks still apply at parse time. A file **with** an inline palette must be valid against it at parse time regardless of any binding: the file stays independently well-formed, and the binding then re-validates the range cross-file (a shorter bound palette can make an internally-valid file a cross-file error).
 
-When the file declares **no** palette, the index-range check is deferred further — to cross-file validation against the manifest-bound palette (§6.10, §11.6). Charset (`[.0-9a-zA-Z]`) and row-width checks still apply at parse time. A file **with** an inline palette must be valid against it at parse time regardless of any binding: the file stays independently well-formed, and the binding then re-validates the range cross-file (a shorter bound palette can make an internally-valid file a cross-file error).
+### 7.5 Part object
 
-### 7.5 `part` declaration
-
+```json
+{
+  "name": "head",
+  "size": [4, 5, 4],
+  "pivot": { "pos": [2, 0, 4] },
+  "sockets": [ { "name": "hat", "pos": [2, 5, 2] } ],
+  "voxels": [ ["0000", "0000", "0000", "0000"] ]
+}
 ```
-part <identifier>
-```
 
-Starts a new part section. The name slot accepts a bare token that satisfies the §5 identifier rule (regex + not a reserved keyword). The parser detects new parts by the `part` keyword; there is no explicit part-end marker. A part section ends at the next bare `part` keyword or at end of file. The `palette` declaration is file-level, not part-level — it may appear inside the textual span of a part section without ending it.
-
-A `part` section must contain:
-
-| Element | Cardinality | Notes |
+| Field | Cardinality | Notes |
 |---|---|---|
-| `size` | **exactly 1** | Missing → `missing`. Duplicate → `duplicate` |
-| `pivot` | at most 1 | Duplicate → `duplicate` |
-| `socket` | 0 or more | Duplicate names → `duplicate` |
-| `voxels` | **exactly 1** | Missing → `missing`. Duplicate → `duplicate` |
+| `name` | **exactly 1** | Must satisfy the §5 identifier rule |
+| `size` | **exactly 1** | Missing → `missing` |
+| `pivot` | at most 1 | Omit to accept the default |
+| `sockets` | 0 or more | Omit or `[]` when there are none. Duplicate names → `duplicate` |
+| `voxels` | **exactly 1** | Missing → `missing` |
 
-**Order is free.** Any permutation of these elements within a part is valid. Writers should normalize to `size → pivot → socket* → voxels` for diff stability.
+No other fields are permitted (unknown field → `unknown`). Part names are unique across the whole model (§5), not merely within a file; a name defined in two geometry files is a cross-file `duplicate` error (§11.6).
 
 ### 7.6 `size`
 
-```
-size <W> <H> <D>
+```json
+"size": [W, H, D]
 ```
 
 - W = X-axis width, H = Y-axis height, D = Z-axis depth
@@ -555,14 +444,14 @@ size <W> <H> <D>
 
 ### 7.7 `pivot`
 
-```
-pivot <x> <y> <z>
-pivot <x> <y> <z> rot <rx> <ry> <rz>
+```json
+"pivot": { "pos": [x, y, z] }
+"pivot": { "pos": [x, y, z], "rot": [rx, ry, rz] }
 ```
 
 - Optional. Default: position bottom-center, `[W/2, 0, D/2]`; rotation absent (identity)
 - Position coordinates in **part-local space**, voxel units; may be fractional; may lie outside the grid bounds (W01 lint warning, not error)
-- Optional rotation: 3 Euler angles in degrees, ZXY intrinsic order (§4), introduced by the reserved word `rot` (structurally valid here and in `socket` declarations per §7.3)
+- Optional rotation: 3 Euler angles in degrees, ZXY intrinsic order (§4)
 - **Semantic** (rest pose transform): `part.position` is the parent-space position of this part's pivot (§6.2), while `pivot.pos` is the same pivot point in part-local space. **Parent space is the coordinate frame whose origin coincides with the parent's pivot** (for a root part, parent space is world space). This is the standard rig convention — children attach to the parent's pivot, not to the corner of the parent's voxel grid. With matrix-vector convention and column vectors, a part-local point `v_local` lands at `v_parent = part.position + anim.pos + M_rot · M_pivot · M_anim · S_anim · (v_local − pivot.pos)`, where `anim.pos` is the current keyframe `pos` delta, `M_rot` is the rotation matrix for the manifest part's `rotation` (§6.2; identity when absent), `M_pivot` is the rotation matrix for `pivot.rot` (identity when absent), `M_anim` is the animated rotation matrix, and `S_anim` is the animated scale matrix. Rotation and scale are all applied around `pivot.pos`; no `+ pivot.pos` term is added after the transform because `part.position` already names the pivot's destination in parent space — and crucially, no `− parent.pivot.pos` term appears either, because parent space is *already* parent-pivot-centered (see hierarchy composition below). Equivalently in quaternion form for rotation: `q_total = q_rotation · q_pivot · q_anim` (the animation rotation is applied first, in the rest-pose-local frame, then the two rest terms — the geometry file's pivot rotation, then the manifest rotation — bring it to the rest orientation; `q_rest = q_rotation · q_pivot` is the rest pose rotation of §2)
 - **Hierarchy composition** (rest pose, no rotation/scale): because `v_parent` is already in parent-pivot-centered coordinates, composing through the parent chain is a plain sum of `position` values; the part's own pivot is subtracted exactly once at the leaf, and no ancestor's pivot ever appears:
 
@@ -572,59 +461,45 @@ pivot <x> <y> <z> rot <rx> <ry> <rz>
   ```
 
   Concretely, for a head parented to a body (no grandparent), a head voxel `v_local` lands at `body.position + head.position + (v_local − head.pivot.pos)`. The `body.pivot.pos` value does **not** appear — it controlled where body's *voxels* sit relative to body's origin, but the head's `position` is already specified relative to that same origin.
-- **Worked example**: body declares `size 5 4 8` with default `pivot 2.5 0 4` (bottom-center) and manifest `"position": [0, 4, 0]`. Head declares `size 5 5 5` with `pivot 2.5 0 5` (back-bottom-center, so the pivot is the connection point at the back of the head), parented to body with `"position": [0, 4, -4]`. Then: body's pivot sits at world `(0, 4, 0)`; head's pivot sits at world `(0, 4, 0) + (0, 4, -4) = (0, 8, -4)` — directly above body's pivot and 4 units forward (−Z). The head's back-bottom-center voxel `(2.5, 0, 5)` lands at world `(0, 8, -4) + ((2.5, 0, 5) − (2.5, 0, 5)) = (0, 8, -4)` ✓ (the pivot lands where `position` names). The head's front-left-bottom voxel `(0, 0, 0)` lands at world `(0, 8, -4) + ((0, 0, 0) − (2.5, 0, 5)) = (−2.5, 8, −9)`. Body's `pivot.pos = (2.5, 0, 4)` never enters either calculation
-- Arity (under `parseCvox`): the parser consumes exactly 3 number tokens for the position, then — only if the next token is the reserved word `rot` — 3 more for the rotation. Fewer than 3 position tokens before the next reserved token or EOF is `wrong-arity`. Tokens beyond the consumed position (and optional rotation) are **not** stolen by the pivot declaration — they fall through to the main token loop and are diagnosed by §11.8 (typically `unknown` for a stray number/identifier). So `pivot 1 0 1 5` consumes `1 0 1` and leaves the stray `5` for the main loop, which reports `unknown`, not `wrong-arity`
+- **Worked example**: body declares `"size": [5, 4, 8]` with default `"pivot": {"pos": [2.5, 0, 4]}` (bottom-center) and manifest `"position": [0, 4, 0]`. Head declares `"size": [5, 5, 5]` with `"pivot": {"pos": [2.5, 0, 5]}` (back-bottom-center, so the pivot is the connection point at the back of the head), parented to body with `"position": [0, 4, -4]`. Then: body's pivot sits at world `(0, 4, 0)`; head's pivot sits at world `(0, 4, 0) + (0, 4, -4) = (0, 8, -4)` — directly above body's pivot and 4 units forward (−Z). The head's back-bottom-center voxel `(2.5, 0, 5)` lands at world `(0, 8, -4) + ((2.5, 0, 5) − (2.5, 0, 5)) = (0, 8, -4)` ✓ (the pivot lands where `position` names). The head's front-left-bottom voxel `(0, 0, 0)` lands at world `(0, 8, -4) + ((0, 0, 0) − (2.5, 0, 5)) = (−2.5, 8, −9)`. Body's `pivot.pos = (2.5, 0, 4)` never enters either calculation
 
-### 7.8 `socket`
+### 7.8 `sockets`
 
-```
-socket <identifier> <x> <y> <z>
-socket <identifier> <x> <y> <z> rot <rx> <ry> <rz>
+```json
+"sockets": [
+  { "name": "hat", "pos": [x, y, z] },
+  { "name": "mouth", "pos": [x, y, z], "rot": [rx, ry, rz] }
+]
 ```
 
 - Zero or more per part
-- Name slot accepts only a `bare`-kind token; content must satisfy the §5 identifier rule (regex + not a reserved keyword)
+- `name` must satisfy the §5 identifier rule
 - Position in part-local space, voxel units (fractional allowed)
-- Optional rotation: Euler degrees, ZXY intrinsic order and right-hand sign convention (§4); absent → identity (`[0, 0, 0]`), matching `pivot.rot` (§7.7). The AST omits the field when no `rot` is declared
+- Optional rotation: Euler degrees, ZXY intrinsic order and right-hand sign convention (§4); absent → identity (`[0, 0, 0]`), matching `pivot.rot` (§7.7)
 - Socket name unique within a part
 - A socket defines an attachment frame on the host part. Its origin is `socket.pos` in the host part's local space after the host part's own pivot transform has been applied. Its orientation is the host part's current orientation composed with `socket.rot`. An attached child asset is placed so the child's root pivot coincides with the socket origin; per-attachment offsets and scale overrides are reserved for future versions.
 
-### 7.9 `voxels` block
+### 7.9 `voxels`
 
-```
-voxels {
-  <voxel-row>...     ← layer 0 section (exactly D rows)
-  ,
-  <voxel-row>...     ← layer 1 section (exactly D rows)
-  ,
-  ...                ← H layer-sections total, separated by H-1 commas
-}
+```json
+"voxels": [
+  ["<row>", …],   ← layer 0, exactly D rows
+  ["<row>", …],   ← layer 1
+  …               ← H layers total
+]
 ```
 
-- **Exactly one** `voxels` block per part (missing → `missing`; duplicate → `duplicate`)
-- The block contains H comma-separated **layer-sections**, one per Y-layer index in order
-- The i-th section (0-based) becomes layer `i`. Layer indices are **positional** — there is no `layer N` keyword in the current grammar
-- Each layer-section contains exactly D voxel-row tokens (less or more → `wrong-arity`)
-- Whitespace inside the block is purely cosmetic — rows can be inline, multi-line, or mixed; the entire block can be on one line (`voxels { 000 000 000 , .0. 000 .0. }`)
-- **Leading and trailing `,` and consecutive `,,` create empty layer-sections.** `voxels { , 0 }` produces 2 sections (the first with 0 rows); `voxels { 0 , }` produces 2 sections (the second with 0 rows); `voxels { , }` produces 2 empty sections. These are syntactically well-formed but fail at assembly with `wrong-arity` unless `D = 0` (which the spec disallows: `size` dimensions are in `[1, 1024]` per §7.6, so empty sections always fail). The writer's canonical form omits leading/trailing/consecutive commas
-
-**Lexical isolation** (§7.1 Layer 2): inside `voxels { … }` no reserved words are recognized. Any token (other than the universal `,` and `}`) is interpreted as a voxel-row string and subject only to:
-
-- character set: `[.0-9a-zA-Z]` (other chars → `invalid-value`)
-- length: exactly `W` (mismatch → `wrong-arity`)
-- palette indices: must be `<` palette length (out of range → `invalid-value`)
-
-A row spelling `rot` or `size` or `part` is **valid voxel data** when its 3 characters map to in-range palette indices (`r`=27, `o`=24, `t`=29; `s`=28, `i`=18, `z`=35; `p`=25, `a`=10). The `voxels` keyword reserves nothing; reserved words from other scopes are just letters here.
+- **Exactly one** `voxels` array per part
+- The array contains H **layers**, one per Y-layer index in order
+- The i-th element (0-based) is layer `i`. Layer indices are **positional** — there is no layer-name key
+- Each layer contains exactly D voxel-row strings
 
 **Errors:**
 
 | Condition | Code |
 |---|---|
-| `{` missing after `voxels` | `wrong-arity` (or `unknown`/`invalid-value` depending on the offending token) |
-| `}` missing (EOF before close) | `missing` |
-| Nested `{` inside a `voxels { … }` block (no nesting permitted) | `invalid-value` |
-| Layer-section count ≠ H | `wrong-arity` |
-| Row count in a section ≠ D | `wrong-arity` |
+| Layer count ≠ H | `wrong-arity` |
+| Row count in a layer ≠ D | `wrong-arity` |
 | Row width ≠ W | `wrong-arity` |
 | Character outside `[.0-9a-zA-Z]` in a row | `invalid-value` |
 | Row references palette index ≥ palette length | `invalid-value` |
@@ -633,132 +508,83 @@ The k-th row in layer `i` represents voxel cells at coordinates `(x, i, k)` for 
 
 ### 7.10 Voxel row
 
-- Inside a `voxels { … }` block, every non-punctuation token is a voxel-row candidate
-- Characters drawn from `[.0-9a-zA-Z]`, no whitespace inside a single row token
+- Each row is a JSON string
+- Characters drawn from `[.0-9a-zA-Z]`, no whitespace inside a row
 - Length exactly equals W
 - Each character is either `.` (air) or a palette index character (must be within the declared palette range)
-- Multiple row tokens on a single line are separated by whitespace; either spaces or a newline serves as the separator
-
-### 7.11 Comments
-
-```
-// this is a full-line comment
-size 3 3 3  // this is an end-of-line comment
-voxels {
-  // comments work inside voxels blocks too — they are Layer 1 (universal)
-  000
-  000
-}
-```
-
-- A `//` sequence anywhere on a line starts a comment; the comment extends to the end of that line. This rule is applied before string-kind token recognition, so `"foo // bar"` is treated as an unterminated string after comment stripping in v0.9. Future versions that assign semantics to strings MUST define string-aware comment handling before enabling such strings in grammar productions
-- **Universal scope** (§7.1 Layer 1): comments work in every scope, including inside `voxels { … }` blocks. They are stripped by the tokenizer before any scope-aware parsing
-- No whitespace context is required around `//`; the `/` character does not appear in any valid Cuboidy token, so `//` cannot collide with data
-- Note: color literals (`#FFFFFF`) use `#`, not `//`, and are unrelated to comments
-- **Preservation:** only the file header (§7.11.1) is preserved across read/write round-trips. All other comments are **advisory** and MAY be discarded by tooling. Authors who need persistent annotations on individual declarations should keep them in a sibling `notes.md` or maintain the source file by hand instead of routing it through a serializer
-
-### 7.11.1 File header
-
-The **file header** is the sequence of `//` comment lines (with optional interspersed blank lines) appearing before the first declaration in a `voxels.cvox` file. Header comments are preserved verbatim by spec-compliant parsers and serializers; they are not associated with any AST node.
-
-```
-// MIT License
-// Copyright 2026 Marble
-
-// Generated by cuboidy-export v1.0
-palette #FFD700
-
-part crown
-…
-```
-
-Boundary rule:
-
-1. Walk lines from the top of the file.
-2. The first non-blank, non-comment line marks where the body begins.
-3. The header is the candidate range `[0, bodyStart)` with **leading and trailing blank lines trimmed** (those blanks are formatting between the file edge / palette declaration and the header content, not part of the header itself).
-4. Blank lines *between* header comments are preserved.
-
-AST representation:
-
-- `Cvox.header?: readonly string[]` — each entry is one source line, including the leading `//` if present. Empty array is canonical-equivalent to absent; spec-compliant parsers MUST omit the field rather than emit `[]`.
-
-Serializer rule:
-
-- If `header` is present, emit each entry on its own line followed by **exactly one blank line**, then emit the palette. Multiple blank-line separators in the source are normalized to one on serialize.
-
-Typical uses: SPDX license identifiers, copyright notices, "generated by" markers, model-level documentation, file-format hints for editors. Inline comments (end-of-line on a declaration, comments inside `voxels { … }` blocks, comments between declarations) are explicitly **not** preserved.
 
 ### 7.12 Examples
 
-**Multi-line voxels block (compact for visual voxel art):**
+**Minimal single-part file** — a 3×2×3 crown in gold, hollow on top:
 
-```
-palette #8B4513 #000000
-
-part head
-    size 3 3 3
-    pivot 1 0 1
-    socket hat 1 3 1
-    socket mouth 1 1 3
-    voxels {
-        000
-        000
-        000
-        ,
-        000
-        000
-        101
-        ,
-        000
-        000
-        000
+```json
+{
+  "version": "0.9",
+  "palette": ["#FFD700"],
+  "parts": [
+    {
+      "name": "crown",
+      "size": [3, 2, 3],
+      "pivot": { "pos": [1, 0, 1] },
+      "voxels": [
+        ["000", "000", "000"],
+        ["0.0", "...", "0.0"]
+      ]
     }
+  ]
+}
 ```
 
-**Inline voxels block (compact for small parts and AI generation):**
+Layer 0 is a solid base; layer 1 keeps only the four corner pillars, so `.` carves out the hollow centre.
 
-```
-// crown — single part static accessory
-palette #FFD700
+**Two parts with sockets and a non-default pivot:**
 
-part crown
-    size 3 2 3
-    pivot 1 0 1
-    voxels {
-        000 000 000      // layer 0 — solid base
-        ,
-        0.0 ... 0.0      // layer 1 — 4 corner pillars
+```json
+{
+  "version": "0.9",
+  "palette": ["#6B6258", "#C5BFB5", "#1A1612"],
+  "parts": [
+    {
+      "name": "body",
+      "size": [5, 3, 6],
+      "pivot": { "pos": [2, 0, 3] },
+      "voxels": [
+        ["11111", "11111", "11111", "11111", "11111", "11111"],
+        ["00000", "00000", "00000", "00000", "00000", "00000"],
+        ["00000", "00000", "00000", "00000", "00000", "00000"]
+      ]
+    },
+    {
+      "name": "head",
+      "size": [5, 5, 5],
+      "pivot": { "pos": [2, 0, 5] },
+      "sockets": [
+        { "name": "hat", "pos": [2, 4, 3] },
+        { "name": "mouth", "pos": [2, 1, 0] }
+      ],
+      "voxels": [
+        [".111.", ".111.", "11111", "11111", "11111"],
+        [".222.", ".111.", "00000", "00000", "00000"],
+        [".....", ".....", "20002", "00000", "00000"],
+        [".....", ".....", "00000", "00000", "00000"],
+        [".....", ".....", "00000", "00000", "00000"]
+      ]
     }
+  ]
+}
 ```
 
-**Free-order example (palette at end, voxels before size):**
+**Palette-less file** — the model binds a palette via the manifest (§6.10), so
+this file declares none and its index range is checked cross-file:
 
+```json
+{
+  "version": "0.9",
+  "parts": [
+    { "name": "block", "size": [1, 1, 1], "voxels": [["0"]] }
+  ]
+}
 ```
-part body
-    voxels {
-        0
-        ,
-        0
-    }
-    size 1 2 1
-
-palette #FF0000
-```
-
-**Reserved-word strings as voxel data** (palette must have at least 30 colors for `rot`, since `t` = palette index 29):
-
-```
-palette #000 #111 ... #01d    // 30 colors
-
-part demo
-    size 3 1 1
-    voxels {
-        rot                   // valid voxel row: palette[27]/[24]/[29]
-    }
-```
-
-All four are valid Cuboidy v0.9 input. (Note: a part literally named after a reserved keyword like `part part` is not expressible — v0.4 allowed this via quoting, but v0.5's strengthened identifier rule rejects reserved keywords in identifier slots. Pick a non-reserved name.)
 
 ---
 
@@ -769,7 +595,7 @@ Used by every manifest reference field: `geometry` entries (§6.9), the `palette
 Rules:
 
 - Resolved **relative to the file containing the reference** (typically `cuboidy.json`)
-- Explicit extension required, matching the field: `.cvox` for `geometry` entries, `.json` for `palette` and animation references
+- Explicit extension required: `.json` for `geometry` entries, the `palette` binding and animation references
 - Forward slashes `/` only
 - Absolute paths (leading `/`) are forbidden
 - URLs (`http://`, `https://`, `file://`) are forbidden
@@ -802,7 +628,7 @@ Reference cycles (a → b → a) are an error.
 | `cuboidy.json` | part `position` | `[0, 0, 0]` |
 | `cuboidy.json` | part `rotation` | absent → identity (`[0, 0, 0]`) |
 | `cuboidy.json` | part `parent` | absent → root |
-| `cuboidy.json` | `geometry` | absent → `["voxels.cvox"]` |
+| `cuboidy.json` | `geometry` | absent → `["voxels.json"]` |
 | `cuboidy.json` | `palette` | absent → each geometry file's inline palette |
 | `cuboidy.json` | `animations` | absent → no animations |
 | `cuboidy.json` | `version` | absent → current spec version (`"0.9"` in this draft) |
@@ -811,8 +637,8 @@ Reference cycles (a → b → a) are an error.
 | Keyframe (first) | `scale` | `[1, 1, 1]` |
 | Keyframe (first) | `visible` | `true` |
 | Keyframe (subsequent) | any omitted field | inherits from previous keyframe |
-| `voxels.cvox` | `pivot` | `[W/2, 0, D/2]` (bottom-center) |
-| `voxels.cvox` | socket rotation | `[0, 0, 0]` |
+| `voxels.json` | `pivot` | `[W/2, 0, D/2]` (bottom-center) |
+| `voxels.json` | socket rotation | `[0, 0, 0]` |
 
 ---
 
@@ -840,9 +666,9 @@ Cuboidy uses **five structural codes** to describe errors. The code names what *
 | `invalid-value` | A value is present but malformed. | Malformed color hex (`#GG`); voxel row contains a character outside `[.0-9a-zA-Z]`; voxel cell references a palette index that does not exist (only checked at parse time when the file declares an inline palette — §7.4); size dimension out of range `[1..1024]`, fractional, or non-numeric; non-numeric `pivot` / `socket` coord; expected `rot` marker but got something else; identifier failing the §5 rule (regex failure or reserved-keyword name like `part part`); identifier slot received a quoted string instead of a bare token (e.g. `part "head"`); numeric or color slot received a string token (e.g. `size "3" 1 1`) |
 | `wrong-arity` | An incorrect number of items. | Voxel-row width does not match declared `W`; a layer-section row count differs from declared `D`; layer-section count differs from declared `H`; palette has 0 colors or more than 62; wrong number of arguments to a keyword (`size` not 3, `pivot` not 3-or-7, `socket` not 4-or-8, `part` not 1) |
 
-Note: v0.1 used per-keyword codes (E01–E19). v0.2 restructured them into the five structural categories above. v0.3 removed the `layer` keyword and the active-layer concept (replaced by `voxels { … }` blocks), simplifying the precedence rules; the five codes are unchanged. The keyword/context survives in the message string and in the fixture filenames (`fixtures/cvox/<code>/<descriptor>.cvox`).
+Note: v0.1 used per-keyword codes (E01–E19). v0.2 restructured them into the five structural categories above. v0.3 removed the `layer` keyword and the active-layer concept (replaced by `voxels { … }` blocks), simplifying the precedence rules; the five codes are unchanged. The keyword/context survives in the message string and in the fixture filenames (`fixtures/geometry/<code>/<descriptor>.json`).
 
-### 11.3 `voxels.cvox` warnings
+### 11.3 `voxels.json` warnings
 
 | ID | Rule |
 |---|---|
@@ -852,7 +678,7 @@ Note: v0.1 used per-keyword codes (E01–E19). v0.2 restructured them into the f
 | W04 | Layer-section entirely empty (all `.`) |
 | W05 | Part has no solid voxels (all `.`) |
 
-### 11.4 `voxels.cvox` hints
+### 11.4 `voxels.json` hints
 
 | ID | Rule |
 |---|---|
@@ -885,7 +711,7 @@ Cross-file validation operates on the **project**: the manifest plus its referen
 | `missing` | error | A geometry file's voxels use color indices while **neither** an inline palette **nor** a manifest palette binding exists (§6.10) |
 | `invalid-value` | error | A geometry file references a palette index outside the **bound** palette's range (the binding replaces a possibly-longer inline palette — §7.4) |
 | `invalid-value` | warning | **[W06]** an `<x>-l` / `<x>-r` part pair (same parent) whose occupied voxels are not mirror images across the parent's YZ plane, computed from manifest position + pivot + voxel occupancy. The check is geometric, not positional: a correctly mirrored part reflects its pivot too, so the matching hand-written position is often legitimately NOT the sign-opposite |
-| `invalid-value` | warning | **[W07]** a `.cvox` file exists in the package but is not referenced by the manifest `geometry` list (usually a forgotten entry — §6.9) |
+| `invalid-value` | warning | **[W07]** a geometry file exists in the package but is not referenced by the manifest `geometry` list (usually a forgotten entry — §6.9) |
 | `invalid-value` | hint | **[H03]** a geometry file's inline palette is shadowed by the manifest `palette` binding (§6.10) |
 | `unknown` | warning | Animation targets a part not present in `cuboidy.json` `parts` (cross-rig sharing, §6.8) |
 | `unknown` | runtime error | Attempt to attach to a socket name not declared on the host part (planned) |
@@ -901,8 +727,8 @@ Implementations should emit diagnostics in the form:
 Example:
 
 ```
-voxels.cvox:5:1: error: row width 4, expected 3 (per `size 3 2 4`) [wrong-arity]
-voxels.cvox:12: warning: pivot [3, 0, 5] outside grid bounds [0..3, 0..3, 0..4] [W01]
+voxels.json:5:1: error: row width 4, expected 3 (per `size 3 2 4`) [wrong-arity]
+voxels.json:12: warning: pivot [3, 0, 5] outside grid bounds [0..3, 0..3, 0..4] [W01]
 cuboidy.json:18: error: animation 'walk' targets part 'wing' not in model [missing]
 ```
 

@@ -46,6 +46,21 @@ export {
 } from './animation-edit.js';
 export type { KeyAttr, AttrValue, EaseAttr } from './animation-edit.js';
 
+export { parseGeometry, parseGeometryText } from './geometry/parse.js';
+export { locateJsonPath, positionAt } from './geometry/locate.js';
+export type { Position } from './geometry/locate.js';
+export {
+  formatGeometryDoc,
+  serializeGeometry,
+  toGeometryDoc,
+  SPEC_VERSION,
+} from './geometry/serialize.js';
+export { GeometrySchema, GeometryPartSchema } from './geometry/schema.js';
+export type { GeometryDoc, GeometryDocPart } from './geometry/schema.js';
+
+// Retired text format — still exported while the migration finishes so the
+// remaining cvox tests and the test-fixture bridge can reach it. Removed in
+// the deletion phase (docs/json-migration.md).
 export { parseCvox } from './cvox/parse.js';
 export { serializeColor, serializeCvox } from './cvox/serialize.js';
 export {

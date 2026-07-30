@@ -6,6 +6,7 @@ import {
   projectFilePaths,
   resolveProject,
 } from '../src/project.js';
+import { geoFromText } from './helpers/geometry.js';
 
 // SPEC §6.10: the shared project-resolution layer — geometry list and
 // palette binding.
@@ -17,9 +18,9 @@ function manifest(json: object): Manifest {
 }
 
 describe('projectFilePaths', () => {
-  it('applies the voxels.cvox default without a manifest', () => {
+  it('applies the voxels.json default without a manifest', () => {
     expect(projectFilePaths(null)).toEqual({
-      geometry: ['voxels.cvox'],
+      geometry: ['voxels.json'],
       animations: [],
     });
   });
@@ -27,13 +28,13 @@ describe('projectFilePaths', () => {
   it('normalizes geometry, palette and animation refs', () => {
     const m = manifest({
       name: 'm',
-      geometry: ['./body.cvox', 'gear/./hat.cvox'],
+      geometry: ['./body.json', 'gear/./hat.json'],
       palette: './palette.json',
       parts: [{ name: 'body' }],
       animations: { walk: './anims/walk.json' },
     });
     expect(projectFilePaths(m)).toEqual({
-      geometry: ['body.cvox', 'gear/hat.cvox'],
+      geometry: ['body.json', 'gear/hat.json'],
       palette: 'palette.json',
       animations: ['anims/walk.json'],
     });
@@ -43,42 +44,44 @@ describe('projectFilePaths', () => {
 describe('resolveProject', () => {
   const MANIFEST = manifest({
     name: 'm',
-    geometry: ['body.cvox', 'arms.cvox'],
+    geometry: ['body.json', 'arms.json'],
     palette: 'palette.json',
     parts: [{ name: 'arm' }, { name: 'arm_l', parent: 'arm' }],
   });
-  const BODY = 'part arm\n    size 2 1 1\n    voxels { 01 }';
-  const ARMS = 'part arm_l\n    size 2 1 1\n    voxels { 10 }';
+  // resolveProject is handed file *contents*, so these must be the JSON the
+  // loader will actually read.
+  const BODY = geoFromText('part arm\n    size 2 1 1\n    voxels { 01 }');
+  const ARMS = geoFromText('part arm_l\n    size 2 1 1\n    voxels { 10 }');
 
   it('loads geometry files in list order plus the bound palette', () => {
     const r = resolveProject(
       MANIFEST,
       new Map([
-        ['body.cvox', BODY],
-        ['arms.cvox', ARMS],
+        ['body.json', BODY],
+        ['arms.json', ARMS],
         ['palette.json', '{ "colors": ["#FF0000", "#00FF00"] }'],
       ]),
     );
     expect(r.diagnostics).toEqual([]);
     expect(r.complete).toBe(true);
-    expect(r.geometries.map((g) => g.path)).toEqual(['body.cvox', 'arms.cvox']);
+    expect(r.geometries.map((g) => g.path)).toEqual(['body.json', 'arms.json']);
     expect(r.geometries[1]!.cvox.parts[0]!.name).toBe('arm_l');
     expect(r.externalPalette).toHaveLength(2);
   });
 
   it('reports a missing geometry file and marks the project incomplete', () => {
-    const r = resolveProject(MANIFEST, new Map([['body.cvox', BODY]]));
+    const r = resolveProject(MANIFEST, new Map([['body.json', BODY]]));
     expect(r.complete).toBe(false);
     const missing = r.diagnostics.filter((d) => d.diag.code === 'missing');
-    expect(missing.map((d) => d.file)).toEqual(['arms.cvox', 'palette.json']);
+    expect(missing.map((d) => d.file)).toEqual(['arms.json', 'palette.json']);
   });
 
   it('reports a palette JSON error', () => {
     const r = resolveProject(
       MANIFEST,
       new Map([
-        ['body.cvox', BODY],
-        ['arms.cvox', ARMS],
+        ['body.json', BODY],
+        ['arms.json', ARMS],
         ['palette.json', '{ broken'],
       ]),
     );
@@ -90,10 +93,10 @@ describe('resolveProject', () => {
 
 describe('normalizeRefPath', () => {
   it('resolves ./ and // segments', () => {
-    expect(normalizeRefPath('./a.cvox')).toBe('a.cvox');
-    expect(normalizeRefPath('a//b.cvox')).toBe('a/b.cvox');
-    expect(normalizeRefPath('a/./b.cvox')).toBe('a/b.cvox');
-    expect(normalizeRefPath('a/../b.cvox')).toBe('b.cvox');
+    expect(normalizeRefPath('./a.json')).toBe('a.json');
+    expect(normalizeRefPath('a//b.json')).toBe('a/b.json');
+    expect(normalizeRefPath('a/./b.json')).toBe('a/b.json');
+    expect(normalizeRefPath('a/../b.json')).toBe('b.json');
   });
 
   it('preserves leading .. (outside the package)', () => {

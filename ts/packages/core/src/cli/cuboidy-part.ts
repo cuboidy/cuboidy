@@ -3,24 +3,24 @@ import { runPart, type PartOp } from './part-runner.js';
 import type { Axis } from '../cvox/transform.js';
 
 // CLI shell for `cuboidy-part`. All real work lives in part-runner.ts.
-//   duplicate <from.cvox> <fromPart> <to.cvox> <toPart>  — copy a part
-//   mirror    <file.cvox> <part> [x|y|z]                 — flip it in place
+//   duplicate <from.json> <fromPart> <to.json> <toPart>  — copy a part
+//   mirror    <file.json> <part> [x|y|z]                 — flip it in place
 
 const HELP_TEXT =
   'Usage:\n' +
-  '  cuboidy-part duplicate <from.cvox> <fromPart> <to.cvox> <toPart>\n' +
-  '  cuboidy-part mirror    <file.cvox> <part> [axis]\n' +
+  '  cuboidy-part duplicate <from.json> <fromPart> <to.json> <toPart>\n' +
+  '  cuboidy-part mirror    <file.json> <part> [axis]\n' +
   '\n' +
   'Author concrete geometry (plain voxel data — no clone/mirror reference).\n' +
   '\n' +
-  'duplicate — copy <fromPart> into <to.cvox> as <toPart> (written in place;\n' +
-  '            from and to may be the same file). When to.cvox differs and\n' +
+  'duplicate — copy <fromPart> into <to.json> as <toPart> (written in place;\n' +
+  '            from and to may be the same file). When to.json differs and\n' +
   "            their inline palettes differ, the copy's voxels are remapped\n" +
-  "            into to.cvox's palette (missing colors appended) so it keeps\n" +
+  "            into to.json's palette (missing colors appended) so it keeps\n" +
   '            its colors.\n' +
   '\n' +
   'mirror    — reflect <part> across [axis] IN PLACE (same name), rewriting\n' +
-  '            <file.cvox>. axis is x|y|z; default x. To make a mirrored\n' +
+  '            <file.json>. axis is x|y|z; default x. To make a mirrored\n' +
   '            copy for the other side, duplicate first, then mirror the copy.\n' +
   '\n' +
   'Options:\n' +
@@ -51,7 +51,7 @@ function parseArgs(
       toPart === undefined
     ) {
       return {
-        error: 'duplicate expects <from.cvox> <fromPart> <to.cvox> <toPart>',
+        error: 'duplicate expects <from.json> <fromPart> <to.json> <toPart>',
       };
     }
     if (extra.length > 0) return { error: `unexpected argument "${extra[0]}"` };
@@ -61,7 +61,7 @@ function parseArgs(
   if (op === 'mirror') {
     const [file, part, axis, ...extra] = rest;
     if (file === undefined || part === undefined) {
-      return { error: 'mirror expects <file.cvox> <part> [axis]' };
+      return { error: 'mirror expects <file.json> <part> [axis]' };
     }
     if (axis !== undefined && axis !== 'x' && axis !== 'y' && axis !== 'z') {
       return { error: `mirror axis must be x, y or z (got "${axis}")` };

@@ -43,7 +43,13 @@ describe('parseManifest', () => {
     const json = await readFixtureJson('fixtures/json/missing/name.json');
     const r = parseManifest(json);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('missing');
+    if (!r.ok) {
+      expect(r.code).toBe('missing');
+      // Not Zod's "expected string, received undefined": an absent field is
+      // described as absent, and the path is reported for positioning.
+      expect(r.message).toBe('name: required field is missing');
+      expect(r.path).toEqual(['name']);
+    }
   });
 
   it('rejects manifest with empty parts (missing)', async () => {
@@ -136,35 +142,38 @@ describe('parseManifest — geometry & palette (v0.7)', () => {
   it('accepts a geometry list and a palette binding', () => {
     const r = parseManifest({
       ...base,
-      geometry: ['body.cvox', 'gear/hat.cvox', '../shared/tail.cvox'],
+      geometry: ['body.json', 'gear/hat.json', '../shared/tail.json'],
       palette: 'palette.json',
     });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.value.geometry).toEqual([
-      'body.cvox',
-      'gear/hat.cvox',
-      '../shared/tail.cvox',
+      'body.json',
+      'gear/hat.json',
+      '../shared/tail.json',
     ]);
     expect(r.value.palette).toBe('palette.json');
   });
 
-  it('manifestGeometry applies the ["voxels.cvox"] default', () => {
+  it('manifestGeometry applies the ["voxels.json"] default', () => {
     const r = parseManifest(base);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.value.geometry).toBeUndefined();
-    expect(manifestGeometry(r.value)).toEqual(['voxels.cvox']);
+    expect(manifestGeometry(r.value)).toEqual(['voxels.json']);
   });
 
   it('rejects a geometry entry with the wrong extension', () => {
-    const r = parseManifest({ ...base, geometry: ['body.json'] });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('invalid-value');
+    // Including the retired text extension, which is no longer geometry.
+    for (const bad of ['body.txt', 'body.cvox']) {
+      const r = parseManifest({ ...base, geometry: [bad] });
+      expect(r.ok, bad).toBe(false);
+      if (!r.ok) expect(r.code).toBe('invalid-value');
+    }
   });
 
   it('rejects an absolute geometry path', () => {
-    const r = parseManifest({ ...base, geometry: ['/etc/body.cvox'] });
+    const r = parseManifest({ ...base, geometry: ['/etc/body.json'] });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe('invalid-value');
   });
@@ -176,7 +185,7 @@ describe('parseManifest — geometry & palette (v0.7)', () => {
   });
 
   it('rejects URL and namespace:key forms', () => {
-    for (const bad of ['https://x.com/a.cvox', 'pack:body.cvox']) {
+    for (const bad of ['https://x.com/a.json', 'pack:body.json']) {
       const r = parseManifest({ ...base, geometry: [bad] });
       expect(r.ok, bad).toBe(false);
       if (!r.ok) expect(r.code).toBe('invalid-value');
@@ -184,7 +193,7 @@ describe('parseManifest — geometry & palette (v0.7)', () => {
   });
 
   it('rejects duplicate geometry entries', () => {
-    const r = parseManifest({ ...base, geometry: ['a.cvox', 'a.cvox'] });
+    const r = parseManifest({ ...base, geometry: ['a.json', 'a.json'] });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe('invalid-value');
   });

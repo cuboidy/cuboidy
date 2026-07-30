@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseManifest } from '../src/manifest.js';
-import { parseCvox } from '../src/cvox/parse.js';
+import { parseGeometryText } from '../src/geometry/parse.js';
+import { geoFromText } from './helpers/geometry.js';
 import { validateCrossFile, validateProject } from '../src/lint/cross-file.js';
 import { readFixtureJson, readFixtureText } from './helpers/fixtures.js';
 
@@ -9,7 +10,7 @@ async function loadModel(folder: string) {
     await readFixtureJson(`${folder}/cuboidy.json`),
   );
   if (!manifestR.ok) throw new Error(`manifest parse failed: ${manifestR.message}`);
-  const voxelDef = parseCvox(await readFixtureText(`${folder}/voxels.cvox`));
+  const voxelDef = parseGeometryText(await readFixtureText(`${folder}/voxels.json`));
   if (!voxelDef.ok) throw new Error(`cvox parse failed: ${voxelDef.message}`);
   return { manifest: manifestR.value, voxelDef: voxelDef.value };
 }
@@ -102,7 +103,7 @@ describe('validateCrossFile', () => {
 // palette binding resolution, unreferenced-file warning.
 describe('validateProject (v0.7)', () => {
   function cvoxOrThrow(text: string) {
-    const r = parseCvox(text);
+    const r = parseGeometryText(geoFromText(text));
     if (!r.ok) throw new Error(`cvox parse failed: ${r.message}`);
     return r.value;
   }
@@ -117,20 +118,20 @@ describe('validateProject (v0.7)', () => {
   it('errors on a part name defined in two geometry files', () => {
     const manifest = manifestOrThrow({
       name: 't',
-      geometry: ['a.cvox', 'b.cvox'],
+      geometry: ['a.json', 'b.json'],
       parts: [{ name: 'body' }],
     });
     const diags = validateProject({
       manifest,
       geometries: [
-        { path: 'a.cvox', cvox: bodyCvox },
-        { path: 'b.cvox', cvox: bodyCvox },
+        { path: 'a.json', cvox: bodyCvox },
+        { path: 'b.json', cvox: bodyCvox },
       ],
     });
     const dup = diags.find((d) => d.code === 'duplicate');
     expect(dup?.severity).toBe('error');
-    expect(dup?.message).toContain('a.cvox');
-    expect(dup?.message).toContain('b.cvox');
+    expect(dup?.message).toContain('a.json');
+    expect(dup?.message).toContain('b.json');
   });
 
   it('errors on a manifest part defined in no geometry file', () => {
@@ -140,7 +141,7 @@ describe('validateProject (v0.7)', () => {
     });
     const diags = validateProject({
       manifest,
-      geometries: [{ path: 'voxels.cvox', cvox: bodyCvox }],
+      geometries: [{ path: 'voxels.json', cvox: bodyCvox }],
     });
     expect(diags.some((d) => d.code === 'missing' && d.message.includes("'wing'"))).toBe(
       true,
@@ -150,12 +151,12 @@ describe('validateProject (v0.7)', () => {
   it('errors when a file uses color indices with no palette anywhere', () => {
     const manifest = manifestOrThrow({
       name: 't',
-      geometry: ['gear.cvox'],
+      geometry: ['gear.json'],
       parts: [{ name: 'gear' }],
     });
     const diags = validateProject({
       manifest,
-      geometries: [{ path: 'gear.cvox', cvox: bareCvox }],
+      geometries: [{ path: 'gear.json', cvox: bareCvox }],
     });
     expect(
       diags.some((d) => d.code === 'missing' && d.message.includes('no palette')),
@@ -165,13 +166,13 @@ describe('validateProject (v0.7)', () => {
   it('accepts an all-air file with no palette anywhere', () => {
     const manifest = manifestOrThrow({
       name: 't',
-      geometry: ['ghost.cvox'],
+      geometry: ['ghost.json'],
       parts: [{ name: 'ghost' }],
     });
     expect(
       validateProject({
         manifest,
-        geometries: [{ path: 'ghost.cvox', cvox: airCvox }],
+        geometries: [{ path: 'ghost.json', cvox: airCvox }],
       }),
     ).toEqual([]);
   });
@@ -179,13 +180,13 @@ describe('validateProject (v0.7)', () => {
   it('a bound palette satisfies a palette-less file', () => {
     const manifest = manifestOrThrow({
       name: 't',
-      geometry: ['gear.cvox'],
+      geometry: ['gear.json'],
       palette: 'palette.json',
       parts: [{ name: 'gear' }],
     });
     const diags = validateProject({
       manifest,
-      geometries: [{ path: 'gear.cvox', cvox: bareCvox }],
+      geometries: [{ path: 'gear.json', cvox: bareCvox }],
       externalPalette: [{ r: 0, g: 0, b: 0, a: 255 }],
     });
     expect(diags).toEqual([]);
@@ -194,14 +195,14 @@ describe('validateProject (v0.7)', () => {
   it('errors when the bound palette is shorter than the used indices', () => {
     const manifest = manifestOrThrow({
       name: 't',
-      geometry: ['body.cvox'],
+      geometry: ['body.json'],
       palette: 'palette.json',
       parts: [{ name: 'body' }],
     });
     // bodyCvox uses index 1; the bound palette has a single color.
     const diags = validateProject({
       manifest,
-      geometries: [{ path: 'body.cvox', cvox: bodyCvox }],
+      geometries: [{ path: 'body.json', cvox: bodyCvox }],
       externalPalette: [{ r: 0, g: 0, b: 0, a: 255 }],
     });
     expect(
@@ -214,13 +215,13 @@ describe('validateProject (v0.7)', () => {
   it('H03: hints when a binding shadows an inline palette', () => {
     const manifest = manifestOrThrow({
       name: 't',
-      geometry: ['body.cvox'],
+      geometry: ['body.json'],
       palette: 'palette.json',
       parts: [{ name: 'body' }],
     });
     const diags = validateProject({
       manifest,
-      geometries: [{ path: 'body.cvox', cvox: bodyCvox }],
+      geometries: [{ path: 'body.json', cvox: bodyCvox }],
       externalPalette: [
         { r: 0, g: 0, b: 0, a: 255 },
         { r: 1, g: 1, b: 1, a: 255 },
@@ -233,15 +234,15 @@ describe('validateProject (v0.7)', () => {
   it('W07: warns on a package .cvox not referenced by the geometry list', () => {
     const manifest = manifestOrThrow({
       name: 't',
-      geometry: ['body.cvox'],
+      geometry: ['body.json'],
       parts: [{ name: 'body' }],
     });
     const diags = validateProject({
       manifest,
-      geometries: [{ path: 'body.cvox', cvox: bodyCvox }],
-      packageCvoxPaths: ['body.cvox', 'scratch.cvox'],
+      geometries: [{ path: 'body.json', cvox: bodyCvox }],
+      packageCvoxPaths: ['body.json', 'scratch.json'],
     });
     expect(diags.map((d) => d.ruleId)).toEqual(['W07']);
-    expect(diags[0]?.message).toContain('scratch.cvox');
+    expect(diags[0]?.message).toContain('scratch.json');
   });
 });

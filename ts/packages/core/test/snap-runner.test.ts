@@ -11,6 +11,7 @@ import {
   type SnapOptions,
 } from '../src/cli/snap-runner.js';
 import { loadAndAssemble } from '../src/cli/assemble.js';
+import { geoFromText } from './helpers/geometry.js';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const CROWN = resolve(REPO_ROOT, 'models/crown');
@@ -42,9 +43,10 @@ function opts(over: Partial<SnapOptions> = {}): SnapOptions {
 async function makeModel(files: Record<string, string>): Promise<string> {
   const dir = await mkdtemp(resolve(tmpdir(), 'cuboidy-snap-test-'));
   for (const [name, content] of Object.entries(files)) {
-    const path = resolve(dir, name);
+    const geometry = name.endsWith('.cvox');
+    const path = resolve(dir, geometry ? name.replace(/\.cvox$/, '.json') : name);
     await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, content, 'utf-8');
+    await writeFile(path, geometry ? geoFromText(content) : content, 'utf-8');
   }
   return dir;
 }
@@ -198,7 +200,7 @@ describe('renderSnapshots — v0.7 project shapes', () => {
         'palette #F00 #0F0\npart arm_r\nsize 2 1 1\npivot 2 0 0\nvoxels { 10 }',
       'cuboidy.json': JSON.stringify({
         name: 'multi',
-        geometry: ['body.cvox', 'arms.cvox'],
+        geometry: ['body.json', 'arms.json'],
         parts: [
           { name: 'arm', position: [-2, 0, 0] },
           { name: 'arm_r', position: [2, 0, 0] },

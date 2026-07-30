@@ -7,17 +7,23 @@ import {
   loadAndAssemble,
   stringifyCoord,
 } from '../src/cli/assemble.js';
+import { geoFromText } from './helpers/geometry.js';
 
 // SPEC §6.10 through the inspection-CLI assembly layer: manifest geometry
 // lists and external palette binding — the same project resolution lint
 // and the editor use.
 
+// Geometry fixtures are authored in the compact text syntax and written out as
+// JSON — see geoFromText in helpers/geometry.ts. A `.cvox` key marks "this
+// value is geometry"; the file that lands on disk is `.json`, which is what the
+// manifests below reference and what the loader reads.
 async function makeModel(files: Record<string, string>): Promise<string> {
   const dir = await mkdtemp(resolve(tmpdir(), 'cuboidy-assemble-test-'));
   for (const [name, content] of Object.entries(files)) {
-    const path = resolve(dir, name);
+    const geometry = name.endsWith('.cvox');
+    const path = resolve(dir, geometry ? name.replace(/\.cvox$/, '.json') : name);
     await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, content, 'utf-8');
+    await writeFile(path, geometry ? geoFromText(content) : content, 'utf-8');
   }
   return dir;
 }
@@ -26,7 +32,7 @@ const ONE_VOXEL = (color: string) =>
   `palette ${color}\npart p\n    size 1 1 1\n    pivot 0 0 0\n    voxels { 0 }`;
 
 describe('loadAndAssemble — geometry list', () => {
-  it('loads a package whose manifest lists geometry files (no voxels.cvox)', async () => {
+  it('loads a package whose manifest lists geometry files (no voxels.json)', async () => {
     const dir = await makeModel({
       'body.cvox':
         'palette #FF0000\npart body\n    size 1 1 1\n    pivot 0 0 0\n    voxels { 0 }',
@@ -34,7 +40,7 @@ describe('loadAndAssemble — geometry list', () => {
         'palette #00FF00\npart hat\n    size 1 1 1\n    pivot 0 0 0\n    voxels { 0 }',
       'cuboidy.json': JSON.stringify({
         name: 'm',
-        geometry: ['body.cvox', 'gear/hat.cvox'],
+        geometry: ['body.json', 'gear/hat.json'],
         parts: [
           { name: 'body' },
           { name: 'hat', parent: 'body', position: [0, 2, 0] },
@@ -45,8 +51,8 @@ describe('loadAndAssemble — geometry list', () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.assembly.geometries.map((g) => g.path)).toEqual([
-      'body.cvox',
-      'gear/hat.cvox',
+      'body.json',
+      'gear/hat.json',
     ]);
     expect(r.assembly.grid.get(stringifyCoord(0, 0, 0))).toBe(0);
     // hat's index 0 remaps into the merged palette (green = merged 1).
@@ -58,7 +64,7 @@ describe('loadAndAssemble — geometry list', () => {
     const dir = await makeModel({
       'cuboidy.json': JSON.stringify({
         name: 'm',
-        geometry: ['body.cvox'],
+        geometry: ['body.json'],
         parts: [{ name: 'body' }],
       }),
     });
@@ -66,7 +72,7 @@ describe('loadAndAssemble — geometry list', () => {
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.exitCode).toBe(2);
-    expect(r.message).toMatch(/body\.cvox/);
+    expect(r.message).toMatch(/body\.json/);
   });
 });
 
@@ -132,14 +138,14 @@ describe('loadAndAssemble — merged inline palettes', () => {
         'palette #0000FF #FF0000\npart q\n    size 2 1 1\n    pivot 0 0 0\n    voxels { 01 }',
       'cuboidy.json': JSON.stringify({
         name: 'm',
-        geometry: ['a.cvox', 'b.cvox'],
+        geometry: ['a.json', 'b.json'],
         parts: [{ name: 'p' }, { name: 'q', parent: 'p', position: [0, 5, 0] }],
       }),
     });
     const r = await loadAndAssemble(dir);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    // Merged: [red, green, blue] — b.cvox's red dedupes into slot 0.
+    // Merged: [red, green, blue] — b.json's red dedupes into slot 0.
     expect(r.assembly.palette).toHaveLength(3);
     expect(r.assembly.grid.get(stringifyCoord(0, 5, 0))).toBe(2); // blue
     expect(r.assembly.grid.get(stringifyCoord(1, 5, 0))).toBe(0); // red

@@ -9,9 +9,9 @@ interface Props {
 
 // Dropdown-style Export menu. Always available when something is loaded;
 // the visible items depend on what's actually exportable:
-//   - cvox-only: just the .cvox file
-//   - folder + manifest: cvox / cuboidy.json / .cuboidy ZIP
-//   - folder + no manifest: cvox + .cuboidy ZIP containing only cvox
+//   - geometry-only: just the geometry file
+//   - folder + manifest: geometry / cuboidy.json / .cuboidy ZIP
+//   - folder + no manifest: geometry + .cuboidy ZIP containing only it
 //
 // Closes on outside click and on Escape. The dropdown is positioned
 // relative to the trigger button via CSS, so we don't need a portal.

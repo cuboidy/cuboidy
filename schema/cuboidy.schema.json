@@ -28,7 +28,7 @@
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^(?!/)(?!.*//)[^\\\\:]+\\.cvox$"
+        "pattern": "^(?!/)(?!.*//)[^\\\\:]+\\.json$"
       },
       "uniqueItems": true
     },

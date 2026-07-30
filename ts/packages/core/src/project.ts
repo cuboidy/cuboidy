@@ -1,6 +1,6 @@
 import type { Diagnostic } from './diagnostic.js';
 import { InlineAnimationSchema, type InlineAnimation } from './animation.js';
-import { parseCvox } from './cvox/parse.js';
+import { parseGeometryText } from './geometry/parse.js';
 import type { Cvox, Palette } from './cvox/types.js';
 import { manifestGeometry, type Manifest } from './manifest.js';
 import { parsePaletteFile } from './palette-file.js';
@@ -39,7 +39,7 @@ export interface ProjectPaths {
 // (fs/ZIP/memory) into the map handed to resolveProject().
 export function projectFilePaths(manifest: Manifest | null): ProjectPaths {
   const geometry = (
-    manifest !== null ? manifestGeometry(manifest) : ['voxels.cvox']
+    manifest !== null ? manifestGeometry(manifest) : ['voxels.json']
   ).map(normalizeRefPath);
   const palette =
     manifest?.palette !== undefined
@@ -92,7 +92,7 @@ export function resolveProject(
       });
       continue;
     }
-    const r = parseCvox(text);
+    const r = parseGeometryText(text);
     if (!r.ok) {
       diagnostics.push({
         file: ref,

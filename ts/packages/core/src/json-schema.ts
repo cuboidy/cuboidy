@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { IDENTIFIER_RE } from './identifier.js';
 import { RESERVED_KEYWORDS } from './cvox/reserved.js';
 import { ManifestSchema } from './manifest.js';
+import { GeometrySchema } from './geometry/schema.js';
 
 const IDENTIFIER_PATTERN = IDENTIFIER_RE.source;
 
@@ -73,6 +74,21 @@ export function buildManifestJsonSchema(): Record<string, unknown> {
     title: 'Cuboidy Manifest',
     description:
       'Schema for cuboidy.json — the manifest file of a Cuboidy v0.9 model package (geometry list, palette binding, rig hierarchy + animation references). Generated from the Zod ManifestSchema in @cuboidy/core. SPEC §8 reference paths, tuple arity and geometry uniqueness are encoded; the remaining runtime-only rules (SPEC §11.5: duplicate part names, parent existence/cycles, animation duration/time-key semantics) need parseManifest or an equivalent validator.',
+    ...constrained,
+  };
+}
+
+export function buildGeometryJsonSchema(): Record<string, unknown> {
+  const baseSchema = z.toJSONSchema(GeometrySchema, { target: 'draft-2020-12' });
+  const constrained = constrainTuples(
+    injectReservedRejection(baseSchema),
+  ) as Record<string, unknown>;
+  return {
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    $id: 'https://cuboidy.com/schema/cuboidy-geometry.schema.json',
+    title: 'Cuboidy Geometry',
+    description:
+      'Schema for voxels.json — the voxel definition of a Cuboidy v0.9 model package (palette, parts, pivots, sockets, voxel grids). Generated from the Zod GeometrySchema in @cuboidy/core. Field shapes, size bounds, the voxel-row alphabet and identifier rules are encoded; the cross-field rules need parseGeometry or an equivalent validator, because they read more than one value at a time (SPEC §7.9 layer/row/width agreement with `size`, §7.4 palette index range, §7.8 socket-name uniqueness).',
     ...constrained,
   };
 }

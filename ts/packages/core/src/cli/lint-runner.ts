@@ -5,6 +5,7 @@ import type { Manifest } from '../manifest.js';
 import { projectFilePaths, resolveProject } from '../project.js';
 import { validateProject } from '../lint/cross-file.js';
 import { lintCvox } from '../lint/voxel-rules.js';
+import { parseGeometryText } from '../geometry/parse.js';
 import type { Diagnostic } from '../diagnostic.js';
 
 // Pure (modulo fs read) lint runner for a cuboidy model directory.
@@ -14,16 +15,16 @@ import type { Diagnostic } from '../diagnostic.js';
 // process.exit(exitCode).
 //
 // v0.7 project shape: the manifest's `geometry` list (default
-// ["voxels.cvox"]) names the model's cvox files, and its `palette`
+// ["voxels.json"]) names the model's geometry files, and its `palette`
 // reference binds an external palette (SPEC §6.9 / §6.10). A directory
-// with no manifest still lints its voxels.cvox alone (shape preview).
+// with no manifest still lints its voxels.json alone (shape preview).
 //
 // Exit code policy:
 //   0  no errors (warnings/hints may be present)
 //   1  one or more errors, OR --strict and any warning. A geometry /
 //      palette file that the manifest references but that can't be read
 //      is a broken reference — a model error, not a setup failure
-//   2  IO / setup failure (no manifest AND no voxels.cvox — nothing to
+//   2  IO / setup failure (no manifest AND no voxels.json — nothing to
 //      lint) — distinct from "model has errors" so CI can tell "we
 //      failed to run" from "we ran and found problems"
 
@@ -54,7 +55,7 @@ export async function runLint(
   const root = resolve(dir);
   const diagnostics: FileDiagnostic[] = [];
 
-  // Manifest is optional. A voxel-only directory (`voxels.cvox` without a
+  // Manifest is optional. A voxel-only directory (`voxels.json` without a
   // sibling `cuboidy.json`) is a valid input — useful for previewing a
   // shape before wiring up rig hierarchy.
   const manifestPath = join(root, MANIFEST_FILE);
@@ -107,7 +108,7 @@ export async function runLint(
     if (text !== null) files.set(ref, text);
   }
 
-  // Nothing to lint at all: no manifest and no readable voxels.cvox is a
+  // Nothing to lint at all: no manifest and no readable voxels.json is a
   // setup failure (exit 2), not a model error.
   const anyGeometryRead = paths.geometry.some((ref) => files.has(ref));
   if (manifestText === null && !anyGeometryRead) {
@@ -145,7 +146,7 @@ export async function runLint(
         externalPalette: project.externalPalette,
       }),
       externalAnims: project.externalAnims,
-      packageCvoxPaths: await enumerateCvoxFiles(root),
+      packageCvoxPaths: await enumerateGeometryFiles(root),
     })) {
       diagnostics.push({ file: CROSS_FILE_LABEL, diag: d });
     }
@@ -154,18 +155,38 @@ export async function runLint(
   return { diagnostics, exitCode: computeExitCode(diagnostics, opts) };
 }
 
-// All .cvox files in the package (recursive), as /-separated paths
-// relative to the root — the same shape as normalized geometry refs, so
-// W07 can compare them verbatim.
-async function enumerateCvoxFiles(root: string): Promise<string[]> {
+// Every geometry file in the package (recursive), as /-separated paths
+// relative to the root — the same shape as normalized geometry refs, so W07
+// can compare them verbatim.
+//
+// The extension no longer settles this. When geometry was `.cvox`, the suffix
+// alone identified it; now the manifest, the palette binding, the animation
+// clips and the geometry are all `.json`, so W07 would fire on `cuboidy.json`
+// itself. Content decides instead: a file is geometry if the geometry reader
+// accepts it. That is also the more honest test of what W07 means — "this
+// parses as geometry and nothing references it".
+async function enumerateGeometryFiles(root: string): Promise<string[]> {
+  let entries: string[];
   try {
-    const entries = await readdir(root, { recursive: true });
-    return entries
-      .filter((p) => p.toLowerCase().endsWith('.cvox'))
-      .map((p) => p.replaceAll('\\', '/'));
+    entries = await readdir(root, { recursive: true });
   } catch {
     return [];
   }
+
+  const found: string[] = [];
+  for (const entry of entries) {
+    const rel = entry.replaceAll('\\', '/');
+    if (!rel.toLowerCase().endsWith('.json')) continue;
+    if (rel === MANIFEST_FILE) continue;
+    let text: string;
+    try {
+      text = await readFile(resolve(root, entry), 'utf-8');
+    } catch {
+      continue; // a directory, or unreadable — neither is a geometry file
+    }
+    if (parseGeometryText(text).ok) found.push(rel);
+  }
+  return found;
 }
 
 function computeExitCode(

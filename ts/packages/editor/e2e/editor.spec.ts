@@ -10,7 +10,7 @@ test('robo-mini loads all parts with no errors', async ({ page }) => {
   await loadFolder(page, ROBO_MINI);
 
   await openTab(page, 'Parts');
-  // All six parts across body.cvox + limbs.cvox load through the shared
+  // All six parts across body.json + limbs.json load through the shared
   // project layer.
   for (const part of ['body', 'head', 'arm-l', 'arm-r', 'leg-l', 'leg-r']) {
     await expect(
@@ -25,7 +25,7 @@ test('robo-mini loads all parts with no errors', async ({ page }) => {
 
 test('A-6: structural edit right after typing keeps the typed text', async ({ page }) => {
   await loadFolder(page, ROBO_MINI);
-  await openTab(page, 'body.cvox');
+  await openTab(page, 'body.json');
   const textarea = page.locator('.source-textarea').first();
   const original = await textarea.inputValue();
 
@@ -33,8 +33,10 @@ test('A-6: structural edit right after typing keeps the typed text', async ({ pa
   // structural edit below must flush it synchronously itself.
   await page.clock.install();
 
-  // Type a voxel change (arm-l hand row '1.' → '11').
-  await textarea.fill(original.replace('1.', '11'));
+  // Type a voxel change (arm-l hand row "1." → "11").
+  const typed = original.replace('"1."', '"11"');
+  expect(typed).not.toBe(original);
+  await textarea.fill(typed);
 
   // Immediately rename a part (structural edit → serializes the AST).
   await openTab(page, 'Parts');
@@ -51,22 +53,24 @@ test('A-6: structural edit right after typing keeps the typed text', async ({ pa
   ).toBeVisible();
   // …AND the just-typed voxel edit survived the re-serialize. Before
   // the fix the stale pre-typing AST overwrote it.
-  await openTab(page, 'body.cvox');
-  await expect(textarea).toHaveValue(/11/);
+  await openTab(page, 'body.json');
+  await expect(textarea).toHaveValue(/"11"/);
   await expect(textarea).toHaveValue(/noggin/);
 });
 
 test('A-6: structural edit aborts while the source text is broken', async ({ page }) => {
   await loadFolder(page, ROBO_MINI);
-  await openTab(page, 'body.cvox');
+  await openTab(page, 'body.json');
   const textarea = page.locator('.source-textarea').first();
   const original = await textarea.inputValue();
 
   await page.clock.install();
 
-  // Break the text (drop arm-l's size line) and immediately try a
-  // structural edit before the debounce can even report the error.
-  const broken = original.replace(/^\s*size 2 3 1\s*$/m, '');
+  // Break the document (drop arm-l's required `size`) and immediately
+  // try a structural edit before the debounce can even report it. The
+  // text stays well-formed JSON, so this exercises schema rejection
+  // rather than a tokenizer failure.
+  const broken = original.replace(/^ +"size": \[2, 3, 1\],\r?\n/m, '');
   expect(broken).not.toBe(original);
   await textarea.fill(broken);
 
@@ -82,17 +86,25 @@ test('A-6: structural edit aborts while the source text is broken', async ({ pag
     page.locator('.tree-name', { hasText: /^head$/ }),
   ).toBeVisible();
   // …the broken text is preserved verbatim…
-  await openTab(page, 'body.cvox');
+  await openTab(page, 'body.json');
   await expect(textarea).toHaveValue(broken);
-  // …and the parse error is reported instead of silently cleared.
-  await expect(page.locator('.parse-error-banner')).toBeVisible();
+  // …and the parse error is reported instead of silently cleared, naming
+  // the line the broken part starts on (a schema error knows only a
+  // document path, so the reader maps it back to a position).
+  const banner = page.locator('.parse-error-banner');
+  await expect(banner).toBeVisible();
+  const partLine = broken.slice(0, broken.indexOf('"name": "arm-l"')).split('\n')
+    .length;
+  await expect(banner).toHaveText(
+    new RegExp(`line ${partLine - 1}: parts\\.2\\.size:`),
+  );
 });
 
 test('A-6: undo right after editing a non-primary file stays consistent', async ({ page }) => {
   await loadFolder(page, ROBO_MINI);
   await openTab(page, 'Files');
-  await page.locator('.file-tree').getByText('limbs.cvox').click();
-  await openTab(page, 'limbs.cvox');
+  await page.locator('.file-tree').getByText('limbs.json').click();
+  await openTab(page, 'limbs.json');
   const textarea = page.locator('.source-textarea').first();
   const original = await textarea.inputValue();
 

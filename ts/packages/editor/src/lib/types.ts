@@ -26,13 +26,12 @@ export type LoadedSource =
       kind: 'cvox-only';
       cvox: Cvox;
       cvoxFile: FileEntry;
-      droppedInlineComments: number;
     }
   | {
       kind: 'folder';
       folderName: string;
       // Synthetic folders are created in-editor (Create manifest from a
-      // cvox-only load). They have no original disk location, so Save
+      // bare-geometry load). They have no original disk location, so Save
       // must always go through a file picker / download path.
       synthetic: boolean;
       // FSA-aware drop or showDirectoryPicker on Chrome/Edge populates
@@ -41,11 +40,10 @@ export type LoadedSource =
       cvox: Cvox;
       cvoxFile: FileEntry;
       // Manifest is optional inside a folder — a folder that contains
-      // only voxels.cvox (no cuboidy.json) is a valid folder load.
+      // only voxels.json (no cuboidy.json) is a valid folder load.
       manifest?: Manifest;
       manifestFile?: FileEntry;
       manifestError?: string;
-      droppedInlineComments: number;
       // ── v0.7 project layer (SPEC §6.9/§6.10), populated at load ──
       // Every text file in the package, keyed by /-relative path. The two
       // LIVE-edited files above (cvoxFile / manifestFile) hold the current
@@ -57,7 +55,7 @@ export type LoadedSource =
       // The editor still edits only the primary until Phase C.
       geometries?: ReadonlyMap<string, Cvox>;
       // Parsed manifest-bound palette (§6.10). Rendering prefers this
-      // over the inline cvox palette, matching the spec precedence.
+      // over the geometry file's own palette, matching the spec precedence.
       externalPalette?: Palette;
       // Resolved external animations (§6.3 string refs), keyed by CLIP
       // name. The manifest keeps the reference path; clip edits
@@ -81,7 +79,7 @@ export type LoadedSource =
 export interface LoadResult {
   source?: LoadedSource;
   error?: string;
-  // Always populated for UI feedback ("could not parse X.cvox").
+  // Always populated for UI feedback ("could not parse X.json").
   cvoxFileName?: string;
 }
 

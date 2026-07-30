@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { mkdtemp, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { formatDiagnostic, runLint } from '../src/cli/lint-runner.js';
+import { geoFromText } from './helpers/geometry.js';
 
 const REPO_ROOT = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -15,9 +16,10 @@ const REPO_ROOT = resolve(
 async function makeModel(files: Record<string, string>): Promise<string> {
   const dir = await mkdtemp(resolve(tmpdir(), 'cuboidy-lint-test-'));
   for (const [name, content] of Object.entries(files)) {
-    const path = resolve(dir, name);
+    const geometry = name.endsWith('.cvox');
+    const path = resolve(dir, geometry ? name.replace(/\.cvox$/, '.json') : name);
     await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, content, 'utf-8');
+    await writeFile(path, geometry ? geoFromText(content) : content, 'utf-8');
   }
   return dir;
 }
@@ -134,20 +136,22 @@ describe('runLint — W06 mirror symmetry (geometric)', () => {
 });
 
 describe('runLint — IO failures', () => {
-  it('returns exit 2 when voxels.cvox is missing', async () => {
+  it('returns exit 2 when the geometry file is missing', async () => {
     const dir = await makeModel({}); // empty dir
     const r = await runLint(dir);
     expect(r.exitCode).toBe(2);
     expect(r.diagnostics).toHaveLength(1);
     expect(r.diagnostics[0]?.diag.severity).toBe('error');
-    expect(r.diagnostics[0]?.diag.message).toMatch(/voxels\.cvox/);
+    expect(r.diagnostics[0]?.diag.message).toMatch(/voxels\.json/);
   });
 });
 
 describe('runLint — parse errors propagate as exit 1', () => {
-  it('voxels.cvox parse error → error diag + exit 1', async () => {
+  it('a malformed geometry file → error diag + exit 1', async () => {
+    // Written verbatim: a `.json` key bypasses the text bridge, which by
+    // construction can only produce valid documents.
     const dir = await makeModel({
-      'voxels.cvox': 'palette\n', // palette needs at least one color
+      'voxels.json': '{ "parts": [] }', // schema-invalid: needs at least one part
     });
     const r = await runLint(dir);
     expect(r.exitCode).toBe(1);
@@ -228,7 +232,7 @@ describe('runLint — v0.7 project shape (geometry list + palette binding)', () 
       'palette.json': paletteJson,
       'cuboidy.json': JSON.stringify({
         name: 'm',
-        geometry: ['body.cvox', 'gear/hat.cvox'],
+        geometry: ['body.json', 'gear/hat.json'],
         palette: 'palette.json',
         parts: [{ name: 'body' }, { name: 'hat', parent: 'body' }],
       }),
@@ -242,18 +246,18 @@ describe('runLint — v0.7 project shape (geometry list + palette binding)', () 
     const dir = await makeModel({
       'cuboidy.json': JSON.stringify({
         name: 'm',
-        geometry: ['nope.cvox'],
+        geometry: ['nope.json'],
         parts: [{ name: 'body' }],
       }),
     });
     const r = await runLint(dir);
     expect(r.exitCode).toBe(1);
     expect(
-      r.diagnostics.some((d) => d.diag.message.includes('nope.cvox')),
+      r.diagnostics.some((d) => d.diag.message.includes('nope.json')),
     ).toBe(true);
   });
 
-  it('W07: an unreferenced .cvox in the package warns', async () => {
+  it('W07: an unreferenced geometry file in the package warns', async () => {
     const dir = await makeModel({
       'voxels.cvox': 'palette #F00\npart body\nsize 1 1 1\nvoxels { 0 }',
       'scratch.cvox': 'palette #F00\npart junk\nsize 1 1 1\nvoxels { 0 }',
@@ -264,7 +268,7 @@ describe('runLint — v0.7 project shape (geometry list + palette binding)', () 
     });
     const r = await runLint(dir);
     const w07 = r.diagnostics.find((d) => d.diag.ruleId === 'W07');
-    expect(w07?.diag.message).toContain('scratch.cvox');
+    expect(w07?.diag.message).toContain('scratch.json');
     expect(r.exitCode).toBe(0); // warning only
   });
 
@@ -274,7 +278,7 @@ describe('runLint — v0.7 project shape (geometry list + palette binding)', () 
       'palette.json': JSON.stringify({ colors: [] }),
       'cuboidy.json': JSON.stringify({
         name: 'm',
-        geometry: ['body.cvox'],
+        geometry: ['body.json'],
         palette: 'palette.json',
         parts: [{ name: 'body' }],
       }),

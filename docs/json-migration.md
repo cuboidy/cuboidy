@@ -83,16 +83,28 @@ over.
 Add → switch → delete. Deleting first breaks every package at once and makes
 failures unattributable; the end state is identical.
 
-### Phase 0 — lock the format on paper
+**Every phase ends green.** Flipping `refPath('.cvox')` early was tried and
+reverted: it fails 57 tests immediately — every fixture manifest that names a
+geometry file — and none of them can be fixed until the reader exists and the
+data is converted. So the extension switch moves into Phase 2, where it lands
+atomically with the reader and the converted files. Phases 0 and 1 add code that
+nothing calls yet and change no behaviour.
 
-- `schema/cuboidy-geometry.schema.json` — JSON Schema for the shape above
+### Phase 0 — define the format
+
+- `ts/packages/core/src/geometry/schema.ts` — the Zod schema for the shape
+  above, the single source of truth for both the runtime reader and the
+  published artifact
+- `schema/cuboidy-geometry.schema.json` — generated from it, alongside the
+  existing manifest schema
 - SPEC §7 replaced from `bench/eval/spec-json.md`; §11.3/§11.4 retitled (the
-  W01–W05 voxel rules survive unchanged, only their section headings mention
-  `.cvox`)
-- `schema/cuboidy.schema.json`: `geometry` entries accept `.json`
+  W01–W05 voxel rules survive unchanged, only their headings mention `.cvox`)
 
-*Verify:* schema validates every converted fixture; SPEC has no remaining
-grammar/lexical section.
+Nothing imports the new schema yet, so the suite stays green.
+
+*Verify:* generated schema validates every model converted with the eval
+converter; existing tests unaffected; SPEC has no remaining grammar or lexical
+section.
 
 ### Phase 1 — core reads and writes JSON
 
@@ -131,16 +143,36 @@ resulting AST.
   writes files and moves to the JSON serializer.
 - **Editor**: `load-model.ts`, `App.tsx` (parse/serialize call sites),
   `ExportMenu`, `fileIcon`, `FileTree`, `save.ts`, `synthesize-manifest.ts`.
-- **`SourceEditor` is the one substantial rewrite.** Today cvox diagnostics
-  carry line/column spans and several can be reported at once. `JSON.parse`
-  yields a single syntax error and schema errors arrive as paths, so a
-  positional parser (`jsonc-parser` or equivalent) is needed to map a JSON
-  pointer back to a range. Budget real time here; everything else is a call-site
-  swap.
+- **Diagnostics keep their line numbers.** cvox errors were prefixed `line N:`
+  because the tokenizer carried line numbers; schema errors know only a
+  document path (`parts.2.size`). `geometry/locate.ts` maps a path back to a
+  line/column and `parseGeometryText` — the only entry point that holds the
+  text — applies the prefix, so every consumer keeps the old behaviour with no
+  call-site change and no new dependency. The `Result` error variant gained an
+  optional `path` for callers that want the raw location.
+
+  This was budgeted as the phase's one substantial rewrite on the assumption
+  that cvox reported several spans at once. It did not — `parseCvox` returns a
+  single `Result` error, same as the schema — so only the position mapping was
+  actually missing.
+- **Absent fields say so.** Zod describes a missing field by the type it
+  wanted — "Invalid input: expected tuple, received undefined" for a forgotten
+  `size` — which reads as a type error. Both readers now substitute "required
+  field is missing" when the field is genuinely absent. The editor's banner
+  label changed from "Syntax error" to "Error" for the same reason: most
+  reports are schema violations in well-formed JSON.
+- **Inline-comment tracking deleted.** `countInlineComments` and
+  `droppedInlineComments` warned that non-header cvox comments would not
+  round-trip. JSON has no comments (a locked decision), so the check could only
+  produce false positives on `//` inside strings.
 
 *Verify:* the editor opens every directory under `models/`; a deliberately
 broken geometry file shows the error on the right line; export produces a
 loadable package.
+
+*Result:* core 615 tests green, editor E2E 7/7 (the A-6 broken-source spec now
+asserts the reported line), `cuboidy-lint` clean on all 13 models, editor
+typechecks and builds.
 
 ### Phase 4 — delete
 

@@ -25,7 +25,7 @@ declare global {
 //      permission the first time it's called for a given handle.
 //   2. downloadFile — single-file download via <a download>. Works in
 //      every browser.
-//   3. downloadAsZip — bundle voxels.cvox (+ cuboidy.json if present)
+//   3. downloadAsZip — bundle voxels.json (+ cuboidy.json if present)
 //      into a `.cuboidy` ZIP, then download. Works in every browser;
 //      the only viable path on FF/Safari and on synthetic folders.
 //
@@ -111,7 +111,7 @@ async function ensureReadwritePermission(
 }
 
 // `name` may be a /-separated sub-path (v0.7 geometry refs like
-// `gear/hat.cvox`) — intermediate directories are created as needed.
+// `gear/hat.json`) — intermediate directories are created as needed.
 async function writeTextFile(
   dir: FileSystemDirectoryHandle,
   name: string,

@@ -1,8 +1,8 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { isIdentifier } from '../identifier.js';
-import { parseCvox } from '../cvox/parse.js';
-import { serializeCvox } from '../cvox/serialize.js';
+import { parseGeometryText } from '../geometry/parse.js';
+import { serializeGeometry } from '../geometry/serialize.js';
 import {
   duplicatePart,
   mirrorPart,
@@ -42,7 +42,7 @@ async function readCvox(
   } catch {
     return { error: `cannot read ${path}`, code: 2 };
   }
-  const r = parseCvox(text);
+  const r = parseGeometryText(text);
   if (!r.ok) return { error: `${path}: ${r.message}`, code: 1 };
   return { cvox: r.value };
 }
@@ -65,7 +65,7 @@ async function runMirror(
   const parts = r.cvox.parts.slice();
   parts[i] = mirrorPart(parts[i]!, op.axis, op.part);
   try {
-    await writeFile(op.file, serializeCvox({ ...r.cvox, parts }));
+    await writeFile(op.file, serializeGeometry({ ...r.cvox, parts }));
   } catch (e) {
     return {
       text: `cannot write ${op.file}: ${(e as Error).message}`,
@@ -119,8 +119,8 @@ async function runDuplicate(
 
   let newPart: Part = duplicatePart(src, op.toPart);
 
-  // Cross-file: the source indices mean colors in from.cvox's inline palette,
-  // so remap them into to.cvox's (appending any it lacks). Same file needs no
+  // Cross-file: the source indices mean colors in from.json's inline palette,
+  // so remap them into to.json's (appending any it lacks). Same file needs no
   // remap — the indices already resolve against the one palette.
   let palette = toCvox.palette;
   if (!sameFile) {
@@ -135,7 +135,7 @@ async function runDuplicate(
     parts: [...toCvox.parts, newPart],
   };
   try {
-    await writeFile(op.toFile, serializeCvox(nextTo));
+    await writeFile(op.toFile, serializeGeometry(nextTo));
   } catch (e) {
     return {
       text: `cannot write ${op.toFile}: ${(e as Error).message}`,

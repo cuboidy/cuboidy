@@ -146,7 +146,7 @@ export function PartProperties({
             disabled={moveDisabled}
             title={
               moveDisabled
-                ? 'Fix cvox syntax errors to move parts between files'
+                ? 'Fix the geometry file errors to move parts between files'
                 : 'Geometry file this part is declared in — change to move it'
             }
             onChange={(e) => {
@@ -214,7 +214,7 @@ export function PartProperties({
             disabled={cvoxEditsDisabled}
             title={
               cvoxEditsDisabled
-                ? 'Fix cvox syntax errors to duplicate'
+                ? 'Fix the geometry file errors to duplicate'
                 : 'Add a concrete copy of this part to its file'
             }
             onClick={() => onDuplicatePart(selectedPart)}
@@ -229,7 +229,7 @@ export function PartProperties({
               disabled={cvoxEditsDisabled}
               title={
                 cvoxEditsDisabled
-                  ? 'Fix cvox syntax errors to mirror'
+                  ? 'Fix the geometry file errors to mirror'
                   : `Flip this part across ${mirrorAxis} (in place)`
               }
               onClick={() => onMirrorPart(selectedPart, mirrorAxis)}

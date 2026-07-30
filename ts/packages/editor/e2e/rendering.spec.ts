@@ -55,36 +55,35 @@ test('A-7 control: a loop:true clip keeps playing past duration', async ({ page 
 });
 
 test('A-8: rig view renders a pivot.rot model through the rig transform tree', async ({ page }, testInfo) => {
-  // Fixture: a 6-voxel boom with pivot rot 0 0 45 — visibly diagonal
+  // Fixture: a 6-voxel boom with pivot rot [0, 0, 45] — visibly diagonal
   // when the rest rotation is applied, horizontal when it is ignored.
   const dir = mkdtempSync(join(tmpdir(), 'cuboidy-e2e-pivot-'));
   mkdirSync(dir, { recursive: true });
+  const solidLayer = ['0000', '0000', '0000', '0000'];
   writeFileSync(
-    join(dir, 'voxels.cvox'),
-    [
-      'palette #888888 #FF3B30',
-      'part torso',
-      '    size 4 2 4',
-      '    pivot 2 0 2',
-      '    voxels {',
-      '        0000',
-      '        0000',
-      '        0000',
-      '        0000',
-      '        ,',
-      '        0000',
-      '        0000',
-      '        0000',
-      '        0000',
-      '    }',
-      'part boom',
-      '    size 6 1 1',
-      '    pivot 0 0 0 rot 0 0 45',
-      '    voxels {',
-      '        000001',
-      '    }',
-      '',
-    ].join('\n'),
+    join(dir, 'voxels.json'),
+    JSON.stringify(
+      {
+        version: '0.9',
+        palette: ['#888888', '#FF3B30'],
+        parts: [
+          {
+            name: 'torso',
+            size: [4, 2, 4],
+            pivot: { pos: [2, 0, 2] },
+            voxels: [solidLayer, solidLayer],
+          },
+          {
+            name: 'boom',
+            size: [6, 1, 1],
+            pivot: { pos: [0, 0, 0], rot: [0, 0, 45] },
+            voxels: [['000001']],
+          },
+        ],
+      },
+      null,
+      2,
+    ),
   );
   writeFileSync(
     join(dir, 'cuboidy.json'),

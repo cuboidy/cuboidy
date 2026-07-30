@@ -1,7 +1,7 @@
 import {
   InlineAnimationSchema,
   manifestGeometry,
-  parseCvox,
+  parseGeometryText,
   parseManifest,
   parsePaletteFile,
   type Cvox,
@@ -12,11 +12,11 @@ import {
 import { strFromU8, unzipSync } from 'fflate';
 import type { FileEntry, LoadResult, LoadedSource } from './types.js';
 
-const CVOX_FILE = 'voxels.cvox';
+const GEOMETRY_FILE = 'voxels.json';
 const MANIFEST_FILE = 'cuboidy.json';
 const CUBOIDY_EXT = /\.cuboidy$/i;
 // Package files worth reading as text. Referenced files are only ever
-// .cvox / .json (SPEC §8); .md/.txt ride along so docs survive a ZIP
+// .json (SPEC §8); .md/.txt ride along so docs survive a ZIP
 // round-trip. Binary assets (images etc.) are skipped — reading them as
 // text would garble them.
 const TEXT_FILE_RE = /\.(cvox|json|md|txt)$/i;
@@ -35,7 +35,7 @@ export async function loadFromFile(file: File): Promise<LoadResult> {
 }
 
 // Single-file entrypoint that dispatches on extension. .cuboidy goes to
-// the ZIP unpacker, anything else is treated as a raw .cvox text file.
+// the ZIP unpacker, anything else is treated as a raw geometry file.
 export async function loadSingleFile(file: File): Promise<LoadResult> {
   if (CUBOIDY_EXT.test(file.name)) return loadFromCuboidyZip(file);
   return loadFromFile(file);
@@ -43,7 +43,7 @@ export async function loadSingleFile(file: File): Promise<LoadResult> {
 
 // Unpack a .cuboidy ZIP (the editor's own Export output, or any
 // equivalent ZIP another tool produces). If every entry shares a single
-// top-level folder (`wolf/voxels.cvox` style), that prefix is stripped
+// top-level folder (`wolf/voxels.json` style), that prefix is stripped
 // so flat and folder-wrapped ZIPs load identically.
 export async function loadFromCuboidyZip(file: File): Promise<LoadResult> {
   const bytes = new Uint8Array(await file.arrayBuffer());
@@ -69,7 +69,7 @@ export async function loadFromCuboidyZip(file: File): Promise<LoadResult> {
 
 export async function loadFromFileList(files: FileList): Promise<LoadResult> {
   // <input webkitdirectory> populates File.webkitRelativePath with the
-  // sub-path inside the picked folder, e.g. "wolf/voxels.cvox". The
+  // sub-path inside the picked folder, e.g. "wolf/voxels.json". The
   // first path segment is the folder itself.
   const map = new Map<string, string>();
   let folderName = 'folder';
@@ -142,8 +142,7 @@ async function collectEntry(
 // ── shared assembly ──────────────────────────────────────────────────
 
 function buildCvoxOnlyResult(name: string, text: string): LoadResult {
-  const droppedInlineComments = countInlineComments(text);
-  const cvoxR = parseCvox(text);
+  const cvoxR = parseGeometryText(text);
   if (!cvoxR.ok) {
     return { error: cvoxR.message, cvoxFileName: name };
   }
@@ -151,14 +150,13 @@ function buildCvoxOnlyResult(name: string, text: string): LoadResult {
     kind: 'cvox-only',
     cvox: cvoxR.value,
     cvoxFile: { name, text },
-    droppedInlineComments,
   };
   return { source, cvoxFileName: name };
 }
 
 // Folder assembly (v0.7): resolve the manifest's references against the
 // collected file map. The PRIMARY geometry file (first `geometry` entry,
-// default voxels.cvox) plays the pre-v0.7 single-cvox role — it is the
+// default voxels.json) plays the pre-v0.7 single-cvox role — it is the
 // file the editor edits; the rest are parsed into `geometries` and load
 // problems land in `projectErrors` (shown in the Console panel).
 function buildFolderResult(
@@ -184,7 +182,7 @@ function buildFolderResult(
   }
 
   const geometryRefs = (
-    manifest !== undefined ? manifestGeometry(manifest) : [CVOX_FILE]
+    manifest !== undefined ? manifestGeometry(manifest) : [GEOMETRY_FILE]
   ).map(normalizePath);
   const primary = geometryRefs[0]!;
   const primaryText = fileTexts.get(primary);
@@ -192,8 +190,7 @@ function buildFolderResult(
     return { error: `No ${primary} in folder '${folderName}'` };
   }
 
-  const droppedInlineComments = countInlineComments(primaryText);
-  const cvoxR = parseCvox(primaryText);
+  const cvoxR = parseGeometryText(primaryText);
   if (!cvoxR.ok) {
     return { error: cvoxR.message, cvoxFileName: primary };
   }
@@ -220,7 +217,6 @@ function buildFolderResult(
     ...(manifest !== undefined && { manifest }),
     ...(manifestFile !== undefined && { manifestFile }),
     ...(manifestError !== undefined && { manifestError }),
-    droppedInlineComments,
     files,
     geometries,
     ...(externalPalette !== undefined && { externalPalette }),
@@ -273,7 +269,7 @@ export function resolveProjectRefs(
       });
       continue;
     }
-    const r = parseCvox(text);
+    const r = parseGeometryText(text);
     if (!r.ok) projectErrors.push({ file: ref, message: r.message });
     else geometries.set(ref, r.value);
   }
@@ -354,6 +350,21 @@ export function resolveProjectRefs(
 // Minimal posix-style normalize for SPEC §8 reference paths and package
 // file paths: resolves `.` / `..` segments and collapses empty ones.
 // Leading `..` segments are preserved (they mean "outside the package").
+// The extension no longer says what a file is: geometry, the manifest, the
+// palette binding and animation clips are all `.json` now. The manifest is the
+// authority — a path is geometry when the model references it as geometry (or
+// is the primary geometry file, which stands in for an absent manifest).
+export function isGeometryPath(
+  path: string,
+  primaryName: string,
+  manifest: Manifest | undefined,
+): boolean {
+  const norm = normalizePath(path);
+  if (norm === normalizePath(primaryName)) return true;
+  if (manifest === undefined) return false;
+  return manifestGeometry(manifest).some((ref) => normalizePath(ref) === norm);
+}
+
 export function normalizePath(path: string): string {
   const out: string[] = [];
   for (const seg of path.split('/')) {
@@ -404,23 +415,4 @@ function readAllEntries(
 
 function fileFromEntry(entry: FileSystemFileEntry): Promise<File> {
   return new Promise((resolve, reject) => entry.file(resolve, reject));
-}
-
-// Counts inline `//` occurrences (anything after the file header) so the
-// editor can surface a warning that they won't be preserved on save.
-// SPEC v0.6 §7.11.1: only the file header round-trips.
-function countInlineComments(text: string): number {
-  const lines = text.split(/\r?\n/);
-  let inHeader = true;
-  let inlineCount = 0;
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (inHeader) {
-      if (trimmed.length === 0) continue;
-      if (trimmed.startsWith('//')) continue;
-      inHeader = false;
-    }
-    if (line.includes('//')) inlineCount++;
-  }
-  return inlineCount;
 }

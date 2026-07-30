@@ -22,11 +22,11 @@ export const ManifestSchema = z
   .object({
     name: Identifier,
     version: z.string().optional(),
-    // SPEC §6.9 (v0.7): the model's geometry files. Absent → the default
-    // ["voxels.cvox"] (use manifestGeometry() to read with the default
+    // SPEC §6.9: the model's geometry files. Absent → the default
+    // ["voxels.json"] (use manifestGeometry() to read with the default
     // applied). Part names are unique across ALL listed files.
     geometry: z
-      .array(refPath('.cvox'))
+      .array(refPath('.json'))
       .min(1)
       .refine((a) => new Set(a).size === a.length, {
         message: 'duplicate geometry entry',
@@ -94,7 +94,7 @@ export const ManifestSchema = z
 
 // SPEC §6.9: `geometry` with its default applied.
 export function manifestGeometry(m: Manifest): readonly string[] {
-  return m.geometry ?? ['voxels.cvox'];
+  return m.geometry ?? ['voxels.json'];
 }
 
 export type Manifest = z.infer<typeof ManifestSchema>;
@@ -108,7 +108,13 @@ export function parseManifest(json: unknown): Result<Manifest> {
   const isMissing = isMissingAtPath(json, issue.path);
   const code = mapIssueToCode(issue, isMissing);
   const path = issue.path.length > 0 ? issue.path.join('.') : '<root>';
-  return err(code, `${path}: ${issue.message}`);
+  // Same substitution the geometry reader makes: Zod reports an absent field
+  // as a type mismatch against `undefined`, which misdescribes a forgotten
+  // line. Both files are JSON now, so both should read the same way.
+  const detail = isMissing ? 'required field is missing' : issue.message;
+  return err(code, `${path}: ${detail}`, issue.path as ReadonlyArray<
+    string | number
+  >);
 }
 
 interface ZodIssueLike {

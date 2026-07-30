@@ -48,7 +48,7 @@ const UPPER_Z = 90;
 const LOWER_A = 97;
 const LOWER_Z = 122;
 
-function charToIndex(c: string): number | null {
+export function charToIndex(c: string): number | null {
   const code = c.charCodeAt(0);
   if (code === DOT) return AIR;
   if (code >= ZERO && code <= NINE) return code - ZERO;

@@ -1,6 +1,16 @@
 export type Result<T> =
   | { ok: true; value: T }
-  | { ok: false; code: CuboidyErrorCode; message: string };
+  | {
+      ok: false;
+      code: CuboidyErrorCode;
+      message: string;
+      // Where in the document the problem is, as object keys and array
+      // indices from the root. Present for readers of structured formats
+      // (the geometry and manifest schemas); absent when the position is
+      // meaningless or unknown. Callers holding the source text can turn
+      // this into a line/column with `locateJsonPath`.
+      path?: ReadonlyArray<string | number>;
+    };
 
 // Structural error taxonomy (SPEC §11). Per-keyword codes are intentionally
 // avoided; the keyword/context lives in the message string.
@@ -31,6 +41,7 @@ export function ok<T>(value: T): Result<T> {
 export function err<T>(
   code: CuboidyErrorCode,
   message: string,
+  path?: ReadonlyArray<string | number>,
 ): Result<T> {
-  return { ok: false, code, message };
+  return { ok: false, code, message, ...(path !== undefined && { path }) };
 }

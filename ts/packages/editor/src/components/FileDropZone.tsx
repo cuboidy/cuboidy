@@ -88,7 +88,7 @@ export function FileDropZone({ onLoad }: Props) {
         <Folder size={44} strokeWidth={1.5} />
       </div>
       <p className="dropzone-headline">
-        Drop a cuboidy folder, <code>.cvox</code>, or <code>.cuboidy</code> file
+        Drop a cuboidy folder, <code>.json</code>, or <code>.cuboidy</code> file
       </p>
       <p className="dropzone-sub">or</p>
       <div className="dropzone-buttons">
@@ -109,7 +109,7 @@ export function FileDropZone({ onLoad }: Props) {
         <label className="btn open-btn">
           <input
             type="file"
-            accept=".cvox,.cuboidy,text/plain,application/zip"
+            accept=".json,.cuboidy,application/json,application/zip"
             onChange={handlePickFile}
           />
           <span>Open file</span>
@@ -130,7 +130,7 @@ export function FileDropZone({ onLoad }: Props) {
 async function processDroppedItem(item: DataTransferItem): Promise<LoadResult | null> {
   // Chrome path: getAsFileSystemHandle gives a writable handle for
   // folders (used for in-place Save). File-kind handles are dispatched
-  // via loadSingleFile so .cuboidy ZIPs are unpacked, .cvox loads raw.
+  // via loadSingleFile so .cuboidy ZIPs are unpacked, a bare .json loads raw.
   if ('getAsFileSystemHandle' in item) {
     try {
       const handle = await (item as DataTransferItemWithFSA).getAsFileSystemHandle();

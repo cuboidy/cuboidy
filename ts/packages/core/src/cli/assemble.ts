@@ -122,7 +122,7 @@ export async function loadAndAssemble(dir: string): Promise<LoadResult | LoadErr
 
   // Read every referenced file (§6.9 geometry list, §6.10 palette, §6.3
   // external animations). An unreadable reference is a setup failure
-  // (exit 2) — same policy the fixed voxels.cvox had before the manifest
+  // (exit 2) — same policy the fixed voxels.json had before the manifest
   // could name other files.
   const paths = projectFilePaths(manifest);
   const refs = [

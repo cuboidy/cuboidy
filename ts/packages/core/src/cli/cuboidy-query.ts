@@ -9,7 +9,7 @@ import {
 // CLI shell for `cuboidy-query <dir> --at=... --core=...`. All real
 // work lives in query-runner.ts. Output is plain text, one line per
 // query, using palette-index characters identical to the cvox row
-// alphabet so a reader can compare directly against `voxels.cvox`.
+// alphabet so a reader can compare directly against `voxels.json`.
 
 interface Args {
   dir: string;
@@ -19,7 +19,7 @@ interface Args {
 const HELP_TEXT =
   'Usage: cuboidy-query <dir> (--at=x,y,z | --core=<axis>,<pin1>=<v1>,<pin2>=<v2>)+\n' +
   '\n' +
-  'Assemble a cuboidy model from <dir>/cuboidy.json + <dir>/voxels.cvox\n' +
+  'Assemble a cuboidy model from <dir>/cuboidy.json + <dir>/voxels.json\n' +
   'in rest pose, then answer one or more coordinate queries. Output is\n' +
   'one line per query plus a short header (model name, bbox, palette).\n' +
   '\n' +

@@ -9,6 +9,7 @@ import {
   runQuery,
   type Query,
 } from '../src/cli/query-runner.js';
+import { geoFromText } from './helpers/geometry.js';
 
 const REPO_ROOT = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -18,9 +19,10 @@ const REPO_ROOT = resolve(
 async function makeModel(files: Record<string, string>): Promise<string> {
   const dir = await mkdtemp(resolve(tmpdir(), 'cuboidy-query-test-'));
   for (const [name, content] of Object.entries(files)) {
-    const path = resolve(dir, name);
+    const geometry = name.endsWith('.cvox');
+    const path = resolve(dir, geometry ? name.replace(/\.cvox$/, '.json') : name);
     await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, content, 'utf-8');
+    await writeFile(path, geometry ? geoFromText(content) : content, 'utf-8');
   }
   return dir;
 }

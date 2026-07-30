@@ -1,6 +1,6 @@
 {
   "name": "robo-mini",
-  "geometry": ["body.cvox", "limbs.cvox"],
+  "geometry": ["body.json", "limbs.json"],
   "palette": "palette.json",
   "parts": [
     { "name": "body",  "position": [0, 2, 0] },

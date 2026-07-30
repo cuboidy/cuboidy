@@ -18,12 +18,12 @@ import {
   mergeKeyframeAtTime,
   mirrorPart,
   moveAttrKey,
-  parseCvox,
+  parseGeometryText,
   parseManifest,
   parsePaletteFile,
   quatRotateVec3,
   serializeColor,
-  serializeCvox,
+  serializeGeometry,
   setAttrAtKey,
   setEaseAtKey,
   trimTrackKeys,
@@ -73,6 +73,7 @@ import { ViewModeToggle } from './components/ViewModeToggle.js';
 import { VoxelScene } from './components/VoxelScene.js';
 import { historyReducer, makeHistory } from './lib/history.js';
 import {
+  isGeometryPath,
   normalizePath,
   resolveProjectRefs,
 } from './lib/load-model.js';
@@ -198,7 +199,7 @@ function mapGeometryFiles<S extends LoadedSource>(
     return {
       ...src,
       cvox: next,
-      cvoxFile: { ...src.cvoxFile, text: serializeCvox(next) },
+      cvoxFile: { ...src.cvoxFile, text: serializeGeometry(next) },
     };
   }
   let geometries: Map<string, Cvox> | null = null;
@@ -208,7 +209,7 @@ function mapGeometryFiles<S extends LoadedSource>(
     const cur = path === src.cvoxFile.name ? src.cvox : g;
     const next = fn(cur, path);
     if (next === null) continue;
-    const text = serializeCvox(next);
+    const text = serializeGeometry(next);
     if (geometries === null) geometries = new Map(src.geometries);
     geometries.set(path, next);
     if (src.files !== undefined) {
@@ -291,7 +292,7 @@ function renameFileInSource(
   // extension.
   if (isPrimary || inGeometry) {
     if (src.manifest === undefined) return null;
-    if (!to.toLowerCase().endsWith('.cvox')) return null;
+    if (!to.toLowerCase().endsWith('.json')) return null;
   }
   const isBoundPalette =
     src.manifest?.palette !== undefined &&
@@ -602,7 +603,7 @@ export function App() {
   // flush below, so the two paths can't drift. Returns true when the
   // text parsed and the AST landed.
   const landCvoxReparse = useCallback((text: string): boolean => {
-    const result = parseCvox(text);
+    const result = parseGeometryText(text);
     if (!result.ok) {
       setCvoxParseError(result.message);
       return false;
@@ -731,15 +732,14 @@ export function App() {
         result.source.manifest !== undefined;
       setViewMode(hasManifest ? 'rig' : 'cvox');
       setLayout((l) => openPanelById(l, 'preview'));
-      // A load that carries problems (manifest that didn't parse, inline
-      // comments that won't round-trip) foregrounds the Console so the
-      // notice isn't silently hidden behind the Timeline tab.
+      // A load that carries problems (a manifest that didn't parse, an
+      // unresolved reference) foregrounds the Console so the notice isn't
+      // silently hidden behind the Timeline tab.
       if (
         result.source !== undefined &&
-        (result.source.droppedInlineComments > 0 ||
-          (result.source.kind === 'folder' &&
-            (result.source.manifestError !== undefined ||
-              (result.source.projectErrors?.length ?? 0) > 0)))
+        result.source.kind === 'folder' &&
+        (result.source.manifestError !== undefined ||
+          (result.source.projectErrors?.length ?? 0) > 0)
       ) {
         setLayout((l) => openPanelById(l, 'console'));
       }
@@ -842,8 +842,15 @@ export function App() {
   // the synchronous flush. Returns true when the text is well-formed.
   const reparseFileNow = useCallback(
     (path: string, text: string): boolean => {
-      if (path.endsWith('.cvox')) {
-        const r = parseCvox(text);
+      // Which files are geometry is a manifest fact, not an extension one —
+      // read it off the live source rather than the path suffix.
+      const current = loadedRef.current?.source;
+      const isGeometry =
+        current !== undefined &&
+        current.kind === 'folder' &&
+        isGeometryPath(path, current.cvoxFile.name, current.manifest);
+      if (isGeometry) {
+        const r = parseGeometryText(text);
         if (!r.ok) {
           setFileParseError(path, r.message);
           return false;
@@ -1293,7 +1300,20 @@ export function App() {
         ) {
           return current;
         }
-        const isCvox = norm.toLowerCase().endsWith('.cvox');
+        // Creating a file used to state its role through the extension: a
+        // `.cvox` name meant geometry, any other `.json` meant a palette or an
+        // animation clip. With one extension for everything that signal is
+        // gone, so fall back to the layout conventions of SPEC §3 — a clip
+        // lives under `anims/`, the palette binding is conventionally
+        // `palette.json` — and treat every other new `.json` as geometry,
+        // which is the only thing this flow ever templated.
+        // TODO: replace with an explicit type picker in the create UI.
+        const lower = norm.toLowerCase();
+        const isCvox =
+          lower.endsWith('.json') &&
+          !lower.startsWith('anims/') &&
+          !lower.endsWith('/palette.json') &&
+          lower !== 'palette.json';
         let text: string;
         let parsed: Cvox | null = null;
         if (isCvox) {
@@ -1310,7 +1330,7 @@ export function App() {
             voxels: [[[AIR]]],
           };
           parsed = { palette: [], parts: [part] };
-          text = serializeCvox(parsed);
+          text = serializeGeometry(parsed);
         } else {
           text = norm.toLowerCase().endsWith('.json') ? '{}\n' : '';
         }
@@ -2522,7 +2542,6 @@ export function App() {
           cvoxFile: src.cvoxFile,
           manifest,
           manifestFile,
-          droppedInlineComments: src.droppedInlineComments,
         };
       } else {
         next = { ...src, synthetic: true, manifest, manifestFile };
@@ -2996,7 +3015,7 @@ export function App() {
       setManifestParseError(null);
       return;
     }
-    const cvoxR = parseCvox(src.cvoxFile.text);
+    const cvoxR = parseGeometryText(src.cvoxFile.text);
     setCvoxParseError(cvoxR.ok ? null : cvoxR.message);
     if (src.kind === 'folder' && src.manifestFile !== undefined) {
       let err: string | null = null;
@@ -3013,15 +3032,16 @@ export function App() {
     // Per-file (non-primary) parse errors need the same re-derivation:
     // the restored snapshot can predate or postdate the text a live
     // error was computed from. Mirrors the per-file typing pipeline —
-    // .cvox parses, .json checks JSON well-formedness.
+    // geometry files parse as geometry, other .json only for
+    // well-formedness.
     setFileParseErrors(() => {
       const next = new Map<string, string>();
       if (src.kind !== 'folder' || src.files === undefined) return next;
       for (const [path, entry] of src.files) {
         if (path === src.cvoxFile.name) continue; // covered by cvoxParseError
         if (path === src.manifestFile?.name) continue;
-        if (path.endsWith('.cvox')) {
-          const r = parseCvox(entry.text);
+        if (isGeometryPath(path, src.cvoxFile.name, src.manifest)) {
+          const r = parseGeometryText(entry.text);
           if (!r.ok) next.set(path, r.message);
         } else if (path.endsWith('.json')) {
           try {
@@ -3133,11 +3153,11 @@ export function App() {
       cvoxParseError !== null ||
       fileParseErrors.size > 0;
     if (effectiveViewMode === 'anim') {
-      d.move = 'Rest editing lives in the Rig and Cvox views';
-      d.rotate = 'Rest editing lives in the Rig and Cvox views';
-      d.attach = 'Voxel editing lives in the Rig and Cvox views for now';
-      d.erase = 'Voxel editing lives in the Rig and Cvox views for now';
-      d.paint = 'Voxel editing lives in the Rig and Cvox views for now';
+      d.move = 'Rest editing lives in the Rig and Geometry views';
+      d.rotate = 'Rest editing lives in the Rig and Geometry views';
+      d.attach = 'Voxel editing lives in the Rig and Geometry views for now';
+      d.erase = 'Voxel editing lives in the Rig and Geometry views for now';
+      d.paint = 'Voxel editing lives in the Rig and Geometry views for now';
     } else if (parseBroken) {
       const msg = 'Fix the syntax errors first';
       d.move = msg;
@@ -3293,7 +3313,7 @@ export function App() {
   const [layout, setLayout] = useState<LayoutNode | null>(initialLayout);
 
   // Display title for any panel. Static for tool panels; the source files take
-  // their actual file name so the dock tab reads "voxels.cvox" / "cuboidy.json"
+  // their actual file name so the dock tab reads "voxels.json" / "cuboidy.json"
   // (matching the file tree). Used for both tab labels and the + menu.
   const panelTitle = useCallback(
     (id: LeafId): string => {
@@ -3319,7 +3339,7 @@ export function App() {
         case 'console':
           return 'Console';
         case 'cvox':
-          return source?.cvoxFile.name ?? 'voxels.cvox';
+          return source?.cvoxFile.name ?? 'voxels.json';
         case 'manifest':
           return (
             (source?.kind === 'folder' ? source.manifestFile?.name : undefined) ??
@@ -3741,7 +3761,7 @@ export function App() {
                   }
                   title={
                     cvoxParseError !== null || fileParseErrors.size > 0
-                      ? 'Fix cvox syntax errors to add parts'
+                      ? 'Fix the geometry file errors to add parts'
                       : 'New part (child of the selected part)'
                   }
                   onClick={handleStartCreatePart}
@@ -3930,7 +3950,7 @@ export function App() {
             source: source.cvoxFile.name,
             message: (
               <>
-                <strong>Syntax error:</strong> {cvoxParseError}
+                <strong>Error:</strong> {cvoxParseError}
               </>
             ),
           });
@@ -3947,7 +3967,7 @@ export function App() {
               'cuboidy.json',
             message: (
               <>
-                <strong>Syntax error:</strong> {manifestErr}
+                <strong>Error:</strong> {manifestErr}
               </>
             ),
           });
@@ -3967,23 +3987,7 @@ export function App() {
             source: p,
             message: (
               <>
-                <strong>Syntax error:</strong> {msg}
-              </>
-            ),
-          });
-        }
-        if (source.droppedInlineComments > 0) {
-          entries.push({
-            severity: 'warning',
-            source: source.cvoxFile.name,
-            message: (
-              <>
-                <strong>
-                  {source.droppedInlineComments} inline comment(s) will not be
-                  preserved.
-                </strong>{' '}
-                Only file-header comments (consecutive <code>//</code> lines
-                before the first declaration) round-trip through the editor.
+                <strong>Error:</strong> {msg}
               </>
             ),
           });
@@ -4117,7 +4121,7 @@ function Notices({ loaded }: { loaded: LoadResult }) {
     <aside className="notices">
       {loaded.error !== undefined && (
         <div className="notice error">
-          <strong>Syntax error:</strong> {loaded.error}
+          <strong>Error:</strong> {loaded.error}
         </div>
       )}
     </aside>

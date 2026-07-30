@@ -156,23 +156,9 @@ describe('serializeCvox — round-trip', () => {
     return text;
   }
 
-  it('round-trips the wolf model', async () => {
-    const fs = await import('node:fs/promises');
-    const text = await fs.readFile(
-      new URL('../../../../models/wolf/voxels.cvox', import.meta.url),
-      'utf-8',
-    );
-    roundTrip(text);
-  });
-
-  it('round-trips the crown model', async () => {
-    const fs = await import('node:fs/promises');
-    const text = await fs.readFile(
-      new URL('../../../../models/crown/voxels.cvox', import.meta.url),
-      'utf-8',
-    );
-    roundTrip(text);
-  });
+  // The corpus round-trips moved to geometry-parse.test.ts when the models
+  // became JSON; that file asserts the stronger property (byte-level canonical
+  // fixed point) against the same 15 files.
 
   it('round-trips a part with rot on both pivot and socket', () => {
     roundTrip(
@@ -215,12 +201,4 @@ describe('serializeCvox — idempotence (canonical fixed point)', () => {
     expectIdempotent('palette #FFF\npart p\nsize 1 1 1\nvoxels { 0 }');
   });
 
-  it('is idempotent for the wolf model', async () => {
-    const fs = await import('node:fs/promises');
-    const text = await fs.readFile(
-      new URL('../../../../models/wolf/voxels.cvox', import.meta.url),
-      'utf-8',
-    );
-    expectIdempotent(text);
-  });
 });

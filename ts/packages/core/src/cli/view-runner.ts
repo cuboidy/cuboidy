@@ -10,7 +10,7 @@ import {
 
 // cuboidy-view: assemble a model in rest pose, project to 2D from one or
 // more cardinal view directions, and emit each view as a grid of palette
-// index characters (the same alphabet used in voxels.cvox so a reader can
+// index characters (the same alphabet used in voxels.json so a reader can
 // directly compare the projection against source rows).
 //
 // Coordinate convention follows SPEC §4: +X right, +Y up, −Z forward
@@ -95,12 +95,9 @@ function renderModel(asm: Assembly, opts: ViewOptions): RunResult {
     );
   }
   out.push('');
-  const primary = asm.geometries[0];
-  if (primary !== undefined && primary.cvox.header) {
-    out.push(`header (from ${primary.path}):`);
-    for (const line of primary.cvox.header) out.push('  ' + line);
-    out.push('');
-  }
+  // The header block printed here came from the text format's leading comments
+  // (SPEC §7.11.1, retired). JSON geometry carries none, so there is nothing
+  // left to echo.
   out.push(formatPalette(asm.palette));
   out.push('');
   out.push('voxel cell legend: each character is the palette index of the front-most voxel along the view direction; `.` = empty');

@@ -115,18 +115,20 @@ describe('cuboidy.schema.json — parity corpus (runtime-invalid inputs)', () =>
   it('rejects duplicate geometry entries', () => {
     expectBothReject('dup geometry', {
       ...base,
-      geometry: ['voxels.cvox', 'voxels.cvox'],
+      geometry: ['voxels.json', 'voxels.json'],
     });
   });
 
   it('rejects §8-violating geometry refs', () => {
     for (const bad of [
-      '/absolute.cvox',
-      'a\\b.cvox',
+      '/absolute.json',
+      'a\\b.json',
       'x.txt',
-      'a//b.cvox',
-      'http://x/a.cvox',
-      '.cvox',
+      'a//b.json',
+      'http://x/a.json',
+      '.json',
+      // The retired text extension is no longer a valid geometry reference.
+      'voxels.cvox',
     ]) {
       expectBothReject(`geometry ${bad}`, { ...base, geometry: [bad] });
     }

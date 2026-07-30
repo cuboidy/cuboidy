@@ -3,6 +3,7 @@ import { parseCvox } from '../src/cvox/parse.js';
 import { lintCvox } from '../src/lint/voxel-rules.js';
 import type { Cvox } from '../src/cvox/types.js';
 import { readFixtureText } from './helpers/fixtures.js';
+import { parseGeometryText } from '../src/geometry/parse.js';
 
 function unwrap(input: string): Cvox {
   const r = parseCvox(input);
@@ -174,17 +175,22 @@ describe('lintCvox — H02 fractional pivot', () => {
   });
 });
 
-describe('lintCvox — fixture parity', () => {
+// The lint rules operate on the AST, so they are unaffected by the container —
+// but the corpus they run against is now JSON, and reading it through the real
+// reader is what makes this a parity check rather than a unit test.
+describe('lintCvox — corpus parity', () => {
+  async function loadCorpus(path: string) {
+    const r = parseGeometryText(await readFixtureText(path));
+    if (!r.ok) throw new Error(`${path}: ${r.message}`);
+    return r.value;
+  }
+
   it('wolf model produces no lint diagnostics', async () => {
-    const text = await readFixtureText('models/wolf/voxels.cvox');
-    const cvox = unwrap(text);
-    expect(lintCvox(cvox)).toEqual([]);
+    expect(lintCvox(await loadCorpus('models/wolf/voxels.json'))).toEqual([]);
   });
 
   it('crown model produces no lint diagnostics', async () => {
-    const text = await readFixtureText('models/crown/voxels.cvox');
-    const cvox = unwrap(text);
-    expect(lintCvox(cvox)).toEqual([]);
+    expect(lintCvox(await loadCorpus('models/crown/voxels.json'))).toEqual([]);
   });
 });
 

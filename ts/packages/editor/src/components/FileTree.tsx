@@ -33,12 +33,12 @@ interface Props {
 
 // Files the loader reads as text (and therefore the only ones worth
 // creating in the editor) — mirrors load-model's TEXT_FILE_RE.
-const CREATABLE_RE = /^[^\\:]+\.(cvox|json|md|txt)$/i;
+const CREATABLE_RE = /^[^\\:]+\.(json|md|txt)$/i;
 
 // The Files sidebar: the WHOLE package as a VS Code Explorer-shaped tree
 // (v0.7 — every text file collected at load, not just the fixed pair).
 // Clicking a file brings its dock panel to the foreground: the primary
-// geometry opens the classic cvox panel, cuboidy.json the manifest
+// geometry opens the dedicated geometry panel, cuboidy.json the manifest
 // panel, and any other file a dynamic `file:<path>` editor tab.
 //
 // CRUD: the toolbar "+ New file" / "+ New folder" create in the selected
@@ -208,10 +208,36 @@ export function FileTree({
         : [source.cvoxFile.name];
     return new Set(refs.map(normalizePath));
   }, [source]);
-  const isUnreferenced = (path: string): boolean =>
-    loadedGeometry !== null &&
-    path.toLowerCase().endsWith('.cvox') &&
-    !loadedGeometry.has(normalizePath(path));
+
+  // Everything else the manifest accounts for: the palette binding and any
+  // externalized animation clip. Needed because these are `.json` too and must
+  // not be mistaken for stray geometry.
+  const referencedNonGeometry = useMemo(() => {
+    const out = new Set<string>();
+    if (source.kind !== 'folder' || source.manifest === undefined) return out;
+    if (source.manifest.palette !== undefined) {
+      out.add(normalizePath(source.manifest.palette));
+    }
+    for (const clip of Object.values(source.manifest.animations ?? {})) {
+      if (typeof clip === 'string') out.add(normalizePath(clip));
+    }
+    return out;
+  }, [source]);
+  // A stray geometry file the manifest does not list (lints as W07). The
+  // extension used to identify one; with a single extension the discriminator
+  // left is "a .json the model does not otherwise account for" — the manifest,
+  // the bound palette and the referenced clips are all known here.
+  const isUnreferenced = (path: string): boolean => {
+    if (loadedGeometry === null || source.kind !== 'folder') return false;
+    const norm = normalizePath(path);
+    if (!norm.toLowerCase().endsWith('.json')) return false;
+    if (loadedGeometry.has(norm)) return false;
+    if (norm === normalizePath(source.manifestFile?.name ?? '')) return false;
+    return !referencedNonGeometry.has(norm);
+  };
+
+  const isGeometryRow = (path: string): boolean =>
+    loadedGeometry !== null && loadedGeometry.has(normalizePath(path));
 
   const rowOps = (path: string): RowOps => {
     if (!canEdit) {
@@ -274,7 +300,7 @@ export function FileTree({
     if (!validateNewPath(newPath)) return false;
     const oldExt = oldPath.slice(oldPath.lastIndexOf('.')).toLowerCase();
     const newExt = name.slice(name.lastIndexOf('.')).toLowerCase();
-    if (oldExt === '.cvox' || oldExt === '.json') return newExt === oldExt;
+    if (oldExt === '.json') return newExt === oldExt;
     return true;
   };
 
@@ -572,6 +598,7 @@ export function FileTree({
                   renamingPath={renamingPath}
                   renamingDir={renamingDir}
                   isUnreferenced={isUnreferenced}
+                  isGeometry={isGeometryRow}
                   rowOps={rowOps}
                   validateNewPath={validateNewPath}
                   validateNewFolderIn={validateNewFolderIn}
@@ -624,7 +651,7 @@ export function FileTree({
               onClick={() => onOpenPath(primary)}
             >
               <span className="tree-caret-spacer" aria-hidden="true" />
-              <span className="tree-icon">{fileIcon(primary)}</span>
+              <span className="tree-icon">{fileIcon(primary, 'geometry')}</span>
               <span className="tree-name">{primary}</span>
             </div>
           </li>
@@ -730,6 +757,7 @@ interface DirChildrenProps {
   renamingPath: string | null;
   renamingDir: string | null;
   isUnreferenced: (path: string) => boolean;
+  isGeometry: (path: string) => boolean;
   rowOps: (path: string) => RowOps;
   validateNewPath: (path: string) => boolean;
   validateNewFolderIn: (dir: string) => (name: string) => boolean;
@@ -888,7 +916,7 @@ function DirChildren(props: DirChildrenProps) {
           <div className="tree-row draft" style={{ paddingLeft: pad }}>
             <span className="tree-caret-spacer" aria-hidden="true" />
             <InlineNameInput
-              initial="new.cvox"
+              initial="new.json"
               leadingIcon={fileIcon}
               ariaLabel={`New file in ${dirPath === '' ? 'package root' : dirPath}`}
               validate={(name) =>
@@ -911,6 +939,7 @@ function DirChildren(props: DirChildrenProps) {
           selected={props.selectedFile === f.path}
           error={props.fileErrors.get(f.path)}
           isNew={f.path === props.newBadgePath}
+          geometry={props.isGeometry(f.path)}
           unreferenced={props.isUnreferenced(f.path)}
           renaming={props.renamingPath === f.path}
           ops={props.rowOps(f.path)}
@@ -959,6 +988,7 @@ function FileNode({
   onCommitRename,
   onCancelRename,
   onDeleteFile,
+  geometry,
   onAddFileToModel,
 }: {
   path: string;
@@ -968,6 +998,7 @@ function FileNode({
   error?: string | undefined;
   isNew?: boolean;
   unreferenced?: boolean;
+  geometry?: boolean;
   renaming: boolean;
   ops: RowOps;
   dragProps: {
@@ -1018,7 +1049,9 @@ function FileNode({
         {...dragProps}
       >
         <span className="tree-caret-spacer" aria-hidden="true" />
-        <span className="tree-icon">{fileIcon(name)}</span>
+        <span className="tree-icon">
+          {fileIcon(name, geometry === true ? 'geometry' : 'data')}
+        </span>
         <span className="tree-name">{name}</span>
         {isNew === true && <span className="badge">new</span>}
         {ops.addReason !== 'hidden' && (
