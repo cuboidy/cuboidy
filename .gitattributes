@@ -1,0 +1,10 @@
+# Cuboidy files have a canonical byte form: the serializers emit `\n`, and the
+# test suite asserts a byte-level fixed point on every shipped model (parse →
+# serialize must reproduce the file exactly). A platform-rewritten working tree
+# breaks that — with `core.autocrlf=true`, a Windows checkout hands the reader
+# CRLF files that every tool then rewrites to LF, so `cuboidy-part` or a save
+# from the editor shows the whole file as changed.
+#
+# So the working tree is LF everywhere, on every platform. Nothing in this repo
+# is Windows-specific (no .bat/.cmd/.ps1), so there is nothing to exempt.
+* text=auto eol=lf
