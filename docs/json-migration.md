@@ -1,7 +1,19 @@
 # Migrating geometry from `.cvox` to JSON
 
-**Status: planned, 2026-07-31.** Decision taken after measuring the format's
-claimed advantages rather than assuming them — see "Why" below.
+**Status: done, 2026-07-31**, on branch `json-migration` (not yet merged).
+Decision taken after measuring the format's claimed advantages rather than
+assuming them — see "Why" below.
+
+| Commit | What |
+|---|---|
+| `092e544` | phases 0–3: the format, the reader/writer, the corpus, every consumer |
+| `76fe4a1` | phase 4: `src/cvox/` deleted, survivors moved, fixtures rebuilt, docs |
+| `19f29f6` | the `Cvox` → `Geometry` rename across core and the editor |
+
+Final state: core 467 tests green, editor E2E 7/7, all five CLIs exit 0 on all
+13 models, `GeometrySchema` validates 15/15 shipped geometry files. The only
+`.cvox` strings left in `ts/` are three comments that name the removed format
+on purpose.
 
 ## Why
 
