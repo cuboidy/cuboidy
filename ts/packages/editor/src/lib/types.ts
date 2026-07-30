@@ -3,7 +3,6 @@ import type {
   InlineAnimation,
   KeyAttr,
   Manifest,
-  Palette,
 } from '@cuboidy/core';
 
 // What the editor currently has loaded.
