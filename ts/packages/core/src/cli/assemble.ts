@@ -52,7 +52,7 @@ export interface Assembly {
   // Topologically-sorted parts so consumers iterating in order see
   // parents before children. Useful when emitting per-part diagnostics.
   order: readonly ManifestPart[];
-  // Per manifest part (in `order`): the resolved cvox geometry, its
+  // Per manifest part (in `order`): the resolved geometry geometry, its
   // palette remap into `palette`, and its SPEC §7.7 rest world transform
   // from the shared rig-transform layer (rotation-aware). Quad-based
   // consumers (cuboidy-snap) render the true orientation from here;
@@ -215,7 +215,7 @@ function buildEffectivePalette(
   const remap = new Map<string, readonly number[] | null>();
   let first = true;
   for (const g of geometries) {
-    const inline = g.cvox.palette;
+    const inline = g.geometry.palette;
     if (inline.length === 0) {
       // §6.10: a palette-less file may only use color indices when a
       // binding exists. Indices contributed by cross-file reuse don't
@@ -274,7 +274,7 @@ function maxIndexByFile(
   const max = new Map<string, number>();
   for (const g of geometries) {
     let m = max.get(g.path) ?? AIR;
-    for (const part of g.cvox.parts) {
+    for (const part of g.geometry.parts) {
       for (const layer of part.voxels) {
         for (const row of layer) {
           for (const idx of row) {
@@ -304,7 +304,7 @@ function assembleWorld(
     { part: Part; remap: readonly number[] | null }
   >();
   for (const g of geometries) {
-    for (const part of g.cvox.parts) {
+    for (const part of g.geometry.parts) {
       if (cvoxByName.has(part.name)) {
         warnings.push(
           `part "${part.name}" is defined in more than one geometry file — using the first definition`,
@@ -341,7 +341,7 @@ function assembleWorld(
   for (const mp of order) {
     const entry = cvoxByName.get(mp.name);
     if (entry === undefined) {
-      warnings.push(`part "${mp.name}" in manifest has no matching cvox part — skipping`);
+      warnings.push(`part "${mp.name}" in manifest has no matching geometry part — skipping`);
       continue;
     }
     const { part, remap } = entry;

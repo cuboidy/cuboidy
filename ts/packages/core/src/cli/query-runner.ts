@@ -19,10 +19,10 @@ import {
 //   --at=<x>,<y>,<z>
 //   --core=<axis>,<pin1>=<v1>,<pin2>=<v2>
 //
-// Output shape (cvox-aligned):
+// Output shape (geometry-aligned):
 //   at(3,4,5)=0                              palette-index char, `.` = AIR
 //   core(y,x=3,z=4) y=0..4: 0.0.1            one-char-per-step string,
-//                                            same alphabet as cvox voxel rows
+//                                            same alphabet as geometry voxel rows
 //
 // The core string uses a `step` chosen automatically: 1 when all
 // voxels on the line sit at integer Y (or X / Z) positions, 0.5 when

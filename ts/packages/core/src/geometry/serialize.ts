@@ -1,6 +1,6 @@
 import { serializeColor } from './palette.js';
 import { indexToChar } from './voxel-row.js';
-import type { Cvox, Part, Pivot, Size, Socket, Vec3 } from './types.js';
+import type { Geometry, Part, Pivot, Size, Socket, Vec3 } from './types.js';
 import type { GeometryDoc } from './schema.js';
 
 // SPEC §7: canonical emission of a geometry file. Two layers, because callers
@@ -14,12 +14,12 @@ import type { GeometryDoc } from './schema.js';
 
 export const SPEC_VERSION = '0.9';
 
-export function toGeometryDoc(cvox: Cvox): GeometryDoc {
-  const doc: GeometryDoc = { version: SPEC_VERSION, parts: cvox.parts.map(toPart) };
+export function toGeometryDoc(geometry: Geometry): GeometryDoc {
+  const doc: GeometryDoc = { version: SPEC_VERSION, parts: geometry.parts.map(toPart) };
   // An empty palette means the file declared none (§7.4) and binds an external
   // one via the manifest; absence must round-trip.
-  if (cvox.palette.length > 0) {
-    doc.palette = cvox.palette.map(serializeColor);
+  if (geometry.palette.length > 0) {
+    doc.palette = geometry.palette.map(serializeColor);
   }
   return doc;
 }
@@ -76,8 +76,8 @@ function rowToText(cells: readonly number[]): string {
 // pair. Nobody hand-writes JSON that way and nobody wants to read a diff of it.
 // This emitter keeps coordinate triples inline and puts one Y-layer per line,
 // mirroring how the text format grouped layers — the grid stays scannable.
-export function serializeGeometry(cvox: Cvox): string {
-  return formatGeometryDoc(toGeometryDoc(cvox));
+export function serializeGeometry(geometry: Geometry): string {
+  return formatGeometryDoc(toGeometryDoc(geometry));
 }
 
 export function formatGeometryDoc(doc: GeometryDoc): string {

@@ -21,5 +21,5 @@ export const Identifier = z
     'must match the identifier regex (letters/digits/_/-, no leading digit or hyphen)',
   )
   .refine((s) => !RESERVED_KEYWORD_SET.has(s), {
-    message: 'must not be a reserved cvox keyword',
+    message: 'must not be a reserved keyword',
   });

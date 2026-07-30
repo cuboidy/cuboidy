@@ -10,7 +10,7 @@ export type SplitDir = 'row' | 'col';
 export type Side = 'a' | 'b';
 
 // Every leaf hosts dockable panels (tabs). Tool panels sit on the sides; the
-// source panels (preview / cvox / manifest) are the model-viewing surfaces —
+// source panels (preview / geometry / manifest) are the model-viewing surfaces —
 // formerly the bespoke in-center TabBar, now first-class dock tabs you can
 // move, split and reorder like any other. (The timeline becomes its own
 // panel in a later Phase D step.)
@@ -22,7 +22,7 @@ export type ToolPanelId =
   | 'palette'
   | 'inspector'
   | 'console';
-export type SourcePanelId = 'preview' | 'cvox' | 'manifest' | 'timeline';
+export type SourcePanelId = 'preview' | 'geometry' | 'manifest' | 'timeline';
 // Dynamic per-file editor tabs (v0.7 multi-file packages): one panel per
 // package file, keyed by its /-relative path. Opened from the Files tree;
 // not in ALL_PANELS (closing one just removes it — reopen via the tree).
@@ -60,7 +60,7 @@ const split = (
 
 // Every dockable panel. The leaf "+" menu offers any of these not currently
 // placed anywhere (so a closed panel can always be reopened). Titles for the
-// dynamic ones (cvox/manifest take their file name) live in App.panelTitle.
+// dynamic ones (geometry/manifest take their file name) live in App.panelTitle.
 export const ALL_PANELS: LeafId[] = [
   'files',
   'model',
@@ -69,7 +69,7 @@ export const ALL_PANELS: LeafId[] = [
   'palette',
   'inspector',
   'preview',
-  'cvox',
+  'geometry',
   'manifest',
   'timeline',
   'console',
@@ -77,7 +77,7 @@ export const ALL_PANELS: LeafId[] = [
 
 // Default layout (nested binary): left column = (Files with Model tabbed
 // behind it — both project-wide) over (Parts over Properties); center column
-// = the source panels (Preview/cvox/manifest as tabs) over the bottom leaf
+// = the source panels (Preview/geometry/manifest as tabs) over the bottom leaf
 // (Timeline with the Console tabbed behind it, VS Code style); right column =
 // Palette over the Key Inspector (the keyframe editor's selection detail,
 // kept near the timeline's right end — where it used to live as a fixed
@@ -96,7 +96,7 @@ export const initialLayout: LayoutNode = split(
     'row',
     split(
       'col',
-      { kind: 'leaf', panels: ['preview', 'cvox', 'manifest'], active: 'preview' },
+      { kind: 'leaf', panels: ['preview', 'geometry', 'manifest'], active: 'preview' },
       { kind: 'leaf', panels: ['timeline', 'console'], active: 'timeline' },
       0.68,
     ),

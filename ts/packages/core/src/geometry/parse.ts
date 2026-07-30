@@ -2,11 +2,11 @@ import { GeometrySchema, type GeometryDoc } from './schema.js';
 import { locateJsonPath } from './locate.js';
 import { parseHexColor } from './palette.js';
 import { charToIndex } from './voxel-row.js';
-import type { Color, Cvox, Part, Pivot, Socket, Vec3 } from './types.js';
+import type { Color, Geometry, Part, Pivot, Socket, Vec3 } from './types.js';
 import { err, ok, type CuboidyErrorCode, type Result } from '../result.js';
 
 // SPEC §7: reads a geometry file into the same AST every downstream consumer
-// already expects — lintCvox, validateProject, buildMesh and the renderers are
+// already expects — lintGeometry, validateProject, buildMesh and the renderers are
 // untouched by the container change.
 //
 // Validation is delegated wholly to GeometrySchema so there is exactly one
@@ -14,7 +14,7 @@ import { err, ok, type CuboidyErrorCode, type Result } from '../result.js';
 // This module's own job is the mapping that Zod cannot express: hex strings to
 // Color, row strings to palette indices, and the §7.7 default pivot.
 
-export function parseGeometry(json: unknown): Result<Cvox> {
+export function parseGeometry(json: unknown): Result<Geometry> {
   const result = GeometrySchema.safeParse(json);
   if (!result.success) {
     const issue = result.error.issues[0]!;
@@ -37,7 +37,7 @@ export function parseGeometry(json: unknown): Result<Cvox> {
 // this one HAS the text, it can resolve the schema's document path back to a
 // line and say so — the `line N:` prefix the retired text format reported and
 // the only navigation aid an author gets in a plain textarea.
-export function parseGeometryText(text: string): Result<Cvox> {
+export function parseGeometryText(text: string): Result<Geometry> {
   let json: unknown;
   try {
     json = JSON.parse(text);
@@ -55,7 +55,7 @@ export function parseGeometryText(text: string): Result<Cvox> {
 
 // ----- AST construction -------------------------------------------------
 
-function toAst(doc: GeometryDoc): Cvox {
+function toAst(doc: GeometryDoc): Geometry {
   return {
     // An absent palette is an EMPTY array in the AST, not a missing field:
     // length 0 is the unambiguous "declared none" signal the rest of the

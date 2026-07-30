@@ -4,7 +4,7 @@ import {
   parseGeometryText,
   parseManifest,
   parsePaletteFile,
-  type Cvox,
+  type Geometry,
   type InlineAnimation,
   type Manifest,
   type Palette,
@@ -19,7 +19,7 @@ const CUBOIDY_EXT = /\.cuboidy$/i;
 // .json (SPEC §8); .md/.txt ride along so docs survive a ZIP
 // round-trip. Binary assets (images etc.) are skipped — reading them as
 // text would garble them.
-const TEXT_FILE_RE = /\.(cvox|json|md|txt)$/i;
+const TEXT_FILE_RE = /\.(json|md|txt)$/i;
 
 // Public entry points. Each callsite knows what kind of source it has
 // (single File, FileList from <input webkitdirectory>, FSA directory
@@ -31,7 +31,7 @@ const TEXT_FILE_RE = /\.(cvox|json|md|txt)$/i;
 
 export async function loadFromFile(file: File): Promise<LoadResult> {
   const text = await file.text();
-  return buildCvoxOnlyResult(file.name, text);
+  return buildGeometryOnlyResult(file.name, text);
 }
 
 // Single-file entrypoint that dispatches on extension. .cuboidy goes to
@@ -141,22 +141,22 @@ async function collectEntry(
 
 // ── shared assembly ──────────────────────────────────────────────────
 
-function buildCvoxOnlyResult(name: string, text: string): LoadResult {
-  const cvoxR = parseGeometryText(text);
-  if (!cvoxR.ok) {
-    return { error: cvoxR.message, cvoxFileName: name };
+function buildGeometryOnlyResult(name: string, text: string): LoadResult {
+  const geometryR = parseGeometryText(text);
+  if (!geometryR.ok) {
+    return { error: geometryR.message, geometryFileName: name };
   }
   const source: LoadedSource = {
-    kind: 'cvox-only',
-    cvox: cvoxR.value,
-    cvoxFile: { name, text },
+    kind: 'geometry-only',
+    geometry: geometryR.value,
+    geometryFile: { name, text },
   };
-  return { source, cvoxFileName: name };
+  return { source, geometryFileName: name };
 }
 
 // Folder assembly (v0.7): resolve the manifest's references against the
 // collected file map. The PRIMARY geometry file (first `geometry` entry,
-// default voxels.json) plays the pre-v0.7 single-cvox role — it is the
+// default voxels.json) plays the pre-v0.7 single-geometry role — it is the
 // file the editor edits; the rest are parsed into `geometries` and load
 // problems land in `projectErrors` (shown in the Console panel).
 function buildFolderResult(
@@ -190,17 +190,17 @@ function buildFolderResult(
     return { error: `No ${primary} in folder '${folderName}'` };
   }
 
-  const cvoxR = parseGeometryText(primaryText);
-  if (!cvoxR.ok) {
-    return { error: cvoxR.message, cvoxFileName: primary };
+  const geometryR = parseGeometryText(primaryText);
+  if (!geometryR.ok) {
+    return { error: geometryR.message, geometryFileName: primary };
   }
 
   const refs = resolveProjectRefs(manifest, (p) => fileTexts.get(p), {
     path: primary,
-    cvox: cvoxR.value,
+    geometry: geometryR.value,
   });
   const { geometries, externalPalette, externalAnims, projectErrors } = refs;
-  const resolvedPrimary = geometries.get(primary) ?? cvoxR.value;
+  const resolvedPrimary = geometries.get(primary) ?? geometryR.value;
 
   const files = new Map<string, FileEntry>();
   for (const [path, text] of fileTexts) {
@@ -212,8 +212,8 @@ function buildFolderResult(
     folderName,
     synthetic: false,
     ...(opts.handle !== undefined && { handle: opts.handle }),
-    cvox: resolvedPrimary,
-    cvoxFile: { name: primary, text: primaryText },
+    geometry: resolvedPrimary,
+    geometryFile: { name: primary, text: primaryText },
     ...(manifest !== undefined && { manifest }),
     ...(manifestFile !== undefined && { manifestFile }),
     ...(manifestError !== undefined && { manifestError }),
@@ -223,15 +223,15 @@ function buildFolderResult(
     ...(externalAnims !== undefined && { externalAnims }),
     ...(projectErrors.length > 0 && { projectErrors }),
   };
-  return { source, cvoxFileName: primary };
+  return { source, geometryFileName: primary };
 }
 
 // ── reference resolution ─────────────────────────────────────────────
 
 export interface ResolvedProjectRefs {
   // Geometry ASTs — including the primary's entry, so callers replacing
-  // the live cvox should read it back from here.
-  geometries: Map<string, Cvox>;
+  // the live geometry should read it back from here.
+  geometries: Map<string, Geometry>;
   externalPalette?: Palette;
   externalAnims?: Map<string, { path: string; anim: InlineAnimation }>;
   projectErrors: Array<{ file: string; message: string }>;
@@ -241,22 +241,22 @@ export interface ResolvedProjectRefs {
 // binding, §6.3 animation string refs — against the package's current
 // file texts. Pure; used by the loader AND by the editor's manifest
 // re-parse, so the derived maps never go stale when cuboidy.json is
-// edited directly. `primary` is the live-edited cvox (its in-memory AST
+// edited directly. `primary` is the live-edited geometry (its in-memory AST
 // wins over its file-map snapshot).
 export function resolveProjectRefs(
   manifest: Manifest | undefined,
   getText: (path: string) => string | undefined,
-  primary: { path: string; cvox: Cvox },
+  primary: { path: string; geometry: Geometry },
 ): ResolvedProjectRefs {
   const projectErrors: Array<{ file: string; message: string }> = [];
-  const geometries = new Map<string, Cvox>();
+  const geometries = new Map<string, Geometry>();
 
   const geometryRefs = (
     manifest !== undefined ? manifestGeometry(manifest) : [primary.path]
   ).map(normalizePath);
   for (const ref of geometryRefs) {
     if (ref === primary.path) {
-      geometries.set(ref, primary.cvox);
+      geometries.set(ref, primary.geometry);
       continue;
     }
     const text = getText(ref);

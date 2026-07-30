@@ -11,7 +11,7 @@ import { Canvas, type ThreeEvent } from '@react-three/fiber';
 import type { Object3D } from 'three';
 import {
   AIR,
-  type Cvox,
+  type Geometry,
   type Manifest,
   type Palette,
   type Part,
@@ -37,7 +37,7 @@ import {
 import { TransformGizmo } from './TransformGizmo.js';
 
 interface Props {
-  cvox: Cvox;
+  geometry: Geometry;
   // Required position so the App can pass `manifest: undefined` directly
   // under `exactOptionalPropertyTypes: true` (the strict optional rule
   // forbids omit-OR-undefined slots without explicit `| undefined`).
@@ -46,7 +46,7 @@ interface Props {
   hiddenParts: ReadonlySet<string>;
   // Per-part palette override (SPEC §6.10): with no manifest binding,
   // each part resolves against its DEFINING file's inline palette.
-  // Absent = every part uses cvox.palette (bound or single-file model).
+  // Absent = every part uses geometry.palette (bound or single-file model).
   partPalettes?: ReadonlyMap<string, Palette> | undefined;
   // Selection gizmos (pivot / sockets / frame) for the selected part.
   selectedPart: string | null;
@@ -94,7 +94,7 @@ interface Props {
 const ghostNoRaycast = () => null;
 
 // Renders the model in one of two static modes:
-//   - Cvox view: every part sits at world origin [0,0,0], the literal
+//   - Geometry view: every part sits at world origin [0,0,0], the literal
 //     file-local convention. Multi-part files overlap; the sidebar
 //     visibility toggles are the way to peel layers.
 //   - Rig view: the rest pose through the SAME RiggedParts transform
@@ -105,14 +105,14 @@ const ghostNoRaycast = () => null;
 // none is loaded. The animation view (parts in motion) lives in its own
 // AnimationViewport component — this one renders the rest pose only.
 //
-// Camera target / radius are computed from the full cvox bounding box,
+// Camera target / radius are computed from the full geometry bounding box,
 // not the visible subset, so toggling visibility doesn't make the camera
 // jump. (drei OrbitControls re-snaps to a changed `target` prop.) They
 // are additionally frozen against edits via `framingKey` — see the memo
 // below.
 
 export function VoxelScene({
-  cvox,
+  geometry,
   manifest,
   viewMode,
   hiddenParts,
@@ -131,12 +131,12 @@ export function VoxelScene({
   onStrokeVoxels,
   framingKey,
 }: Props) {
-  const rigMode = viewMode !== 'cvox' && manifest !== undefined;
+  const rigMode = viewMode !== 'geometry' && manifest !== undefined;
   const voxelActive =
     tool === 'erase' || tool === 'paint' || tool === 'attach';
 
   // ── Voxel stroke (design §2.6). The in-progress stroke lives here as
-  // a cell→value overlay; the model renders through `displayCvox` so
+  // a cell→value overlay; the model renders through `displayGeometry` so
   // the mesh updates live, and pointer-up commits everything as ONE
   // dispatch upstream. A ref mirrors the state for the event handlers
   // (pointermove bursts within one frame must see their own writes).
@@ -154,8 +154,8 @@ export function VoxelScene({
     () =>
       selectedPart === null
         ? undefined
-        : cvox.parts.find((p) => p.name === selectedPart),
-    [cvox, selectedPart],
+        : geometry.parts.find((p) => p.name === selectedPart),
+    [geometry, selectedPart],
   );
 
   const strokeHit = (e: ThreeEvent<PointerEvent>) => {
@@ -235,7 +235,7 @@ export function VoxelScene({
       }
     }
     if (cells.length === 0) return null;
-    const pal = partPalettes?.get(selectedPart) ?? cvox.palette;
+    const pal = partPalettes?.get(selectedPart) ?? geometry.palette;
     const c = pal[activeColorIndex];
     const color =
       c === undefined ? 0xffffff : (c.r << 16) | (c.g << 8) | c.b;
@@ -246,7 +246,7 @@ export function VoxelScene({
     selectedPart,
     selectedPartData,
     partPalettes,
-    cvox,
+    geometry,
     activeColorIndex,
   ]);
 
@@ -325,13 +325,13 @@ export function VoxelScene({
     };
   }, []);
 
-  // The rendered model: the base cvox with the in-progress stroke
+  // The rendered model: the base geometry with the in-progress stroke
   // overlaid on the selected part.
-  const displayCvox = useMemo(() => {
+  const displayGeometry = useMemo(() => {
     if (stroke === null || stroke.size === 0 || selectedPart === null) {
-      return cvox;
+      return geometry;
     }
-    const parts = cvox.parts.map((p) => {
+    const parts = geometry.parts.map((p) => {
       if (p.name !== selectedPart) return p;
       const voxels = p.voxels.map((layer, y) =>
         layer.map((row, z) =>
@@ -340,10 +340,10 @@ export function VoxelScene({
       );
       return { ...p, voxels };
     });
-    return { ...cvox, parts };
-  }, [cvox, stroke, selectedPart]);
+    return { ...geometry, parts };
+  }, [geometry, stroke, selectedPart]);
 
-  const visibleParts = displayCvox.parts.filter(
+  const visibleParts = displayGeometry.parts.filter(
     (p) => !hiddenParts.has(p.name),
   );
 
@@ -366,9 +366,9 @@ export function VoxelScene({
   // composed group quaternion (§7.7), depending on which is edited.
   const selectedPivotRot = useMemo<[number, number, number] | undefined>(() => {
     if (selectedPart === null) return undefined;
-    const rot = cvox.parts.find((p) => p.name === selectedPart)?.pivot.rot;
+    const rot = geometry.parts.find((p) => p.name === selectedPart)?.pivot.rot;
     return rot === undefined ? undefined : [rot.x, rot.y, rot.z];
-  }, [cvox, selectedPart]);
+  }, [geometry, selectedPart]);
   const selectedRestRot = useMemo<[number, number, number] | undefined>(() => {
     if (selectedPart === null || manifest === undefined) return undefined;
     const rot = manifest.parts.find((p) => p.name === selectedPart)?.rotation;
@@ -402,7 +402,7 @@ export function VoxelScene({
       return { kind: 'part' };
     }
     if (sub.kind === 'socket') {
-      const part = cvox.parts.find((p) => p.name === selectedPart);
+      const part = geometry.parts.find((p) => p.name === selectedPart);
       if (
         part === undefined ||
         !part.sockets.some((s) => s.name === sub.socket)
@@ -411,7 +411,7 @@ export function VoxelScene({
       }
     }
     return sub;
-  }, [selectedPart, subPick, tool, cvox]);
+  }, [selectedPart, subPick, tool, geometry]);
 
   // Clicking a part body (or empty space) resets the sub-target along
   // with the selection. Inert while a voxel tool is active (design
@@ -444,23 +444,23 @@ export function VoxelScene({
       : gizmos;
 
   const roots = useMemo(
-    () => buildRigTree(displayCvox, manifest),
-    [displayCvox, manifest],
+    () => buildRigTree(displayGeometry, manifest),
+    [displayGeometry, manifest],
   );
 
-  // Framing deliberately does NOT track cvox/manifest edits: it
+  // Framing deliberately does NOT track geometry/manifest edits: it
   // recomputes on load (framingKey) and view switch only. A move-gizmo
   // drag rewrites the manifest, and recomputing the center from the new
   // bbox would make OrbitControls re-snap — the viewpoint drifting
   // after every edit.
   /* eslint-disable react-hooks/exhaustive-deps */
   const target = useMemo<[number, number, number]>(
-    () => computeSceneCenter(cvox, manifest, viewMode),
+    () => computeSceneCenter(geometry, manifest, viewMode),
     [framingKey, viewMode],
   );
 
   const radius = useMemo(() => {
-    const span = computeSceneSpan(cvox, manifest, viewMode);
+    const span = computeSceneSpan(geometry, manifest, viewMode);
     return Math.max(span.w, span.h, span.d) * 1.8;
   }, [framingKey, viewMode]);
   /* eslint-enable react-hooks/exhaustive-deps */
@@ -468,14 +468,14 @@ export function VoxelScene({
   const gridSize = useMemo(() => {
     const raw = Math.max(
       20,
-      Math.ceil(Math.max(...cvox.parts.map((p) => Math.max(p.size.w, p.size.d)))) + 4,
+      Math.ceil(Math.max(...geometry.parts.map((p) => Math.max(p.size.w, p.size.d)))) + 4,
     );
     return raw + (raw % 2);
-  }, [cvox]);
+  }, [geometry]);
 
   // Which gizmo host to mount for the current sub-target. Part-body
   // transforms exist only in rig view (design §2.2); pivot / socket
-  // markers are grabbable in both cvox and rig views.
+  // markers are grabbable in both geometry and rig views.
   let gizmoHost = null;
   if (
     transformMode !== null &&
@@ -512,7 +512,7 @@ export function VoxelScene({
             onCommitRotation={(r) => onRotatePivot(selectedPart, r)}
           />
         ) : (
-          // Pivot ROTATE (cvox view): the geometry renders untransformed
+          // Pivot ROTATE (geometry view): the geometry renders untransformed
           // here, so the marker's own axes cross — which this view
           // rotates by pivot.rot (PartGizmos applyPivotRot) — IS the
           // live preview. World frame == part frame, so the marker's
@@ -573,7 +573,7 @@ export function VoxelScene({
       {rigMode ? (
         <RiggedParts
           roots={roots}
-          palette={cvox.palette}
+          palette={geometry.palette}
           poses={null}
           hiddenParts={hiddenParts}
           partPalettes={partPalettes}
@@ -585,7 +585,7 @@ export function VoxelScene({
           voxelStroke={voxelStroke}
         />
       ) : (
-        // Cvox view: origin-stacked, no rig transforms by design. Part
+        // Geometry view: origin-stacked, no rig transforms by design. Part
         // local coords ARE world coords here, so gizmos render in place.
         visibleParts.map((part) => (
           <group
@@ -614,7 +614,7 @@ export function VoxelScene({
           >
             <PartMesh
               part={part}
-              palette={partPalettes?.get(part.name) ?? cvox.palette}
+              palette={partPalettes?.get(part.name) ?? geometry.palette}
               raycastDisabled={
                 part.name === selectedPart && voxelStroke?.snapshot != null
               }
@@ -626,7 +626,7 @@ export function VoxelScene({
                 <group visible={false}>
                   <PartMesh
                     part={voxelStroke.snapshot}
-                    palette={partPalettes?.get(part.name) ?? cvox.palette}
+                    palette={partPalettes?.get(part.name) ?? geometry.palette}
                   />
                 </group>
               )}
@@ -671,7 +671,7 @@ export function VoxelScene({
 // run AFTER the registering callback refs of the same pass. (A
 // DOM-side effect in VoxelScene runs before the r3f subtree commits —
 // it would read a still-empty registry when the rig remounts, e.g.
-// returning from cvox view with a transform tool active, and the gizmo
+// returning from geometry view with a transform tool active, and the gizmo
 // would never appear.) When the first render of a pass misses, the
 // effect bumps and the second render resolves.
 function TransformGizmoHost({

@@ -65,7 +65,7 @@ describe('resolveProject', () => {
     expect(r.diagnostics).toEqual([]);
     expect(r.complete).toBe(true);
     expect(r.geometries.map((g) => g.path)).toEqual(['body.json', 'arms.json']);
-    expect(r.geometries[1]!.cvox.parts[0]!.name).toBe('arm_l');
+    expect(r.geometries[1]!.geometry.parts[0]!.name).toBe('arm_l');
     expect(r.externalPalette).toHaveLength(2);
   });
 

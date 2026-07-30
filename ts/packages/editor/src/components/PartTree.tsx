@@ -16,7 +16,7 @@ import type { Manifest, Part } from '@cuboidy/core';
 
 interface Props {
   parts: readonly Part[];
-  // Defining geometry file per part (v0.7 multi-cvox). Present only when
+  // Defining geometry file per part (v0.7 multi-geometry). Present only when
   // the model spans more than one file — each row then shows a faint
   // file badge at its right so cross-file rigs stay legible.
   partFiles?: ReadonlyMap<string, string> | undefined;
@@ -38,7 +38,7 @@ interface Props {
   // the parent part's defining file (root drafts: the primary).
   geometryFiles?: readonly string[] | undefined;
   validateNewName: (name: string) => boolean;
-  // Inline rename is disabled while cvox/manifest have syntax errors (a rewrite
+  // Inline rename is disabled while geometry/manifest have syntax errors (a rewrite
   // would clobber the in-progress text).
   renameEnabled: boolean;
   onToggleVisibility: (name: string) => void;

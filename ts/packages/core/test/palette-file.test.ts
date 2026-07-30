@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parsePaletteFile } from '../src/palette-file.js';
 
 // SPEC §6.10 (v0.7): external palette file — same color grammar and
-// 62-color cap as the inline cvox palette, wrapped in { "colors": [...] }.
+// 62-color cap as the inline geometry palette, wrapped in { "colors": [...] }.
 describe('parsePaletteFile', () => {
   it('parses long and short hex forms with and without alpha', () => {
     const r = parsePaletteFile({

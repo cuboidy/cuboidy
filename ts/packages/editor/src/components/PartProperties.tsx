@@ -3,7 +3,7 @@ import { Copy, FlipHorizontal2, Plus, X } from 'lucide-react';
 import {
   AIR,
   isIdentifier,
-  type Cvox,
+  type Geometry,
   type Manifest,
   type ManifestPart,
   type Part,
@@ -18,28 +18,28 @@ const AXES: readonly Axis[] = ['x', 'y', 'z'];
 
 interface Props {
   selectedPart: string;
-  cvox: Cvox;
+  geometry: Geometry;
   manifest: Manifest | undefined;
   // Disabled while the manifest source has parse errors — a
   // structural edit here would re-serialize from a stale AST and
   // clobber the user's in-progress source-tab text.
   manifestEditsDisabled: boolean;
-  // Renaming rewrites cvox (always) and the manifest (if present), so it's
+  // Renaming rewrites geometry (always) and the manifest (if present), so it's
   // blocked while either source has syntax errors.
   renameDisabled: boolean;
-  // Defining-file field (v0.7 multi-cvox): all geometry files in
+  // Defining-file field (v0.7 multi-geometry): all geometry files in
   // geometry-list order, and the selected part's current file. Both
   // present only when the model spans more than one file — changing the
   // select moves the part's declaration.
   geometryFiles?: readonly string[] | undefined;
   partFile?: string | undefined;
-  // A move re-serializes two cvox files, so it's blocked while any has
+  // A move re-serializes two geometry files, so it's blocked while any has
   // syntax errors (a rewrite would clobber the in-progress text).
   moveDisabled: boolean;
-  // cvox (geometry) edits — pivot / sockets — re-serialize the part's
-  // defining file, so they're blocked while any cvox source is mid-edit
+  // Geometry edits — pivot / sockets — re-serialize the part's
+  // defining file, so they're blocked while any geometry source is mid-edit
   // unparseable (same reason as moveDisabled).
-  cvoxEditsDisabled: boolean;
+  geometryEditsDisabled: boolean;
   onChangeParent: (partName: string, parent: string | null) => void;
   onChangePosition: (partName: string, axis: 0 | 1 | 2, value: number) => void;
   // Rest rotation (SPEC §6.2): Euler degrees around the part's pivot.
@@ -50,7 +50,7 @@ interface Props {
   onDeletePart: (name: string) => void;
   onCreateManifest: () => void;
   onMovePart: (name: string, targetFile: string) => void;
-  // Immutably rewrite the selected part's cvox geometry. `build` runs
+  // Immutably rewrite the selected part's geometry. `build` runs
   // against the part in whatever file defines it; `tag` coalesces a burst
   // of live number-input commits into one undo entry.
   onEditPart: (
@@ -68,19 +68,19 @@ interface Props {
 const NONE_VALUE = '__none__';
 
 // Right-panel inspector for a single selected part. Phase 1 surfaces
-// the rig fields (parent + position) only; cvox-side fields (size /
+// the rig fields (parent + position) only; geometry-side fields (size /
 // pivot / sockets) get their own section in a follow-up stage.
 
 export function PartProperties({
   selectedPart,
-  cvox,
+  geometry,
   manifest,
   manifestEditsDisabled,
   renameDisabled,
   geometryFiles,
   partFile,
   moveDisabled,
-  cvoxEditsDisabled,
+  geometryEditsDisabled,
   onChangeParent,
   onChangePosition,
   onChangeRotation,
@@ -94,9 +94,9 @@ export function PartProperties({
   onMirrorPart,
 }: Props) {
   const [mirrorAxis, setMirrorAxis] = useState<Axis>('x');
-  const cvoxPart = cvox.parts.find((p) => p.name === selectedPart);
-  if (cvoxPart === undefined) {
-    // Selection points at a part that no longer exists in cvox (e.g.,
+  const geometryPart = geometry.parts.find((p) => p.name === selectedPart);
+  if (geometryPart === undefined) {
+    // Selection points at a part that no longer exists in geometry (e.g.,
     // the user just edited the source view to remove it). Render
     // nothing — the App will clear selection on the next render via
     // the same effect that prunes stale state elsewhere.
@@ -109,7 +109,7 @@ export function PartProperties({
   const rigDisabled = !hasManifest || manifestEditsDisabled;
 
   // A model needs at least one part; the last one can't be deleted.
-  const isOnlyPart = cvox.parts.length <= 1;
+  const isOnlyPart = geometry.parts.length <= 1;
   const deleteDisabled = renameDisabled || isOnlyPart;
   const deleteTitle = isOnlyPart
     ? "Can't delete the only part"
@@ -128,13 +128,13 @@ export function PartProperties({
             validate={(name) =>
               isIdentifier(name) &&
               (name === selectedPart ||
-                !cvox.parts.some((p) => p.name === name))
+                !geometry.parts.some((p) => p.name === name))
             }
             onCommit={(name) => onRenamePart(selectedPart, name)}
           />
         </div>
         <span className="part-properties-meta">
-          {cvoxPart.size.w}×{cvoxPart.size.h}×{cvoxPart.size.d}
+          {geometryPart.size.w}×{geometryPart.size.h}×{geometryPart.size.d}
         </span>
       </div>
 
@@ -186,7 +186,7 @@ export function PartProperties({
         {hasManifest && (
           <RigFields
             selectedPart={selectedPart}
-            cvox={cvox}
+            geometry={geometry}
             manifestPart={manifestPart}
             disabled={manifestEditsDisabled}
             onChangeParent={onChangeParent}
@@ -200,8 +200,8 @@ export function PartProperties({
       <div className="property-section">
         <div className="property-section-title">Geometry</div>
         <GeometryFields
-          part={cvoxPart}
-          disabled={cvoxEditsDisabled}
+          part={geometryPart}
+          disabled={geometryEditsDisabled}
           onEditPart={onEditPart}
         />
       </div>
@@ -211,9 +211,9 @@ export function PartProperties({
           <button
             type="button"
             className="btn btn-sm"
-            disabled={cvoxEditsDisabled}
+            disabled={geometryEditsDisabled}
             title={
-              cvoxEditsDisabled
+              geometryEditsDisabled
                 ? 'Fix the geometry file errors to duplicate'
                 : 'Add a concrete copy of this part to its file'
             }
@@ -226,9 +226,9 @@ export function PartProperties({
             <button
               type="button"
               className="btn btn-sm"
-              disabled={cvoxEditsDisabled}
+              disabled={geometryEditsDisabled}
               title={
-                cvoxEditsDisabled
+                geometryEditsDisabled
                   ? 'Fix the geometry file errors to mirror'
                   : `Flip this part across ${mirrorAxis} (in place)`
               }
@@ -239,7 +239,7 @@ export function PartProperties({
             </button>
             <select
               value={mirrorAxis}
-              disabled={cvoxEditsDisabled}
+              disabled={geometryEditsDisabled}
               aria-label="Mirror axis"
               onChange={(e) => setMirrorAxis(e.target.value as Axis)}
             >
@@ -265,7 +265,7 @@ export function PartProperties({
 
 interface RigFieldsProps {
   selectedPart: string;
-  cvox: Cvox;
+  geometry: Geometry;
   manifestPart: ManifestPart | undefined;
   disabled: boolean;
   onChangeParent: (partName: string, parent: string | null) => void;
@@ -276,7 +276,7 @@ interface RigFieldsProps {
 
 function RigFields({
   selectedPart,
-  cvox,
+  geometry,
   manifestPart,
   disabled,
   onChangeParent,
@@ -305,7 +305,7 @@ function RigFields({
           onChange={handleParent}
         >
           <option value={NONE_VALUE}>(none)</option>
-          {cvox.parts
+          {geometry.parts
             .filter((p) => p.name !== selectedPart)
             .map((p) => (
               <option key={p.name} value={p.name}>
@@ -398,7 +398,7 @@ function resizeVoxels(
   return out;
 }
 
-// cvox-side per-part geometry: size, pivot (position + optional rotation) and
+// geometry-side per-part geometry: size, pivot (position + optional rotation) and
 // sockets.
 function GeometryFields({ part, disabled, onEditPart }: GeometryFieldsProps) {
   const rot = part.pivot.rot;

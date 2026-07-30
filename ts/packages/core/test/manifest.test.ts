@@ -165,7 +165,7 @@ describe('parseManifest — geometry & palette (v0.7)', () => {
 
   it('rejects a geometry entry with the wrong extension', () => {
     // Including the retired text extension, which is no longer geometry.
-    for (const bad of ['body.txt', 'body.cvox']) {
+    for (const bad of ['body.txt', 'body.geometry']) {
       const r = parseManifest({ ...base, geometry: [bad] });
       expect(r.ok, bad).toBe(false);
       if (!r.ok) expect(r.code).toBe('invalid-value');
@@ -179,7 +179,7 @@ describe('parseManifest — geometry & palette (v0.7)', () => {
   });
 
   it('rejects backslashes in a reference path', () => {
-    const r = parseManifest({ ...base, geometry: ['gear\\hat.cvox'] });
+    const r = parseManifest({ ...base, geometry: ['gear\\hat.geometry'] });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe('invalid-value');
   });
@@ -211,7 +211,7 @@ describe('parseManifest — geometry & palette (v0.7)', () => {
   });
 
   it('rejects a palette binding that is not .json', () => {
-    const r = parseManifest({ ...base, palette: 'palette.cvox' });
+    const r = parseManifest({ ...base, palette: 'palette.geometry' });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe('invalid-value');
   });

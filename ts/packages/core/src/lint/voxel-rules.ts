@@ -1,9 +1,9 @@
 import type { Diagnostic } from '../diagnostic.js';
-import type { Cvox, Part, Size, Vec3 } from '../geometry/types.js';
+import type { Geometry, Part, Size, Vec3 } from '../geometry/types.js';
 import { AIR } from '../geometry/voxel-row.js';
 
-// SPEC §11.3 (W01–W05) + §11.4 (H01–H02): semantic lint over a parsed Cvox.
-// `lintCvox` runs AFTER `parseCvox` has accepted the input, so every rule
+// SPEC §11.3 (W01–W05) + §11.4 (H01–H02): semantic lint over a parsed Geometry.
+// `lintGeometry` runs AFTER `parseCvox` has accepted the input, so every rule
 // here assumes a well-formed AST (size matches voxels layout, palette
 // indices in range, etc.). Lint never returns errors — only warnings and
 // hints — so its diagnostics are purely advisory; consumers may render
@@ -13,16 +13,16 @@ import { AIR } from '../geometry/voxel-row.js';
 // once at the end. This order is stable across runs so output diffs are
 // meaningful in CI / golden-file tests.
 
-export function lintCvox(cvox: Cvox): Diagnostic[] {
+export function lintGeometry(geometry: Geometry): Diagnostic[] {
   const diags: Diagnostic[] = [];
-  for (const part of cvox.parts) {
+  for (const part of geometry.parts) {
     checkPivotBounds(part, diags);     // W01
     checkSocketBounds(part, diags);    // W02
     checkVoxelEmptiness(part, diags);  // W04 + W05 (W05 suppresses W04)
     checkPartName(part, diags);        // H01
     checkPivotFractional(part, diags); // H02
   }
-  checkUnusedPalette(cvox, diags);     // W03
+  checkUnusedPalette(geometry, diags);     // W03
   return diags;
 }
 
@@ -61,9 +61,9 @@ function checkSocketBounds(part: Part, out: Diagnostic[]): void {
 // (in any part). AIR is excluded by construction since `AIR === -1`.
 // Reported per-index in declaration order. A 1-color palette with no
 // solid voxels (W05 case) still triggers W03 alongside W05.
-function checkUnusedPalette(cvox: Cvox, out: Diagnostic[]): void {
+function checkUnusedPalette(geometry: Geometry, out: Diagnostic[]): void {
   const used = new Set<number>();
-  for (const part of cvox.parts) {
+  for (const part of geometry.parts) {
     for (const layer of part.voxels) {
       for (const row of layer) {
         for (const idx of row) {
@@ -72,7 +72,7 @@ function checkUnusedPalette(cvox: Cvox, out: Diagnostic[]): void {
       }
     }
   }
-  for (let i = 0; i < cvox.palette.length; i++) {
+  for (let i = 0; i < geometry.palette.length; i++) {
     if (!used.has(i)) {
       out.push({
         code: 'invalid-value',

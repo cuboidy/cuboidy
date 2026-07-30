@@ -1195,7 +1195,7 @@ svg.lucide {
 }
 
 /* Divided subsection within the part inspector (e.g. Geometry). Keeps the
-   rig fields above and the cvox fields below visually distinct. */
+   rig fields above and the geometry fields below visually distinct. */
 .property-section {
   display: flex;
   flex-direction: column;
@@ -1267,7 +1267,7 @@ svg.lucide {
   align-self: flex-start;
 }
 
-/* ─── Source editor (cvox tab textarea) ───────────────────────────── */
+/* ─── Source editor (source tab textarea) ─────────────────────────── */
 
 .source-editor {
   flex: 1;
@@ -1654,7 +1654,7 @@ svg.ficon-json {
   font-style: italic;
 }
 
-/* A package .cvox the manifest's geometry list doesn't reference (lint
+/* A package geometry file the manifest's list doesn't reference (lint
    W07) — its parts aren't loaded. Dimmed; the row carries a "load"
    button. Declared before .error so a syntax error still wins. */
 .tree-row.unreferenced .tree-name {
@@ -1707,7 +1707,7 @@ svg.ficon-json {
   opacity: 0.4;
 }
 
-/* "load" action on unreferenced .cvox rows — a small text button that
+/* "load" action on unreferenced geometry rows — a small text button that
    adds the file to the manifest geometry list so its parts load. Always
    shown (it's the call to action paired with the "not loaded" badge);
    the delete × still reveals on hover to its right. */
@@ -1819,7 +1819,7 @@ svg.ficon-json {
   color: var(--txt-1);
 }
 
-/* Target-file picker on the new-part draft row (multi-cvox models
+/* Target-file picker on the new-part draft row (multi-file models
    only). Compact sibling of the name input; option text is the full
    package-relative path so same-named files in different folders stay
    distinguishable. */
@@ -1835,7 +1835,7 @@ svg.ficon-json {
   font-size: 0.75rem;
 }
 
-/* Defining-file badge (v0.7 multi-cvox): faint, right-aligned, never
+/* Defining-file badge (v0.7 multi-file): faint, right-aligned, never
    steals click focus from the row. */
 .part-tree-file {
   flex-shrink: 0;

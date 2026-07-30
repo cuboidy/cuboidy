@@ -1,10 +1,10 @@
-// Public data model for the cvox file format. These interfaces are the
-// contract this package exposes (re-exported via the top-level index.ts);
-// parser implementations consume / produce these shapes but never declare
-// them. Internal intermediate types (ParsedPart, RawRow, etc.) stay in
-// their respective parser files since they're not part of the API.
+// Public data model for a geometry file, decoded. These interfaces are the
+// contract this package exposes (re-exported via the top-level index.ts) and
+// are deliberately independent of the container: the reader produces them, the
+// writer consumes them, and lint / mesh / render / the editor only ever see
+// this shape.
 //
-// Hierarchy: Vec3 → {Color/Palette, Size, Pivot, Socket} → Part → Cvox.
+// Hierarchy: Vec3 → {Color/Palette, Size, Pivot, Socket} → Part → Geometry.
 
 export interface Vec3 {
   x: number;
@@ -46,20 +46,12 @@ export interface Part {
   voxels: readonly (readonly (readonly number[])[])[];
 }
 
-export interface Cvox {
-  // SPEC §7.X file header: comment lines appearing before the first
-  // declaration are captured verbatim (including their leading `//`).
-  // Interspersed blank lines between header comments are preserved;
-  // leading and trailing blank lines (before / between the last header
-  // comment and the first declaration) are trimmed. Absent when the
-  // file has no header comments; never an empty array.
-  header?: readonly string[];
-  // SPEC §7.4 (v0.7): at most one palette declaration per file. An EMPTY
-  // array means the file declared no palette — a declared palette always
-  // has ≥ 1 color, so length 0 is unambiguous. Palette-less files rely on
-  // a manifest-bound external palette (§6.10); their voxel index-range
-  // validation moves to cross-file lint. The serializer emits no palette
-  // line for an empty array (round-trips to absent).
+export interface Geometry {
+  // SPEC §7.4: at most one palette per file. An EMPTY array means the file
+  // declared none — a declared palette always has ≥ 1 color, so length 0 is
+  // unambiguous. Palette-less files rely on a manifest-bound external palette
+  // (§6.10); their voxel index-range validation moves to cross-file lint. The
+  // writer omits the key for an empty array, so absence round-trips.
   palette: Palette;
   parts: Part[];
 }

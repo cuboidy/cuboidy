@@ -1,6 +1,6 @@
 import type { Diagnostic } from '../diagnostic.js';
 import { isInlineAnimation, type InlineAnimation } from '../animation.js';
-import type { Cvox, Palette, Part } from '../geometry/types.js';
+import type { Geometry, Palette, Part } from '../geometry/types.js';
 import { AIR } from '../geometry/voxel-row.js';
 import type { Manifest } from '../manifest.js';
 
@@ -12,7 +12,7 @@ import type { Manifest } from '../manifest.js';
 export interface ProjectInput {
   manifest: Manifest;
   // The manifest's geometry files, in list order, that parsed successfully.
-  geometries: ReadonlyArray<{ path: string; cvox: Cvox }>;
+  geometries: ReadonlyArray<{ path: string; geometry: Geometry }>;
   // Parsed palette.json when the manifest binds one (§6.10) and it loaded.
   externalPalette?: Palette;
   // Resolved §6.3 external animations by clip name, when the caller
@@ -30,8 +30,8 @@ export function validateProject(input: ProjectInput): Diagnostic[] {
   // Part name → defining file(s). Names are unique across the WHOLE model
   // (SPEC §5), so a name defined in two geometry files is an error.
   const definedIn = new Map<string, string[]>();
-  for (const { path, cvox } of geometries) {
-    for (const part of cvox.parts) {
+  for (const { path, geometry } of geometries) {
+    for (const part of geometry.parts) {
       const files = definedIn.get(part.name);
       if (files === undefined) definedIn.set(part.name, [path]);
       else files.push(path);
@@ -68,8 +68,8 @@ export function validateProject(input: ProjectInput): Diagnostic[] {
   }
 
   const partsByName = new Map<string, Part>();
-  for (const { cvox } of geometries) {
-    for (const part of cvox.parts) {
+  for (const { geometry } of geometries) {
+    for (const part of geometry.parts) {
       if (!partsByName.has(part.name)) partsByName.set(part.name, part);
     }
   }
@@ -99,8 +99,8 @@ export function validateProject(input: ProjectInput): Diagnostic[] {
 
   // §6.10 palette resolution, per geometry file: the manifest binding wins
   // over an inline palette; a file with neither can't use color indices.
-  for (const { path, cvox } of geometries) {
-    const hasInline = cvox.palette.length > 0;
+  for (const { path, geometry } of geometries) {
+    const hasInline = geometry.palette.length > 0;
     if (externalPalette !== undefined && hasInline) {
       diags.push({
         code: 'invalid-value',
@@ -109,8 +109,8 @@ export function validateProject(input: ProjectInput): Diagnostic[] {
         message: `inline palette in ${path} is shadowed by the manifest palette binding`,
       });
     }
-    const effective = externalPalette ?? (hasInline ? cvox.palette : undefined);
-    const maxIdx = maxUsedIndex(cvox);
+    const effective = externalPalette ?? (hasInline ? geometry.palette : undefined);
+    const maxIdx = maxUsedIndex(geometry);
     if (maxIdx === AIR) continue; // all air — no palette needed
     if (effective === undefined) {
       diags.push({
@@ -153,17 +153,17 @@ export function validateProject(input: ProjectInput): Diagnostic[] {
 // geometry file, no external palette, no package listing.
 export function validateCrossFile(
   manifest: Manifest,
-  voxelDef: Cvox,
+  voxelDef: Geometry,
 ): Diagnostic[] {
   return validateProject({
     manifest,
-    geometries: [{ path: 'voxels.json', cvox: voxelDef }],
+    geometries: [{ path: 'voxels.json', geometry: voxelDef }],
   });
 }
 
-function maxUsedIndex(cvox: Cvox): number {
+function maxUsedIndex(geometry: Geometry): number {
   let max = AIR;
-  for (const part of cvox.parts) {
+  for (const part of geometry.parts) {
     for (const layer of part.voxels) {
       for (const row of layer) {
         for (const idx of row) {

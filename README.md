@@ -134,7 +134,7 @@ Evidence, method and the limits of the sample: [`docs/eval/`](docs/eval/).
 - [x] Shared parity fixtures — `fixtures/geometry/<code>/` and `fixtures/manifest/<code>/`, contract for cross-implementation conformance
 - [x] JSON Schema for `cuboidy.json` — `schema/cuboidy.schema.json` (Draft 2020-12, derived from the Zod ManifestSchema; reference via `"$schema": "https://cuboidy.com/schema/cuboidy.schema.json"` or the GitHub raw URL)
 - [x] Canonical serializer (reader-tolerant / writer-strict) — `serializeGeometry()` emits one canonical form per model; round-trip with `parseGeometry` verified as a byte-level fixed point on every shipped model
-- [x] Voxel definition linter — `lintCvox(cvox)` library (W01–W05 + H01–H02) and `cuboidy-lint <dir>` CLI (SPEC §11.7 output, `--strict` for warnings-as-errors)
+- [x] Voxel definition linter — `lintGeometry(geometry)` library (W01–W05 + H01–H02) and `cuboidy-lint <dir>` CLI (SPEC §11.7 output, `--strict` for warnings-as-errors)
 - [x] Model inspection CLIs — `cuboidy-view` (ASCII projection), `cuboidy-query` (exact coordinate lookup), and `cuboidy-snap` (multi-angle PNG renders; contact sheet + per-angle, dependency-free) for human / multimodal review
 - [x] Image snapshots — `cuboidy-snap <dir>` renders a model to PNG from several angles, the raster counterpart to `cuboidy-view`, for visual review and AI-assisted editing
 - [ ] Reference parser (C#)

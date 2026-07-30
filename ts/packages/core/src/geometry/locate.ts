@@ -14,7 +14,7 @@
 // the deepest position it did reach.
 
 export interface Position {
-  // Both 1-based, matching how editors and the old cvox errors count.
+  // Both 1-based, matching how editors and the old geometry errors count.
   line: number;
   column: number;
 }

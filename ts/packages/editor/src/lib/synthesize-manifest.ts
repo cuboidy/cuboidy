@@ -1,4 +1,4 @@
-import type { Cvox, Manifest } from '@cuboidy/core';
+import type { Geometry, Manifest } from '@cuboidy/core';
 
 // Builds a default Manifest from a geometry AST. Used by the "Create
 // manifest" action when a user wants to upgrade a bare-geometry load
@@ -15,10 +15,10 @@ import type { Cvox, Manifest } from '@cuboidy/core';
 // manifest always has a valid identifier-shaped name (parseManifest
 // enforces the §5 identifier rule).
 
-export function synthesizeManifest(cvox: Cvox, cvoxFileName: string): Manifest {
+export function synthesizeManifest(geometry: Geometry, geometryFileName: string): Manifest {
   return {
-    name: deriveModelName(cvoxFileName),
-    parts: cvox.parts.map((p) => ({
+    name: deriveModelName(geometryFileName),
+    parts: geometry.parts.map((p) => ({
       name: p.name,
       position: [0, 0, 0],
     })),

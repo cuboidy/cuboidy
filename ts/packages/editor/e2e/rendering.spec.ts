@@ -47,7 +47,10 @@ test('A-7 control: a loop:true clip keeps playing past duration', async ({ page 
   await page.clock.install();
   await page.getByRole('tab', { name: 'Anim view' }).click();
   await expect(page.getByLabel('Scrub timeline')).toBeVisible();
-  await page.clock.runFor(3000);
+  // 3500ms, not 3000: the clip is 1s, so a whole number of periods lands the
+  // playhead exactly on the wrap boundary, where float drift shows as either
+  // 0 or 1 and the `< 1` assertion below flakes. Half a period is unambiguous.
+  await page.clock.runFor(3500);
   // Still running (wrapped), never clamped to the end.
   await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible();
   const t = Number(await page.getByLabel('Scrub timeline').inputValue());

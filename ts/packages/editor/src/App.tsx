@@ -29,7 +29,7 @@ import {
   trimTrackKeys,
   type AttrValue,
   type Axis,
-  type Cvox,
+  type Geometry,
   type EaseAttr,
   type EasingName,
   type InlineAnimation,
@@ -108,15 +108,15 @@ import type {
   VoxelEdit,
 } from './lib/types.js';
 
-// Debounce window for live re-parse of the cvox source view. Long
+// Debounce window for live re-parse of the geometry source view. Long
 // enough that mid-keystroke typing doesn't constantly fire (and
 // flicker palette/3D between transient invalid states); short enough
 // that a deliberate pause feels live.
 const REPARSE_DEBOUNCE_MS = 300;
 
-// v0.7 multi-cvox (Phase C): the DISPLAY model is the union of every
+// v0.7 multi-geometry (Phase C): the DISPLAY model is the union of every
 // geometry file's parts, in geometry-list order. The primary file's
-// live AST (source.cvox) overrides its load-time snapshot in
+// live AST (source.geometry) overrides its load-time snapshot in
 // source.geometries so mid-edit state stays current. A cross-file
 // duplicate name keeps the first definition (validateProject flags the
 // error). `files` records each part's defining file — edit routing and
@@ -127,12 +127,12 @@ function mergeGeometries(src: LoadedSource): {
 } {
   const files = new Map<string, string>();
   if (src.kind !== 'folder' || src.geometries === undefined) {
-    return { parts: src.cvox.parts, files };
+    return { parts: src.geometry.parts, files };
   }
   const parts: Part[] = [];
   for (const [path, g] of src.geometries) {
-    const cvox = path === src.cvoxFile.name ? src.cvox : g;
-    for (const part of cvox.parts) {
+    const geometry = path === src.geometryFile.name ? src.geometry : g;
+    for (const part of geometry.parts) {
       if (files.has(part.name)) continue;
       files.set(part.name, path);
       parts.push(part);
@@ -178,11 +178,11 @@ function remapPartPalette(
   return { part: { ...part, voxels }, palette };
 }
 
-// Apply `fn` to every geometry file's AST (or the single cvox for
-// cvox-only / synthetic sources). Returns the source with each CHANGED
+// Apply `fn` to every geometry file's AST (or the single geometry for
+// geometry-only / synthetic sources). Returns the source with each CHANGED
 // file kept fully in sync: geometries map, the files snapshot (so
 // export sees the edit), and — when the primary file changed — the live
-// cvox/cvoxFile pair the rest of the editor reads. `fn` returns null
+// geometry/geometryFile pair the rest of the editor reads. `fn` returns null
 // for "no change to this file".
 function pathBasename(path: string): string {
   const i = path.lastIndexOf('/');
@@ -191,22 +191,22 @@ function pathBasename(path: string): string {
 
 function mapGeometryFiles<S extends LoadedSource>(
   src: S,
-  fn: (cvox: Cvox, path: string) => Cvox | null,
+  fn: (geometry: Geometry, path: string) => Geometry | null,
 ): S {
   if (src.kind !== 'folder' || src.geometries === undefined) {
-    const next = fn(src.cvox, src.cvoxFile.name);
+    const next = fn(src.geometry, src.geometryFile.name);
     if (next === null) return src;
     return {
       ...src,
-      cvox: next,
-      cvoxFile: { ...src.cvoxFile, text: serializeGeometry(next) },
+      geometry: next,
+      geometryFile: { ...src.geometryFile, text: serializeGeometry(next) },
     };
   }
-  let geometries: Map<string, Cvox> | null = null;
+  let geometries: Map<string, Geometry> | null = null;
   let files: Map<string, FileEntry> | null = null;
-  let primaryPatch: Pick<typeof src, 'cvox' | 'cvoxFile'> | null = null;
+  let primaryPatch: Pick<typeof src, 'geometry' | 'geometryFile'> | null = null;
   for (const [path, g] of src.geometries) {
-    const cur = path === src.cvoxFile.name ? src.cvox : g;
+    const cur = path === src.geometryFile.name ? src.geometry : g;
     const next = fn(cur, path);
     if (next === null) continue;
     const text = serializeGeometry(next);
@@ -216,8 +216,8 @@ function mapGeometryFiles<S extends LoadedSource>(
       if (files === null) files = new Map(src.files);
       files.set(path, { name: path, text });
     }
-    if (path === src.cvoxFile.name) {
-      primaryPatch = { cvox: next, cvoxFile: { ...src.cvoxFile, text } };
+    if (path === src.geometryFile.name) {
+      primaryPatch = { geometry: next, geometryFile: { ...src.geometryFile, text } };
     }
   }
   if (geometries === null) return src;
@@ -285,7 +285,7 @@ function renameFileInSource(
   if (src.files.has(to) || src.manifestFile?.name === to) return null;
   const entry = src.files.get(from);
   if (entry === undefined) return null;
-  const isPrimary = src.cvoxFile.name === from;
+  const isPrimary = src.geometryFile.name === from;
   const inGeometry = src.geometries?.has(from) === true;
   // Geometry renames must be recorded in the manifest — without one the
   // loader can't find the file next time. And a reference keeps its §8
@@ -315,13 +315,13 @@ function renameFileInSource(
 
   if (src.geometries?.has(from) === true) {
     const geometries = new Map(src.geometries);
-    const cvox = geometries.get(from)!;
+    const geometry = geometries.get(from)!;
     geometries.delete(from);
-    geometries.set(to, cvox);
+    geometries.set(to, geometry);
     next = { ...next, geometries };
   }
   if (isPrimary) {
-    next = { ...next, cvoxFile: { ...src.cvoxFile, name: to } };
+    next = { ...next, geometryFile: { ...src.geometryFile, name: to } };
   }
   // Keep the resolved externalAnims records pointing at the new path —
   // timeline edits write through `rec.path`, so a stale one would
@@ -415,7 +415,7 @@ function moveFolderInSource(
 function deleteFileInSource(src: FolderSource, p: string): FolderSource | null {
   if (src.files === undefined) return null;
   if (src.manifestFile?.name === p) return null; // the anchor
-  if (src.cvoxFile.name === p) return null; // primary geometry
+  if (src.geometryFile.name === p) return null; // primary geometry
   if (!src.files.has(p)) return null;
   const files = new Map(src.files);
   files.delete(p);
@@ -531,7 +531,7 @@ export function App() {
     [],
   );
   const [hiddenParts, setHiddenParts] = useState<ReadonlySet<string>>(new Set());
-  const [viewMode, setViewMode] = useState<ViewMode>('cvox');
+  const [viewMode, setViewMode] = useState<ViewMode>('geometry');
   // Per-kind visibility of the selected part's preview gizmos (pivot /
   // sockets / frame), toggled from the preview overlay. The flags outlive
   // selection changes and loads — they're a viewer preference, not model
@@ -560,33 +560,33 @@ export function App() {
   const [activeColorIndex, setActiveColorIndex] = useState(0);
   // Selected part for the right-panel inspector. Null = nothing
   // selected (right panel hides the properties section). Pruned at
-  // render time if the name no longer exists in cvox.parts so stale
+  // render time if the name no longer exists in geometry.parts so stale
   // selections after source edits don't leak through.
   const [selectedPartName, setSelectedPartName] = useState<string | null>(null);
   // In-progress "new part" draft: non-null while the tree shows the inline
   // name field (VS Code-style). `parent` is the part it will be nested under
   // (null = root). Cleared on confirm / cancel / load.
   const [creating, setCreating] = useState<{ parent: string | null } | null>(null);
-  // Live parse error on the cvox source text. Non-null only while the
+  // Live parse error on the geometry source text. Non-null only while the
   // user's currently-typed text doesn't parse. Palette panel disables
   // itself in this state so its re-serialize doesn't clobber the
   // in-progress text.
-  const [cvoxParseError, setCvoxParseError] = useState<string | null>(null);
+  const [geometryParseError, setGeometryParseError] = useState<string | null>(null);
   // Same role for the manifest source view. Independent timer and
-  // error state, so a broken cvox doesn't block manifest editing
+  // error state, so a broken geometry doesn't block manifest editing
   // and vice versa.
   const [manifestParseError, setManifestParseError] = useState<string | null>(null);
 
   // Holds the timeout ID of the pending debounced reparse so we can
   // cancel it whenever new authoritative state arrives (further typing
   // resets the timer; structural edit pre-empts it entirely).
-  const reparseCvoxTimer = useRef<number | null>(null);
+  const reparseGeometryTimer = useRef<number | null>(null);
   const reparseManifestTimer = useRef<number | null>(null);
 
-  const cancelPendingCvoxReparse = useCallback(() => {
-    if (reparseCvoxTimer.current !== null) {
-      window.clearTimeout(reparseCvoxTimer.current);
-      reparseCvoxTimer.current = null;
+  const cancelPendingGeometryReparse = useCallback(() => {
+    if (reparseGeometryTimer.current !== null) {
+      window.clearTimeout(reparseGeometryTimer.current);
+      reparseGeometryTimer.current = null;
     }
   }, []);
 
@@ -597,46 +597,46 @@ export function App() {
     }
   }, []);
 
-  // Parse cvox text and land the outcome — error state plus (on success)
+  // Parse geometry text and land the outcome — error state plus (on success)
   // the AST amend. The single
   // implementation behind BOTH the debounced timer and the synchronous
   // flush below, so the two paths can't drift. Returns true when the
   // text parsed and the AST landed.
-  const landCvoxReparse = useCallback((text: string): boolean => {
+  const landGeometryReparse = useCallback((text: string): boolean => {
     const result = parseGeometryText(text);
     if (!result.ok) {
-      setCvoxParseError(result.message);
+      setGeometryParseError(result.message);
       return false;
     }
-    setCvoxParseError(null);
+    setGeometryParseError(null);
     dispatch({
       type: 'amend',
       apply: (current) => {
         if (current?.source === undefined) return current;
         return {
           ...current,
-          source: { ...current.source, cvox: result.value },
+          source: { ...current.source, geometry: result.value },
         };
       },
     });
     return true;
   }, []);
 
-  // Flush (not discard) a pending debounced cvox reparse: parse the
+  // Flush (not discard) a pending debounced geometry reparse: parse the
   // CURRENT text synchronously and land the amend / error now. Returns
   // false when the text doesn't parse — a structural edit must abort
   // rather than serialize from the stale AST, which would silently
   // overwrite what was just typed (audit A-6).
-  const flushPendingCvoxReparse = useCallback((): boolean => {
-    if (reparseCvoxTimer.current === null) return true;
-    window.clearTimeout(reparseCvoxTimer.current);
-    reparseCvoxTimer.current = null;
+  const flushPendingGeometryReparse = useCallback((): boolean => {
+    if (reparseGeometryTimer.current === null) return true;
+    window.clearTimeout(reparseGeometryTimer.current);
+    reparseGeometryTimer.current = null;
     const src = loadedRef.current?.source;
     if (src === undefined) return true;
-    return landCvoxReparse(src.cvoxFile.text);
-  }, [landCvoxReparse]);
+    return landGeometryReparse(src.geometryFile.text);
+  }, [landGeometryReparse]);
 
-  // Manifest counterpart of landCvoxReparse: parse + amend with a full
+  // Manifest counterpart of landGeometryReparse: parse + amend with a full
   // reference re-resolve (geometry ASTs, bound palette, external
   // animations, project errors track the edited manifest).
   const landManifestReparse = useCallback((text: string): boolean => {
@@ -661,7 +661,7 @@ export function App() {
         const refs = resolveProjectRefs(
           result.value,
           (p) => src.files?.get(p)?.text,
-          { path: src.cvoxFile.name, cvox: src.cvox },
+          { path: src.geometryFile.name, geometry: src.geometry },
         );
         // Destructure away the maybe-now-absent keys (a successful
         // reparse also clears any stale load-time manifest error).
@@ -673,14 +673,14 @@ export function App() {
           ...rest
         } = src;
         // A changed geometry list can pull a different primary AST in.
-        const primaryNext = refs.geometries.get(src.cvoxFile.name);
+        const primaryNext = refs.geometries.get(src.geometryFile.name);
         return {
           ...current,
           source: {
             ...rest,
             manifest: result.value,
             geometries: refs.geometries,
-            ...(primaryNext !== undefined && { cvox: primaryNext }),
+            ...(primaryNext !== undefined && { geometry: primaryNext }),
             ...(refs.externalPalette !== undefined && {
               externalPalette: refs.externalPalette,
             }),
@@ -710,7 +710,7 @@ export function App() {
 
   const handleLoad = useCallback(
     (result: LoadResult) => {
-      cancelPendingCvoxReparse();
+      cancelPendingGeometryReparse();
       cancelPendingManifestReparse();
       // Per-file reparse timers / errors belong to the previous package.
       // (Ref + setter are stable — safe to use without listing as deps.)
@@ -723,14 +723,14 @@ export function App() {
       setHiddenParts(new Set());
       setSelectedPartName(null);
       setCreating(null);
-      setCvoxParseError(null);
+      setGeometryParseError(null);
       setManifestParseError(null);
       setFramingKey((k) => k + 1);
       const hasManifest =
         result.source !== undefined &&
         result.source.kind === 'folder' &&
         result.source.manifest !== undefined;
-      setViewMode(hasManifest ? 'rig' : 'cvox');
+      setViewMode(hasManifest ? 'rig' : 'geometry');
       setLayout((l) => openPanelById(l, 'preview'));
       // A load that carries problems (a manifest that didn't parse, an
       // unresolved reference) foregrounds the Console so the notice isn't
@@ -744,11 +744,11 @@ export function App() {
         setLayout((l) => openPanelById(l, 'console'));
       }
     },
-    [cancelPendingCvoxReparse, cancelPendingManifestReparse],
+    [cancelPendingGeometryReparse, cancelPendingManifestReparse],
   );
 
   const handleReset = useCallback(() => {
-    cancelPendingCvoxReparse();
+    cancelPendingGeometryReparse();
     cancelPendingManifestReparse();
     for (const t of fileReparseTimers.current.values()) {
       window.clearTimeout(t);
@@ -759,10 +759,10 @@ export function App() {
     setHiddenParts(new Set());
     setSelectedPartName(null);
     setCreating(null);
-    setCvoxParseError(null);
+    setGeometryParseError(null);
     setManifestParseError(null);
-    setViewMode('cvox');
-  }, [cancelPendingCvoxReparse, cancelPendingManifestReparse]);
+    setViewMode('geometry');
+  }, [cancelPendingGeometryReparse, cancelPendingManifestReparse]);
 
   const handleToggle = useCallback((name: string) => {
     setHiddenParts((prev) => {
@@ -783,38 +783,38 @@ export function App() {
     }
   }, [loaded]);
 
-  // Cvox source-text edit (cvox tab textarea typing). Updates the text
+  // Geometry source-text edit (geometry tab textarea typing). Updates the text
   // immediately so every keystroke persists; schedules a debounced
   // reparse that updates the AST when it succeeds. The text remains
   // primary even while temporarily unparseable — Save / Export still
   // write what the user typed.
-  const handleEditCvoxText = useCallback(
+  const handleEditGeometryText = useCallback(
     (nextText: string) => {
       // Recorded with a per-file tag: a typing burst (keystrokes < 800ms
       // apart) is one undo entry whose pre-state is the text before the
       // burst started.
-      dispatchEdit('text:cvox', (current) => {
+      dispatchEdit('text:geometry', (current) => {
         if (current?.source === undefined) return current;
         const src = current.source;
         return {
           ...current,
-          source: { ...src, cvoxFile: { ...src.cvoxFile, text: nextText } },
+          source: { ...src, geometryFile: { ...src.geometryFile, text: nextText } },
         };
       });
-      cancelPendingCvoxReparse();
-      reparseCvoxTimer.current = window.setTimeout(() => {
-        reparseCvoxTimer.current = null;
-        // The AST half of the already-recorded text edit — landCvoxReparse
+      cancelPendingGeometryReparse();
+      reparseGeometryTimer.current = window.setTimeout(() => {
+        reparseGeometryTimer.current = null;
+        // The AST half of the already-recorded text edit — landGeometryReparse
         // amends, doesn't push (an entry whose undo changed only the
         // invisible AST would be a dead Ctrl+Z step).
-        landCvoxReparse(nextText);
+        landGeometryReparse(nextText);
       }, REPARSE_DEBOUNCE_MS);
     },
-    [dispatchEdit, cancelPendingCvoxReparse, landCvoxReparse],
+    [dispatchEdit, cancelPendingGeometryReparse, landGeometryReparse],
   );
 
   // Per-file source editing for the dynamic file tabs (v0.7 packages).
-  // Same shape as the cvox/manifest pipelines: record the text now
+  // Same shape as the geometry/manifest pipelines: record the text now
   // (per-file coalescing tag), debounce a reparse that amends derived
   // state (a geometry file's AST, the bound palette) on success.
   const [fileParseErrors, setFileParseErrors] = useState<
@@ -848,7 +848,7 @@ export function App() {
       const isGeometry =
         current !== undefined &&
         current.kind === 'folder' &&
-        isGeometryPath(path, current.cvoxFile.name, current.manifest);
+        isGeometryPath(path, current.geometryFile.name, current.manifest);
       if (isGeometry) {
         const r = parseGeometryText(text);
         if (!r.ok) {
@@ -984,10 +984,10 @@ export function App() {
   // corresponding text is mid-edit unparseable — serializing from the
   // last good AST would overwrite what the user just typed.
   const flushGeometryReparse = useCallback((): boolean => {
-    const cvoxOk = flushPendingCvoxReparse();
+    const geometryOk = flushPendingGeometryReparse();
     const filesOk = flushPendingFileReparse();
-    return cvoxOk && filesOk;
-  }, [flushPendingCvoxReparse, flushPendingFileReparse]);
+    return geometryOk && filesOk;
+  }, [flushPendingGeometryReparse, flushPendingFileReparse]);
 
   const flushAllReparse = useCallback((): boolean => {
     const geomOk = flushGeometryReparse();
@@ -997,7 +997,7 @@ export function App() {
 
   // ── Palette editing (Phase F). The panel edits the EFFECTIVE palette
   // (§6.10): a manifest binding routes writes to palette.json, else to
-  // the primary file's inline declaration (via handleEditCvox). ──
+  // the primary file's inline declaration (via handleEditGeometry). ──
 
   // Overwrite the bound external palette's colors (edit / add).
   const handleEditExternalPalette = useCallback(
@@ -1044,13 +1044,13 @@ export function App() {
         const palette =
           bound && src.kind === 'folder'
             ? src.externalPalette!
-            : src.cvox.palette;
+            : src.geometry.palette;
         if (index < 0 || index >= palette.length) return current;
-        const inScope = (cvox: Cvox): boolean =>
-          bound || cvox === src.cvox;
+        const inScope = (geometry: Geometry): boolean =>
+          bound || geometry === src.geometry;
         // Refuse while any in-scope voxel still uses the color.
         const scopeParts =
-          bound ? mergeGeometries(src).parts : src.cvox.parts;
+          bound ? mergeGeometries(src).parts : src.geometry.parts;
         for (const p of scopeParts) {
           for (const layer of p.voxels) {
             for (const row of layer) {
@@ -1059,10 +1059,10 @@ export function App() {
           }
         }
         const nextPalette = palette.filter((_, i) => i !== index);
-        const shift = (cvox: Cvox): Cvox | null => {
-          if (!inScope(cvox)) return null;
+        const shift = (geometry: Geometry): Geometry | null => {
+          if (!inScope(geometry)) return null;
           let fileChanged = false;
-          const parts: Part[] = cvox.parts.map((p) => {
+          const parts: Part[] = geometry.parts.map((p) => {
             let partChanged = false;
             const voxels = p.voxels.map((layer) =>
               layer.map((row) =>
@@ -1079,15 +1079,15 @@ export function App() {
             fileChanged = true;
             return { ...p, voxels };
           });
-          const isPrimaryInlineHolder = !bound && cvox === src.cvox;
+          const isPrimaryInlineHolder = !bound && geometry === src.geometry;
           if (!fileChanged && !isPrimaryInlineHolder) return null;
           return {
-            ...cvox,
-            parts: fileChanged ? parts : cvox.parts,
+            ...geometry,
+            parts: fileChanged ? parts : geometry.parts,
             ...(isPrimaryInlineHolder && { palette: nextPalette }),
           };
         };
-        const nextSrc = mapGeometryFiles(src, (cvox) => shift(cvox));
+        const nextSrc = mapGeometryFiles(src, (geometry) => shift(geometry));
         if (!bound || nextSrc.kind !== 'folder' || src.kind !== 'folder') {
           return { ...current, source: nextSrc };
         }
@@ -1113,7 +1113,7 @@ export function App() {
         };
       });
     },
-    [dispatchEdit, cancelPendingCvoxReparse],
+    [dispatchEdit, cancelPendingGeometryReparse],
   );
 
   // Re-point (or clear, path = null) the manifest's palette binding from
@@ -1203,14 +1203,14 @@ export function App() {
       ) {
         return current;
       }
-      const palette = src.cvox.palette;
+      const palette = src.geometry.palette;
       if (palette.length === 0) return current;
       let path = 'palette.json';
       let n = 2;
       while (src.files.has(path)) path = `palette-${n++}.json`;
       // Drop the inline declaration from the primary (empty = absent).
-      const stripped = mapGeometryFiles(src, (cvox, p) =>
-        p === src.cvoxFile.name ? { ...cvox, palette: [] } : null,
+      const stripped = mapGeometryFiles(src, (geometry, p) =>
+        p === src.geometryFile.name ? { ...geometry, palette: [] } : null,
       );
       const files = new Map(stripped.files ?? src.files);
       files.set(path, {
@@ -1236,7 +1236,7 @@ export function App() {
       };
     });
     setManifestParseError(null);
-  }, [dispatchEdit, cancelPendingCvoxReparse, cancelPendingManifestReparse]);
+  }, [dispatchEdit, cancelPendingGeometryReparse, cancelPendingManifestReparse]);
 
   // The reverse: copy the bound palette into the primary's inline
   // declaration and drop the binding. The palette.json file is kept
@@ -1254,8 +1254,8 @@ export function App() {
         return current;
       }
       const palette = src.externalPalette;
-      const withInline = mapGeometryFiles(src, (cvox, p) =>
-        p === src.cvoxFile.name ? { ...cvox, palette } : null,
+      const withInline = mapGeometryFiles(src, (geometry, p) =>
+        p === src.geometryFile.name ? { ...geometry, palette } : null,
       );
       const { palette: _dropped, ...restManifest } = src.manifest;
       const { externalPalette: _x, ...restSrc } = withInline;
@@ -1273,7 +1273,7 @@ export function App() {
       };
     });
     setManifestParseError(null);
-  }, [dispatchEdit, cancelPendingCvoxReparse, cancelPendingManifestReparse]);
+  }, [dispatchEdit, cancelPendingGeometryReparse, cancelPendingManifestReparse]);
 
   // ── File CRUD (Phase D). Folder sources with a files map only; each
   // operation is one dispatchEdit = one atomic undo step. The manifest
@@ -1295,7 +1295,7 @@ export function App() {
         if (norm === '' || norm.startsWith('../')) return current;
         if (
           src.files.has(norm) ||
-          src.cvoxFile.name === norm ||
+          src.geometryFile.name === norm ||
           src.manifestFile?.name === norm
         ) {
           return current;
@@ -1309,14 +1309,14 @@ export function App() {
         // which is the only thing this flow ever templated.
         // TODO: replace with an explicit type picker in the create UI.
         const lower = norm.toLowerCase();
-        const isCvox =
+        const isGeometry =
           lower.endsWith('.json') &&
           !lower.startsWith('anims/') &&
           !lower.endsWith('/palette.json') &&
           lower !== 'palette.json';
         let text: string;
-        let parsed: Cvox | null = null;
-        if (isCvox) {
+        let parsed: Geometry | null = null;
+        if (isGeometry) {
           // Template: one all-air part — valid with or without a palette
           // (§7.4). Part name unique model-wide (§5).
           const names = new Set(mergeGeometries(src).parts.map((p) => p.name));
@@ -1339,9 +1339,9 @@ export function App() {
         const removedFiles = new Set(src.removedFiles ?? []);
         removedFiles.delete(norm); // re-creating a removed path revives it
         let next: typeof src = { ...src, files, removedFiles };
-        if (isCvox && parsed !== null) {
+        if (isGeometry && parsed !== null) {
           const geometries = new Map(
-            src.geometries ?? [[src.cvoxFile.name, src.cvox]],
+            src.geometries ?? [[src.geometryFile.name, src.geometry]],
           );
           geometries.set(norm, parsed);
           next = { ...next, geometries };
@@ -1395,7 +1395,7 @@ export function App() {
         const refs = resolveProjectRefs(
           nextManifest,
           (p) => src.files?.get(p)?.text,
-          { path: src.cvoxFile.name, cvox: src.cvox },
+          { path: src.geometryFile.name, geometry: src.geometry },
         );
         const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
         const {
@@ -1404,7 +1404,7 @@ export function App() {
           projectErrors: _proj,
           ...rest
         } = src;
-        const primaryNext = refs.geometries.get(src.cvoxFile.name);
+        const primaryNext = refs.geometries.get(src.geometryFile.name);
         return {
           ...current,
           source: {
@@ -1415,7 +1415,7 @@ export function App() {
               text: JSON.stringify(nextManifest, null, 2) + '\n',
             },
             geometries: refs.geometries,
-            ...(primaryNext !== undefined && { cvox: primaryNext }),
+            ...(primaryNext !== undefined && { geometry: primaryNext }),
             ...(refs.externalPalette !== undefined && {
               externalPalette: refs.externalPalette,
             }),
@@ -1611,12 +1611,12 @@ export function App() {
     [dispatchEdit],
   );
 
-  // Palette / future structural edit on the cvox AST. Re-serializes to
+  // Palette / future structural edit on the geometry AST. Re-serializes to
   // canonical text immediately and pre-empts any pending reparse (the
   // new text is by-construction parseable, so we know the error state
   // is cleared too).
-  const handleEditCvox = useCallback(
-    (nextCvox: Cvox, tag?: string) => {
+  const handleEditGeometry = useCallback(
+    (nextGeometry: Geometry, tag?: string) => {
       if (!flushGeometryReparse()) return;
       // Optional coalescing tag from the caller (the color picker fires
       // continuously while dragging inside the OS dialog).
@@ -1625,34 +1625,34 @@ export function App() {
         const src = current.source;
         // Callers hand back a whole next AST for the PRIMARY file (the
         // palette panel and friends operate on it).
-        const nextSrc = mapGeometryFiles(src, (_cvox, path) =>
-          path === src.cvoxFile.name ? nextCvox : null,
+        const nextSrc = mapGeometryFiles(src, (_geometry, path) =>
+          path === src.geometryFile.name ? nextGeometry : null,
         );
         return { ...current, source: nextSrc };
       });
     },
-    [dispatchEdit, cancelPendingCvoxReparse],
+    [dispatchEdit, cancelPendingGeometryReparse],
   );
 
-  // Rewrite ONE part's cvox geometry (pivot / sockets), routed to whichever
+  // Rewrite ONE part's geometry (pivot / sockets), routed to whichever
   // geometry file defines it — part names are unique model-wide (§5), so the
   // build runs on exactly one file. `build` returning the same part is a
   // no-op (mapGeometryFiles then returns the source unchanged, and the
   // history reducer drops the entry). Backs PartProperties' Geometry section.
-  const mutateCvoxPart = useCallback(
+  const mutateGeometryPart = useCallback(
     (tag: string | null, partName: string, build: (part: Part) => Part) => {
       if (!flushGeometryReparse()) return;
       dispatchEdit(tag, (current) => {
         const src = current?.source;
         if (src === undefined) return current;
-        const nextSrc = mapGeometryFiles(src, (cvox) => {
-          const i = cvox.parts.findIndex((p) => p.name === partName);
+        const nextSrc = mapGeometryFiles(src, (geometry) => {
+          const i = geometry.parts.findIndex((p) => p.name === partName);
           if (i < 0) return null;
-          const built = build(cvox.parts[i]!);
-          if (built === cvox.parts[i]) return null;
-          const parts = cvox.parts.slice();
+          const built = build(geometry.parts[i]!);
+          if (built === geometry.parts[i]) return null;
+          const parts = geometry.parts.slice();
           parts[i] = built;
-          return { ...cvox, parts };
+          return { ...geometry, parts };
         });
         return nextSrc === src ? current : { ...current, source: nextSrc };
       });
@@ -1662,12 +1662,12 @@ export function App() {
 
   // Adapter for PartProperties' Geometry section: (partName, build, tag?) —
   // the component supplies coalescing tags (e.g. a live pivot-axis drag) while
-  // mutateCvoxPart takes the tag first.
+  // mutateGeometryPart takes the tag first.
   const handleEditPart = useCallback(
     (partName: string, build: (part: Part) => Part, tag?: string) => {
-      mutateCvoxPart(tag ?? null, partName, build);
+      mutateGeometryPart(tag ?? null, partName, build);
     },
-    [mutateCvoxPart],
+    [mutateGeometryPart],
   );
 
   // Begin creating a part: open the inline draft row in the tree. The draft is
@@ -1678,7 +1678,7 @@ export function App() {
     const src = loaded?.source;
     if (src === undefined) return;
     // Parenting writes the manifest, so it needs a clean manifest AST — with a
-    // manifest syntax error, fall back to a root part (cvox-only, no clobber).
+    // manifest syntax error, fall back to a root part (geometry-only, no clobber).
     const canParent =
       src.kind === 'folder' &&
       src.manifest !== undefined &&
@@ -1721,10 +1721,10 @@ export function App() {
         if (source === undefined || m.parts.some((p) => p.name === newName)) {
           return current;
         }
-        const file = m.files.get(sourceName) ?? src.cvoxFile.name;
+        const file = m.files.get(sourceName) ?? src.geometryFile.name;
         const newPart = make(source, newName);
-        const nextSrc = mapGeometryFiles(src, (cvox, path) =>
-          path === file ? { ...cvox, parts: [...cvox.parts, newPart] } : null,
+        const nextSrc = mapGeometryFiles(src, (geometry, path) =>
+          path === file ? { ...geometry, parts: [...geometry.parts, newPart] } : null,
         );
         return nextSrc === src ? current : { ...current, source: nextSrc };
       });
@@ -1746,9 +1746,9 @@ export function App() {
   // a new part. Matches `cuboidy-part mirror`.
   const handleMirrorPart = useCallback(
     (name: string, axis: Axis) => {
-      mutateCvoxPart(null, name, (p) => mirrorPart(p, axis, p.name));
+      mutateGeometryPart(null, name, (p) => mirrorPart(p, axis, p.name));
     },
-    [mutateCvoxPart],
+    [mutateGeometryPart],
   );
 
   // Confirm the draft: append a 1×1×1 solid block (palette index 0, or AIR if
@@ -1774,12 +1774,12 @@ export function App() {
           src.kind === 'folder' &&
           src.geometries?.has(file) === true
             ? file
-            : src.cvoxFile.name;
-        const targetCvox =
-          src.kind === 'folder' && target !== src.cvoxFile.name
-            ? (src.geometries?.get(target) ?? src.cvox)
-            : src.cvox;
-        const seed = targetCvox.palette.length > 0 ? 0 : AIR;
+            : src.geometryFile.name;
+        const targetGeometry =
+          src.kind === 'folder' && target !== src.geometryFile.name
+            ? (src.geometries?.get(target) ?? src.geometry)
+            : src.geometry;
+        const seed = targetGeometry.palette.length > 0 ? 0 : AIR;
         const newPart: Part = {
           name,
           size: { w: 1, h: 1, d: 1 },
@@ -1787,9 +1787,9 @@ export function App() {
           sockets: [],
           voxels: [[[seed]]],
         };
-        const nextSrc = mapGeometryFiles(src, (cvox, path) =>
+        const nextSrc = mapGeometryFiles(src, (geometry, path) =>
           path === target
-            ? { ...cvox, parts: [...cvox.parts, newPart] }
+            ? { ...geometry, parts: [...geometry.parts, newPart] }
             : null,
         );
         if (parent !== null && src.kind === 'folder' && src.manifest !== undefined) {
@@ -1814,7 +1814,7 @@ export function App() {
       setSelectedPartName(name);
       setCreating(null);
     },
-    [dispatchEdit, cancelPendingCvoxReparse, cancelPendingManifestReparse],
+    [dispatchEdit, cancelPendingGeometryReparse, cancelPendingManifestReparse],
   );
 
   // Move a part's declaration to another geometry file, atomically (one
@@ -1839,43 +1839,43 @@ export function App() {
         }
         const fromPath = mergeGeometries(src).files.get(name);
         if (fromPath === undefined || fromPath === targetPath) return current;
-        const fromCvox =
-          fromPath === src.cvoxFile.name
-            ? src.cvox
+        const fromGeometry =
+          fromPath === src.geometryFile.name
+            ? src.geometry
             : src.geometries.get(fromPath);
-        const toCvox =
-          targetPath === src.cvoxFile.name
-            ? src.cvox
+        const toGeometry =
+          targetPath === src.geometryFile.name
+            ? src.geometry
             : src.geometries.get(targetPath);
-        if (fromCvox === undefined || toCvox === undefined) return current;
-        const part = fromCvox.parts.find((p) => p.name === name);
+        if (fromGeometry === undefined || toGeometry === undefined) return current;
+        const part = fromGeometry.parts.find((p) => p.name === name);
         if (part === undefined) return current;
         let moved = part;
-        let toPalette = toCvox.palette;
+        let toPalette = toGeometry.palette;
         if (src.externalPalette === undefined) {
-          const remapped = remapPartPalette(part, fromCvox.palette, toPalette);
+          const remapped = remapPartPalette(part, fromGeometry.palette, toPalette);
           moved = remapped.part;
           toPalette = remapped.palette;
         }
-        const nextSrc = mapGeometryFiles(src, (cvox, path) => {
+        const nextSrc = mapGeometryFiles(src, (geometry, path) => {
           if (path === fromPath) {
-            return { ...cvox, parts: cvox.parts.filter((p) => p.name !== name) };
+            return { ...geometry, parts: geometry.parts.filter((p) => p.name !== name) };
           }
           if (path === targetPath) {
-            return { ...cvox, palette: toPalette, parts: [...cvox.parts, moved] };
+            return { ...geometry, palette: toPalette, parts: [...geometry.parts, moved] };
           }
           return null;
         });
         return { ...current, source: nextSrc };
       });
     },
-    [dispatchEdit, cancelPendingCvoxReparse],
+    [dispatchEdit, cancelPendingGeometryReparse],
   );
 
   // Rename a part everywhere it's referenced, atomically (one dispatchEdit =
   // one undo). The name is a cross-file join key, so a piecemeal rename would
   // leave dangling references. Rewrites:
-  //   cvox     — the part's `name`
+  //   geometry     — the part's `name`
   //   manifest — the entry `name`, any `parent` pointing at it, and every inline
   //              animation track keyed by the old name (re-keyed, order kept)
   //   external — every resolved §6.3 animation file whose tracks key the old
@@ -1892,14 +1892,14 @@ export function App() {
         const allParts = mergeGeometries(src).parts;
         if (!allParts.some((p) => p.name === oldName)) return current;
         if (allParts.some((p) => p.name === newName)) return current;
-        let nextSrc = mapGeometryFiles(src, (cvox) => {
+        let nextSrc = mapGeometryFiles(src, (geometry) => {
           let changed = false;
-          const parts: Part[] = cvox.parts.map((p) => {
+          const parts: Part[] = geometry.parts.map((p) => {
             if (p.name !== oldName) return p;
             changed = true;
             return { ...p, name: newName };
           });
-          return changed ? { ...cvox, parts } : null;
+          return changed ? { ...geometry, parts } : null;
         });
         // §6.3 external animation files reference the part by name too.
         nextSrc = rewriteExternalAnims(nextSrc, (anim) => {
@@ -1962,11 +1962,11 @@ export function App() {
         return next;
       });
     },
-    [dispatchEdit, cancelPendingCvoxReparse, cancelPendingManifestReparse],
+    [dispatchEdit, cancelPendingGeometryReparse, cancelPendingManifestReparse],
   );
 
   // Delete a part, cleaning up its references atomically (one undo). Removes
-  // the cvox part; in the manifest drops its entry, re-parents its children to
+  // the geometry part; in the manifest drops its entry, re-parents its children to
   // its own parent (grandparent, or root if none), and drops its animation
   // tracks (inline AND resolved external files). No confirmation: undo is the
   // safety net (same as clip delete).
@@ -1979,9 +1979,9 @@ export function App() {
         // Model-wide check (§5): the part may live in any geometry file.
         const allParts = mergeGeometries(src).parts;
         if (!allParts.some((p) => p.name === name)) return current;
-        let nextSrc = mapGeometryFiles(src, (cvox) =>
-          cvox.parts.some((p) => p.name === name)
-            ? { ...cvox, parts: cvox.parts.filter((p) => p.name !== name) }
+        let nextSrc = mapGeometryFiles(src, (geometry) =>
+          geometry.parts.some((p) => p.name === name)
+            ? { ...geometry, parts: geometry.parts.filter((p) => p.name !== name) }
             : null,
         );
         nextSrc = rewriteExternalAnims(nextSrc, (anim) => {
@@ -2045,12 +2045,12 @@ export function App() {
         return next;
       });
     },
-    [dispatchEdit, cancelPendingCvoxReparse, cancelPendingManifestReparse],
+    [dispatchEdit, cancelPendingGeometryReparse, cancelPendingManifestReparse],
   );
 
   // Manifest source-text edit (manifest tab textarea typing). Same
-  // shape as the cvox counterpart but uses JSON.parse + parseManifest.
-  // Folder-only: cvox-only sources have no manifest file to edit.
+  // shape as the geometry counterpart but uses JSON.parse + parseManifest.
+  // Folder-only: geometry-only sources have no manifest file to edit.
   const handleEditManifestText = useCallback(
     (nextText: string) => {
       dispatchEdit('text:manifest', (current) => {
@@ -2257,10 +2257,10 @@ export function App() {
           pos[1] - op.y,
           pos[2] - op.z,
         ];
-        const nextSrc = mapGeometryFiles(src, (cvox) => {
-          const i = cvox.parts.findIndex((p) => p.name === partName);
+        const nextSrc = mapGeometryFiles(src, (geometry) => {
+          const i = geometry.parts.findIndex((p) => p.name === partName);
           if (i < 0) return null;
-          const parts = cvox.parts.slice();
+          const parts = geometry.parts.slice();
           parts[i] = {
             ...parts[i]!,
             pivot: {
@@ -2268,7 +2268,7 @@ export function App() {
               pos: { x: pos[0], y: pos[1], z: pos[2] },
             },
           };
-          return { ...cvox, parts };
+          return { ...geometry, parts };
         });
         if (nextSrc === src) return current;
         if (nextSrc.kind !== 'folder' || nextSrc.manifest === undefined) {
@@ -2337,7 +2337,7 @@ export function App() {
   // All-zero drops the optional rot.
   const handleGizmoRotatePivot = useCallback(
     (partName: string, rot: [number, number, number]) => {
-      mutateCvoxPart(null, partName, (p) => {
+      mutateGeometryPart(null, partName, (p) => {
         if (rot.every((v) => v === 0)) {
           const { rot: _drop, ...pivRest } = p.pivot;
           return { ...p, pivot: pivRest };
@@ -2348,7 +2348,7 @@ export function App() {
         };
       });
     },
-    [mutateCvoxPart],
+    [mutateGeometryPart],
   );
 
   // One completed voxel-tool stroke (design §2.6) — every painted /
@@ -2358,7 +2358,7 @@ export function App() {
   // margins (lint W04) heal along the way. Either direction shifts
   // voxels, pivot.pos and every socket.pos together — the render is
   // unchanged because the −pivot draw offset cancels the shift exactly
-  // (no manifest compensation needed). The cvox view, which draws raw
+  // (no manifest compensation needed). The geometry view, which draws raw
   // coordinates, re-origins once at commit.
   const handleStrokeVoxels = useCallback(
     (partName: string, edits: readonly VoxelEdit[]) => {
@@ -2366,7 +2366,7 @@ export function App() {
       const byKey = new Map(
         edits.map((e) => [`${e.x},${e.y},${e.z}`, e.value]),
       );
-      mutateCvoxPart(null, partName, (p) => {
+      mutateGeometryPart(null, partName, (p) => {
         const { w, h, d } = p.size;
         // Tight bounds of the result's solid cells, and whether any
         // cell actually changes.
@@ -2462,14 +2462,14 @@ export function App() {
         };
       });
     },
-    [mutateCvoxPart],
+    [mutateGeometryPart],
   );
 
-  // Socket drag commits — part-local cvox edits through the shared
+  // Socket drag commits — part-local geometry edits through the shared
   // geometry mutation (one undo each).
   const handleGizmoMoveSocket = useCallback(
     (partName: string, socketName: string, pos: [number, number, number]) => {
-      mutateCvoxPart(null, partName, (p) => ({
+      mutateGeometryPart(null, partName, (p) => ({
         ...p,
         sockets: p.sockets.map((s) =>
           s.name === socketName
@@ -2478,12 +2478,12 @@ export function App() {
         ),
       }));
     },
-    [mutateCvoxPart],
+    [mutateGeometryPart],
   );
 
   const handleGizmoRotateSocket = useCallback(
     (partName: string, socketName: string, rot: [number, number, number]) => {
-      mutateCvoxPart(null, partName, (p) => ({
+      mutateGeometryPart(null, partName, (p) => ({
         ...p,
         sockets: p.sockets.map((s) => {
           if (s.name !== socketName) return s;
@@ -2496,7 +2496,7 @@ export function App() {
         }),
       }));
     },
-    [mutateCvoxPart],
+    [mutateGeometryPart],
   );
 
   const handleChangePartRotation = useCallback(
@@ -2529,17 +2529,17 @@ export function App() {
     dispatchEdit(null, (current) => {
       if (current?.source === undefined) return current;
       const src = current.source;
-      const manifest = synthesizeManifest(src.cvox, src.cvoxFile.name);
+      const manifest = synthesizeManifest(src.geometry, src.geometryFile.name);
       const manifestText = JSON.stringify(manifest, null, 2) + '\n';
       const manifestFile = { name: 'cuboidy.json', text: manifestText };
       let next: LoadedSource;
-      if (src.kind === 'cvox-only') {
+      if (src.kind === 'geometry-only') {
         next = {
           kind: 'folder',
           folderName: manifest.name,
           synthetic: true,
-          cvox: src.cvox,
-          cvoxFile: src.cvoxFile,
+          geometry: src.geometry,
+          geometryFile: src.geometryFile,
           manifest,
           manifestFile,
         };
@@ -3011,12 +3011,12 @@ export function App() {
   const revalidateRestored = useCallback((restored: LoadResult | null) => {
     const src = restored?.source;
     if (src === undefined) {
-      setCvoxParseError(null);
+      setGeometryParseError(null);
       setManifestParseError(null);
       return;
     }
-    const cvoxR = parseGeometryText(src.cvoxFile.text);
-    setCvoxParseError(cvoxR.ok ? null : cvoxR.message);
+    const geometryR = parseGeometryText(src.geometryFile.text);
+    setGeometryParseError(geometryR.ok ? null : geometryR.message);
     if (src.kind === 'folder' && src.manifestFile !== undefined) {
       let err: string | null = null;
       try {
@@ -3038,9 +3038,9 @@ export function App() {
       const next = new Map<string, string>();
       if (src.kind !== 'folder' || src.files === undefined) return next;
       for (const [path, entry] of src.files) {
-        if (path === src.cvoxFile.name) continue; // covered by cvoxParseError
+        if (path === src.geometryFile.name) continue; // covered by geometryParseError
         if (path === src.manifestFile?.name) continue;
-        if (isGeometryPath(path, src.cvoxFile.name, src.manifest)) {
+        if (isGeometryPath(path, src.geometryFile.name, src.manifest)) {
           const r = parseGeometryText(entry.text);
           if (!r.ok) next.set(path, r.message);
         } else if (path.endsWith('.json')) {
@@ -3064,14 +3064,14 @@ export function App() {
     // pre-undo text; firing after the restore would graft a post-edit
     // AST onto the restored text (audit A-6). revalidateRestored
     // re-derives the error gates from the restored text synchronously.
-    cancelPendingCvoxReparse();
+    cancelPendingGeometryReparse();
     cancelPendingManifestReparse();
     cancelAllFileReparse();
     dispatch({ type: 'undo' });
     revalidateRestored(target);
   }, [
     history,
-    cancelPendingCvoxReparse,
+    cancelPendingGeometryReparse,
     cancelPendingManifestReparse,
     revalidateRestored,
   ]);
@@ -3079,14 +3079,14 @@ export function App() {
   const performRedo = useCallback(() => {
     if (history.future.length === 0) return;
     const target = history.future[0]!;
-    cancelPendingCvoxReparse();
+    cancelPendingGeometryReparse();
     cancelPendingManifestReparse();
     cancelAllFileReparse();
     dispatch({ type: 'redo' });
     revalidateRestored(target);
   }, [
     history,
-    cancelPendingCvoxReparse,
+    cancelPendingGeometryReparse,
     cancelPendingManifestReparse,
     revalidateRestored,
   ]);
@@ -3134,9 +3134,9 @@ export function App() {
     viewMode === 'anim' && !animAvailable
       ? rigAvailable
         ? 'rig'
-        : 'cvox'
+        : 'geometry'
       : viewMode === 'rig' && !rigAvailable
-        ? 'cvox'
+        ? 'geometry'
         : viewMode;
 
   // Preview toolbar availability (design §2.1/§2.2): a disabled tool
@@ -3150,7 +3150,7 @@ export function App() {
     // tools, matching the inspector.
     const parseBroken =
       manifestParseError !== null ||
-      cvoxParseError !== null ||
+      geometryParseError !== null ||
       fileParseErrors.size > 0;
     if (effectiveViewMode === 'anim') {
       d.move = 'Rest editing lives in the Rig and Geometry views';
@@ -3170,7 +3170,7 @@ export function App() {
   }, [
     effectiveViewMode,
     manifestParseError,
-    cvoxParseError,
+    geometryParseError,
     fileParseErrors,
   ]);
   const effectivePreviewTool: PreviewTool =
@@ -3234,19 +3234,19 @@ export function App() {
     }
     return m;
   }, [source]);
-  const modelCvox = useMemo((): Cvox | undefined => {
+  const modelGeometry = useMemo((): Geometry | undefined => {
     if (source === undefined || merged === undefined) return undefined;
-    return { palette: source.cvox.palette, parts: merged.parts };
+    return { palette: source.geometry.palette, parts: merged.parts };
   }, [source, merged]);
-  const renderCvox = useMemo(() => {
-    if (modelCvox === undefined) return undefined;
+  const renderGeometry = useMemo(() => {
+    if (modelGeometry === undefined) return undefined;
     if (source?.kind !== 'folder' || source.externalPalette === undefined) {
-      return modelCvox;
+      return modelGeometry;
     }
-    return { ...modelCvox, palette: source.externalPalette };
-  }, [modelCvox, source]);
+    return { ...modelGeometry, palette: source.externalPalette };
+  }, [modelGeometry, source]);
   // Per-part render palettes (SPEC §6.10): with a binding, one palette
-  // covers everything (renderCvox above); WITHOUT one, each part
+  // covers everything (renderGeometry above); WITHOUT one, each part
   // resolves against its own defining file's inline palette — only
   // relevant for unbound multi-file models.
   const partPalettes = useMemo(() => {
@@ -3260,9 +3260,9 @@ export function App() {
     }
     const m = new Map<string, Palette>();
     for (const [path, g] of source.geometries) {
-      const cvox = path === source.cvoxFile.name ? source.cvox : g;
-      for (const part of cvox.parts) {
-        if (!m.has(part.name)) m.set(part.name, cvox.palette);
+      const geometry = path === source.geometryFile.name ? source.geometry : g;
+      for (const part of geometry.parts) {
+        if (!m.has(part.name)) m.set(part.name, geometry.palette);
       }
     }
     return m;
@@ -3279,7 +3279,7 @@ export function App() {
       };
     }
     return source !== undefined
-      ? { kind: 'inline' as const, file: source.cvoxFile.name }
+      ? { kind: 'inline' as const, file: source.geometryFile.name }
       : undefined;
   }, [source]);
   // Binding picker choices: every package .json that parses as a palette
@@ -3338,8 +3338,8 @@ export function App() {
           return 'Timeline';
         case 'console':
           return 'Console';
-        case 'cvox':
-          return source?.cvoxFile.name ?? 'voxels.json';
+        case 'geometry':
+          return source?.geometryFile.name ?? 'voxels.json';
         case 'manifest':
           return (
             (source?.kind === 'folder' ? source.manifestFile?.name : undefined) ??
@@ -3397,7 +3397,7 @@ export function App() {
     setLayout((l) => openPanelById(l, id));
   }, []);
   // Click a file in the tree → bring its panel forward (re-opening it if
-  // it was closed). The primary geometry maps to the classic cvox panel,
+  // it was closed). The primary geometry maps to the classic geometry panel,
   // cuboidy.json to the manifest panel, anything else to a dynamic
   // per-file tab.
   const handleOpenPath = useCallback(
@@ -3405,8 +3405,8 @@ export function App() {
       const src = loaded?.source;
       if (src === undefined) return;
       const id: LeafId =
-        path === src.cvoxFile.name
-          ? 'cvox'
+        path === src.geometryFile.name
+          ? 'geometry'
           : src.kind === 'folder' && src.manifestFile?.name === path
             ? 'manifest'
             : filePanel(path);
@@ -3434,16 +3434,16 @@ export function App() {
     ) {
       m.set(source.manifestFile.name, mErr);
     }
-    if (cvoxParseError !== null) m.set(source.cvoxFile.name, cvoxParseError);
+    if (geometryParseError !== null) m.set(source.geometryFile.name, geometryParseError);
     return m;
-  }, [source, fileParseErrors, cvoxParseError, manifestParseError]);
+  }, [source, fileParseErrors, geometryParseError, manifestParseError]);
 
   // Shared animation session (active clip, playback time, selected key). Owned
   // here so the Preview viewport and the Timeline panel are separate dock
   // panels reading the same state. The clock/Space follow the anim viewport;
   // the lane-editing keys follow the Timeline panel's visibility.
   const animSession = useAnimationSession({
-    cvox: modelCvox,
+    geometry: modelGeometry,
     manifest: animManifest,
     clockEnabled: effectiveViewMode === 'anim' && animManifest !== undefined,
     editKeysEnabled:
@@ -3467,14 +3467,14 @@ export function App() {
 
   // Per-panel content for the dock's tab rows. The leaf owns the tab header,
   // so each panel supplies just { title, fill?, body }. The source panels
-  // (preview / cvox / manifest) were the in-center TabBar's tabs; they now
+  // (preview / geometry / manifest) were the in-center TabBar's tabs; they now
   // `fill` their leaf and manage their own scrolling (3D canvas, textareas).
   const getPanel = (id: LeafId): PanelContent | null => {
     if (source === undefined) return null;
     const manifest = source.kind === 'folder' ? source.manifest : undefined;
     const title = panelTitle(id);
     // Dynamic per-file editor tabs (v0.7): any package file the Files
-    // tree opened that isn't the primary cvox / manifest pair.
+    // tree opened that isn't the primary geometry / manifest pair.
     const fpath = filePanelPath(id);
     if (fpath !== null) {
       const entry =
@@ -3507,7 +3507,7 @@ export function App() {
         const stripPalette =
           (effectiveSelectedPart !== null
             ? partPalettes?.get(effectiveSelectedPart)
-            : undefined) ?? (renderCvox ?? source.cvox).palette;
+            : undefined) ?? (renderGeometry ?? source.geometry).palette;
         const clampedColor =
           stripPalette.length === 0
             ? -1
@@ -3575,7 +3575,7 @@ export function App() {
               source.kind === 'folder' &&
               animManifest !== undefined ? (
                 <AnimationViewport
-                  cvox={renderCvox ?? source.cvox}
+                  geometry={renderGeometry ?? source.geometry}
                   manifest={animManifest}
                   hiddenParts={hiddenParts}
                   session={animSession}
@@ -3589,7 +3589,7 @@ export function App() {
                 />
               ) : (
                 <VoxelScene
-                  cvox={renderCvox ?? source.cvox}
+                  geometry={renderGeometry ?? source.geometry}
                   manifest={source.kind === 'folder' ? source.manifest : undefined}
                   viewMode={effectiveViewMode}
                   hiddenParts={hiddenParts}
@@ -3658,15 +3658,15 @@ export function App() {
             />
           ),
         };
-      case 'cvox':
+      case 'geometry':
         return {
           title,
           fill: true,
           body: (
             <SourceEditor
-              text={source.cvoxFile.text}
-              {...(cvoxParseError !== null && { parseError: cvoxParseError })}
-              onChange={handleEditCvoxText}
+              text={source.geometryFile.text}
+              {...(geometryParseError !== null && { parseError: geometryParseError })}
+              onChange={handleEditGeometryText}
             />
           ),
         };
@@ -3730,13 +3730,13 @@ export function App() {
           ),
         };
       case 'parts': {
-        const modelParts = merged?.parts ?? source.cvox.parts;
+        const modelParts = merged?.parts ?? source.geometry.parts;
         const visibleCount = modelParts.length - hiddenParts.size;
         const existingNames = new Set(modelParts.map((p) => p.name));
         let n = 1;
         while (existingNames.has(`part${n}`)) n += 1;
         const createSuggested = `part${n}`;
-        // Multi-cvox: the create draft offers a target-file picker.
+        // Multi-geometry: the create draft offers a target-file picker.
         // Insertion order of `geometries` is geometry-list order, so the
         // first entry is the primary (the single-file default).
         const geometryPaths =
@@ -3757,10 +3757,10 @@ export function App() {
                   type="button"
                   className="btn btn-sm"
                   disabled={
-                    cvoxParseError !== null || fileParseErrors.size > 0
+                    geometryParseError !== null || fileParseErrors.size > 0
                   }
                   title={
-                    cvoxParseError !== null || fileParseErrors.size > 0
+                    geometryParseError !== null || fileParseErrors.size > 0
                       ? 'Fix the geometry file errors to add parts'
                       : 'New part (child of the selected part)'
                   }
@@ -3808,7 +3808,7 @@ export function App() {
                     isIdentifier(name) && !existingNames.has(name)
                   }
                   renameEnabled={
-                    cvoxParseError === null &&
+                    geometryParseError === null &&
                     fileParseErrors.size === 0 &&
                     !(manifest !== undefined && manifestParseError !== null)
                   }
@@ -3827,7 +3827,7 @@ export function App() {
         };
       }
       case 'properties': {
-        // Multi-cvox: the inspector shows a defining-file field whose
+        // Multi-geometry: the inspector shows a defining-file field whose
         // change moves the part. Same source as the parts panel picker.
         const movePaths =
           source.kind === 'folder' && (source.geometries?.size ?? 0) > 1
@@ -3839,21 +3839,21 @@ export function App() {
             effectiveSelectedPart !== null ? (
               <PartProperties
                 selectedPart={effectiveSelectedPart}
-                cvox={modelCvox ?? source.cvox}
+                geometry={modelGeometry ?? source.geometry}
                 manifest={manifest}
                 manifestEditsDisabled={manifestParseError !== null}
                 renameDisabled={
-                  cvoxParseError !== null ||
+                  geometryParseError !== null ||
                   fileParseErrors.size > 0 ||
                   (manifest !== undefined && manifestParseError !== null)
                 }
                 geometryFiles={movePaths}
                 partFile={partFiles?.get(effectiveSelectedPart)}
                 moveDisabled={
-                  cvoxParseError !== null || fileParseErrors.size > 0
+                  geometryParseError !== null || fileParseErrors.size > 0
                 }
-                cvoxEditsDisabled={
-                  cvoxParseError !== null || fileParseErrors.size > 0
+                geometryEditsDisabled={
+                  geometryParseError !== null || fileParseErrors.size > 0
                 }
                 onChangeParent={handleChangePartParent}
                 onChangePosition={handleChangePartPosition}
@@ -3876,7 +3876,7 @@ export function App() {
       }
       case 'palette': {
         const target =
-          paletteTarget ?? ({ kind: 'inline', file: source.cvoxFile.name } as const);
+          paletteTarget ?? ({ kind: 'inline', file: source.geometryFile.name } as const);
         const external = target.kind === 'external';
         // A binding that didn't resolve (missing / invalid file) shows an
         // empty palette + a disabled reason rather than silently falling
@@ -3888,7 +3888,7 @@ export function App() {
           ? source.kind === 'folder'
             ? (source.externalPalette ?? [])
             : []
-          : source.cvox.palette;
+          : source.geometry.palette;
         const bindable =
           source.kind === 'folder' &&
           source.manifest !== undefined &&
@@ -3901,13 +3901,13 @@ export function App() {
               // Usage spans the files resolving against this palette:
               // bound → the whole model; inline → the primary file.
               parts={
-                external ? (merged?.parts ?? source.cvox.parts) : source.cvox.parts
+                external ? (merged?.parts ?? source.geometry.parts) : source.geometry.parts
               }
               target={target}
               disabled={
                 external
                   ? manifestParseError !== null || unresolved
-                  : cvoxParseError !== null
+                  : geometryParseError !== null
               }
               disabledReason={
                 external
@@ -3919,13 +3919,13 @@ export function App() {
               onChange={(next, tag) =>
                 external
                   ? handleEditExternalPalette(next, tag)
-                  : handleEditCvox({ ...source.cvox, palette: next }, tag)
+                  : handleEditGeometry({ ...source.geometry, palette: next }, tag)
               }
               onDeleteColor={handleDeletePaletteColor}
               onExternalize={
                 !external &&
                 bindable &&
-                source.cvox.palette.length > 0
+                source.geometry.palette.length > 0
                   ? handleExternalizePalette
                   : undefined
               }
@@ -3944,13 +3944,13 @@ export function App() {
         // errors mirror the in-editor banners; the dropped-comments notice
         // is load-time only (it can't change until the next load).
         const entries: ConsoleEntry[] = [];
-        if (cvoxParseError !== null) {
+        if (geometryParseError !== null) {
           entries.push({
             severity: 'error',
-            source: source.cvoxFile.name,
+            source: source.geometryFile.name,
             message: (
               <>
-                <strong>Error:</strong> {cvoxParseError}
+                <strong>Error:</strong> {geometryParseError}
               </>
             ),
           });

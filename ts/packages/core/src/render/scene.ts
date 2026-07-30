@@ -107,7 +107,7 @@ export function buildScene(voxels: readonly Voxel[], palette: Palette): Scene {
   return { quads, center, min, max };
 }
 
-// One part ready for oriented rendering: cvox geometry, its palette
+// One part ready for oriented rendering: geometry geometry, its palette
 // remap into the effective palette (null = identity), and its rest
 // world transform. Mirrors assemble.ts's ResolvedPart without depending
 // on the CLI layer.

@@ -6,7 +6,7 @@ import {
   toGeometryDoc,
   SPEC_VERSION,
 } from '../src/geometry/serialize.js';
-import type { Cvox } from '../src/geometry/types.js';
+import type { Geometry } from '../src/geometry/types.js';
 import { geo } from './helpers/geometry.js';
 
 // SPEC §7 canonical emission. The corpus fixed-point in geometry-parse.test.ts
@@ -15,7 +15,7 @@ import { geo } from './helpers/geometry.js';
 // that starts being emitted still round-trips, so only an explicit test
 // catches it).
 
-function parse(text: string): Cvox {
+function parse(text: string): Geometry {
   const r = parseGeometryText(text);
   if (!r.ok) throw new Error(r.message);
   return r.value;

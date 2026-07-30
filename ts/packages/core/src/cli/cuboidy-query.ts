@@ -8,7 +8,7 @@ import {
 
 // CLI shell for `cuboidy-query <dir> --at=... --core=...`. All real
 // work lives in query-runner.ts. Output is plain text, one line per
-// query, using palette-index characters identical to the cvox row
+// query, using palette-index characters identical to the geometry row
 // alphabet so a reader can compare directly against `voxels.json`.
 
 interface Args {

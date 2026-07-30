@@ -128,7 +128,7 @@ describe('cuboidy.schema.json — parity corpus (runtime-invalid inputs)', () =>
       'http://x/a.json',
       '.json',
       // The retired text extension is no longer a valid geometry reference.
-      'voxels.cvox',
+      'voxels.geometry',
     ]) {
       expectBothReject(`geometry ${bad}`, { ...base, geometry: [bad] });
     }

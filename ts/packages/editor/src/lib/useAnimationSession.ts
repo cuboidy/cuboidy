@@ -6,7 +6,7 @@ import {
   restValue,
   sampleAnimation,
   type AttrValue,
-  type Cvox,
+  type Geometry,
   type InlineAnimation,
   type KeyAttr,
   type Keyframe,
@@ -68,7 +68,7 @@ export interface AnimationSession {
 }
 
 interface Params {
-  cvox: Cvox | undefined;
+  geometry: Geometry | undefined;
   manifest: Manifest | undefined;
   // The preview is showing the anim viewport. Gates the rAF clock and the
   // Space play/pause key (the transport lives in that viewport).
@@ -107,7 +107,7 @@ interface Params {
 }
 
 export function useAnimationSession({
-  cvox,
+  geometry,
   manifest,
   clockEnabled,
   editKeysEnabled,
@@ -208,8 +208,8 @@ export function useAnimationSession({
   playingRef.current = playing;
 
   const partNames = useMemo(
-    () => (cvox ? cvox.parts.map((p) => p.name) : []),
-    [cvox],
+    () => (geometry ? geometry.parts.map((p) => p.name) : []),
+    [geometry],
   );
 
   // SPEC §6.6 lint: count whole time-key entries beyond the clip duration

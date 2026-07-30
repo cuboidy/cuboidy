@@ -36,7 +36,7 @@ interface Props {
   onInline?: (() => void) | undefined;
   // Binding picker: package .json files that parse as palettes (plus the
   // current binding, even if broken). undefined = binding not available
-  // (cvox-only / no manifest) → the header shows a static label instead.
+  // (geometry-only / no manifest) → the header shows a static label instead.
   bindingChoices?: readonly string[] | undefined;
   // null = clear the binding (back to inline palettes).
   onChangeBinding?: ((path: string | null) => void) | undefined;

@@ -2,7 +2,7 @@ import {
   QUAT_IDENTITY,
   computeRestWorldTransforms,
   quatRotateVec3,
-  type Cvox,
+  type Geometry,
   type Manifest,
   type ManifestPart,
   type Part,
@@ -31,9 +31,9 @@ interface Bounds {
 // origin-anchored identity transform. The box always includes the unit
 // cube at the origin (historical behavior: the camera stays anchored near
 // the grid origin even for far-flung models).
-function computeWorldBounds(cvox: Cvox, manifest: Manifest): Bounds {
+function computeWorldBounds(geometry: Geometry, manifest: Manifest): Bounds {
   const pivotRots = new Map<string, Vec3Tuple>();
-  for (const p of cvox.parts) {
+  for (const p of geometry.parts) {
     const rot = p.pivot.rot;
     if (rot !== undefined) pivotRots.set(p.name, [rot.x, rot.y, rot.z]);
   }
@@ -42,7 +42,7 @@ function computeWorldBounds(cvox: Cvox, manifest: Manifest): Bounds {
 
   const min: [number, number, number] = [0, 0, 0];
   const max: [number, number, number] = [1, 1, 1];
-  for (const p of cvox.parts) {
+  for (const p of geometry.parts) {
     const wt = transforms.get(p.name) ?? fallback;
     const piv = p.pivot.pos;
     for (const cx of [0, p.size.w]) {
@@ -72,33 +72,33 @@ export interface Span {
 }
 
 export function computeSceneSpan(
-  cvox: Cvox,
+  geometry: Geometry,
   manifest: Manifest | undefined,
   viewMode: ViewMode,
 ): Span {
-  if (viewMode === 'cvox' || manifest === undefined) {
+  if (viewMode === 'geometry' || manifest === undefined) {
     return {
-      w: Math.max(1, ...cvox.parts.map((p) => p.size.w)),
-      h: Math.max(1, ...cvox.parts.map((p) => p.size.h)),
-      d: Math.max(1, ...cvox.parts.map((p) => p.size.d)),
+      w: Math.max(1, ...geometry.parts.map((p) => p.size.w)),
+      h: Math.max(1, ...geometry.parts.map((p) => p.size.h)),
+      d: Math.max(1, ...geometry.parts.map((p) => p.size.d)),
     };
   }
-  const { min, max } = computeWorldBounds(cvox, manifest);
+  const { min, max } = computeWorldBounds(geometry, manifest);
   return { w: max[0] - min[0], h: max[1] - min[1], d: max[2] - min[2] };
 }
 
 export function computeSceneCenter(
-  cvox: Cvox,
+  geometry: Geometry,
   manifest: Manifest | undefined,
   viewMode: ViewMode,
 ): [number, number, number] {
-  if (viewMode === 'cvox' || manifest === undefined) {
-    const maxW = Math.max(1, ...cvox.parts.map((p) => p.size.w));
-    const maxH = Math.max(1, ...cvox.parts.map((p) => p.size.h));
-    const maxD = Math.max(1, ...cvox.parts.map((p) => p.size.d));
+  if (viewMode === 'geometry' || manifest === undefined) {
+    const maxW = Math.max(1, ...geometry.parts.map((p) => p.size.w));
+    const maxH = Math.max(1, ...geometry.parts.map((p) => p.size.h));
+    const maxD = Math.max(1, ...geometry.parts.map((p) => p.size.d));
     return [maxW / 2, maxH / 2, maxD / 2];
   }
-  const { min, max } = computeWorldBounds(cvox, manifest);
+  const { min, max } = computeWorldBounds(geometry, manifest);
   return [
     (min[0] + max[0]) / 2,
     (min[1] + max[1]) / 2,
@@ -108,7 +108,7 @@ export function computeSceneCenter(
 
 // ─── Hierarchy ──────────────────────────────────────────────────────────
 
-// A node in the rig forest: a cvox part plus its manifest entry (for the
+// A node in the rig forest: a geometry part plus its manifest entry (for the
 // parent-relative `position`) and its child parts. The animation view nests
 // each node into a three.js <group> so a parent's animated rotation/scale
 // carries the whole subtree (SPEC §6.2 rigid hierarchy).
@@ -124,7 +124,7 @@ export interface RigNode {
 // safely (SPEC declares cycles an error; parseManifest doesn't yet reject
 // them, so the viewer must not hang on malformed input).
 export function buildRigTree(
-  cvox: Cvox,
+  geometry: Geometry,
   manifest: Manifest | undefined,
 ): RigNode[] {
   const mpByName = new Map<string, ManifestPart>();
@@ -133,7 +133,7 @@ export function buildRigTree(
   }
 
   const nodes = new Map<string, RigNode>();
-  for (const p of cvox.parts) {
+  for (const p of geometry.parts) {
     nodes.set(p.name, {
       part: p,
       manifestPart: mpByName.get(p.name),
@@ -157,7 +157,7 @@ export function buildRigTree(
   };
 
   const roots: RigNode[] = [];
-  for (const p of cvox.parts) {
+  for (const p of geometry.parts) {
     const node = nodes.get(p.name)!;
     const par = effectiveParent(p.name);
     if (par === null) roots.push(node);

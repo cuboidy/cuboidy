@@ -1,7 +1,7 @@
 import type { Diagnostic } from './diagnostic.js';
 import { InlineAnimationSchema, type InlineAnimation } from './animation.js';
 import { parseGeometryText } from './geometry/parse.js';
-import type { Cvox, Palette } from './geometry/types.js';
+import type { Geometry, Palette } from './geometry/types.js';
 import { manifestGeometry, type Manifest } from './manifest.js';
 import { parsePaletteFile } from './palette-file.js';
 
@@ -13,7 +13,7 @@ import { parsePaletteFile } from './palette-file.js';
 
 export interface GeometryFile {
   path: string;
-  cvox: Cvox;
+  geometry: Geometry;
 }
 
 // A diagnostic tagged with the package-relative path it belongs to (the
@@ -100,7 +100,7 @@ export function resolveProject(
       });
       continue;
     }
-    parsed.push({ path: ref, cvox: r.value });
+    parsed.push({ path: ref, geometry: r.value });
   }
 
   let externalPalette: Palette | undefined;

@@ -31,7 +31,7 @@ declare global {
 //
 // Pre-edit phase note: until the editor mutates the loaded AST, save
 // just round-trips the original text bytes. When edits land, the
-// dirty-tracking layer will swap `source.cvoxFile.text` for a fresh
+// dirty-tracking layer will swap `source.geometryFile.text` for a fresh
 // serialize. This file doesn't need to change at that point — it
 // already takes text and writes text.
 
@@ -48,7 +48,7 @@ export async function saveToFolder(
   if (source.files !== undefined) {
     for (const [path, entry] of source.files) files.set(path, entry.text);
   }
-  files.set(source.cvoxFile.name, source.cvoxFile.text);
+  files.set(source.geometryFile.name, source.geometryFile.text);
   if (source.manifestFile !== undefined) {
     files.set(source.manifestFile.name, source.manifestFile.text);
   }
@@ -81,7 +81,7 @@ export async function downloadAsZip(
       files[path] = strToU8(entry.text);
     }
   }
-  files[source.cvoxFile.name] = strToU8(source.cvoxFile.text);
+  files[source.geometryFile.name] = strToU8(source.geometryFile.text);
   if (source.manifestFile !== undefined) {
     files[source.manifestFile.name] = strToU8(source.manifestFile.text);
   }

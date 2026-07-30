@@ -24,9 +24,9 @@ export function ViewModeToggle({
       <button
         type="button"
         role="tab"
-        aria-selected={mode === 'cvox'}
-        className={mode === 'cvox' ? 'active' : ''}
-        onClick={() => onChange('cvox')}
+        aria-selected={mode === 'geometry'}
+        className={mode === 'geometry' ? 'active' : ''}
+        onClick={() => onChange('geometry')}
       >
         Geometry view
       </button>

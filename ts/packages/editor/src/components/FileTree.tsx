@@ -139,12 +139,12 @@ export function FileTree({
       if (source.files !== undefined) {
         for (const path of source.files.keys()) paths.add(path);
       }
-      paths.add(source.cvoxFile.name);
+      paths.add(source.geometryFile.name);
       if (source.manifestFile !== undefined) {
         paths.add(source.manifestFile.name);
       }
     } else {
-      paths.add(source.cvoxFile.name);
+      paths.add(source.geometryFile.name);
     }
     return paths;
   }, [source]);
@@ -192,7 +192,7 @@ export function FileTree({
   const isFolder = source.kind === 'folder';
   const canEdit = isFolder && source.files !== undefined;
   const anchor = isFolder ? (source.manifestFile?.name ?? 'cuboidy.json') : null;
-  const primary = source.cvoxFile.name;
+  const primary = source.geometryFile.name;
   const hasManifest = isFolder && source.manifest !== undefined;
   const hasManifestFile = isFolder && source.manifestFile !== undefined;
 
@@ -205,7 +205,7 @@ export function FileTree({
     const refs =
       source.manifest !== undefined
         ? manifestGeometry(source.manifest)
-        : [source.cvoxFile.name];
+        : [source.geometryFile.name];
     return new Set(refs.map(normalizePath));
   }, [source]);
 
@@ -1041,7 +1041,7 @@ function FileNode({
       <div
         className={`tree-row${selected === true ? ' selected' : ''}${error !== undefined ? ' error' : ''}${unreferenced === true ? ' unreferenced' : ''}${dragging ? ' dragging' : ''}${dropActive ? ' drop-target' : ''}`}
         style={{ paddingLeft: pad }}
-        title={error !== undefined ? `Syntax error: ${error}` : path}
+        title={error !== undefined ? `Error: ${error}` : path}
         onClick={() => onOpenPath(path)}
         onDoubleClick={() => {
           if (ops.renameReason === null) onStartRename(path);
@@ -1093,7 +1093,7 @@ function FileNode({
 }
 
 function canCreateManifest(source: LoadedSource): boolean {
-  if (source.kind === 'cvox-only') return true;
+  if (source.kind === 'geometry-only') return true;
   if (source.kind === 'folder' && source.manifest === undefined) return true;
   return false;
 }

@@ -70,7 +70,7 @@ export {
 export { AIR } from './geometry/voxel-row.js';
 export type {
   Color,
-  Cvox,
+  Geometry,
   Palette,
   Part,
   Pivot,
@@ -106,7 +106,7 @@ export type { QuatTuple, Vec3Tuple, WorldTransform } from './rig-transform.js';
 
 export { validateCrossFile, validateProject } from './lint/cross-file.js';
 export type { ProjectInput } from './lint/cross-file.js';
-export { lintCvox } from './lint/voxel-rules.js';
+export { lintGeometry } from './lint/voxel-rules.js';
 export type { Diagnostic, LintRuleId, Severity } from './diagnostic.js';
 
 export { isIdentifier } from './identifier.js';

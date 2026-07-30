@@ -45,8 +45,8 @@ export function ExportMenu({ source }: Props) {
 
   const close = useCallback(() => setOpen(false), []);
 
-  const handleDownloadCvox = useCallback(() => {
-    downloadFile(source.cvoxFile.name, source.cvoxFile.text);
+  const handleDownloadGeometry = useCallback(() => {
+    downloadFile(source.geometryFile.name, source.geometryFile.text);
     close();
   }, [source, close]);
 
@@ -85,9 +85,9 @@ export function ExportMenu({ source }: Props) {
             type="button"
             className="menu-item"
             role="menuitem"
-            onClick={handleDownloadCvox}
+            onClick={handleDownloadGeometry}
           >
-            Download {source.cvoxFile.name}
+            Download {source.geometryFile.name}
           </button>
           {hasManifest && (
             <button

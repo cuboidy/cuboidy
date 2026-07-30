@@ -4,7 +4,7 @@ import { parseManifest } from '../manifest.js';
 import type { Manifest } from '../manifest.js';
 import { projectFilePaths, resolveProject } from '../project.js';
 import { validateProject } from '../lint/cross-file.js';
-import { lintCvox } from '../lint/voxel-rules.js';
+import { lintGeometry } from '../lint/voxel-rules.js';
 import { parseGeometryText } from '../geometry/parse.js';
 import type { Diagnostic } from '../diagnostic.js';
 
@@ -130,7 +130,7 @@ export async function runLint(
     diagnostics.push({ file: join(root, d.file), diag: d.diag });
   }
   for (const g of project.geometries) {
-    for (const d of lintCvox(g.cvox)) {
+    for (const d of lintGeometry(g.geometry)) {
       diagnostics.push({ file: join(root, g.path), diag: d });
     }
   }
@@ -159,7 +159,7 @@ export async function runLint(
 // relative to the root — the same shape as normalized geometry refs, so W07
 // can compare them verbatim.
 //
-// The extension no longer settles this. When geometry was `.cvox`, the suffix
+// The extension no longer settles this. When geometry was `.geometry`, the suffix
 // alone identified it; now the manifest, the palette binding, the animation
 // clips and the geometry are all `.json`, so W07 would fire on `cuboidy.json`
 // itself. Content decides instead: a file is geometry if the geometry reader

@@ -3,9 +3,9 @@ import { isIdentifier, IDENTIFIER_RE } from '../src/identifier.js';
 import { RESERVED_KEYWORDS } from '../src/identifier.js';
 import { ManifestPartSchema } from '../src/manifest.js';
 
-// SPEC §5: identifier rule shared by cvox identifier slots (part/socket
+// SPEC §5: identifier rule shared by geometry identifier slots (part/socket
 // names) and the manifest Zod schema (cuboidy.json names). Two conjuncts:
-// regex shape + not a reserved cvox keyword. Tested here so a single rule
+// regex shape + not a reserved geometry keyword. Tested here so a single rule
 // change can be checked in one place.
 
 describe('isIdentifier', () => {

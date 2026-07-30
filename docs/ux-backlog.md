@@ -53,26 +53,26 @@
 | ID | 課題 | 規模 | 対象 |
 |---|---|---|---|
 | P2-1 `[#5]` | `PartProperties` を右パネル→左 Sidebar の Parts Tree 直下へ。選択→編集が1カラム内の縦移動に | M | `RightPanel.tsx:49-59` → `Sidebar.tsx` |
-| P2-2 `[#6]` | `PalettePanel` を右パネル→左 cvox 群へ移動。右カラムから cvox 関心を排除 | M | `RightPanel.tsx:42-60` → `Sidebar.tsx` |
-| P2-3 `[new]` | パレットを全タブ常時表示にせず、cvox 関連タブ時のみ表示(`PalettePanel.tsx:17-20`) | S | `RightPanel.tsx:44` |
+| P2-2 `[#6]` | `PalettePanel` を右パネル→左 geometry 群へ移動。右カラムから geometry 関心を排除 | M | `RightPanel.tsx:42-60` → `Sidebar.tsx` |
+| P2-3 `[new]` | パレットを全タブ常時表示にせず、geometry 関連タブ時のみ表示(`PalettePanel.tsx:17-20`) | S | `RightPanel.tsx:44` |
 | P2-4 `[new]` | パネル幅 260px 固定をリサイズ可能に(スプリッタ)。アニメビューでは左右を自動折り畳み | M | `styles.css:758,271` |
-| P2-5 `[new]` | `ViewModeToggle`(Cvox/Rig/Anim)をヘッダ右→Preview ペイン上へ。`TabBar` と並べる | S | `App.tsx:787-794` |
+| P2-5 `[new]` | `ViewModeToggle`(Geometry/Rig/Anim)をヘッダ右→Preview ペイン上へ。`TabBar` と並べる | S | `App.tsx:787-794` |
 | P2-6 `[new]` | "Create manifest" の入口が3箇所(`FileTree`/`PartProperties`/`Sidebar`)。Files 1箇所に集約 | S | `FileTree.tsx:43-51`, `PartProperties.tsx:64-71` |
 
 ---
 
 ## P3 — オーサリング機能 `[#1]` ＋ ジオメトリ
 
-パーツの実体は `cvox.parts`(ジオメトリ)。manifest は rig メタのみで、未記載パーツも許容
-(`part-tree.ts:31-39`)。名前は cvox/manifest/animation の**結合キー**なのでリネーム/削除は要整合。
+パーツの実体は `geometry.parts`(ジオメトリ)。manifest は rig メタのみで、未記載パーツも許容
+(`part-tree.ts:31-39`)。名前は geometry/manifest/animation の**結合キー**なのでリネーム/削除は要整合。
 
 | ID | 課題 | 規模 | 対象 |
 |---|---|---|---|
-| P3-1 `[#1]` | パーツ新規作成。`handleCreatePart`:デフォルト `Part`(1voxel)を `cvox.parts` に追加し `handleEditCvox` 経由。"+" は `Sidebar` Parts 節へ | M | `App.tsx`, `Sidebar.tsx:62-77` |
-| P3-2 `[new]` | パーツ削除。cvox から除去＋manifest エントリ削除＋子の `parent` 再ルート＋animトラック削除を一括 | M | `App.tsx` |
+| P3-1 `[#1]` | パーツ新規作成。`handleCreatePart`:デフォルト `Part`(1voxel)を `geometry.parts` に追加し `handleEditGeometry` 経由。"+" は `Sidebar` Parts 節へ | M | `App.tsx`, `Sidebar.tsx:62-77` |
+| P3-2 `[new]` | パーツ削除。geometry から除去＋manifest エントリ削除＋子の `parent` 再ルート＋animトラック削除を一括 | M | `App.tsx` |
 | P3-3 `[new]` | パーツ複製(対称な手足の量産)。選択 `Part` をディープコピー＋一意名＋append。最安 | S/M | `App.tsx` |
-| P3-4 `[new]` | パーツ リネーム。cvox名＋manifest.name/parent＋全 anim トラックキーを原子的に書換(クロスファイルトランザクション) | M/L | `App.tsx` |
-| P3-5 `[new]` | size / pivot / socket 編集を `PartProperties` に追加(`handleEditCvox` 経由)。フル voxel painter の前段として高価値・低リスク | M | `PartProperties.tsx:21-23` |
+| P3-4 `[new]` | パーツ リネーム。geometry 名＋manifest.name/parent＋全 anim トラックキーを原子的に書換(クロスファイルトランザクション) | M/L | `App.tsx` |
+| P3-5 `[new]` | size / pivot / socket 編集を `PartProperties` に追加(`handleEditGeometry` 経由)。フル voxel painter の前段として高価値・低リスク | M | `PartProperties.tsx:21-23` |
 | P3-6 `[new]` | パレット alpha 編集。`#RRGGBBAA` 対応済だが UI が RGB のみ(`hexToRgb` が a を捨てる) | S | `PalettePanel.tsx:143-150,187-193` |
 | P3-7 `[new]` | clone/mirror パーツ再利用の UI(core は対応済 `serialize.ts:59-68`)。対称リグの本来の手段 | M | `PartTree`/`PartProperties` |
 | P3-8 `[new]` | モデル `name`/`version` を UI で編集(今は JSON タブのみ) | S | `synthesize-manifest.ts:28-34` |
@@ -92,7 +92,7 @@
 | P4-2 `[new]` | disabled 状態の統一(opacity 0.4/0.5/0.6 混在、`.anim-play` は `:disabled` 規則すら無し) | S | `styles.css:1191-1216` ほか |
 | P4-3 `[new]` | dirty(未保存)インジケータ＋`beforeunload` ガード。今は編集しても "Save" のまま、離脱で無言破棄 | M | `SaveButton.tsx`, `history.ts` |
 | P4-4 `[new]` | 保存/エクスポートのフィードバック統一(成功=地味な✓ / 失敗=`alert` / Export=無言)。共通ステータス帯へ | S | `SaveButton.tsx:33-45`, `ExportMenu.tsx:59-64` |
-| P4-5 `[new]` | core の lint(`lintCvox`/`validateCrossFile`)をエディタに接続。pivot範囲外・未使用パレット等を下部ステータスに | M | `core/src/index.ts:53-55`, `App.tsx` 反映 |
+| P4-5 `[new]` | core の lint(`lintGeometry`/`validateCrossFile`)をエディタに接続。pivot範囲外・未使用パレット等を下部ステータスに | M | `core/src/index.ts:53-55`, `App.tsx` 反映 |
 | P4-6 `[new]` | `NumberInput`/`TextInput` の無効入力フィードバック＋理由表示(invalid識別子 vs 重複名)。`aria-invalid` | S | `NumberInput.tsx:60-69`, `TextInput.tsx:43-46` |
 | P4-7 `[new]` | a11y: アイコンボタンに `aria-label`、swatch-delete の focus 表示、tablist の矢印移動/radiogroup化、低コントラスト(#555/#666)是正 | M | `Timeline`/`PalettePanel`/`ViewModeToggle`/`styles.css` |
 | P4-8 `[new]` | tooltip の "SPEC §6.6" 等の内部参照を平易な日本語/英語へ | S | `Timeline.tsx:529`, `KeyInspector.tsx:56`, `AnimationView.tsx:389` |
@@ -109,6 +109,6 @@
 4. **P3**(オーサリング)→ `[#1]` 含む機能拡張。作成→複製→削除→リネームの順が安全
 5. **P4**(仕上げ)→ ボタン統一や a11y は token パスとしてまとめて
 
-> 注: P3 のリネーム/削除と、cvox/manifest/animation の参照整合は最大の技術的リスク。
+> 注: P3 のリネーム/削除と、geometry/manifest/animation の参照整合は最大の技術的リスク。
 > source 手編集だと参照が静かに壊れる(dangling parent は黙って root 化、stale な anim
 > トラックは黙って no-op)。これらは必ずクロスファイルトランザクションで実装すること。

@@ -28,17 +28,17 @@ interface Props {
   part: Part;
   show: GizmoVisibility;
   picking: GizmoPicking | null;
-  // Cvox view only: rotate the pivot marker (axes cross) by pivot.rot
+  // Geometry view only: rotate the pivot marker (axes cross) by pivot.rot
   // itself. The rig view leaves this off — its ancestor group already
   // carries q_rotation ⊗ q_pivot, so applying it here would double up.
-  // This is also what makes pivot ROTATION editable in the cvox view:
+  // This is also what makes pivot ROTATION editable in the geometry view:
   // the marker's own orientation is the live preview there.
   applyPivotRot?: boolean | undefined;
 }
 
 // Selection gizmos for one part, drawn in the part's LOCAL voxel frame
 // (the [0..w]×[0..h]×[0..d] box the part's voxels live in). Rendering
-// them inside the same group as the PartMesh means every view (cvox /
+// them inside the same group as the PartMesh means every view (geometry /
 // rig / anim) carries them through its own transforms for free —
 // including animated scale, where the frame keeps hugging the scaled
 // geometry while the pivot marker stays put (the pivot is the scale

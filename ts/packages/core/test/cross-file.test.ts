@@ -127,8 +127,8 @@ describe('validateProject (v0.7)', () => {
     const diags = validateProject({
       manifest,
       geometries: [
-        { path: 'a.json', cvox: bodyCvox },
-        { path: 'b.json', cvox: bodyCvox },
+        { path: 'a.json', geometry: bodyCvox },
+        { path: 'b.json', geometry: bodyCvox },
       ],
     });
     const dup = diags.find((d) => d.code === 'duplicate');
@@ -144,7 +144,7 @@ describe('validateProject (v0.7)', () => {
     });
     const diags = validateProject({
       manifest,
-      geometries: [{ path: 'voxels.json', cvox: bodyCvox }],
+      geometries: [{ path: 'voxels.json', geometry: bodyCvox }],
     });
     expect(diags.some((d) => d.code === 'missing' && d.message.includes("'wing'"))).toBe(
       true,
@@ -159,7 +159,7 @@ describe('validateProject (v0.7)', () => {
     });
     const diags = validateProject({
       manifest,
-      geometries: [{ path: 'gear.json', cvox: bareCvox }],
+      geometries: [{ path: 'gear.json', geometry: bareCvox }],
     });
     expect(
       diags.some((d) => d.code === 'missing' && d.message.includes('no palette')),
@@ -175,7 +175,7 @@ describe('validateProject (v0.7)', () => {
     expect(
       validateProject({
         manifest,
-        geometries: [{ path: 'ghost.json', cvox: airCvox }],
+        geometries: [{ path: 'ghost.json', geometry: airCvox }],
       }),
     ).toEqual([]);
   });
@@ -189,7 +189,7 @@ describe('validateProject (v0.7)', () => {
     });
     const diags = validateProject({
       manifest,
-      geometries: [{ path: 'gear.json', cvox: bareCvox }],
+      geometries: [{ path: 'gear.json', geometry: bareCvox }],
       externalPalette: [{ r: 0, g: 0, b: 0, a: 255 }],
     });
     expect(diags).toEqual([]);
@@ -205,7 +205,7 @@ describe('validateProject (v0.7)', () => {
     // bodyCvox uses index 1; the bound palette has a single color.
     const diags = validateProject({
       manifest,
-      geometries: [{ path: 'body.json', cvox: bodyCvox }],
+      geometries: [{ path: 'body.json', geometry: bodyCvox }],
       externalPalette: [{ r: 0, g: 0, b: 0, a: 255 }],
     });
     expect(
@@ -224,7 +224,7 @@ describe('validateProject (v0.7)', () => {
     });
     const diags = validateProject({
       manifest,
-      geometries: [{ path: 'body.json', cvox: bodyCvox }],
+      geometries: [{ path: 'body.json', geometry: bodyCvox }],
       externalPalette: [
         { r: 0, g: 0, b: 0, a: 255 },
         { r: 1, g: 1, b: 1, a: 255 },
@@ -242,7 +242,7 @@ describe('validateProject (v0.7)', () => {
     });
     const diags = validateProject({
       manifest,
-      geometries: [{ path: 'body.json', cvox: bodyCvox }],
+      geometries: [{ path: 'body.json', geometry: bodyCvox }],
       packageCvoxPaths: ['body.json', 'scratch.json'],
     });
     expect(diags.map((d) => d.ruleId)).toEqual(['W07']);

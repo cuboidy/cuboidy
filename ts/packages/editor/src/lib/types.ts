@@ -1,5 +1,5 @@
 import type {
-  Cvox,
+  Geometry,
   InlineAnimation,
   KeyAttr,
   Manifest,
@@ -23,9 +23,9 @@ export interface FileEntry {
 
 export type LoadedSource =
   | {
-      kind: 'cvox-only';
-      cvox: Cvox;
-      cvoxFile: FileEntry;
+      kind: 'geometry-only';
+      geometry: Geometry;
+      geometryFile: FileEntry;
     }
   | {
       kind: 'folder';
@@ -37,8 +37,8 @@ export type LoadedSource =
       // FSA-aware drop or showDirectoryPicker on Chrome/Edge populates
       // this. When present, Save can write back to the original folder.
       handle?: FileSystemDirectoryHandle;
-      cvox: Cvox;
-      cvoxFile: FileEntry;
+      geometry: Geometry;
+      geometryFile: FileEntry;
       // Manifest is optional inside a folder — a folder that contains
       // only voxels.json (no cuboidy.json) is a valid folder load.
       manifest?: Manifest;
@@ -46,14 +46,14 @@ export type LoadedSource =
       manifestError?: string;
       // ── v0.7 project layer (SPEC §6.9/§6.10), populated at load ──
       // Every text file in the package, keyed by /-relative path. The two
-      // LIVE-edited files above (cvoxFile / manifestFile) hold the current
+      // LIVE-edited files above (geometryFile / manifestFile) hold the current
       // text; this map holds the load-time snapshot of everything else.
       // Absent on synthetic folders (they have no other files).
       files?: ReadonlyMap<string, FileEntry>;
       // All geometry files that parsed, keyed by their (normalized)
-      // manifest `geometry` ref. Includes the primary (= cvoxFile) entry.
+      // manifest `geometry` ref. Includes the primary (= geometryFile) entry.
       // The editor still edits only the primary until Phase C.
-      geometries?: ReadonlyMap<string, Cvox>;
+      geometries?: ReadonlyMap<string, Geometry>;
       // Parsed manifest-bound palette (§6.10). Rendering prefers this
       // over the geometry file's own palette, matching the spec precedence.
       externalPalette?: Palette;
@@ -80,13 +80,13 @@ export interface LoadResult {
   source?: LoadedSource;
   error?: string;
   // Always populated for UI feedback ("could not parse X.json").
-  cvoxFileName?: string;
+  geometryFileName?: string;
 }
 
 // View modes for the 3D scene. Rig view requires a manifest; anim view
 // additionally requires the manifest to define at least one inline
 // animation. The UI disables each toggle when its requirement is unmet.
-export type ViewMode = 'cvox' | 'rig' | 'anim';
+export type ViewMode = 'geometry' | 'rig' | 'anim';
 
 // Per-kind visibility of the selected part's 3D preview gizmos (pivot
 // marker, socket markers, bounding frame), toggled from the preview

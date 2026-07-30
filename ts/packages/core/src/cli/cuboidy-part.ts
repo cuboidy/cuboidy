@@ -28,7 +28,7 @@ const HELP_TEXT =
   '\n' +
   'Exit codes:\n' +
   '  0  written\n' +
-  '  1  parse / lookup error (bad cvox, unknown part, name clash)\n' +
+  '  1  parse / lookup error (bad geometry, unknown part, name clash)\n' +
   '  2  CLI usage error (missing file, bad arguments)\n';
 
 function parseArgs(

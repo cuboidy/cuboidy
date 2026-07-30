@@ -6,7 +6,7 @@ import { err, ok, type Result } from './result.js';
 // SPEC §6.10 (v0.7): external palette file — a shareable palette bound to
 // a model via the manifest's top-level `palette` reference. The color
 // grammar, 62-color maximum and index assignment (`0-9a-zA-Z`) are the
-// same as the inline cvox palette (§7.4); only the container differs.
+// same as the inline geometry palette (§7.4); only the container differs.
 // Object form (not a bare array) so the format has room for metadata
 // (named colors etc.) without a breaking change.
 //

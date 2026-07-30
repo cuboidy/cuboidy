@@ -2,7 +2,7 @@ import { useMemo, type CSSProperties } from 'react';
 import { Pause, Play, Plus } from 'lucide-react';
 import { OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
-import type { Cvox, Manifest, Palette } from '@cuboidy/core';
+import type { Geometry, Manifest, Palette } from '@cuboidy/core';
 import {
   buildRigTree,
   computeSceneCenter,
@@ -13,7 +13,7 @@ import type { GizmoVisibility } from '../lib/types.js';
 import { RiggedParts } from './RiggedParts.js';
 
 interface Props {
-  cvox: Cvox;
+  geometry: Geometry;
   manifest: Manifest;
   hiddenParts: ReadonlySet<string>;
   session: AnimationSession;
@@ -35,7 +35,7 @@ interface Props {
 // keyframe lanes live in the separate Timeline panel. When the model has no
 // clip yet, it shows the create-first-animation prompt in place of the scene.
 export function AnimationViewport({
-  cvox,
+  geometry,
   manifest,
   hiddenParts,
   session,
@@ -61,27 +61,27 @@ export function AnimationViewport({
     scrub,
   } = session;
 
-  const roots = useMemo(() => buildRigTree(cvox, manifest), [cvox, manifest]);
+  const roots = useMemo(() => buildRigTree(geometry, manifest), [geometry, manifest]);
   // Framing recomputes on load only (framingKey), never on edits — see
   // VoxelScene for the rationale.
   /* eslint-disable react-hooks/exhaustive-deps */
   const center = useMemo<[number, number, number]>(
-    () => computeSceneCenter(cvox, manifest, 'rig'),
+    () => computeSceneCenter(geometry, manifest, 'rig'),
     [framingKey],
   );
   const radius = useMemo(() => {
-    const span = computeSceneSpan(cvox, manifest, 'rig');
+    const span = computeSceneSpan(geometry, manifest, 'rig');
     return Math.max(span.w, span.h, span.d) * 1.8;
   }, [framingKey]);
   /* eslint-enable react-hooks/exhaustive-deps */
   const gridSize = useMemo(() => {
     const raw = Math.max(
       20,
-      Math.ceil(Math.max(...cvox.parts.map((p) => Math.max(p.size.w, p.size.d)))) +
+      Math.ceil(Math.max(...geometry.parts.map((p) => Math.max(p.size.w, p.size.d)))) +
         4,
     );
     return raw + (raw % 2);
-  }, [cvox]);
+  }, [geometry]);
 
   if (inline === undefined) {
     return (
@@ -118,7 +118,7 @@ export function AnimationViewport({
           />
           <RiggedParts
             roots={roots}
-            palette={cvox.palette}
+            palette={geometry.palette}
             poses={poses}
             hiddenParts={hiddenParts}
             partPalettes={partPalettes}

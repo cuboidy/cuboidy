@@ -9,10 +9,10 @@ import {
   remapPartPalette,
   type Axis,
 } from '../geometry/transform.js';
-import type { Cvox, Part } from '../geometry/types.js';
+import type { Geometry, Part } from '../geometry/types.js';
 
 // `cuboidy-part`: author concrete geometry by copying or flipping a part.
-// `duplicate` copies a part into a (same or other) cvox file; `mirror`
+// `duplicate` copies a part into a (same or other) geometry file; `mirror`
 // reflects a part IN PLACE. Both write plain voxel data, so an AI model
 // generator can build symmetric limbs (duplicate, then mirror the copy)
 // rather than emitting a reuse clause. All real work is here; the bin is a
@@ -35,7 +35,7 @@ export interface RunResult {
 
 async function readCvox(
   path: string,
-): Promise<{ cvox: Cvox } | { error: string; code: number }> {
+): Promise<{ geometry: Geometry } | { error: string; code: number }> {
   let text: string;
   try {
     text = await readFile(path, 'utf8');
@@ -44,7 +44,7 @@ async function readCvox(
   }
   const r = parseGeometryText(text);
   if (!r.ok) return { error: `${path}: ${r.message}`, code: 1 };
-  return { cvox: r.value };
+  return { geometry: r.value };
 }
 
 export async function runPart(op: PartOp): Promise<RunResult> {
@@ -58,14 +58,14 @@ async function runMirror(
 ): Promise<RunResult> {
   const r = await readCvox(op.file);
   if ('error' in r) return { text: r.error, exitCode: r.code };
-  const i = r.cvox.parts.findIndex((p) => p.name === op.part);
+  const i = r.geometry.parts.findIndex((p) => p.name === op.part);
   if (i < 0) {
     return { text: `part "${op.part}" not found in ${op.file}`, exitCode: 1 };
   }
-  const parts = r.cvox.parts.slice();
+  const parts = r.geometry.parts.slice();
   parts[i] = mirrorPart(parts[i]!, op.axis, op.part);
   try {
-    await writeFile(op.file, serializeGeometry({ ...r.cvox, parts }));
+    await writeFile(op.file, serializeGeometry({ ...r.geometry, parts }));
   } catch (e) {
     return {
       text: `cannot write ${op.file}: ${(e as Error).message}`,
@@ -78,7 +78,7 @@ async function runMirror(
   };
 }
 
-// Copy a part into a (same or other) cvox file under a new name.
+// Copy a part into a (same or other) geometry file under a new name.
 async function runDuplicate(
   op: Extract<PartOp, { op: 'duplicate' }>,
 ): Promise<RunResult> {
@@ -88,9 +88,9 @@ async function runDuplicate(
 
   const fromR = await readCvox(op.fromFile);
   if ('error' in fromR) return { text: fromR.error, exitCode: fromR.code };
-  const fromCvox = fromR.cvox;
+  const fromGeometry = fromR.geometry;
 
-  const src = fromCvox.parts.find((p) => p.name === op.fromPart);
+  const src = fromGeometry.parts.find((p) => p.name === op.fromPart);
   if (src === undefined) {
     return {
       text: `part "${op.fromPart}" not found in ${op.fromFile}`,
@@ -101,16 +101,16 @@ async function runDuplicate(
   // Same destination file (by resolved path) reuses the already-parsed AST,
   // so a same-file copy sees the part it's appending next to.
   const sameFile = resolve(op.fromFile) === resolve(op.toFile);
-  let toCvox: Cvox;
+  let toGeometry: Geometry;
   if (sameFile) {
-    toCvox = fromCvox;
+    toGeometry = fromGeometry;
   } else {
     const toR = await readCvox(op.toFile);
     if ('error' in toR) return { text: toR.error, exitCode: toR.code };
-    toCvox = toR.cvox;
+    toGeometry = toR.geometry;
   }
 
-  if (toCvox.parts.some((p) => p.name === op.toPart)) {
+  if (toGeometry.parts.some((p) => p.name === op.toPart)) {
     return {
       text: `part "${op.toPart}" already exists in ${op.toFile}`,
       exitCode: 1,
@@ -122,17 +122,17 @@ async function runDuplicate(
   // Cross-file: the source indices mean colors in from.json's inline palette,
   // so remap them into to.json's (appending any it lacks). Same file needs no
   // remap — the indices already resolve against the one palette.
-  let palette = toCvox.palette;
+  let palette = toGeometry.palette;
   if (!sameFile) {
-    const remapped = remapPartPalette(newPart, fromCvox.palette, toCvox.palette);
+    const remapped = remapPartPalette(newPart, fromGeometry.palette, toGeometry.palette);
     newPart = remapped.part;
     palette = remapped.palette;
   }
 
-  const nextTo: Cvox = {
-    ...toCvox,
+  const nextTo: Geometry = {
+    ...toGeometry,
     palette,
-    parts: [...toCvox.parts, newPart],
+    parts: [...toGeometry.parts, newPart],
   };
   try {
     await writeFile(op.toFile, serializeGeometry(nextTo));

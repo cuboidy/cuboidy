@@ -1,31 +1,31 @@
 import type { Manifest, Part } from '@cuboidy/core';
 
 // Tree shape rendered by the Parts panel. Source-of-truth for which
-// parts exist is `cvox.parts` (the actual voxel data); hierarchy is
+// parts exist is `geometry.parts` (the actual voxel data); hierarchy is
 // derived from `manifest.parts` parent references when a manifest is
-// loaded. Parts that exist in cvox but have no manifest entry (or
+// loaded. Parts that exist in geometry but have no manifest entry (or
 // reference a non-existent parent) collapse to root level — that way
 // the tree always shows every renderable part even when the manifest
 // is missing or only partially populated.
 
 export interface PartTreeNode {
   name: string;
-  cvox: Part;
+  geometry: Part;
   children: PartTreeNode[];
 }
 
 export function buildPartTree(
-  cvoxParts: readonly Part[],
+  geometryParts: readonly Part[],
   manifest: Manifest | undefined,
 ): PartTreeNode[] {
-  const partByName = new Map(cvoxParts.map((p) => [p.name, p] as const));
+  const partByName = new Map(geometryParts.map((p) => [p.name, p] as const));
 
-  // Resolve each cvox part's parent name: take it from the matching
+  // Resolve each geometry part's parent name: take it from the matching
   // manifest entry when present and the named parent also exists as a
-  // cvox part. Anything else (no manifest, no matching entry, dangling
+  // geometry part. Anything else (no manifest, no matching entry, dangling
   // parent ref) becomes a root.
   const parentByName = new Map<string, string | null>();
-  for (const cp of cvoxParts) {
+  for (const cp of geometryParts) {
     parentByName.set(cp.name, null);
   }
   if (manifest !== undefined) {
@@ -41,7 +41,7 @@ export function buildPartTree(
   // Cycle break: walk each part's parent chain and reset to root if a
   // cycle is detected. Manifest parser doesn't enforce acyclicity, so
   // we defend here rather than recurse forever during tree build.
-  for (const cp of cvoxParts) {
+  for (const cp of geometryParts) {
     const seen = new Set<string>([cp.name]);
     let cursor: string | null = parentByName.get(cp.name) ?? null;
     while (cursor !== null) {
@@ -55,7 +55,7 @@ export function buildPartTree(
   }
 
   const childrenByParent = new Map<string | null, string[]>();
-  for (const cp of cvoxParts) {
+  for (const cp of geometryParts) {
     const parent = parentByName.get(cp.name) ?? null;
     const bucket = childrenByParent.get(parent);
     if (bucket === undefined) childrenByParent.set(parent, [cp.name]);
@@ -64,7 +64,7 @@ export function buildPartTree(
 
   const build = (name: string): PartTreeNode => ({
     name,
-    cvox: partByName.get(name)!,
+    geometry: partByName.get(name)!,
     children: (childrenByParent.get(name) ?? []).map(build),
   });
 

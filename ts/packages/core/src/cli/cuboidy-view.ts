@@ -3,7 +3,7 @@ import { runView, VIEW_NAMES, type ViewName } from './view-runner.js';
 
 // CLI shell for `cuboidy-view <dir> [--views=a,b,...]`. All real work
 // lives in view-runner.ts. The output is plain text (no ANSI escapes)
-// using palette-index characters identical to the cvox row alphabet so
+// using palette-index characters identical to the geometry row alphabet so
 // a reader can compare projections directly against `voxels.json`.
 
 interface Args {
@@ -17,7 +17,7 @@ const HELP_TEXT =
   'Assemble a cuboidy model from <dir>/cuboidy.json + <dir>/voxels.json\n' +
   'in rest pose, then render orthographic projections from one or more\n' +
   'cardinal view directions. Each view is a grid of palette-index\n' +
-  'characters (same alphabet as cvox voxel rows; `.` = empty).\n' +
+  'characters (same alphabet as geometry voxel rows; `.` = empty).\n' +
   '\n' +
   'Options:\n' +
   '  --views=<list>   comma-separated views; default = all six\n' +
