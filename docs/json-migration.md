@@ -1,0 +1,169 @@
+# Migrating geometry from `.cvox` to JSON
+
+**Status: planned, 2026-07-31.** Decision taken after measuring the format's
+claimed advantages rather than assuming them — see "Why" below.
+
+## Why
+
+`.cvox` existed to be token-cheap and AI-authorable. Both claims were measured
+in `bench/eval` and neither survived at the scale that matters:
+
+| Measurement | Result |
+|---|---|
+| Human blind pairwise vote (Sonnet 5, 4 briefs) | JSON 4–0 (p = 0.125 — suggestive, not decisive) |
+| Reasoning share of output cost | **77–93%** — the geometry file drives single-digit % of the bill |
+| Output tokens (Sonnet 5, 4/4 briefs) | cvox 11–27% *fewer* |
+| Output tokens (Opus 5, 1 brief, confounded) | cvox 43% *more* |
+| Non-Claude model (MiMo-V2.5) | cvox failed 2/2 — emitted annotated pseudo-format that does not parse |
+| Specification size | JSON spec is **54%** of the cvox spec |
+
+The token advantage is real but small relative to reasoning, and it is bought
+with ~1,100 lines of hand-written parser, ~1,680 lines of parser tests, ~420
+lines of grammar specification, a barrier to any third-party implementation,
+and — on the evidence above — no measurable quality gain. A format that only
+Claude can author is not an open format.
+
+The earlier `bench/RESULTS.md` numbers do not contradict this: they were
+measured with tiktoken (an OpenAI tokenizer) on synthetic grids built from
+`solid()`/`hollow()` fills, priced file size alone, and never measured
+generation quality or reasoning tokens.
+
+## Locked decisions
+
+1. **Filename stays `voxels.json`.** `cuboidy.json` is the package entry point,
+   so role is discoverable from there; the extension does not have to carry it.
+2. **No transition period.** `.cvox` is removed, not deprecated. Nothing in the
+   shipped tooling reads it after this migration.
+3. **No comments.** JSON has none and no `comments` field is added. Under
+   minified LLM I/O the parser drops inline comments anyway, so the capability
+   was already notional.
+4. **Version field aligns with the manifest.** Geometry uses `version`, the
+   same optional spec-version string `cuboidy.json` already carries — not a
+   separate `cuboidy` key.
+
+## Target format
+
+Voxel rows stay CVOX-style strings (`"0220"`, `.` = air): the grid stays
+readable, the `0-9a-zA-Z` palette alphabet is unchanged, and `indexToChar` /
+`charToIndex` are reused verbatim. Nesting is explicit, so layer and row
+boundaries are structural rather than positional.
+
+```json
+{
+  "version": "0.9",
+  "palette": ["#6B6258", "#C5BFB5", "#1A1612"],
+  "parts": [
+    {
+      "name": "head",
+      "size": [5, 5, 5],
+      "pivot": { "pos": [2, 0, 5] },
+      "sockets": [{ "name": "hat", "pos": [2, 4, 3] }],
+      "voxels": [
+        [".111.", ".111.", "11111", "11111", "11111"],
+        [".222.", ".111.", "00000", "00000", "00000"]
+      ]
+    }
+  ]
+}
+```
+
+Omission rules mirror the current writer exactly: absent `palette` means the
+model binds an external one (§6.10); absent `pivot` means the §7.7 default
+(bottom-center); absent `sockets` means none.
+
+**Working drafts already exist and are verified.** `bench/eval/json-format.mjs`
+reads this shape into the same `Cvox` AST and round-trips all 15 real geometry
+files losslessly; `bench/eval/variants.mjs` (`cvoxToJson`) converts in the other
+direction; `bench/eval/spec-json.md` is §7 rewritten for this container, with
+every semantic clause carried over verbatim. Promote these rather than starting
+over.
+
+## Order of work
+
+Add → switch → delete. Deleting first breaks every package at once and makes
+failures unattributable; the end state is identical.
+
+### Phase 0 — lock the format on paper
+
+- `schema/cuboidy-geometry.schema.json` — JSON Schema for the shape above
+- SPEC §7 replaced from `bench/eval/spec-json.md`; §11.3/§11.4 retitled (the
+  W01–W05 voxel rules survive unchanged, only their section headings mention
+  `.cvox`)
+- `schema/cuboidy.schema.json`: `geometry` entries accept `.json`
+
+*Verify:* schema validates every converted fixture; SPEC has no remaining
+grammar/lexical section.
+
+### Phase 1 — core reads and writes JSON
+
+New `ts/packages/core/src/geometry/`:
+
+| File | From |
+|---|---|
+| `types.ts` | moved from `cvox/types.ts` unchanged — the AST is format-independent |
+| `parse.ts` | `bench/eval/json-format.mjs`, ported to TS with a zod schema and `Result<Geometry>` |
+| `serialize.ts` | `variants.mjs` `formatJson` — inline coordinate triples, one Y-layer per line |
+| `voxel-row.ts` | moved from `cvox/voxel-row.ts` — charset, width and palette-range checks are unchanged |
+| `transform.ts` | moved from `cvox/transform.ts` — mirror/duplicate/remap operate on the AST |
+
+`parseHexColor` and `MAX_PALETTE` move out of `cvox/palette.ts`; `PaletteParser`
+(the text scanner) is deleted. `project.ts` resolves `voxels.json`.
+
+*Verify:* every `models/*` and `fixtures/*` file converts, parses, and
+re-serialises to itself; `lintCvox` and `validateProject` run unchanged on the
+resulting AST.
+
+### Phase 2 — convert the data
+
+- `models/**/*.cvox` → `voxels.json` (15 files; `cvoxToJson` already does this)
+- `fixtures/cvox/` → `fixtures/json/`
+- manifests: `geometry` entries updated; the §6.9 default becomes
+  `["voxels.json"]`
+- `models/robo-mini` keeps its two-file geometry list — it is the multi-file
+  regression case
+
+*Verify:* `cuboidy-lint` clean on every model directory.
+
+### Phase 3 — switch the consumers
+
+- **CLIs** (`assemble`, `lint`, `part`, `query`, `snap`, `view` + runners):
+  mostly reach geometry through `project.ts`; `cuboidy-part` additionally
+  writes files and moves to the JSON serializer.
+- **Editor**: `load-model.ts`, `App.tsx` (parse/serialize call sites),
+  `ExportMenu`, `fileIcon`, `FileTree`, `save.ts`, `synthesize-manifest.ts`.
+- **`SourceEditor` is the one substantial rewrite.** Today cvox diagnostics
+  carry line/column spans and several can be reported at once. `JSON.parse`
+  yields a single syntax error and schema errors arrive as paths, so a
+  positional parser (`jsonc-parser` or equivalent) is needed to map a JSON
+  pointer back to a range. Budget real time here; everything else is a call-site
+  swap.
+
+*Verify:* the editor opens every directory under `models/`; a deliberately
+broken geometry file shows the error on the right line; export produces a
+loadable package.
+
+### Phase 4 — delete
+
+Remove from `ts/packages/core/src/cvox/`: `tokenize`, `cursor`, `expect`,
+`comment`, `numbers`, `header`, `reserved`, `parse`, `serialize`, `part`,
+`size`, `pivot`, `socket`, `voxels`, and the text half of `palette` — roughly
+900–1,000 lines. Delete the nine `test/cvox-*.test.ts` files (~1,680 lines),
+porting only the semantic cases: dimension agreement, palette index range,
+identifier rules, socket uniqueness, default pivot.
+
+Then `README.md`, `docs/cvox-authoring.md` (delete or rewrite as
+`docs/geometry-authoring.md`), and the `.cuboidy` packaging description.
+
+`bench/` keeps `eval/`; the tiktoken comparison (`compare-tokens.py`,
+`generate-dataset.mjs`, `RESULTS.md`) is superseded — keep it as the historical
+record of why the earlier numbers were wrong, or delete it, but do not cite it.
+
+*Verify:* no `.cvox` string remains outside `bench/` and the migration history;
+full test suite green; every CLI runs against every model.
+
+## Known trap
+
+`ManifestSchema.geometry` is `z.array(refPath('.cvox'))`. A manifest that
+correctly names `voxels.json` is rejected by the current tooling — this was hit
+during the eval and worked around there at validation time only. It must be
+fixed properly in Phase 0, or Phase 2 fails everywhere at once.
