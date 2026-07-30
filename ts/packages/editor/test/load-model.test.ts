@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseGeometryText, type Geometry, type Manifest } from '@cuboidy/core';
 import {
   isGeometryPath,
+  loadFromFileList,
   normalizePath,
   resolveProjectRefs,
 } from '../src/lib/load-model.js';
@@ -272,5 +273,72 @@ describe('resolveProjectRefs — external animations', () => {
     );
     expect(refs.externalAnims).toBeUndefined();
     expect(refs.projectErrors).toHaveLength(1);
+  });
+});
+
+describe('loadFromFileList', () => {
+  // Node's File has no webkitRelativePath at all, but the DOM's always
+  // DEFINES it — as "" for a File that did not come from a directory
+  // picker. Defining it explicitly is what makes these tests exercise the
+  // real browser contract rather than Node's.
+  const fileList = (
+    entries: ReadonlyArray<{ name: string; text: string; rel: string }>,
+  ): FileList => {
+    const files = entries.map((e) => {
+      const f = new File([e.text], e.name, { type: 'application/json' });
+      Object.defineProperty(f, 'webkitRelativePath', { value: e.rel });
+      return f;
+    });
+    return Object.assign(files, {
+      item: (i: number) => files[i] ?? null,
+    }) as unknown as FileList;
+  };
+
+  const MANIFEST = JSON.stringify({
+    name: 'model',
+    geometry: ['body.json'],
+    parts: [{ name: 'a' }],
+  });
+
+  it('takes the package name from the first path segment', async () => {
+    const r = await loadFromFileList(
+      fileList([
+        { name: 'cuboidy.json', text: MANIFEST, rel: 'robo/cuboidy.json' },
+        { name: 'body.json', text: GEOM('a', '#FF0000'), rel: 'robo/body.json' },
+      ]),
+    );
+    expect(r.error).toBeUndefined();
+    expect(r.source?.folderName).toBe('robo');
+    expect(r.source?.manifest?.name).toBe('model');
+    expect([...(r.source?.files?.keys() ?? [])]).toEqual([
+      'cuboidy.json',
+      'body.json',
+    ]);
+  });
+
+  it('falls back to the bare file name when the relative path is empty', async () => {
+    // Regression: an empty webkitRelativePath used to reach `?? f.name`,
+    // which does not treat "" as absent — every path became "", failed the
+    // text-file filter, and the package loaded as empty.
+    const r = await loadFromFileList(
+      fileList([
+        { name: 'cuboidy.json', text: MANIFEST, rel: '' },
+        { name: 'body.json', text: GEOM('a', '#FF0000'), rel: '' },
+      ]),
+    );
+    expect(r.error).toBeUndefined();
+    expect(r.source?.manifest?.name).toBe('model');
+    expect(r.source?.geometries?.has('body.json')).toBe(true);
+  });
+
+  it('skips files the loader does not read as text', async () => {
+    const r = await loadFromFileList(
+      fileList([
+        { name: 'cuboidy.json', text: MANIFEST, rel: 'robo/cuboidy.json' },
+        { name: 'body.json', text: GEOM('a', '#FF0000'), rel: 'robo/body.json' },
+        { name: 'thumb.png', text: 'not really a png', rel: 'robo/thumb.png' },
+      ]),
+    );
+    expect(r.source?.files?.has('thumb.png')).toBe(false);
   });
 });

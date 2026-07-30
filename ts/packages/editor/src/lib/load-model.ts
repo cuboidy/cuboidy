@@ -75,8 +75,12 @@ export async function loadFromFileList(files: FileList): Promise<LoadResult> {
   let folderName = 'folder';
   for (let i = 0; i < files.length; i++) {
     const f = files[i]!;
+    // `||`, not `??`: the DOM always DEFINES webkitRelativePath, using the
+    // empty string for a File that did not come from a directory picker.
+    // `??` would pass that "" straight through and every path would then
+    // fail TEXT_FILE_RE, silently collecting nothing.
     const rel =
-      (f as File & { webkitRelativePath?: string }).webkitRelativePath ?? f.name;
+      (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name;
     const parts = rel.split('/');
     let inner = rel;
     if (parts.length > 1) {
