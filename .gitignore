@@ -22,10 +22,9 @@ dist/
 build/
 *.tsbuildinfo
 
-# bench: eval run outputs (renders, samples, votes)
-bench/eval/out/
-
-# API credentials for local eval runs — never commit
+# API credentials — never commit. Kept even though nothing in this branch
+# reads one: the rule costs nothing and the eval branch, which does, was
+# briefly one checkout away from committing its keys.
 .env.local
 
 # cuboidy-snap default output (regenerate via `cuboidy-snap <model-dir>`)

@@ -20,6 +20,14 @@ on purpose.
 `.cvox` existed to be token-cheap and AI-authorable. Both claims were measured
 in `bench/eval` and neither survived at the scale that matters:
 
+> `bench/` no longer exists on this branch. Every `bench/eval/...` path below is
+> provenance, not a working reference: the harness lives on the unmerged branch
+> `eval-format-comparison`, and the results it produced are in `docs/eval/`.
+> Almost all of it died with the migration — the two-arm structure, the
+> token-variant pricing and the cvox spec extraction have no meaning once there
+> is one format — so it was never merged. The pieces with a future were promoted
+> into the product instead, and the table below records which.
+
 | Measurement | Result |
 |---|---|
 | Human blind pairwise vote (Sonnet 5, 4 briefs) | JSON 4–0 (p = 0.125 — suggestive, not decisive) |
