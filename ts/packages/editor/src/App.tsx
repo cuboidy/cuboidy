@@ -110,6 +110,8 @@ import {
   rewriteExternalAnims,
   sharesPalette,
   uniquePartName,
+  withManifest,
+  withManifestText,
 } from './lib/source-ops.js';
 import { synthesizeManifest } from './lib/synthesize-manifest.js';
 import { useAnimationSession } from './lib/useAnimationSession.js';
@@ -850,16 +852,7 @@ export function App() {
             const geometry = manifestGeometry(src.manifest).map(normalizePath);
             if (!geometry.includes(norm)) geometry.push(norm);
             const nextManifest: Manifest = { ...src.manifest, geometry };
-            const baseFile =
-              src.manifestFile ?? { name: 'cuboidy.json', text: '' };
-            next = {
-              ...next,
-              manifest: nextManifest,
-              manifestFile: {
-                ...baseFile,
-                text: JSON.stringify(nextManifest, null, 2) + '\n',
-              },
-            };
+            next = withManifest(next, nextManifest);
           }
         }
         return { ...current, source: next };
@@ -895,7 +888,6 @@ export function App() {
           (p) => src.files?.get(p)?.text,
           { path: src.geometryFile.name, geometry: src.geometry },
         );
-        const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
         const {
           externalAnims: _anims,
           projectErrors: _proj,
@@ -905,12 +897,7 @@ export function App() {
         return {
           ...current,
           source: {
-            ...rest,
-            manifest: nextManifest,
-            manifestFile: {
-              ...baseFile,
-              text: JSON.stringify(nextManifest, null, 2) + '\n',
-            },
+            ...withManifest(rest, nextManifest),
             geometries: refs.geometries,
             ...(primaryNext !== undefined && { geometry: primaryNext }),
             ...(refs.externalAnims !== undefined && {
@@ -1260,18 +1247,7 @@ export function App() {
         if (parent !== null && src.manifest !== undefined) {
           const parts: ManifestPart[] = [...src.manifest.parts, { name, parent }];
           const nextManifest: Manifest = { ...src.manifest, parts };
-          const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
-          return {
-            ...current,
-            source: {
-              ...nextSrc,
-              manifest: nextManifest,
-              manifestFile: {
-                ...baseFile,
-                text: JSON.stringify(nextManifest, null, 2) + '\n',
-              },
-            },
-          };
+          return { ...current, source: withManifest(nextSrc, nextManifest) };
         }
         return { ...current, source: nextSrc };
       });
@@ -1407,18 +1383,7 @@ export function App() {
             }
             if (changed) nextManifest = { ...nextManifest, animations: rebuilt };
           }
-          const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
-          return {
-            ...current,
-            source: {
-              ...nextSrc,
-              manifest: nextManifest,
-              manifestFile: {
-                ...baseFile,
-                text: JSON.stringify(nextManifest, null, 2) + '\n',
-              },
-            },
-          };
+          return { ...current, source: withManifest(nextSrc, nextManifest) };
         }
         return { ...current, source: nextSrc };
       });
@@ -1492,18 +1457,7 @@ export function App() {
             }
             if (changed) nextManifest = { ...nextManifest, animations: rebuilt };
           }
-          const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
-          return {
-            ...current,
-            source: {
-              ...nextSrc,
-              manifest: nextManifest,
-              manifestFile: {
-                ...baseFile,
-                text: JSON.stringify(nextManifest, null, 2) + '\n',
-              },
-            },
-          };
+          return { ...current, source: withManifest(nextSrc, nextManifest) };
         }
         return { ...current, source: nextSrc };
       });
@@ -1527,11 +1481,7 @@ export function App() {
       dispatchEdit('text:manifest', (current) => {
         if (current?.source === undefined) return current;
         const src = current.source;
-        const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
-        return {
-          ...current,
-          source: { ...src, manifestFile: { ...baseFile, text: nextText } },
-        };
+        return { ...current, source: withManifestText(src, nextText) };
       });
       cancelPendingManifestReparse();
       reparseManifestTimer.current = window.setTimeout(() => {
@@ -1572,16 +1522,7 @@ export function App() {
         if (i >= 0) parts[i] = next;
         else parts.push(next);
         const nextManifest: Manifest = { ...src.manifest, parts };
-        const nextText = JSON.stringify(nextManifest, null, 2) + '\n';
-        const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
-        return {
-          ...current,
-          source: {
-            ...src,
-            manifest: nextManifest,
-            manifestFile: { ...baseFile, text: nextText },
-          },
-        };
+        return { ...current, source: withManifest(src, nextManifest) };
       });
       setManifestParseError(null);
     },
@@ -1600,18 +1541,7 @@ export function App() {
         if (src.manifest === undefined) return current;
         const nextManifest = build(src.manifest);
         if (nextManifest === src.manifest) return current;
-        const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
-        return {
-          ...current,
-          source: {
-            ...src,
-            manifest: nextManifest,
-            manifestFile: {
-              ...baseFile,
-              text: JSON.stringify(nextManifest, null, 2) + '\n',
-            },
-          },
-        };
+        return { ...current, source: withManifest(src, nextManifest) };
       });
       setManifestParseError(null);
     },
@@ -1784,19 +1714,7 @@ export function App() {
           };
         }
         const nextManifest: Manifest = { ...m, parts };
-        const baseFile =
-          nextSrc.manifestFile ?? { name: 'cuboidy.json', text: '' };
-        return {
-          ...current,
-          source: {
-            ...nextSrc,
-            manifest: nextManifest,
-            manifestFile: {
-              ...baseFile,
-              text: JSON.stringify(nextManifest, null, 2) + '\n',
-            },
-          },
-        };
+        return { ...current, source: withManifest(nextSrc, nextManifest) };
       });
       setManifestParseError(null);
     },
@@ -2074,16 +1992,7 @@ export function App() {
         if (built === prev) return current;
         const animations = { ...src.manifest.animations, [animName]: built };
         const nextManifest: Manifest = { ...src.manifest, animations };
-        const nextText = JSON.stringify(nextManifest, null, 2) + '\n';
-        const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
-        return {
-          ...current,
-          source: {
-            ...src,
-            manifest: nextManifest,
-            manifestFile: { ...baseFile, text: nextText },
-          },
-        };
+        return { ...current, source: withManifest(src, nextManifest) };
       });
       setManifestParseError(null);
     },
@@ -2255,16 +2164,7 @@ export function App() {
       const newClip: InlineAnimation = { duration: 1, loop: true, parts: {} };
       const animations = { ...existing, [name]: newClip };
       const nextManifest: Manifest = { ...src.manifest, animations };
-      const nextText = JSON.stringify(nextManifest, null, 2) + '\n';
-      const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
-      return {
-        ...current,
-        source: {
-          ...src,
-          manifest: nextManifest,
-          manifestFile: { ...baseFile, text: nextText },
-        },
-      };
+      return { ...current, source: withManifest(src, nextManifest) };
     });
     // Outside the apply closure for reducer purity (see handleCreateManifest).
     setViewMode('anim');
@@ -2294,8 +2194,6 @@ export function App() {
           next[k === oldName ? newName : k] = v;
         }
         const nextManifest: Manifest = { ...src.manifest, animations: next };
-        const nextText = JSON.stringify(nextManifest, null, 2) + '\n';
-        const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
         // An external clip's resolution is keyed by clip name — re-key it
         // (the referenced file itself is untouched by a clip rename).
         let externalAnims = src.externalAnims;
@@ -2306,15 +2204,10 @@ export function App() {
           rebuilt.set(newName, ext);
           externalAnims = rebuilt;
         }
-        return {
-          ...current,
-          source: {
-            ...src,
-            manifest: nextManifest,
-            manifestFile: { ...baseFile, text: nextText },
-            ...(externalAnims !== undefined && { externalAnims }),
-          },
-        };
+            return {
+              ...current,
+              source: { ...withManifest(src, nextManifest), ...(externalAnims !== undefined && { externalAnims }), },
+            };
       });
       setManifestParseError(null);
     },
@@ -2343,9 +2236,7 @@ export function App() {
         } else {
           nextManifest = { ...src.manifest, animations: rest };
         }
-        const nextText = JSON.stringify(nextManifest, null, 2) + '\n';
-        const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
-        // Deleting an external clip removes the manifest entry only; the
+              // Deleting an external clip removes the manifest entry only; the
         // referenced file stays (it may be shared — delete it from the
         // Files tree if it's truly orphaned).
         let externalAnims = src.externalAnims;
@@ -2356,12 +2247,7 @@ export function App() {
         }
         return {
           ...current,
-          source: {
-            ...src,
-            manifest: nextManifest,
-            manifestFile: { ...baseFile, text: nextText },
-            ...(externalAnims !== undefined && { externalAnims }),
-          },
+          source: { ...withManifest(src, nextManifest), ...(externalAnims !== undefined && { externalAnims }), },
         };
       });
       setManifestParseError(null);
@@ -2395,19 +2281,9 @@ export function App() {
         externalAnims.set(name, { path, anim });
         const animations = { ...src.manifest.animations, [name]: path };
         const nextManifest: Manifest = { ...src.manifest, animations };
-        const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
         return {
           ...current,
-          source: {
-            ...src,
-            files,
-            externalAnims,
-            manifest: nextManifest,
-            manifestFile: {
-              ...baseFile,
-              text: JSON.stringify(nextManifest, null, 2) + '\n',
-            },
-          },
+          source: { ...withManifest(src, nextManifest), files, externalAnims },
         };
       });
       setManifestParseError(null);
@@ -2433,18 +2309,9 @@ export function App() {
         externalAnims.delete(name);
         const animations = { ...src.manifest.animations, [name]: rec.anim };
         const nextManifest: Manifest = { ...src.manifest, animations };
-        const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
         return {
           ...current,
-          source: {
-            ...src,
-            externalAnims,
-            manifest: nextManifest,
-            manifestFile: {
-              ...baseFile,
-              text: JSON.stringify(nextManifest, null, 2) + '\n',
-            },
-          },
+          source: { ...withManifest(src, nextManifest), externalAnims },
         };
       });
       setManifestParseError(null);

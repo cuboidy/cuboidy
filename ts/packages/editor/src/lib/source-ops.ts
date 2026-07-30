@@ -166,6 +166,48 @@ export function rewriteExternalAnims(
   return { ...src, externalAnims: anims, ...(files !== null && { files }) };
 }
 
+// Canonical text for cuboidy.json.
+export function manifestJson(manifest: Manifest): string {
+  return JSON.stringify(manifest, null, 2) + '\n';
+}
+
+// Write a manifest back into the source: the AST and its re-serialized text,
+// together. EVERY structural edit that touches cuboidy.json goes through
+// here, so the two cannot drift apart — and a package that has no manifest
+// file yet (one just synthesized) gets one. This used to be six lines
+// repeated at fifteen call sites, which is also the shape that made the
+// storage layout hard to change.
+export function withManifest(
+  src: LoadedSource,
+  manifest: Manifest,
+): LoadedSource {
+  const base = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
+  return {
+    ...src,
+    manifest,
+    manifestFile: { ...base, text: manifestJson(manifest) },
+  };
+}
+
+// The typing path: record cuboidy.json's text WITHOUT touching the AST,
+// which the debounced re-parse lands separately once the text parses.
+export function withManifestText(src: LoadedSource, text: string): LoadedSource {
+  const base = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
+  return { ...src, manifestFile: { ...base, text } };
+}
+
+// Write one package file's text.
+export function writeFile(
+  src: LoadedSource,
+  path: string,
+  text: string,
+): LoadedSource {
+  if (src.files === undefined) return src;
+  const files = new Map(src.files);
+  files.set(path, { name: path, text });
+  return { ...src, files };
+}
+
 // Canonical text for an external palette file (§6.10).
 export function paletteFileText(palette: Palette): string {
   return JSON.stringify({ colors: palette.map(serializeColor) }, null, 2) + '\n';

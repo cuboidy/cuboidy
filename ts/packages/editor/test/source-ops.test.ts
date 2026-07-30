@@ -15,6 +15,9 @@ import {
   renameFileInSource,
   repointPaletteRef,
   uniquePartName,
+  withManifest,
+  withManifestText,
+  writeFile,
 } from '../src/lib/source-ops.js';
 import type { LoadedSource } from '../src/lib/types.js';
 
@@ -451,5 +454,51 @@ describe('uniquePartName', () => {
   it('suffixes from -2 upward, skipping taken names', () => {
     expect(uniquePartName(new Set(['head']), 'head')).toBe('head-2');
     expect(uniquePartName(new Set(['head', 'head-2']), 'head')).toBe('head-3');
+  });
+});
+
+describe('withManifest / withManifestText / writeFile', () => {
+  const src = () =>
+    pkg({
+      [MANIFEST]: manifestJson({ name: 'm', parts: [{ name: 'p' }] }),
+      'voxels.json': GEO([{ name: 'p', voxels: '0' }], ['#FF0000']),
+    });
+
+  it('writes the AST and its canonical text together', () => {
+    const next = withManifest(src(), manifestOf(
+      manifestJson({ name: 'renamed', parts: [{ name: 'p' }] }),
+    ));
+    expect(next.manifest?.name).toBe('renamed');
+    expect(next.manifestFile?.text).toBe(
+      JSON.stringify({ name: 'renamed', parts: [{ name: 'p' }] }, null, 2) + '\n',
+    );
+    // The AST and the bytes agree — that is the whole point of the helper.
+    expect(JSON.parse(next.manifestFile!.text)).toEqual(next.manifest);
+  });
+
+  it('creates the manifest file for a package that has none yet', () => {
+    // "Create manifest" synthesizes one for a bare-geometry load.
+    const bare = pkg({ 'voxels.json': GEO([{ name: 'p', voxels: '0' }], ['#FF0000']) });
+    const next = withManifest(bare, manifestOf(
+      manifestJson({ name: 'fresh', parts: [{ name: 'p' }] }),
+    ));
+    expect(next.manifestFile?.name).toBe(MANIFEST);
+    expect(next.manifest?.name).toBe('fresh');
+  });
+
+  it('withManifestText records bytes WITHOUT touching the AST', () => {
+    // The typing path: the text is authoritative while it is mid-edit, and
+    // the debounced re-parse lands the AST separately once it parses.
+    const s = src();
+    const next = withManifestText(s, '{ broken');
+    expect(next.manifestFile?.text).toBe('{ broken');
+    expect(next.manifest).toBe(s.manifest);
+  });
+
+  it('writeFile replaces one path and leaves the rest identical', () => {
+    const s = src();
+    const next = writeFile(s, 'notes.md', 'hello\n');
+    expect(next.files?.get('notes.md')?.text).toBe('hello\n');
+    expect(next.files?.get('voxels.json')).toBe(s.files?.get('voxels.json'));
   });
 });
