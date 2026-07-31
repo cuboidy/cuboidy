@@ -8,28 +8,14 @@ import {
 } from 'react';
 import {
   AIR,
-  addAttrAtTime,
   composePartRotation,
-  deleteAttrAtKey,
   duplicatePart,
   isIdentifier,
-  manifestGeometry,
-  mergeKeyframeAtTime,
   mirrorPart,
-  moveAttrKey,
   quatRotateVec3,
-  serializeGeometry,
-  setAttrAtKey,
-  setEaseAtKey,
-  trimTrackKeys,
-  type AttrValue,
   type Axis,
   type Geometry,
-  type EaseAttr,
-  type EasingName,
   type InlineAnimation,
-  type KeyAttr,
-  type Keyframe,
   type Manifest,
   type ManifestPart,
   type Palette,
@@ -60,7 +46,6 @@ import { TimelinePanel } from './components/TimelinePanel.js';
 import { historyReducer, makeHistory } from './lib/history.js';
 import {
   normalizePath,
-  resolveProjectRefs,
 } from './lib/load-model.js';
 import {
   addPanelAt,
@@ -82,19 +67,16 @@ import {
   type Side,
 } from './lib/layout.js';
 import {
-  deleteFileInSource,
   geometryAt,
   fileText,
   manifestText,
   mapGeometryFiles,
   mergeGeometries,
-  moveFolderInSource,
   paletteFileText,
   applyFileEdit,
   pathBasename,
   primaryGeometry,
   remapPartPalette,
-  renameFileInSource,
   rewriteExternalAnims,
   sharesPalette,
   uniquePartName,
@@ -102,11 +84,12 @@ import {
   writeFile,
 } from './lib/source-ops.js';
 import { synthesizeManifest } from './lib/synthesize-manifest.js';
+import { useAnimationEdits } from './lib/useAnimationEdits.js';
+import { useFileOps } from './lib/useFileOps.js';
 import { useAnimationSession } from './lib/useAnimationSession.js';
 import type {
   GizmoVisibility,
   LoadResult,
-  LoadedSource,
   PreviewTool,
   ViewMode,
   VoxelEdit,
@@ -441,298 +424,16 @@ export function App() {
     [dispatchEdit, editsBlocked],
   );
 
-  // ── File CRUD (Phase D). Folder sources with a files map only; each
-  // operation is one dispatchEdit = one atomic undo step. The manifest
-  // is the reference anchor, so structural file ops keep its geometry /
-  // palette / animation refs in sync and re-serialize it. ──
-
-  const handleCreateFile = useCallback(
-    (path: string) => {
-      dispatchEdit(null, (current) => {
-        const src = current?.source;
-        if (
-          src === undefined ||
-          src.files === undefined
-        ) {
-          return current;
-        }
-        const norm = normalizePath(path);
-        if (norm === '' || norm.startsWith('../')) return current;
-        if (
-          src.files.has(norm) ||
-          src.primaryPath === norm ||
-          src.manifestPath === norm
-        ) {
-          return current;
-        }
-        // Creating a file used to state its role through the extension: a
-        // `.cvox` name meant geometry, any other `.json` meant a palette or an
-        // animation clip. With one extension for everything that signal is
-        // gone, so fall back to the layout conventions of SPEC §3 — a clip
-        // lives under `anims/`, the palette binding is conventionally
-        // `palette.json` — and treat every other new `.json` as geometry,
-        // which is the only thing this flow ever templated.
-        // TODO: replace with an explicit type picker in the create UI.
-        const lower = norm.toLowerCase();
-        const isGeometry =
-          lower.endsWith('.json') &&
-          !lower.startsWith('anims/') &&
-          !lower.endsWith('/palette.json') &&
-          lower !== 'palette.json';
-        let text: string;
-        let parsed: Geometry | null = null;
-        if (isGeometry) {
-          // Template: one all-air part — valid with or without a palette
-          // (§7.4). Part name unique model-wide (§5).
-          const names = new Set(mergeGeometries(src).parts.map((p) => p.name));
-          let n = 1;
-          while (names.has(`part${n}`)) n += 1;
-          const part: Part = {
-            name: `part${n}`,
-            size: { w: 1, h: 1, d: 1 },
-            pivot: { pos: { x: 0.5, y: 0, z: 0.5 } },
-            sockets: [],
-            voxels: [[[AIR]]],
-          };
-          parsed = { palette: [], parts: [part] };
-          text = serializeGeometry(parsed);
-        } else {
-          text = norm.toLowerCase().endsWith('.json') ? '{}\n' : '';
-        }
-        const files = new Map(src.files);
-        files.set(norm, text);
-        const removedFiles = new Set(src.removedFiles ?? []);
-        removedFiles.delete(norm); // re-creating a removed path revives it
-        let next: typeof src = { ...src, files, removedFiles };
-        if (isGeometry && parsed !== null) {
-          const geometries = new Map(
-            src.geometries ?? [[src.primaryPath, primaryGeometry(src)]],
-          );
-          geometries.set(norm, parsed);
-          next = { ...next, geometries };
-          // Reference it from the manifest so it's part of the model
-          // (unreferenced files are ignored + lint as W07).
-          if (src.manifest !== undefined) {
-            const geometry = manifestGeometry(src.manifest).map(normalizePath);
-            if (!geometry.includes(norm)) geometry.push(norm);
-            const nextManifest: Manifest = { ...src.manifest, geometry };
-            next = withManifest(next, nextManifest);
-          }
-        }
-        return { ...current, source: next };
-      });
-    },
-    [dispatchEdit],
-  );
-
-  // Reference an existing-but-unreferenced geometry file from the manifest's
-  // geometry list so its parts join the model (the fix-it for lint W07:
-  // files outside the list are ignored). Re-resolves the derived maps in
-  // the same edit, so one undo both drops the reference and unloads the
-  // parts again.
-  const handleAddFileToModel = useCallback(
-    (path: string) => {
-      dispatchEdit(null, (current) => {
-        const src = current?.source;
-        if (
-          src === undefined ||
-          src.files === undefined ||
-          src.manifest === undefined
-        ) {
-          return current;
-        }
-        const norm = normalizePath(path);
-        if (!src.files.has(norm)) return current;
-        const geometry = manifestGeometry(src.manifest).map(normalizePath);
-        if (geometry.includes(norm)) return current;
-        geometry.push(norm);
-        const nextManifest: Manifest = { ...src.manifest, geometry };
-        const refs = resolveProjectRefs(
-          nextManifest,
-          (p) => src.files.get(p),
-          { path: src.primaryPath, geometry: primaryGeometry(src) },
-        );
-        const {
-          externalAnims: _anims,
-          projectErrors: _proj,
-          ...rest
-        } = src;
-        return {
-          ...current,
-          source: {
-            ...withManifest(rest, nextManifest),
-            geometries: refs.geometries,
-            ...(refs.externalAnims !== undefined && {
-              externalAnims: refs.externalAnims,
-            }),
-            ...(refs.projectErrors.length > 0 && {
-              projectErrors: refs.projectErrors,
-            }),
-          },
-        };
-      });
-    },
-    [dispatchEdit],
-  );
-
-  const handleRenameFile = useCallback(
-    (oldPath: string, newPath: string) => {
-      const from = normalizePath(oldPath);
-      const to = normalizePath(newPath);
-      // Land any pending reparses first: the rename re-keys the file's
-      // AST/geometry entry, and a timer firing later (keyed to the OLD
-      // path) would no-op, leaving a stale AST under the new name.
-      dispatchEdit(null, (current) => {
-        const src = current?.source;
-        if (
-          src === undefined ||
-          src.files === undefined
-        ) {
-          return current;
-        }
-        const next = renameFileInSource(src, from, to);
-        return next === null ? current : { ...current, source: next };
-      });
-      // Re-key any live parse error for the renamed file.
-      setFileParseErrors((prev) => {
-        if (!prev.has(from)) return prev;
-        const next = new Map(prev);
-        const msg = next.get(from)!;
-        next.delete(from);
-        next.set(to, msg);
-        return next;
-      });
-    },
-    [dispatchEdit],
-  );
-
-  // Relocate a whole folder (and everything under it) so its new path is
-  // `newDir`. One dispatchEdit = one undo step: moveFolderInSource folds
-  // the per-file rename atomically — any single rejection (e.g. a
-  // manifest-less geometry file) aborts the entire move, leaving the
-  // source untouched. The Files tree gates the operation so a valid one
-  // never half-applies. Shared by folder drag-move and folder rename.
-  const relocateFolder = useCallback(
-    (from: string, newDir: string) => {
-      if (newDir === from) return;
-      dispatchEdit(null, (current) => {
-        const src = current?.source;
-        if (
-          src === undefined ||
-          src.files === undefined
-        ) {
-          return current;
-        }
-        const next = moveFolderInSource(src, from, newDir);
-        return next === null ? current : { ...current, source: next };
-      });
-      // Re-key live parse errors under the folder by path prefix.
-      setFileParseErrors((prev) => {
-        const prefix = `${from}/`;
-        let next: Map<string, string> | null = null;
-        for (const [p, msg] of prev) {
-          if (!p.startsWith(prefix)) continue;
-          if (next === null) next = new Map(prev);
-          next.delete(p);
-          next.set(`${newDir}${p.slice(from.length)}`, msg);
-        }
-        return next ?? prev;
-      });
-    },
-    [dispatchEdit],
-  );
-
-  // Move a folder INTO destDir ('' = package root), keeping its name.
-  const handleMoveFolder = useCallback(
-    (srcDir: string, destDir: string) => {
-      const from = normalizePath(srcDir);
-      const dest = normalizePath(destDir);
-      if (dest === from || dest.startsWith(`${from}/`)) return; // self/descendant
-      const name = from.slice(from.lastIndexOf('/') + 1);
-      relocateFolder(from, dest === '' ? name : `${dest}/${name}`);
-    },
-    [relocateFolder],
-  );
-
-  // Rename a folder in place (its last path segment), moving every file
-  // under it to the new prefix.
-  const handleRenameFolder = useCallback(
-    (oldDir: string, newName: string) => {
-      const from = normalizePath(oldDir);
-      const i = from.lastIndexOf('/');
-      const parent = i === -1 ? '' : from.slice(0, i);
-      relocateFolder(
-        from,
-        normalizePath(parent === '' ? newName : `${parent}/${newName}`),
-      );
-    },
-    [relocateFolder],
-  );
-
-  const handleDeleteFile = useCallback(
-    (path: string) => {
-      const p = normalizePath(path);
-      dispatchEdit(null, (current) => {
-        const src = current?.source;
-        if (
-          src === undefined ||
-          src.files === undefined
-        ) {
-          return current;
-        }
-        const next = deleteFileInSource(src, p);
-        return next === null ? current : { ...current, source: next };
-      });
-      setFileParseErrors((prev) => {
-        if (!prev.has(p)) return prev;
-        const next = new Map(prev);
-        next.delete(p);
-        return next;
-      });
-    },
-    [dispatchEdit],
-  );
-
-  // Delete a whole folder — every file under it, atomically (one undo).
-  // Aborts if the folder holds a pinned file (the primary geometry); the
-  // Files tree only offers the affordance when it doesn't. Draft (empty)
-  // folders have no files here and are pruned in the tree's UI state.
-  const handleDeleteFolder = useCallback(
-    (dir: string) => {
-      const from = normalizePath(dir);
-      const prefix = `${from}/`;
-      dispatchEdit(null, (current) => {
-        const src = current?.source;
-        if (
-          src === undefined ||
-          src.files === undefined
-        ) {
-          return current;
-        }
-        const targets = [...src.files.keys()]
-          .filter((k) => k.startsWith(prefix))
-          .sort();
-        if (targets.length === 0) return current;
-        let next: LoadedSource = src;
-        for (const k of targets) {
-          const stepped = deleteFileInSource(next, k);
-          if (stepped === null) return current; // a pinned file aborts
-          next = stepped;
-        }
-        return { ...current, source: next };
-      });
-      setFileParseErrors((prev) => {
-        let next: Map<string, string> | null = null;
-        for (const key of prev.keys()) {
-          if (!key.startsWith(prefix)) continue;
-          if (next === null) next = new Map(prev);
-          next.delete(key);
-        }
-        return next ?? prev;
-      });
-    },
-    [dispatchEdit],
-  );
+  // Package file create / rename / move / delete (lib/useFileOps).
+  const {
+    handleCreateFile,
+    handleAddFileToModel,
+    handleRenameFile,
+    handleMoveFolder,
+    handleRenameFolder,
+    handleDeleteFile,
+    handleDeleteFolder,
+  } = useFileOps({ dispatchEdit, setFileParseErrors });
 
   // Rewrite ONE part's geometry (pivot / sockets), routed to whichever
   // geometry file defines it — part names are unique model-wide (§5), so the
@@ -1559,379 +1260,30 @@ export function App() {
     setLayout((l) => openPanelById(l, 'preview'));
   }, [dispatchEdit, editsBlocked]);
 
-  // ─── Animation (keyframe editor) edits ──────────────────────────────
-  //
-  // The `animations` analog of mutateManifestPart: immutably updates one
-  // clip and routes the write to where the clip LIVES — an inline object
-  // goes back into the manifest (text kept in sync); a §6.3 string ref
-  // goes into the referenced external file (files map + externalAnims),
-  // leaving the manifest untouched. No-ops on an unresolved ref (load
-  // error) or when no manifest is loaded.
-  const mutateManifestAnimation = useCallback(
-    (
-      tag: string | null,
-      animName: string,
-      build: (anim: InlineAnimation) => InlineAnimation,
-    ) => {
-      if (editsBlocked) return;
-      dispatchEdit(tag, (current) => {
-        if (current?.source === undefined) return current;
-        const src = current.source;
-        if (src.manifest === undefined) return current;
-        const prev = src.manifest.animations?.[animName];
-        if (prev === undefined) return current;
-        if (typeof prev === 'string') {
-          const rec = src.externalAnims?.get(animName);
-          if (rec === undefined) return current; // unresolved ref
-          const built = build(rec.anim);
-          if (built === rec.anim) return current;
-          const externalAnims = new Map(src.externalAnims);
-          externalAnims.set(animName, { path: rec.path, anim: built });
-          return {
-            ...current,
-            source: {
-              ...writeFile(src, rec.path, JSON.stringify(built, null, 2) + '\n'),
-              externalAnims,
-            },
-          };
-        }
-        const built = build(prev);
-        // A no-op build must return `current` itself, or the fresh wrapper
-        // objects below would defeat the history reducer's `next === present`
-        // no-op detection and record a junk undo entry.
-        if (built === prev) return current;
-        const animations = { ...src.manifest.animations, [animName]: built };
-        const nextManifest: Manifest = { ...src.manifest, animations };
-        return { ...current, source: withManifest(src, nextManifest) };
-      });
-    },
-    [dispatchEdit, editsBlocked],
-  );
-
-  // Overwrite an existing key's attribute value. Vec3 fields commit per
-  // keystroke (live NumberInput) — coalesce per key+attr; the visible
-  // checkbox is discrete and always pushes.
-  const handleSetAnimField = useCallback(
-    (
-      animName: string,
-      part: string,
-      timeKey: string,
-      attr: KeyAttr,
-      value: AttrValue,
-    ) => {
-      const tag =
-        attr === 'visible'
-          ? null
-          : `anim:set:${animName}:${part}:${timeKey}:${attr}`;
-      mutateManifestAnimation(tag, animName, (anim) => {
-        const track = anim.parts[part];
-        if (track === undefined || track[timeKey] === undefined) return anim;
-        return {
-          ...anim,
-          parts: { ...anim.parts, [part]: setAttrAtKey(track, timeKey, attr, value) },
-        };
-      });
-    },
-    [mutateManifestAnimation],
-  );
-
-  // Set or clear (undefined) one attribute's ease at an existing key.
-  // Discrete dropdown change — always its own undo entry (tag null).
-  const handleSetAnimEase = useCallback(
-    (
-      animName: string,
-      part: string,
-      timeKey: string,
-      attr: EaseAttr,
-      ease: EasingName | undefined,
-    ) => {
-      mutateManifestAnimation(null, animName, (anim) => {
-        const track = anim.parts[part];
-        if (track === undefined) return anim;
-        const nextTrack = setEaseAtKey(track, timeKey, attr, ease);
-        if (nextTrack === track) return anim;
-        return { ...anim, parts: { ...anim.parts, [part]: nextTrack } };
-      });
-    },
-    [mutateManifestAnimation],
-  );
-
-  // Add (or merge) a key for `attr` at `time`; the helper seeds the §6.6 0.0
-  // key and creates the part's track if absent.
-  const handleAddAnimKey = useCallback(
-    (animName: string, part: string, time: number, attr: KeyAttr, value: AttrValue) => {
-      mutateManifestAnimation(null, animName, (anim) => {
-        const track = anim.parts[part] ?? {};
-        const { track: nextTrack } = addAttrAtTime(track, time, attr, value);
-        return { ...anim, parts: { ...anim.parts, [part]: nextTrack } };
-      });
-    },
-    [mutateManifestAnimation],
-  );
-
-  // Remove one attribute key; prune the part's track if it becomes empty.
-  const handleDeleteAnimKey = useCallback(
-    (animName: string, part: string, timeKey: string, attr: KeyAttr) => {
-      mutateManifestAnimation(null, animName, (anim) => {
-        const track = anim.parts[part];
-        if (track === undefined) return anim;
-        const nextTrack = deleteAttrAtKey(track, timeKey, attr);
-        const parts = { ...anim.parts };
-        if (Object.keys(nextTrack).length === 0) delete parts[part];
-        else parts[part] = nextTrack;
-        return { ...anim, parts };
-      });
-    },
-    [mutateManifestAnimation],
-  );
-
-  // Paste a copied keyframe: field-wise merge at `time` on `part`. One
-  // discrete undo entry per paste (tag null).
-  const handlePasteAnimKeyframe = useCallback(
-    (animName: string, part: string, time: number, kf: Keyframe) => {
-      mutateManifestAnimation(null, animName, (anim) => {
-        const track = anim.parts[part] ?? {};
-        const { track: nextTrack } = mergeKeyframeAtTime(track, time, kf);
-        if (nextTrack === track) return anim;
-        return { ...anim, parts: { ...anim.parts, [part]: nextTrack } };
-      });
-    },
-    [mutateManifestAnimation],
-  );
-
-  // Retime one attribute key (timeline marker drag). The helper is a pure
-  // rename; same-attr collisions are blocked by the drag clamp in the UI.
-  const handleMoveAnimKey = useCallback(
-    (
-      animName: string,
-      part: string,
-      fromTimeKey: string,
-      toTime: number,
-      attr: KeyAttr,
-    ) => {
-      mutateManifestAnimation(null, animName, (anim) => {
-        const track = anim.parts[part];
-        if (track === undefined) return anim;
-        const { track: nextTrack } = moveAttrKey(track, fromTimeKey, toTime, attr);
-        if (nextTrack === track) return anim;
-        return { ...anim, parts: { ...anim.parts, [part]: nextTrack } };
-      });
-    },
-    [mutateManifestAnimation],
-  );
-
-  // Drop every key beyond the clip's duration (the lint badge's Trim action).
-  // Parts whose track empties out are removed entirely.
-  const handleTrimClip = useCallback(
-    (animName: string) => {
-      mutateManifestAnimation(null, animName, (anim) => {
-        const parts: InlineAnimation['parts'] = {};
-        for (const [name, track] of Object.entries(anim.parts)) {
-          const trimmed = trimTrackKeys(track, anim.duration);
-          if (Object.keys(trimmed).length > 0) parts[name] = trimmed;
-        }
-        return { ...anim, parts };
-      });
-    },
-    [mutateManifestAnimation],
-  );
-
-  const handleSetClipDuration = useCallback(
-    (animName: string, duration: number) => {
-      // Live number input — coalesce a typing burst into one entry.
-      mutateManifestAnimation(`anim:duration:${animName}`, animName, (anim) => ({
-        ...anim,
-        duration,
-      }));
-    },
-    [mutateManifestAnimation],
-  );
-
-  const handleSetClipLoop = useCallback(
-    (animName: string, loop: boolean) => {
-      mutateManifestAnimation(null, animName, (anim) => ({ ...anim, loop }));
-    },
-    [mutateManifestAnimation],
-  );
-
-  // Seed a new empty inline clip (unique identifier-safe name) and switch to
-  // the anim view. Can't go through mutateManifestAnimation since the entry
-  // doesn't exist yet.
-  const handleCreateAnimationClip = useCallback(() => {
-    if (editsBlocked) return;
-    dispatchEdit(null, (current) => {
-      if (current?.source === undefined) return current;
-      const src = current.source;
-      if (src.manifest === undefined) return current;
-      const existing = src.manifest.animations ?? {};
-      let n = 1;
-      let name = `clip${n}`;
-      while (existing[name] !== undefined) {
-        n += 1;
-        name = `clip${n}`;
-      }
-      const newClip: InlineAnimation = { duration: 1, loop: true, parts: {} };
-      const animations = { ...existing, [name]: newClip };
-      const nextManifest: Manifest = { ...src.manifest, animations };
-      return { ...current, source: withManifest(src, nextManifest) };
-    });
-    // Outside the apply closure for reducer purity (see handleCreateManifest).
+  // Creating a clip moves the editor to the anim view. Layout state lives
+  // here, so the hook calls back rather than reaching for it.
+  const onClipCreated = useCallback(() => {
     setViewMode('anim');
     setLayout((l) => openPanelById(l, 'preview'));
-  }, [dispatchEdit, editsBlocked]);
-
-  // Rename a clip, preserving its position in the animations map (rebuild
-  // entries in insertion order, swapping the key) so the JSON diff is one
-  // line. Collision checks use Object.hasOwn — `animations['constructor']`
-  // would be truthy via the prototype chain — and run against ALL keys
-  // (string-ref animations included).
-  const handleRenameClip = useCallback(
-    (oldName: string, newName: string) => {
-      if (oldName === newName || !isIdentifier(newName)) return;
-      if (editsBlocked) return;
-      dispatchEdit(null, (current) => {
-        if (current?.source === undefined) return current;
-        const src = current.source;
-        if (src.manifest === undefined) return current;
-        const animations = src.manifest.animations;
-        if (animations === undefined || !Object.hasOwn(animations, oldName)) {
-          return current;
-        }
-        if (Object.hasOwn(animations, newName)) return current;
-        const next: NonNullable<Manifest['animations']> = {};
-        for (const [k, v] of Object.entries(animations)) {
-          next[k === oldName ? newName : k] = v;
-        }
-        const nextManifest: Manifest = { ...src.manifest, animations: next };
-        // An external clip's resolution is keyed by clip name — re-key it
-        // (the referenced file itself is untouched by a clip rename).
-        let externalAnims = src.externalAnims;
-        const ext = externalAnims?.get(oldName);
-        if (externalAnims !== undefined && ext !== undefined) {
-          const rebuilt = new Map(externalAnims);
-          rebuilt.delete(oldName);
-          rebuilt.set(newName, ext);
-          externalAnims = rebuilt;
-        }
-            return {
-              ...current,
-              source: { ...withManifest(src, nextManifest), ...(externalAnims !== undefined && { externalAnims }), },
-            };
-      });
-    },
-    [dispatchEdit, editsBlocked],
-  );
-
-  // Delete a clip. No confirmation — undo is the safety net. Deleting the
-  // last clip drops the `animations` property entirely (SPEC: absent → no
-  // animations; cleaner authored JSON).
-  const handleDeleteClip = useCallback(
-    (name: string) => {
-      if (editsBlocked) return;
-      dispatchEdit(null, (current) => {
-        if (current?.source === undefined) return current;
-        const src = current.source;
-        if (src.manifest === undefined) return current;
-        const animations = src.manifest.animations;
-        if (animations === undefined || !Object.hasOwn(animations, name)) {
-          return current;
-        }
-        const { [name]: _dropped, ...rest } = animations;
-        let nextManifest: Manifest;
-        if (Object.keys(rest).length === 0) {
-          const { animations: _all, ...m } = src.manifest;
-          nextManifest = m;
-        } else {
-          nextManifest = { ...src.manifest, animations: rest };
-        }
-              // Deleting an external clip removes the manifest entry only; the
-        // referenced file stays (it may be shared — delete it from the
-        // Files tree if it's truly orphaned).
-        let externalAnims = src.externalAnims;
-        if (externalAnims?.has(name) === true) {
-          const rebuilt = new Map(externalAnims);
-          rebuilt.delete(name);
-          externalAnims = rebuilt;
-        }
-        return {
-          ...current,
-          source: { ...withManifest(src, nextManifest), ...(externalAnims !== undefined && { externalAnims }), },
-        };
-      });
-    },
-    [dispatchEdit, editsBlocked],
-  );
-
-  // Move an inline clip out to its own file (§6.3): write
-  // `anims/<name>.json` (unique-suffixed if taken) and swap the manifest
-  // value to the reference path. One dispatchEdit = one undo.
-  const handleExternalizeClip = useCallback(
-    (name: string) => {
-      if (editsBlocked) return;
-      dispatchEdit(null, (current) => {
-        if (current?.source === undefined) return current;
-        const src = current.source;
-        if (src.manifest === undefined || src.files === undefined) {
-          return current;
-        }
-        const anim = src.manifest.animations?.[name];
-        if (anim === undefined || typeof anim === 'string') return current;
-        let path = `anims/${name}.json`;
-        let n = 2;
-        while (src.files.has(path)) path = `anims/${name}-${n++}.json`;
-        const files = new Map(src.files);
-        files.set(path, JSON.stringify(anim, null, 2) + '\n');
-        const externalAnims = new Map(src.externalAnims ?? []);
-        externalAnims.set(name, { path, anim });
-        const animations = { ...src.manifest.animations, [name]: path };
-        const nextManifest: Manifest = { ...src.manifest, animations };
-        return {
-          ...current,
-          source: { ...withManifest(src, nextManifest), files, externalAnims },
-        };
-      });
-    },
-    [dispatchEdit, editsBlocked],
-  );
-
-  // The reverse: copy an external clip's object back into the manifest.
-  // The referenced file is kept (it may be shared) — it just becomes
-  // unreferenced; delete it from the Files tree if it's orphaned.
-  const handleInlineClip = useCallback(
-    (name: string) => {
-      if (editsBlocked) return;
-      dispatchEdit(null, (current) => {
-        if (current?.source === undefined) return current;
-        const src = current.source;
-        if (src.manifest === undefined) return current;
-        const ref = src.manifest.animations?.[name];
-        if (typeof ref !== 'string') return current;
-        const rec = src.externalAnims?.get(name);
-        if (rec === undefined) return current; // unresolved ref
-        const externalAnims = new Map(src.externalAnims);
-        externalAnims.delete(name);
-        const animations = { ...src.manifest.animations, [name]: rec.anim };
-        const nextManifest: Manifest = { ...src.manifest, animations };
-        return {
-          ...current,
-          source: { ...withManifest(src, nextManifest), externalAnims },
-        };
-      });
-    },
-    [dispatchEdit, editsBlocked],
-  );
-
-  // Remove a part's whole track from a clip (the timeline's per-part ×).
-  const handleClearPartTrack = useCallback(
-    (animName: string, part: string) => {
-      mutateManifestAnimation(null, animName, (anim) => {
-        if (anim.parts[part] === undefined) return anim;
-        const { [part]: _dropped, ...parts } = anim.parts;
-        return { ...anim, parts };
-      });
-    },
-    [mutateManifestAnimation],
-  );
+  }, []);
+  // Every keyframe-editor edit (lib/useAnimationEdits).
+  const {
+    handleSetAnimField,
+    handleSetAnimEase,
+    handleAddAnimKey,
+    handleDeleteAnimKey,
+    handlePasteAnimKeyframe,
+    handleMoveAnimKey,
+    handleTrimClip,
+    handleSetClipDuration,
+    handleSetClipLoop,
+    handleCreateAnimationClip,
+    handleRenameClip,
+    handleDeleteClip,
+    handleExternalizeClip,
+    handleInlineClip,
+    handleClearPartTrack,
+  } = useAnimationEdits({ dispatchEdit, editsBlocked, onClipCreated });
 
   const handleViewModeChange = useCallback((mode: ViewMode) => {
     setViewMode(mode);
