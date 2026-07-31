@@ -6,6 +6,7 @@ import {
   parseManifest,
   parsePaletteFile,
   resolvePartGeometry,
+  resolveRefFrom,
   type Geometry,
   type InlineAnimation,
   type Manifest,
@@ -64,28 +65,65 @@ export async function loadSingleFile(file: File): Promise<LoadResult> {
 export async function loadFromCuboidyZip(file: File): Promise<LoadResult> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   let entries: Record<string, Uint8Array>;
+  // SPEC §13.4: bound the entry count and the total uncompressed size
+  // BEFORE expanding. The bound used to be measured on the output of a
+  // completed unzipSync, which is the one place it cannot help: by then
+  // the bomb has already been expanded in memory. fflate's `filter` runs
+  // per entry from the header, ahead of inflating that entry, so refusing
+  // there is what actually stops it.
+  let declared = 0;
+  let count = 0;
+  let refusal: string | null = null;
   try {
-    entries = unzipSync(bytes);
+    entries = unzipSync(bytes, {
+      filter: (f) => {
+        if (refusal !== null) return false;
+        if (++count > MAX_ZIP_ENTRIES) {
+          refusal = `${file.name} has more than ${MAX_ZIP_ENTRIES} entries`;
+          return false;
+        }
+        declared += f.originalSize;
+        if (declared > MAX_ZIP_BYTES) {
+          refusal =
+            `${file.name} declares more than ` +
+            `${Math.round(MAX_ZIP_BYTES / 1e6)} MB of uncompressed data`;
+          return false;
+        }
+        return true;
+      },
+    });
   } catch (e) {
     return {
       error: `Could not unpack ${file.name}: ${(e as Error).message}`,
     };
   }
+  if (refusal !== null) return { error: refusal };
   const paths = Object.keys(entries).filter((p) => !p.endsWith('/'));
 
-  // SPEC §13.4: bound the expansion before trusting it. An archive is a
-  // hostile input and a few kB of ZIP can name gigabytes of output.
-  let total = 0;
-  for (const path of paths) total += entries[path]!.length;
-  if (paths.length > MAX_ZIP_ENTRIES) {
-    return { error: `${file.name} has ${paths.length} entries (limit ${MAX_ZIP_ENTRIES})` };
-  }
-  if (total > MAX_ZIP_BYTES) {
+  // A header may lie about `originalSize`, so the same bound is re-checked
+  // against what actually came out. The pre-check is what refuses a bomb;
+  // this is what catches one that misdeclared itself.
+  let actual = 0;
+  for (const path of paths) actual += entries[path]!.length;
+  if (actual > MAX_ZIP_BYTES) {
     return {
       error:
-        `${file.name} expands to ${Math.round(total / 1e6)} MB ` +
+        `${file.name} expands to ${Math.round(actual / 1e6)} MB ` +
         `(limit ${Math.round(MAX_ZIP_BYTES / 1e6)} MB)`,
     };
+  }
+
+  // SPEC §13.2: reject rather than sanitise — judged on the name the
+  // archive WROTE, before any prefix handling. Checking after the
+  // common-top-directory strip let an archive whose every entry began
+  // `../` straight through: `commonTopDir` saw `../` as the shared
+  // prefix, removed it, and the check then inspected a clean name. The
+  // traversal was sanitised away rather than refused, which is precisely
+  // what §13.2 forbids.
+  for (const path of paths) {
+    if (!isSafeEntryPath(path)) {
+      return { error: `${file.name}: unsafe entry path "${path}"` };
+    }
   }
 
   const prefix = commonTopDir(paths);
@@ -94,11 +132,6 @@ export async function loadFromCuboidyZip(file: File): Promise<LoadResult> {
   const seen = new Set<string>();
   for (const path of paths) {
     const rel = prefix === null ? path : path.slice(prefix.length);
-    // SPEC §13.2: reject rather than sanitise. A cleaned-up `../` is
-    // silently a different file from the one the archive named.
-    if (!isSafeEntryPath(rel)) {
-      return { error: `${file.name}: unsafe entry path "${rel}"` };
-    }
     const norm = normalizePath(rel);
     if (seen.has(norm)) {
       return { error: `${file.name}: duplicate entry "${norm}"` };
@@ -333,9 +366,13 @@ export interface ResolvedProjectRefs {
 export function withResolvedPalette(
   geometry: Geometry,
   getText: (path: string) => string | undefined,
+  // The geometry file's own path. SPEC §8 resolves a reference against
+  // the file that WROTE it, so `gear/body.json` naming `palette.json`
+  // means `gear/palette.json`.
+  fromFile: string,
 ): Geometry {
   if (geometry.paletteRef === undefined) return geometry;
-  const text = getText(normalizePath(geometry.paletteRef));
+  const text = getText(resolveRefFrom(fromFile, geometry.paletteRef));
   if (text === undefined) return geometry;
   try {
     const r = parsePaletteFile(JSON.parse(text));
@@ -398,7 +435,7 @@ export function resolveProjectRefs(
   const paletteCache = new Map<string, Palette | null>();
   for (const [path, geometry] of geometries) {
     if (geometry.paletteRef === undefined) continue;
-    const ref = normalizePath(geometry.paletteRef);
+    const ref = resolveRefFrom(path, geometry.paletteRef); // §8
     let palette = paletteCache.get(ref);
     if (palette === undefined) {
       palette = readPaletteRef(ref, getText, projectErrors);

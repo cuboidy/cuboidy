@@ -316,9 +316,12 @@ describe('runLint — project shape (geometry list + shared palette)', () => {
         [{ name: 'body', size: [1, 1, 1], pivot: [0, 0, 0], voxels: [['0']] }],
         'palette.json',
       ),
+      // `../palette.json`, not `palette.json`: a §7.4 reference resolves
+      // against the file that WROTE it (§8), so from `gear/` the root
+      // palette is one level up.
       'gear/hat.json': geo(
         [{ name: 'hat', size: [1, 1, 1], voxels: [['1']] }],
-        'palette.json',
+        '../palette.json',
       ),
       'palette.json': paletteJson,
       'cuboidy.json': JSON.stringify({
@@ -330,6 +333,48 @@ describe('runLint — project shape (geometry list + shared palette)', () => {
     const r = await runLint(dir);
     expect(r.diagnostics).toEqual([]);
     expect(r.exitCode).toBe(0);
+  });
+
+  it('§8: a palette ref resolves against the geometry file that wrote it', async () => {
+    // Two files in different directories may both name `palette.json` and
+    // mean different files. This used to resolve every reference against
+    // the package root, so a subdirectory could not have its own palette
+    // and reaching one that did was impossible.
+    const dir = await makeModel({
+      'gear/hat.json': geo(
+        [{ name: 'hat', size: [1, 1, 1], pivot: [0, 0, 0], voxels: [['0']] }],
+        'palette.json',
+      ),
+      'gear/palette.json': JSON.stringify({ colors: ['#0000FF'] }),
+      'cuboidy.json': JSON.stringify({
+        name: 'm',
+        geometry: ['gear/hat.json'],
+        parts: [{ name: 'hat' }],
+      }),
+    });
+    const r = await runLint(dir, { strict: true });
+    expect(r.diagnostics).toEqual([]);
+    expect(r.exitCode).toBe(0);
+  });
+
+  it('§8: and does NOT silently fall back to one at the package root', async () => {
+    const dir = await makeModel({
+      'gear/hat.json': geo(
+        [{ name: 'hat', size: [1, 1, 1], pivot: [0, 0, 0], voxels: [['0']] }],
+        'palette.json',
+      ),
+      'palette.json': JSON.stringify({ colors: ['#0000FF'] }),
+      'cuboidy.json': JSON.stringify({
+        name: 'm',
+        geometry: ['gear/hat.json'],
+        parts: [{ name: 'hat' }],
+      }),
+    });
+    const r = await runLint(dir);
+    expect(r.exitCode).toBe(1);
+    expect(r.diagnostics.some((d) => /gear\/palette\.json/.test(d.diag.message))).toBe(
+      true,
+    );
   });
 
   it('a geometry ref that cannot be read is a model error (exit 1)', async () => {

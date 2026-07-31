@@ -37,18 +37,32 @@ export interface ProjectPaths {
   animations: string[];
 }
 
-// A geometry file's §7.4 palette reference, normalized. Only discoverable
-// AFTER the geometry files are read, so callers that stage IO in one pass
-// (the CLIs read every path up front) need this second round.
+// SPEC §8: a reference resolves relative to **the file that contains it**.
+// Everything the manifest writes — the geometry list, animation refs, its
+// own §6.13 palette, a part's `geometry.path` — is contained by
+// `cuboidy.json` at the package root, so for those the ref as written is
+// already the package-relative path. A geometry file's §7.4 palette is the
+// one reference written somewhere else, and it is the one this exists for:
+// `gear/body.json` naming `palette.json` means `gear/palette.json`, not a
+// `palette.json` at the root.
+export function resolveRefFrom(fromFile: string, ref: string): string {
+  const i = fromFile.lastIndexOf('/');
+  const dir = i === -1 ? '' : fromFile.slice(0, i + 1);
+  return normalizeRefPath(dir + ref);
+}
+
+// Each geometry file's §7.4 palette reference, resolved against that file
+// (§8). Only discoverable AFTER the geometry files are read, so callers
+// that stage IO in one pass (the CLIs read every path up front) need this
+// second round.
 export function palettePathsOf(
   geometries: ReadonlyArray<GeometryFile>,
 ): string[] {
   return [
     ...new Set(
       geometries
-        .map((g) => g.geometry.paletteRef)
-        .filter((r): r is string => r !== undefined)
-        .map(normalizeRefPath),
+        .filter((g) => g.geometry.paletteRef !== undefined)
+        .map((g) => resolveRefFrom(g.path, g.geometry.paletteRef!)),
     ),
   ];
 }
@@ -293,7 +307,10 @@ export function resolveProject(
   const paletteCache = new Map<string, Palette | null>();
   for (const g of parsed) {
     if (g.geometry.paletteRef === undefined) continue;
-    const path = normalizeRefPath(g.geometry.paletteRef);
+    // §8: relative to the geometry file that wrote it, not to the package
+    // root — two files in different directories may name `palette.json`
+    // and mean different files.
+    const path = resolveRefFrom(g.path, g.geometry.paletteRef);
     let palette = paletteCache.get(path);
     if (palette === undefined) {
       palette = readPalette(path, files, diagnostics);

@@ -450,8 +450,9 @@ export function App() {
       ref === undefined
         ? geometry.parts
         : (merged?.parts ?? geometry.parts).filter((part) => {
-            const g = geometryAt(source, partFiles?.get(part.name) ?? '');
-            return g !== undefined && sharesPalette(g, ref);
+            const at = partFiles?.get(part.name) ?? '';
+            const g = geometryAt(source, at);
+            return g !== undefined && sharesPalette(at, g, ref);
           });
     return {
       ...(file !== undefined && { file }),

@@ -5,6 +5,7 @@ import {
   parseManifest,
   parsePaletteFile,
   serializeColor,
+  resolveRefFrom,
   serializeGeometry,
   toInlineGeometry,
   type Geometry,
@@ -304,11 +305,18 @@ export function paletteFileText(palette: Palette): string {
   return JSON.stringify({ colors: palette.map(serializeColor) }, null, 2) + '\n';
 }
 
-// Does this geometry file resolve against the palette file at `ref`?
-export function sharesPalette(geometry: Geometry, ref: string): boolean {
+// Does the geometry file at `path` resolve against the palette file at
+// `ref` (a package-relative path)? Needs `path` because §8 resolves the
+// reference against the file that wrote it — two files in different
+// directories may both say `palette.json` and mean different files.
+export function sharesPalette(
+  path: string,
+  geometry: Geometry,
+  ref: string,
+): boolean {
   return (
     geometry.paletteRef !== undefined &&
-    normalizePath(geometry.paletteRef) === ref
+    resolveRefFrom(path, geometry.paletteRef) === ref
   );
 }
 
@@ -321,11 +329,24 @@ export function geometryAt(src: LoadedSource, path: string): Geometry | undefine
 // geometry file that uses it, never model-wide.
 export function geometryPaletteRefs(src: LoadedSource): ReadonlySet<string> {
   const out = new Set<string>();
-  const add = (g: Geometry): void => {
-    if (g.paletteRef !== undefined) out.add(normalizePath(g.paletteRef));
-  };
-  for (const g of src.geometries.values()) add(g);
+  for (const [path, g] of src.geometries) {
+    if (g.paletteRef !== undefined) out.add(resolveRefFrom(path, g.paletteRef));
+  }
   return out;
+}
+
+// The inverse of resolveRefFrom: express the package-relative `target` as
+// a reference written INSIDE `fromFile`. Renaming a palette file has to
+// rewrite each referrer's ref, and a bare package-relative path would be
+// wrong for any referrer that is not at the root (§8).
+export function relativeRefFrom(fromFile: string, target: string): string {
+  const from = fromFile.split('/').slice(0, -1);
+  const to = target.split('/');
+  const name = to.pop()!;
+  let i = 0;
+  while (i < from.length && i < to.length && from[i] === to[i]) i += 1;
+  const up = from.length - i;
+  return [...Array<string>(up).fill('..'), ...to.slice(i), name].join('/');
 }
 
 // Re-point every geometry file whose palette reference names `from`.
@@ -338,10 +359,10 @@ export function repointPaletteRef(
   from: string,
   to: string | null,
 ): LoadedSource {
-  return mapGeometryFiles(src, (geometry) => {
+  return mapGeometryFiles(src, (geometry, path) => {
     if (
       geometry.paletteRef === undefined ||
-      normalizePath(geometry.paletteRef) !== from
+      resolveRefFrom(path, geometry.paletteRef) !== from
     ) {
       return null;
     }
@@ -349,7 +370,9 @@ export function repointPaletteRef(
       const { paletteRef: _drop, ...rest } = geometry;
       return rest;
     }
-    return { ...geometry, paletteRef: to };
+    // `to` is package-relative; write it back relative to THIS file so the
+    // reference still resolves to the same place from where it lives.
+    return { ...geometry, paletteRef: relativeRefFrom(path, to) };
   });
 }
 
@@ -615,7 +638,7 @@ function deriveAfterWrite(
     const geometries = new Map(next.geometries);
     geometries.set(
       path,
-      withResolvedPalette(r.value, (p) => next.files.get(p)),
+      withResolvedPalette(r.value, (p) => next.files.get(p), path),
     );
     return { source: { ...next, geometries }, error: null };
   }
@@ -623,32 +646,38 @@ function deriveAfterWrite(
   if (path.toLowerCase().endsWith('.json')) {
     const json = tryJson(text);
     if ('error' in json) return { source: next, error: json.error };
-    let out = next;
-    // A palette file feeds every geometry that points at it (§7.4). A
-    // schema-invalid edit keeps the last good colors.
-    if (geometryPaletteRefs(out).has(path)) {
+
+    // A file the model REFERENCES has a schema, and breaking it is an
+    // error like any other. These two checks used to run and then SWALLOW
+    // the failure — keeping the last good AST, reporting nothing, and
+    // leaving the broken bytes to be saved. What made that bad is not the
+    // stale AST but the silence: with no error reported, the banner never
+    // appears, structural edits stay unblocked, and the render keeps
+    // showing colors the file no longer contains.
+    if (geometryPaletteRefs(next).has(path)) {
       const pR = parsePaletteFile(json.value);
-      if (pR.ok) {
-        const colors = pR.value;
-        out = mapGeometryFiles(out, (g) =>
-          sharesPalette(g, path) ? { ...g, palette: colors } : null,
-        );
-      }
+      if (!pR.ok) return { source: next, error: pR.message };
     }
-    // An animation file feeds the clip records the timeline writes through.
-    if (out.externalAnims !== undefined) {
-      let anims: Map<string, { path: string; anim: InlineAnimation }> | null =
-        null;
-      for (const [clip, rec] of out.externalAnims) {
-        if (rec.path !== path) continue;
-        const parsed = InlineAnimationSchema.safeParse(json.value);
-        if (!parsed.success) break; // keep last good
-        if (anims === null) anims = new Map(out.externalAnims);
-        anims.set(clip, { path, anim: parsed.data });
+    for (const [clip, rec] of next.externalAnims ?? []) {
+      if (rec.path !== path) continue;
+      const parsed = InlineAnimationSchema.safeParse(json.value);
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0]!;
+        const at = issue.path.length > 0 ? issue.path.join('.') : '<root>';
+        return { source: next, error: `animation '${clip}': ${at}: ${issue.message}` };
       }
-      if (anims !== null) out = { ...out, externalAnims: anims };
+      break; // one file, one document — every clip on it parses alike
     }
-    return { source: out, error: null };
+
+    // Re-resolve the whole reference graph, exactly as a manifest edit
+    // does. That lands the new colors / keyframes in the render AND
+    // recomputes `projectErrors`, which otherwise kept reporting a
+    // load-time problem in a file the author had just fixed.
+    return {
+      source:
+        next.manifest === undefined ? next : withResolvedRefs(next, next.manifest),
+      error: null,
+    };
   }
 
   // Anything else (.md / .txt) is just text.

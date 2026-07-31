@@ -83,7 +83,11 @@ function pkg(files: Record<string, string>, primary = 'voxels.json'): LoadedSour
     manifestPath: MANIFEST,
     ...(manifest !== undefined && { manifest }),
     geometries,
+    ...(refs.inlineParts.size > 0 && { inlineParts: refs.inlineParts }),
     ...(refs.externalAnims !== undefined && { externalAnims: refs.externalAnims }),
+    // The loader carries these; without them a test could not tell a
+    // load-time problem from one that has been fixed.
+    ...(refs.projectErrors.length > 0 && { projectErrors: refs.projectErrors }),
   };
 }
 
@@ -582,6 +586,83 @@ describe('writeFile — text and derived state move together', () => {
     const next = writeFile(s, 'limbs.json', '{ broken');
     expect(next.files.get('limbs.json')).toBe('{ broken');
     expect(next.geometries.get('limbs.json')).toBe(s.geometries.get('limbs.json'));
+  });
+
+  // A referenced file has a SCHEMA, and breaking it used to be swallowed:
+  // the last good AST stayed, no error was reported, the banner never
+  // appeared, structural edits stayed unblocked and the broken bytes were
+  // what got saved. Silence was the bug, not the stale AST.
+  describe('a referenced file that is valid JSON but invalid content', () => {
+    const referencing = () =>
+      pkg(
+        {
+          [MANIFEST]: manifestJson({
+            name: 'm',
+            geometry: ['v.json'],
+            parts: [{ name: 'p' }],
+            animations: { walk: 'anims/walk.json' },
+          }),
+          'v.json': GEO([{ name: 'p', voxels: '0' }], 'palette.json'),
+          'palette.json': '{"colors":["#FF0000"]}',
+          'anims/walk.json': '{"duration":1,"loop":true,"parts":{}}',
+        },
+        'v.json',
+      );
+
+    it('reports a schema-invalid palette instead of ignoring it', () => {
+      const r = applyFileEdit(referencing(), 'palette.json', '{}');
+      expect(r.error).toMatch(/colors/);
+    });
+
+    it('reports a schema-invalid animation, naming the clip', () => {
+      const r = applyFileEdit(
+        referencing(),
+        'anims/walk.json',
+        '{"duration":-1,"loop":true,"parts":{}}',
+      );
+      expect(r.error).toMatch(/animation 'walk'/);
+    });
+
+    it('a VALID palette edit reaches every geometry pointing at it', () => {
+      const r = applyFileEdit(
+        referencing(),
+        'palette.json',
+        '{"colors":["#00FF00","#0000FF"]}',
+      );
+      expect(r.error).toBeNull();
+      expect(r.source.geometries.get('v.json')?.palette).toHaveLength(2);
+    });
+
+    it('a VALID animation edit reaches the clip record', () => {
+      const r = applyFileEdit(
+        referencing(),
+        'anims/walk.json',
+        '{"duration":2,"loop":false,"parts":{}}',
+      );
+      expect(r.error).toBeNull();
+      expect(r.source.externalAnims?.get('walk')?.anim.duration).toBe(2);
+    });
+
+    it('fixing a file clears the projectError it caused at load', () => {
+      // The other half: load-time problems were computed once and never
+      // recomputed, so the Console kept reporting a file the author had
+      // already repaired.
+      const missing = pkg(
+        {
+          [MANIFEST]: manifestJson({
+            name: 'm',
+            geometry: ['v.json'],
+            parts: [{ name: 'p' }],
+          }),
+          'v.json': GEO([{ name: 'p', voxels: '0' }], 'palette.json'),
+        },
+        'v.json',
+      );
+      expect(missing.projectErrors?.[0]?.file).toBe('palette.json');
+      const fixed = writeFile(missing, 'palette.json', '{"colors":["#FF0000"]}');
+      expect(fixed.projectErrors ?? []).toEqual([]);
+      expect(fixed.geometries.get('v.json')?.palette).toHaveLength(1);
+    });
   });
 
   it('applyFileEdit refuses a path the package no longer has', () => {

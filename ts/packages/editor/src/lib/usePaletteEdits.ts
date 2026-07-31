@@ -169,7 +169,7 @@ export function usePaletteEdits({ dispatchEdit, editsBlocked }: Params) {
             ? normalizePath(geometry.paletteRef)
             : undefined;
         const inScope = (g: Geometry, path: string): boolean =>
-          ref === undefined ? path === file : sharesPalette(g, ref);
+          ref === undefined ? path === file : sharesPalette(path, g, ref);
 
         for (const [path, g] of src.geometries) {
           if (!inScope(g, path)) continue;

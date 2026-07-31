@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { parseGeometryText, type Geometry, type Manifest } from '@cuboidy/core';
+import {
+  parseGeometryText,
+  parseManifest,
+  type Geometry,
+  type Manifest,
+} from '@cuboidy/core';
 import { strToU8, zipSync } from 'fflate';
 import {
   isGeometryPath,
@@ -41,6 +46,18 @@ const texts =
   (files: Record<string, string>) =>
   (p: string): string | undefined =>
     files[p];
+
+function manifestOf(text: string): Manifest {
+  const r = parseManifest(JSON.parse(text));
+  if (!r.ok) throw new Error(r.message);
+  return r.value;
+}
+
+function parseOk(text: string): Geometry {
+  const r = parseGeometryText(text);
+  if (!r.ok) throw new Error(r.message);
+  return r.value;
+}
 
 describe('normalizePath', () => {
   it('collapses empty and "." segments', () => {
@@ -252,6 +269,47 @@ describe('resolveProjectRefs — palette references', () => {
     expect(g?.paletteRef).toBeUndefined();
     expect(g?.palette).toHaveLength(1);
     expect(refs.projectErrors).toEqual([]);
+  });
+});
+
+describe('resolveProjectRefs — §8 reference base', () => {
+  // A reference resolves against the file that WROTE it. Everything the
+  // manifest writes sits at the package root, so only a geometry file's
+  // §7.4 palette can differ — and it used to be resolved against the root
+  // too, which made a subdirectory unable to have its own palette and
+  // unable to reach one that did.
+  const body = JSON.stringify({
+    version: '0.9',
+    palette: 'palette.json',
+    parts: [{ name: 'body', size: [1, 1, 1], voxels: [['0']] }],
+  });
+  const manifest = manifestOf(
+    JSON.stringify({ name: 'n', geometry: ['gear/body.json'], parts: [{ name: 'body' }] }),
+  );
+
+  it('finds a palette beside the geometry file that names it', () => {
+    const files: Record<string, string> = {
+      'gear/body.json': body,
+      'gear/palette.json': JSON.stringify({ colors: ['#FF0000'] }),
+    };
+    const refs = resolveProjectRefs(manifest, (p) => files[p], {
+      path: 'gear/body.json',
+      geometry: parseOk(body),
+    });
+    expect(refs.projectErrors).toEqual([]);
+    expect(refs.geometries.get('gear/body.json')?.palette).toHaveLength(1);
+  });
+
+  it('does NOT fall back to a same-named palette at the package root', () => {
+    const files: Record<string, string> = {
+      'gear/body.json': body,
+      'palette.json': JSON.stringify({ colors: ['#FF0000'] }),
+    };
+    const refs = resolveProjectRefs(manifest, (p) => files[p], {
+      path: 'gear/body.json',
+      geometry: parseOk(body),
+    });
+    expect(refs.projectErrors.map((e) => e.file)).toEqual(['gear/palette.json']);
   });
 });
 
@@ -470,6 +528,20 @@ describe('loadFromCuboidyZip', () => {
     expect(r.error).toMatch(/unsafe entry path/);
   });
 
+  it('rejects traversal even when EVERY entry shares the ../ prefix', async () => {
+    // The gap the cases above could not reach: they each include a safe
+    // sibling, so `commonTopDir` finds no shared prefix and the check sees
+    // the traversal. When every name starts `../`, the prefix logic used
+    // to strip it and the check then inspected an innocent-looking name —
+    // sanitising the traversal away, which is what §13.2 forbids. The
+    // names are now judged as the archive wrote them.
+    const r = await loadFromCuboidyZip(
+      zipFile({ '../cuboidy.json': MANIFEST_TEXT, '../voxels.json': VOXELS }),
+    );
+    expect(r.source).toBeUndefined();
+    expect(r.error).toMatch(/unsafe entry path/);
+  });
+
   it('rejects an archive with more entries than the bound allows', async () => {
     const many: Record<string, string> = {
       'cuboidy.json': MANIFEST_TEXT,
@@ -478,7 +550,7 @@ describe('loadFromCuboidyZip', () => {
     for (let i = 0; i < 10_001; i++) many[`f${i}.txt`] = '';
     const r = await loadFromCuboidyZip(zipFile(many));
     expect(r.source).toBeUndefined();
-    expect(r.error).toMatch(/entries \(limit/);
+    expect(r.error).toMatch(/more than 10000 entries/);
   });
 });
 

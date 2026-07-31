@@ -86,6 +86,7 @@ export {
   normalizeRefPath,
   projectFilePaths,
   resolvePartGeometry,
+  resolveRefFrom,
   resolveProject,
 } from './project.js';
 export type {
