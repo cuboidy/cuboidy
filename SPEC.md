@@ -832,7 +832,8 @@ All reference examples pass the current lint rules at error level.
 - **Custom easing curves**: cubic-bezier control points beyond the §6.7 named presets
 - **Standardized rig vocabularies**: humanoid / quadruped / biped contracts (analogous to VRM humanoid spec)
 - **Inverse kinematics**: solver-driven part chains
-- **Per-attachment overrides**: rotation / scale offsets when attaching accessories to sockets
+- **Attachment**, and it is the largest gap in the current draft. §7.8 defines a socket's position and orientation precisely, and §11.6 already reserves a runtime error for attaching to a socket that does not exist — but nothing in the format can state *that* an attachment happens. A package can declare `hand-r:grip`; it cannot record that a particular sword belongs in it. A specification needs to define the asset reference, the host part and socket it binds to, the behaviour when that socket does not resolve, whether the guest inherits the host's animation, and how palettes scope across the join. Until then a socket is a coordinate that an external runtime must be told what to do with, and two packages that fit together can only be shown to fit by merging them by hand.
+- **Per-attachment overrides**: rotation / scale offsets, once attachment itself is specified
 
 ---
 

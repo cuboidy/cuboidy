@@ -159,7 +159,7 @@ generates better models. Harness and raw votes are in git history, `b139ef4`.)*
 ## Roadmap
 
 Done — the v0.9 spec and a complete TypeScript implementation of it
-(`ts/packages/core/`, 466 tests):
+(`ts/packages/core/`, 497 tests):
 
 - [x] Reference parser, canonical serializer (a verified byte-level fixed point
       on every shipped model), and manifest validation
@@ -174,12 +174,55 @@ Done — the v0.9 spec and a complete TypeScript implementation of it
       `cuboidy-snap` (PNG stills) and `cuboidy-gif` (animated GIF and
       turntables), all dependency-free
 
-In progress and planned:
+Shipped alongside it:
 
-- [~] Web-based editor (`ts/packages/editor/`) — loads folders / geometry files / `.cuboidy` ZIPs; Geometry / Rig / Anim views; part, palette and keyframe-animation editing with undo/redo; direct manipulation in the 3D preview; project-aware save/export (FSA writeback or ZIP); Playwright E2E suite. Run locally with `cd ts/packages/editor && npm run dev`
-- [ ] Reference parser (C#)
-- [ ] Rig vocabulary docs (quadruped / biped / winged / ...)
-- [ ] Packed format spec (`.cuboidy` ZIP)
+- [~] **Web-based editor** (`ts/packages/editor/`) — loads folders, geometry
+      files and `.cuboidy` ZIPs; Geometry / Rig / Anim views; part, palette and
+      keyframe editing with undo/redo; direct manipulation in the 3D preview;
+      project-aware save/export; Playwright E2E suite.
+      `cd ts/packages/editor && npm run dev`
+
+Open, roughly in the order the work is worth doing:
+
+- [ ] **Attachment, in the format.** Sockets are currently half a feature: a
+      package can declare `head:crest` or `hand-r:grip`, and nothing anywhere
+      can say *what goes in it*. `models/sword` was authored blind against the
+      knight's grip contract and fits perfectly — but proving that took a
+      hand-built merge of the two packages, because no tool composes them. The
+      missing piece is a manifest-level attachment (asset reference, host part
+      and socket), plus rulings on a socket that does not resolve, and on how
+      palettes and animations scope across the join. `--attach` for
+      `cuboidy-snap` / `cuboidy-gif` falls out of it once the format can
+      express the relationship.
+- [ ] **Swept-volume checking.** Lint sees the rest pose; a render shows one
+      frame. A part that passes *through* another while moving is invisible to
+      both. The knight's thigh swung through its surcoat, found only by
+      scripting an intersection count over the cycle; the windmill's sail tips
+      clear its gallery by about two voxels, which its author could establish
+      only by hand trigonometry. This is the one defect class the documented
+      author's loop cannot catch.
+- [ ] **Packed format spec** (`.cuboidy` ZIP). The editor already reads and
+      writes these, so the implementation is ahead of the specification, and it
+      has quietly made decisions that belong in text: whether a single
+      top-level folder is stripped, what happens to non-text entries (today
+      they are dropped), `..` / absolute / backslash paths, duplicate paths
+      after normalisation, compression, and size limits.
+- [ ] **Rig vocabularies** (quadruped / biped / winged / …). §6.8 binds a
+      shared animation to parts *by name*, which makes the naming convention
+      the interoperability surface — and it is currently unwritten. The W06
+      symmetry check only recognises `<base>-l` / `<base>-r`, so the
+      `leg-fl` style the spec's own examples used gets no check at all. A
+      vocabulary would settle both.
+- [ ] **Wire core's lint into the editor.** `lintGeometry` and
+      `validateProject` run in the CLI; the editor does not call them. The
+      editor is where a model actually gets authored and the one place that
+      cannot currently tell you the model is wrong. (The editor's remaining
+      polish list — dirty-state guard, timeline zoom, a11y — was tracked in
+      `docs/ux-backlog.md`, removed in `b110ec7`; read it with
+      `git show b110ec7^:docs/ux-backlog.md`.)
+- [ ] **Reference parser (C#).** The shared `fixtures/` corpus exists for
+      exactly this: a second implementation passes when every fixture yields
+      the diagnostic code its directory is named after.
 
 ## License
 
