@@ -1,0 +1,30 @@
+{
+  "name": "knight",
+  "version": "0.9",
+  "geometry": ["body.json", "arms.json", "legs.json"],
+  "parts": [
+    { "name": "hips",       "position": [0, 19, 0] },
+    { "name": "torso",      "parent": "hips",      "position": [0, 2, 0] },
+    { "name": "tabard",     "parent": "torso",     "position": [0, 0, 0] },
+    { "name": "head",       "parent": "torso",     "position": [0, 10, 0] },
+
+    { "name": "arm-r",      "parent": "torso",     "position": [5, 8, 0],   "rotation": [0, 0, 5] },
+    { "name": "arm-l",      "parent": "torso",     "position": [-5, 8, 0],  "rotation": [0, 0, -5] },
+    { "name": "pauldron-r", "parent": "arm-r",     "position": [0, 0, 0],   "rotation": [0, 0, -5] },
+    { "name": "pauldron-l", "parent": "arm-l",     "position": [0, 0, 0],   "rotation": [0, 0, 5] },
+    { "name": "forearm-r",  "parent": "arm-r",     "position": [0, -6, 0],  "rotation": [4, 0, -3] },
+    { "name": "forearm-l",  "parent": "arm-l",     "position": [0, -6, 0],  "rotation": [4, 0, 3] },
+    { "name": "hand-r",     "parent": "forearm-r", "position": [0, -6, 0] },
+    { "name": "hand-l",     "parent": "forearm-l", "position": [0, -6, 0] },
+
+    { "name": "thigh-r",    "parent": "hips",      "position": [3, -3, 0] },
+    { "name": "thigh-l",    "parent": "hips",      "position": [-3, -3, 0] },
+    { "name": "shin-r",     "parent": "thigh-r",   "position": [0, -7, 0] },
+    { "name": "shin-l",     "parent": "thigh-l",   "position": [0, -7, 0] },
+    { "name": "boot-r",     "parent": "shin-r",    "position": [0, -7, 0] },
+    { "name": "boot-l",     "parent": "shin-l",    "position": [0, -7, 0] }
+  ],
+  "animations": {
+    "walk": "anims/walk.json"
+  }
+}

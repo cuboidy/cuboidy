@@ -1,15 +1,15 @@
 import { expect, test } from '@playwright/test';
-import { ROBO_MINI, loadFolder, openTab, tab } from './helpers.js';
+import { MULTIFILE, loadFolder, openTab, tab } from './helpers.js';
 
 // Editor E2E regression suite (audit D-1). Covers the workflows the
 // 2026-07-10 audit flagged as untested and the A-6 text/AST races. Those
 // races used to be a debounce-timing problem; text is now parsed as it is
 // typed, so what these pin down is that a structural edit always works
-// from the AST of the text currently on screen. models/robo-mini doubles as the fixture:
+// from the AST of the text currently on screen. the multi-file corpus model doubles as the fixture:
 // a multi-file package (geometry list + external palette).
 
-test('robo-mini loads all parts with no errors', async ({ page }) => {
-  await loadFolder(page, ROBO_MINI);
+test('a multi-file model loads all parts with no errors', async ({ page }) => {
+  await loadFolder(page, MULTIFILE);
 
   await openTab(page, 'Parts');
   // All six parts across body.json + limbs.json load through the shared
@@ -26,7 +26,7 @@ test('robo-mini loads all parts with no errors', async ({ page }) => {
 });
 
 test('A-6: structural edit right after typing keeps the typed text', async ({ page }) => {
-  await loadFolder(page, ROBO_MINI);
+  await loadFolder(page, MULTIFILE);
   await openTab(page, 'body.json');
   const textarea = page.locator('.source-textarea').first();
   const original = await textarea.inputValue();
@@ -60,7 +60,7 @@ test('A-6: structural edit right after typing keeps the typed text', async ({ pa
 test('A-6: a broken source text blocks structural edits, not just aborts them', async ({
   page,
 }) => {
-  await loadFolder(page, ROBO_MINI);
+  await loadFolder(page, MULTIFILE);
   await openTab(page, 'body.json');
   const textarea = page.locator('.source-textarea').first();
   const original = await textarea.inputValue();
@@ -97,7 +97,7 @@ test('A-6: a broken source text blocks structural edits, not just aborts them', 
 });
 
 test('A-6: undo right after editing a non-primary file stays consistent', async ({ page }) => {
-  await loadFolder(page, ROBO_MINI);
+  await loadFolder(page, MULTIFILE);
   await openTab(page, 'Files');
   await page.locator('.file-tree').getByText('limbs.json').click();
   await openTab(page, 'limbs.json');
@@ -134,13 +134,13 @@ test('A-6: a drag-reparent cannot clobber broken manifest text', async ({
       has: page.locator('.tree-name', { hasText: new RegExp(`^${name}$`) }),
     });
 
-  await loadFolder(page, ROBO_MINI);
+  await loadFolder(page, MULTIFILE);
   await openTab(page, 'cuboidy.json');
   const textarea = page.locator('.source-textarea').first();
   const original = await textarea.inputValue();
 
   // Break the manifest: schema-invalid but well-formed JSON.
-  const broken = original.replace('"name": "robo-mini"', '"name": 42');
+  const broken = original.replace('"name": "multifile"', '"name": 42');
   expect(broken).not.toBe(original);
   await textarea.fill(broken);
   await expect(page.locator('.parse-error-banner')).toBeVisible();

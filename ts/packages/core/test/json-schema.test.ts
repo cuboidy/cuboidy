@@ -6,6 +6,7 @@ import { parseManifest } from '../src/manifest.js';
 import { RESERVED_KEYWORDS } from '../src/identifier.js';
 import { IDENTIFIER_RE } from '../src/identifier.js';
 import { readFixtureJson } from './helpers/fixtures.js';
+import { MULTIFILE, RIGGED, SINGLE } from './helpers/corpus.js';
 
 // Loads the committed schema artifact (the deliverable consumers fetch).
 const SCHEMA_PATH = new URL(
@@ -55,12 +56,12 @@ describe('cuboidy.schema.json — validation parity with parseManifest', () => {
     expect(ajvOk, `${name}: ajv=${ajvOk} zod=${zodOk}`).toBe(zodOk);
   }
 
-  it('accepts wolf/cuboidy.json', async () => {
-    await expectParity('wolf', 'models/wolf/cuboidy.json');
+  it('accepts a rigged manifest', async () => {
+    await expectParity('rigged', `${RIGGED}/cuboidy.json`);
   });
 
-  it('accepts crown/cuboidy.json', async () => {
-    await expectParity('crown', 'models/crown/cuboidy.json');
+  it('accepts a single-part manifest', async () => {
+    await expectParity('single', `${SINGLE}/cuboidy.json`);
   });
 
   it('rejects fixtures/manifest/missing/name.json', async () => {
@@ -146,8 +147,8 @@ describe('cuboidy.schema.json — parity corpus (runtime-invalid inputs)', () =>
     });
   });
 
-  it('accepts robo-mini (geometry list + palette + valid refs)', async () => {
-    const json = await readFixtureJson('models/robo-mini/cuboidy.json');
+  it('accepts a geometry list + external palette + valid refs', async () => {
+    const json = await readFixtureJson(`${MULTIFILE}/cuboidy.json`);
     expect(parseManifest(json).ok).toBe(true);
     expect(validate(json)).toBe(true);
   });

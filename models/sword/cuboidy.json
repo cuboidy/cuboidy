@@ -1,0 +1,10 @@
+{
+  "name": "sword",
+  "version": "0.9",
+  "parts": [
+    { "name": "grip" },
+    { "name": "pommel", "parent": "grip", "position": [0, -3, 0] },
+    { "name": "guard", "parent": "grip", "position": [0, 3, 0] },
+    { "name": "blade", "parent": "guard", "position": [0, 3, 0] }
+  ]
+}

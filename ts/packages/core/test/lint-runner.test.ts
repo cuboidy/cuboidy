@@ -5,6 +5,8 @@ import { mkdtemp, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { formatDiagnostic, runLint } from '../src/cli/lint-runner.js';
 import { geo } from './helpers/geometry.js';
+import { readdirSync } from 'node:fs';
+import { MIRRORED, MULTIFILE, RIGGED, SINGLE } from './helpers/corpus.js';
 
 const REPO_ROOT = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -29,42 +31,66 @@ async function makeModel(files: Record<string, string>): Promise<string> {
 const ONE_VOXEL = (name: string, colors?: string[]) =>
   geo([{ name, size: [1, 1, 1], voxels: [['0']] }], colors);
 
-describe('runLint — fixture parity (exit 0)', () => {
-  it('wolf model lints clean', async () => {
-    const r = await runLint(resolve(REPO_ROOT, 'models/wolf'));
+describe('runLint — corpus models lint clean', () => {
+  it('a rigged model lints clean', async () => {
+    const r = await runLint(resolve(REPO_ROOT, RIGGED));
     expect(r.diagnostics).toEqual([]);
     expect(r.exitCode).toBe(0);
   });
 
-  it('crown model lints clean', async () => {
-    const r = await runLint(resolve(REPO_ROOT, 'models/crown'));
+  it('a single-part model lints clean', async () => {
+    const r = await runLint(resolve(REPO_ROOT, SINGLE));
     expect(r.diagnostics).toEqual([]);
     expect(r.exitCode).toBe(0);
   });
 
-  it('robo-mini model (geometry list + shared palette) lints clean', async () => {
-    const r = await runLint(resolve(REPO_ROOT, 'models/robo-mini'), {
+  it('a geometry list + shared palette lints clean under --strict', async () => {
+    const r = await runLint(resolve(REPO_ROOT, MULTIFILE), { strict: true });
+    expect(r.diagnostics).toEqual([]);
+    expect(r.exitCode).toBe(0);
+  });
+
+  // The audit's D-2 false positive: both legs keep the same local pivot, so
+  // the matching positions are -2 and 0 rather than sign-opposite, while the
+  // assembled geometry IS symmetric. W06 is geometric precisely so the
+  // recommended --strict workflow passes here. (Move leg-r to +2 and it
+  // fires — the case is only interesting because it is sensitive.)
+  it('a geometrically symmetric l/r pair passes --strict despite non-sign-opposite positions', async () => {
+    const r = await runLint(resolve(REPO_ROOT, MIRRORED), { strict: true });
+    expect(r.diagnostics.filter((d) => d.diag.severity !== 'hint')).toEqual([]);
+    expect(r.exitCode).toBe(0);
+  });
+});
+
+// The one thing still asserted about the shipped examples, and it is asserted
+// by WALKING the directory rather than by naming models. The gallery exists to
+// look good and is expected to be replaced wholesale; what must stay true is
+// that whatever is in it is valid, since the README points readers at it and
+// `cuboidy-lint --strict` is the workflow the docs recommend.
+describe('runLint — every shipped example', () => {
+  const modelDirs = readdirSync(resolve(REPO_ROOT, 'models'), {
+    withFileTypes: true,
+  })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name);
+
+  it('the gallery is not empty', () => {
+    expect(modelDirs.length).toBeGreaterThan(0);
+  });
+
+  it.each(modelDirs)('models/%s passes --strict', async (name) => {
+    const r = await runLint(resolve(REPO_ROOT, 'models', name), {
       strict: true,
     });
-    expect(r.diagnostics).toEqual([]);
+    // Hints are advisory and allowed to differ per model; warnings and
+    // errors are not.
+    expect(
+      r.diagnostics
+        .filter((d) => d.diag.severity !== 'hint')
+        .map((d) => formatDiagnostic(d)),
+    ).toEqual([]);
     expect(r.exitCode).toBe(0);
   });
-
-  // The audit's D-2 false positives: mirrored pivots make the matching
-  // positions non-sign-opposite, but the GEOMETRY is symmetric — the
-  // recommended `--strict` workflow must pass (W06 is geometric now).
-  it.each(['boy-mini', 'girl-mini'])(
-    '%s passes --strict (W06 checks geometry, not raw positions)',
-    async (model) => {
-      const r = await runLint(resolve(REPO_ROOT, `models/${model}`), {
-        strict: true,
-      });
-      expect(
-        r.diagnostics.filter((d) => d.diag.severity !== 'hint'),
-      ).toEqual([]);
-      expect(r.exitCode).toBe(0);
-    },
-  );
 });
 
 describe('runLint — W06 mirror symmetry (geometric)', () => {

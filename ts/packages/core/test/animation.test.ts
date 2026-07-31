@@ -7,6 +7,7 @@ import {
 } from '../src/animation.js';
 import { parseManifest } from '../src/manifest.js';
 import { readFixtureJson } from './helpers/fixtures.js';
+import { RIGGED } from './helpers/corpus.js';
 
 // A tail-wag style track: only `rot` ever specified, so pos/scale/visible
 // stay at their §6.5 defaults via carryover.
@@ -104,9 +105,9 @@ describe('samplePart — loop wrap (SPEC §6.7)', () => {
   });
 });
 
-describe('sampleAnimation — wolf idle (real manifest)', () => {
-  it('samples all animated parts of the wolf idle clip', async () => {
-    const json = await readFixtureJson('models/wolf/cuboidy.json');
+describe('sampleAnimation — a real manifest clip', () => {
+  it('samples all animated parts of the corpus idle clip', async () => {
+    const json = await readFixtureJson(`${RIGGED}/cuboidy.json`);
     const r = parseManifest(json);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
@@ -115,11 +116,12 @@ describe('sampleAnimation — wolf idle (real manifest)', () => {
     expect(idle).toBeDefined();
     if (idle === undefined || !isInlineAnimation(idle)) return;
 
-    // At t=0.5 the tail is at its keyed peak (y=25); the head (keyed
-    // 0.0→1.0 over rot.x 0→5) is halfway → x=2.5.
+    // At t=0.5 the tail sits exactly on its keyed peak (y=14). The head is
+    // halfway through its 0.0→1.0 segment (y 0→8) → y=4: the `in-out-sine`
+    // on the 1.0 keyframe shapes the segment LEAVING it, not this one.
     const poses = sampleAnimation(idle, 0.5);
-    expect(poses.get('tail')?.rot[1]).toBeCloseTo(25, 6);
-    expect(poses.get('head')?.rot[0]).toBeCloseTo(2.5, 6);
+    expect(poses.get('tail')?.rot[1]).toBeCloseTo(14, 6);
+    expect(poses.get('head')?.rot[1]).toBeCloseTo(4, 6);
 
     // Parts the animation does not target are simply absent.
     expect(poses.has('body')).toBe(false);
@@ -145,8 +147,8 @@ describe('samplePart — degenerate tracks', () => {
 });
 
 describe('animation schema — parses real manifests with animations', () => {
-  it('validates the neko model (two animations) through parseManifest', async () => {
-    const json = await readFixtureJson('models/neko/cuboidy.json');
+  it('validates a two-animation manifest through parseManifest', async () => {
+    const json = await readFixtureJson(`${RIGGED}/cuboidy.json`);
     const r = parseManifest(json);
     expect(r.ok).toBe(true);
     if (!r.ok) return;

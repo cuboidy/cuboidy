@@ -1,0 +1,63 @@
+{
+  "name": "windmill",
+  "version": "0.9",
+  "geometry": ["tower.json", "machinery.json"],
+  "parts": [
+    { "name": "base" },
+    { "name": "tower", "parent": "base", "position": [0, 2, 0] },
+    { "name": "gallery", "parent": "tower", "position": [0, 20, 0] },
+    { "name": "door", "parent": "tower", "position": [-2, 0, -7] },
+    { "name": "hoist-beam", "parent": "tower", "position": [0, 34, 5] },
+    { "name": "rope", "parent": "tower", "position": [0, 34, 13] },
+    { "name": "sack", "parent": "tower", "position": [0, 2, 13] },
+
+    { "name": "cap", "parent": "tower", "position": [0, 38, 0] },
+    { "name": "hub", "parent": "cap", "position": [0, 4, -12], "rotation": [0, 0, 45] },
+    { "name": "sail-a", "parent": "hub", "position": [0, 0, -2], "rotation": [0, 0, 0] },
+    { "name": "sail-b", "parent": "hub", "position": [0, 0, -2], "rotation": [0, 0, 90] },
+    { "name": "sail-c", "parent": "hub", "position": [0, 0, -2], "rotation": [0, 0, 180] },
+    { "name": "sail-d", "parent": "hub", "position": [0, 0, -2], "rotation": [0, 0, 270] },
+
+    { "name": "fan-post", "parent": "cap", "position": [0, 3, 7], "rotation": [26, 0, 0] },
+    { "name": "fan-hub", "parent": "cap", "position": [0, 20, 12] },
+    { "name": "fan-1", "parent": "fan-hub", "rotation": [0, 0, 0] },
+    { "name": "fan-2", "parent": "fan-hub", "rotation": [72, 0, 0] },
+    { "name": "fan-3", "parent": "fan-hub", "rotation": [144, 0, 0] },
+    { "name": "fan-4", "parent": "fan-hub", "rotation": [216, 0, 0] },
+    { "name": "fan-5", "parent": "fan-hub", "rotation": [288, 0, 0] }
+  ],
+  "animations": {
+    "turning": "anims/turning.json",
+
+    "starting": {
+      "duration": 5.0,
+      "loop": false,
+      "parts": {
+        "hub": {
+          "0.0": { "rot": [0, 0, 0], "ease": { "rot": "in-cubic" } },
+          "5.0": { "rot": [0, 0, -100] }
+        },
+        "fan-hub": {
+          "0.0": { "rot": [0, 0, 0], "ease": { "rot": "in-cubic" } },
+          "5.0": { "rot": [300, 0, 0] }
+        },
+        "sail-a": {
+          "0.0": { "rot": [0, 0, 0], "scale": [1, 1, 1], "ease": { "rot": "in-cubic", "scale": "in-cubic" } },
+          "5.0": { "rot": [12, 5, 0], "scale": [1, 1, 1.5] }
+        },
+        "sail-b": {
+          "0.0": { "rot": [0, 0, 0], "scale": [1, 1, 1], "ease": { "rot": "in-cubic", "scale": "in-cubic" } },
+          "5.0": { "rot": [8, 2.5, 0], "scale": [1, 1, 1.25] }
+        },
+        "sail-c": {
+          "0.0": { "rot": [0, 0, 0], "scale": [1, 1, 1], "ease": { "rot": "in-cubic", "scale": "in-cubic" } },
+          "5.0": { "rot": [4, 0, 0], "scale": [1, 1, 1] }
+        },
+        "sail-d": {
+          "0.0": { "rot": [0, 0, 0], "scale": [1, 1, 1], "ease": { "rot": "in-cubic", "scale": "in-cubic" } },
+          "5.0": { "rot": [8, 2.5, 0], "scale": [1, 1, 1.25] }
+        }
+      }
+    }
+  }
+}

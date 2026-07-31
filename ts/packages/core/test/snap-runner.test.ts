@@ -12,9 +12,10 @@ import {
 } from '../src/cli/snap-runner.js';
 import { loadAndAssemble } from '../src/cli/assemble.js';
 import { geo } from './helpers/geometry.js';
+import { SINGLE } from './helpers/corpus.js';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
-const CROWN = resolve(REPO_ROOT, 'models/crown');
+const CROWN = resolve(REPO_ROOT, SINGLE);
 
 const PNG_SIG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 

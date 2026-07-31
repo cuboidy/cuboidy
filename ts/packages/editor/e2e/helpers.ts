@@ -7,7 +7,11 @@ const REPO_ROOT = resolve(
   '../../../..',
 );
 
-export const ROBO_MINI = resolve(REPO_ROOT, 'models/robo-mini');
+// The multi-file test corpus model: a manifest `geometry` list, a shared
+// external palette and an external animation clip. These specs used to load
+// `models/robo-mini`, which tied the E2E suite to the shipped example gallery
+// — replacing an example broke rendering tests that had nothing to do with it.
+export const MULTIFILE = resolve(REPO_ROOT, 'ts/testdata/multifile');
 
 // Open the editor and load a model folder through the legacy
 // <input webkitdirectory> path. Chromium normally exposes the FSA

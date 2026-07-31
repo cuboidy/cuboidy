@@ -1,0 +1,87 @@
+{
+  "name": "owl",
+  "version": "0.9",
+  "parts": [
+    { "name": "perch", "position": [0, 3, 0], "rotation": [0, 8, 0] },
+    { "name": "body", "position": [0, 6, 0] },
+    { "name": "head", "parent": "body", "position": [0, 8, -2] },
+    { "name": "beak", "parent": "head", "position": [0, 5, -5] },
+    { "name": "tuft-l", "parent": "head", "position": [-3, 8, -3], "rotation": [10, 0, 14] },
+    { "name": "tuft-r", "parent": "head", "position": [3, 8, -3], "rotation": [10, 0, -14] },
+    { "name": "wing-l", "parent": "body", "position": [-6, 10, 0], "rotation": [2, 0, 4] },
+    { "name": "wing-r", "parent": "body", "position": [6, 10, 0], "rotation": [2, 0, -4] },
+    { "name": "wingmid-l", "parent": "wing-l", "position": [0, -4, 0], "rotation": [0, 0, 4] },
+    { "name": "wingmid-r", "parent": "wing-r", "position": [0, -4, 0], "rotation": [0, 0, -4] },
+    { "name": "wingtip-l", "parent": "wingmid-l", "position": [0, -4, 0], "rotation": [0, 0, 4] },
+    { "name": "wingtip-r", "parent": "wingmid-r", "position": [0, -4, 0], "rotation": [0, 0, -4] },
+    { "name": "tail", "parent": "body", "position": [0, 3, 3], "rotation": [26, 0, 0] },
+    { "name": "leg-l", "parent": "body", "position": [-3, 2, 0] },
+    { "name": "leg-r", "parent": "body", "position": [3, 2, 0] },
+    { "name": "talon-l", "parent": "leg-l", "position": [0, -4, 0] },
+    { "name": "talon-r", "parent": "leg-r", "position": [0, -4, 0] }
+  ],
+  "animations": {
+    "launch": "anims/launch.json",
+
+    "perch-idle": {
+      "duration": 4.0,
+      "loop": true,
+      "parts": {
+        "body": {
+          "0.0": { "scale": [1, 1, 1],          "rot": [0, 0, 0],  "ease": { "scale": "in-out-sine", "rot": "in-out-sine" } },
+          "1.0": { "scale": [1.02, 1.01, 1.02], "rot": [-1, 0, 0], "ease": { "scale": "in-out-sine", "rot": "in-out-sine" } },
+          "2.0": { "scale": [1, 1, 1],          "rot": [0, 0, 0],  "ease": { "scale": "in-out-sine", "rot": "in-out-sine" } },
+          "3.0": { "scale": [1.02, 1.01, 1.02], "rot": [-1, 0, 0], "ease": { "scale": "in-out-sine", "rot": "in-out-sine" } },
+          "4.0": { "scale": [1, 1, 1],          "rot": [0, 0, 0] }
+        },
+        "head": {
+          "0.0":  { "rot": [0, 0, 0],    "ease": { "rot": "in-out-sine" } },
+          "0.6":  { "rot": [0, 0, 0],    "ease": { "rot": "out-back" } },
+          "0.9":  { "rot": [0, 72, 0],   "ease": { "rot": "in-out-sine" } },
+          "1.9":  { "rot": [2, 72, 0],   "ease": { "rot": "in-out-cubic" } },
+          "2.25": { "rot": [-4, -80, 0], "ease": { "rot": "in-out-sine" } },
+          "3.2":  { "rot": [4, -80, 0],  "ease": { "rot": "out-back" } },
+          "3.6":  { "rot": [0, 0, 0],    "ease": { "rot": "in-out-sine" } },
+          "4.0":  { "rot": [0, 0, 0] }
+        },
+        "tuft-l": {
+          "0.0":  { "rot": [0, 0, 0],  "ease": { "rot": "in-out-sine" } },
+          "1.0":  { "rot": [-5, 0, 0], "ease": { "rot": "out-elastic" } },
+          "2.0":  { "rot": [3, 0, 0],  "ease": { "rot": "in-out-sine" } },
+          "2.45": { "rot": [-6, 0, 0], "ease": { "rot": "out-elastic" } },
+          "3.4":  { "rot": [2, 0, 0],  "ease": { "rot": "in-out-sine" } },
+          "4.0":  { "rot": [0, 0, 0] }
+        },
+        "tuft-r": {
+          "0.0":  { "rot": [0, 0, 0],  "ease": { "rot": "in-out-sine" } },
+          "1.0":  { "rot": [-5, 0, 0], "ease": { "rot": "out-elastic" } },
+          "2.0":  { "rot": [3, 0, 0],  "ease": { "rot": "in-out-sine" } },
+          "2.45": { "rot": [-6, 0, 0], "ease": { "rot": "out-elastic" } },
+          "3.4":  { "rot": [2, 0, 0],  "ease": { "rot": "in-out-sine" } },
+          "4.0":  { "rot": [0, 0, 0] }
+        },
+        "tail": {
+          "0.0": { "rot": [0, 0, 0], "ease": { "rot": "in-out-sine" } },
+          "1.0": { "rot": [3, 0, 0], "ease": { "rot": "in-out-sine" } },
+          "2.0": { "rot": [0, 0, 0], "ease": { "rot": "in-out-sine" } },
+          "3.0": { "rot": [3, 0, 0], "ease": { "rot": "in-out-sine" } },
+          "4.0": { "rot": [0, 0, 0] }
+        },
+        "wing-l": {
+          "0.0": { "rot": [0, 0, 0],  "ease": { "rot": "in-out-sine" } },
+          "1.0": { "rot": [0, 0, -2], "ease": { "rot": "in-out-sine" } },
+          "2.0": { "rot": [0, 0, 0],  "ease": { "rot": "in-out-sine" } },
+          "3.0": { "rot": [0, 0, -2], "ease": { "rot": "in-out-sine" } },
+          "4.0": { "rot": [0, 0, 0] }
+        },
+        "wing-r": {
+          "0.0": { "rot": [0, 0, 0], "ease": { "rot": "in-out-sine" } },
+          "1.0": { "rot": [0, 0, 2], "ease": { "rot": "in-out-sine" } },
+          "2.0": { "rot": [0, 0, 0], "ease": { "rot": "in-out-sine" } },
+          "3.0": { "rot": [0, 0, 2], "ease": { "rot": "in-out-sine" } },
+          "4.0": { "rot": [0, 0, 0] }
+        }
+      }
+    }
+  }
+}

@@ -4,6 +4,7 @@ import type { Geometry } from '../src/geometry/types.js';
 import { readFixtureText } from './helpers/fixtures.js';
 import { parseGeometryText } from '../src/geometry/parse.js';
 import { geo, type PartSpec } from './helpers/geometry.js';
+import { RIGGED, SINGLE } from './helpers/corpus.js';
 
 // Builds the AST these rules run on by going through the real reader, so a
 // case can never assert against a shape the reader would not produce.
@@ -253,12 +254,12 @@ describe('lintGeometry — corpus parity', () => {
     return r.value;
   }
 
-  it('wolf model produces no lint diagnostics', async () => {
-    expect(lintGeometry(await loadCorpus('models/wolf/voxels.json'))).toEqual([]);
+  it('a rigged corpus model produces no lint diagnostics', async () => {
+    expect(lintGeometry(await loadCorpus(`${RIGGED}/voxels.json`))).toEqual([]);
   });
 
-  it('crown model produces no lint diagnostics', async () => {
-    expect(lintGeometry(await loadCorpus('models/crown/voxels.json'))).toEqual([]);
+  it('a single-part corpus model produces no lint diagnostics', async () => {
+    expect(lintGeometry(await loadCorpus(`${SINGLE}/voxels.json`))).toEqual([]);
   });
 });
 

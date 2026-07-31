@@ -136,14 +136,14 @@ describe('parseGeometryText line reporting', () => {
     expect(r.message).toMatch(/^invalid JSON:/);
   });
 
-  it('reports a real line on a shipped model', () => {
+  it('reports a real line on a real multi-part file', () => {
     const path = resolve(
       import.meta.dirname,
-      '../../../../models/robo-mini/body.json',
+      '../../../testdata/multifile/body.json',
     );
     const text = readFileSync(path, 'utf8');
-    // Narrow one row: body.json binds the manifest palette rather than
-    // declaring its own, so width — not index range — is what it can fail on.
+    // Narrow one row: body.json references a shared palette rather than
+    // declaring one inline, so width — not index range — is what it can fail on.
     const broken = text.replace('"0220"', '"022"');
     expect(broken).not.toBe(text);
     const r = parseGeometryText(broken);

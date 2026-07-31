@@ -1,42 +1,34 @@
 import { describe, expect, it } from 'vitest';
 import { manifestGeometry, parseManifest } from '../src/manifest.js';
 import { readFixtureJson } from './helpers/fixtures.js';
+import { RIGGED, RIGGED_PARTS, SINGLE } from './helpers/corpus.js';
 
 describe('parseManifest', () => {
-  it('parses models/wolf/cuboidy.json', async () => {
-    const json = await readFixtureJson('models/wolf/cuboidy.json');
+  it('parses a rigged corpus manifest', async () => {
+    const json = await readFixtureJson(`${RIGGED}/cuboidy.json`);
     const r = parseManifest(json);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
 
     const m = r.value;
-    expect(m.name).toBe('wolf');
-    expect(m.parts).toHaveLength(7);
+    expect(m.name).toBe('rigged');
     expect(m.parts[0]?.name).toBe('body');
     expect(m.parts[1]?.name).toBe('head');
     expect(m.parts[1]?.parent).toBe('body');
-    expect(m.parts[1]?.position).toEqual([0, 3, -3]);
-    expect(m.parts.map((p) => p.name)).toEqual([
-      'body',
-      'head',
-      'tail',
-      'leg-fl',
-      'leg-fr',
-      'leg-bl',
-      'leg-br',
-    ]);
+    expect(m.parts[1]?.position).toEqual([0, 4, -3]);
+    expect(m.parts.map((p) => p.name)).toEqual(RIGGED_PARTS.map((p) => p.name));
     expect(m.animations?.['idle']).toBeDefined();
   });
 
-  it('parses models/crown/cuboidy.json', async () => {
-    const json = await readFixtureJson('models/crown/cuboidy.json');
+  it('parses a single-part corpus manifest', async () => {
+    const json = await readFixtureJson(`${SINGLE}/cuboidy.json`);
     const r = parseManifest(json);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
 
-    expect(r.value.name).toBe('crown');
+    expect(r.value.name).toBe('single');
     expect(r.value.parts).toHaveLength(1);
-    expect(r.value.parts[0]?.name).toBe('crown');
+    expect(r.value.parts[0]?.name).toBe('cap');
   });
 
   it('rejects manifest without name (missing)', async () => {
@@ -352,7 +344,7 @@ describe('parseManifest - animation validation (SPEC ss6.4/ss6.6/ss11.5)', () =>
     if (!r.ok) expect(r.message).toMatch(/decimal number/);
   });
 
-  it('still accepts the wolf idle animation shape', () => {
+  it('still accepts a two-clip idle animation shape', () => {
     const r = parseManifest({
       name: 'm',
       parts: [{ name: 'tail' }],

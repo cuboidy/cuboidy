@@ -4,6 +4,7 @@ import { parseGeometryText } from '../src/geometry/parse.js';
 import { geo } from './helpers/geometry.js';
 import { validateCrossFile, validateProject } from '../src/lint/cross-file.js';
 import { readFixtureJson, readFixtureText } from './helpers/fixtures.js';
+import { RIGGED, RIGGED_PARTS, SINGLE } from './helpers/corpus.js';
 
 async function loadModel(folder: string) {
   const manifestR = parseManifest(
@@ -22,30 +23,24 @@ function manifestOrThrow(json: unknown) {
 }
 
 describe('validateCrossFile', () => {
-  it('reports no diagnostics for wolf', async () => {
-    const { manifest, voxelDef } = await loadModel('models/wolf');
+  it('reports no diagnostics for a rigged corpus model', async () => {
+    const { manifest, voxelDef } = await loadModel(RIGGED);
     expect(validateCrossFile(manifest, voxelDef)).toEqual([]);
   });
 
-  it('reports no diagnostics for crown', async () => {
-    const { manifest, voxelDef } = await loadModel('models/crown');
+  it('reports no diagnostics for a single-part corpus model', async () => {
+    const { manifest, voxelDef } = await loadModel(SINGLE);
     expect(validateCrossFile(manifest, voxelDef)).toEqual([]);
   });
 
   it('X01: error when manifest references a part missing from voxels', async () => {
-    const { voxelDef } = await loadModel('models/wolf');
-    // Include every wolf part so the only cross-file delta is the extra
+    const { voxelDef } = await loadModel(RIGGED);
+    // Include every geometry part so the only cross-file delta is the extra
     // `tongue` — keeps this test focused on the X01 code path.
     const manifest = manifestOrThrow({
-      name: 'wolf',
+      name: 'rigged',
       parts: [
-        { name: 'body' },
-        { name: 'head', parent: 'body' },
-        { name: 'tail', parent: 'body' },
-        { name: 'leg-fl', parent: 'body' },
-        { name: 'leg-fr', parent: 'body' },
-        { name: 'leg-bl', parent: 'body' },
-        { name: 'leg-br', parent: 'body' },
+        ...RIGGED_PARTS,
         { name: 'tongue', parent: 'head' },
       ],
     });
@@ -57,19 +52,12 @@ describe('validateCrossFile', () => {
   });
 
   it('X02: warning when voxels define a part not in manifest', async () => {
-    const { voxelDef } = await loadModel('models/wolf');
-    // Manifest omits only `tail`; every other wolf part is present so the
+    const { voxelDef } = await loadModel(RIGGED);
+    // Manifest omits only `tail`; every other part is present so the
     // diagnostic set narrows to the single X02 we want to assert on.
     const manifest = manifestOrThrow({
-      name: 'wolf',
-      parts: [
-        { name: 'body' },
-        { name: 'head', parent: 'body' },
-        { name: 'leg-fl', parent: 'body' },
-        { name: 'leg-fr', parent: 'body' },
-        { name: 'leg-bl', parent: 'body' },
-        { name: 'leg-br', parent: 'body' },
-      ],
+      name: 'rigged',
+      parts: RIGGED_PARTS.filter((p) => p.name !== 'tail'),
     });
     const diags = validateCrossFile(manifest, voxelDef);
     expect(diags).toHaveLength(1);
@@ -79,17 +67,13 @@ describe('validateCrossFile', () => {
   });
 
   it('reports both X01 and X02 when present', async () => {
-    const { voxelDef } = await loadModel('models/wolf');
-    // Manifest is missing two wolf parts (head, tail) AND introduces an
-    // unknown `wing` — so we expect 1 X01 (`missing`) + 2 X02 (`unknown`).
+    const { voxelDef } = await loadModel(RIGGED);
+    // Manifest is missing two parts (head, tail) AND introduces an unknown
+    // `wing` — so we expect 1 X01 (`missing`) + 2 X02 (`unknown`).
     const manifest = manifestOrThrow({
-      name: 'wolf',
+      name: 'rigged',
       parts: [
-        { name: 'body' },
-        { name: 'leg-fl', parent: 'body' },
-        { name: 'leg-fr', parent: 'body' },
-        { name: 'leg-bl', parent: 'body' },
-        { name: 'leg-br', parent: 'body' },
+        ...RIGGED_PARTS.filter((p) => p.name !== 'head' && p.name !== 'tail'),
         { name: 'wing' },
       ],
     });

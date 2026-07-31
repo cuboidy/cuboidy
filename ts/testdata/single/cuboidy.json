@@ -1,0 +1,14 @@
+{
+  "name": "single",
+  "version": "0.9",
+  "parts": [
+    {
+      "name": "cap",
+      "position": [
+        1,
+        0,
+        1
+      ]
+    }
+  ]
+}

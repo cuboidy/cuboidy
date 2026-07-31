@@ -1,0 +1,32 @@
+{
+  "name": "fox",
+  "version": "0.9",
+  "geometry": ["voxels.json", "legs.json", "tail.json"],
+  "animations": {
+    "trot": "anims/trot.json"
+  },
+  "parts": [
+    { "name": "body", "position": [0, 15, 0] },
+
+    { "name": "neck", "parent": "body", "position": [0, 2, -6], "rotation": [55, 0, 0] },
+    { "name": "head", "parent": "neck", "position": [0, 0, -6], "rotation": [-48, 0, 0] },
+    { "name": "ear-l", "parent": "head", "position": [-2, 3, -3], "rotation": [-8, 0, 10] },
+    { "name": "ear-r", "parent": "head", "position": [2, 3, -3], "rotation": [-8, 0, -10] },
+
+    { "name": "foreleg-l", "parent": "body", "position": [-3, -1, -5] },
+    { "name": "foreleg-r", "parent": "body", "position": [3, -1, -5] },
+    { "name": "forepaw-l", "parent": "foreleg-l", "position": [0, -10, 0] },
+    { "name": "forepaw-r", "parent": "foreleg-r", "position": [0, -10, 0] },
+
+    { "name": "hindleg-l", "parent": "body", "position": [-2, 0, 5], "rotation": [8, 0, 0] },
+    { "name": "hindleg-r", "parent": "body", "position": [2, 0, 5], "rotation": [8, 0, 0] },
+    { "name": "hindpaw-l", "parent": "hindleg-l", "position": [0, -9, 0], "rotation": [-8, 0, 0] },
+    { "name": "hindpaw-r", "parent": "hindleg-r", "position": [0, -9, 0], "rotation": [-8, 0, 0] },
+
+    { "name": "tail-1", "parent": "body", "position": [0, 1, 8], "rotation": [-14, 0, 0] },
+    { "name": "tail-2", "parent": "tail-1", "position": [0, 0, 4], "rotation": [-4, 0, 0] },
+    { "name": "tail-3", "parent": "tail-2", "position": [0, 0, 4], "rotation": [6, 0, 0] },
+    { "name": "tail-4", "parent": "tail-3", "position": [0, 0, 4], "rotation": [14, 0, 0] },
+    { "name": "tail-5", "parent": "tail-4", "position": [0, 0, 4], "rotation": [16, 0, 0] }
+  ]
+}

@@ -6,6 +6,7 @@ import {
   serializeGeometry,
   SPEC_VERSION,
 } from '../src/geometry/serialize.js';
+import { RIGGED, RIGGED_PARTS, SINGLE } from './helpers/corpus.js';
 
 // A minimal valid document, spread into per-case overrides so each test shows
 // only the field it is about.
@@ -329,44 +330,40 @@ describe('the corpus', () => {
     });
   }
 
-  // Structural assertions carried over from the text parser's corpus tests:
-  // the models did not change, so what they contain is still worth pinning.
-  it('wolf has the expected rig and eye row', () => {
+  // Structural assertions on the test corpus. These used to pin two shipped
+  // models; they moved here so the example gallery can be replaced without
+  // rewriting parser tests. What is still asserted about `models/` is the
+  // round-trip above, which is discovered by walking the directory.
+  it('the rigged corpus model has the expected rig, pivot and sockets', () => {
     const r = parseGeometryText(
-      readFileSync(join(modelsDir, 'wolf', 'voxels.json'), 'utf8'),
+      readFileSync(join(repo, RIGGED, 'voxels.json'), 'utf8'),
     );
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.value.palette).toHaveLength(3);
-    expect(r.value.parts.map((p) => p.name)).toEqual([
-      'body',
-      'head',
-      'tail',
-      'leg-fl',
-      'leg-fr',
-      'leg-bl',
-      'leg-br',
-    ]);
+    expect(r.value.parts.map((p) => p.name)).toEqual(
+      RIGGED_PARTS.map((p) => p.name),
+    );
 
     const head = r.value.parts.find((p) => p.name === 'head')!;
-    expect(head.size).toEqual({ w: 5, h: 5, d: 5 });
-    expect(head.pivot.pos).toEqual({ x: 2, y: 0, z: 5 });
+    expect(head.size).toEqual({ w: 4, h: 4, d: 4 });
+    // A non-default pivot: back-bottom-centre, the connection point.
+    expect(head.pivot.pos).toEqual({ x: 2, y: 0, z: 4 });
     expect(head.sockets.map((s) => s.name)).toEqual(['hat', 'mouth']);
-    expect(head.voxels).toHaveLength(5);
-    // Eye row: layer y=2 (eye level), z=2 (front of main head, just behind
-    // snout). `20002` → eyes (palette index 2) at the outer corners.
-    expect(head.voxels[2]?.[2]).toEqual([2, 0, 0, 0, 2]);
+    expect(head.voxels).toHaveLength(4);
+    // Top layer carries the two-tone row `1221`.
+    expect(head.voxels[3]?.[0]).toEqual([1, 2, 2, 1]);
   });
 
-  it('crown is a single part with the default-adjacent pivot', () => {
+  it('the single-part corpus model parses as one part', () => {
     const r = parseGeometryText(
-      readFileSync(join(modelsDir, 'crown', 'voxels.json'), 'utf8'),
+      readFileSync(join(repo, SINGLE, 'voxels.json'), 'utf8'),
     );
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.value.palette).toHaveLength(1);
     expect(r.value.parts).toHaveLength(1);
-    expect(r.value.parts[0]?.name).toBe('crown');
+    expect(r.value.parts[0]?.name).toBe('cap');
     expect(r.value.parts[0]?.size).toEqual({ w: 3, h: 2, d: 3 });
   });
 });

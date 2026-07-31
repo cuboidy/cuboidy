@@ -1,0 +1,32 @@
+{
+  "name": "mirrored",
+  "version": "0.9",
+  "parts": [
+    {
+      "name": "hips",
+      "position": [
+        0,
+        3,
+        0
+      ]
+    },
+    {
+      "name": "leg-l",
+      "parent": "hips",
+      "position": [
+        -2,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "leg-r",
+      "parent": "hips",
+      "position": [
+        0,
+        0,
+        0
+      ]
+    }
+  ]
+}

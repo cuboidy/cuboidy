@@ -10,6 +10,7 @@ import {
   type Query,
 } from '../src/cli/query-runner.js';
 import { geo } from './helpers/geometry.js';
+import { SINGLE } from './helpers/corpus.js';
 
 const REPO_ROOT = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -88,10 +89,10 @@ describe('parseCoreArg', () => {
   });
 });
 
-describe('runQuery — crown model (integer-only)', () => {
-  const dir = resolve(REPO_ROOT, 'models/crown');
+describe('runQuery — single-part corpus model (integer-only)', () => {
+  const dir = resolve(REPO_ROOT, SINGLE);
 
-  // Crown geometry recap (models/crown/voxels.json):
+  // Geometry recap (ts/testdata/single/voxels.json):
   //   size 3 2 3, pivot 1 0 1 (= manifest position 1,0,1 → world pivot
   //   identical to part-local pivot, so voxel (x,y,z) lands at world
   //   (x, y, z) for x∈0..2, y∈0..1, z∈0..2).
@@ -152,7 +153,7 @@ describe('runQuery — crown model (integer-only)', () => {
   it('header lists palette and bbox', async () => {
     const at: Query = { kind: 'at', x: 0, y: 0, z: 0 };
     const r = await runQuery(dir, { queries: [at] });
-    expect(r.text).toMatch(/^model: crown/m);
+    expect(r.text).toMatch(/^model: single/m);
     expect(r.text).toMatch(/bbox: X=0\.\.2 Y=0\.\.1 Z=0\.\.2/);
     expect(r.text).toMatch(/palette: 0=#FFD700/);
   });
@@ -236,7 +237,7 @@ describe('runQuery — half-voxel offsets', () => {
 
 describe('runQuery — IO + arg errors', () => {
   it('returns exit 2 when no queries given', async () => {
-    const r = await runQuery(resolve(REPO_ROOT, 'models/crown'), { queries: [] });
+    const r = await runQuery(resolve(REPO_ROOT, SINGLE), { queries: [] });
     expect(r.exitCode).toBe(2);
   });
 

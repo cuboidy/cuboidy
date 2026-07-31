@@ -1,0 +1,26 @@
+{
+  "version": "0.9",
+  "palette": "palette.json",
+  "parts": [
+    {
+      "name": "leg-l",
+      "size": [2, 3, 1],
+      "pivot": { "pos": [0, 3, 0] },
+      "voxels": [
+        ["33"],
+        ["33"],
+        ["33"]
+      ]
+    },
+    {
+      "name": "leg-r",
+      "size": [2, 3, 1],
+      "pivot": { "pos": [2, 3, 0] },
+      "voxels": [
+        ["33"],
+        ["33"],
+        ["33"]
+      ]
+    }
+  ]
+}

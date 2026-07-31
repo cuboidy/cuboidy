@@ -2,16 +2,16 @@ import { expect, test } from '@playwright/test';
 import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ROBO_MINI, loadFolder, openTab } from './helpers.js';
+import { MULTIFILE, loadFolder, openTab } from './helpers.js';
 
 // Rendering / playback semantics (audit A-7 + A-8): the anim transport
 // respects `loop: false`, and the static Rig view renders through the
 // same RiggedParts transform tree as the Anim view (pivot.rot applied).
 
 test('A-7: a loop:false clip stops at its end; loop:true keeps wrapping', async ({ page }) => {
-  await loadFolder(page, ROBO_MINI);
+  await loadFolder(page, MULTIFILE);
 
-  // Flip robo-mini's wave clip to loop:false through the manifest tab.
+  // Flip the wave clip to loop:false through the manifest tab.
   await openTab(page, 'cuboidy.json');
   const textarea = page.locator('.source-textarea').first();
   const original = await textarea.inputValue();
@@ -43,7 +43,7 @@ test('A-7: a loop:false clip stops at its end; loop:true keeps wrapping', async 
 });
 
 test('A-7 control: a loop:true clip keeps playing past duration', async ({ page }) => {
-  await loadFolder(page, ROBO_MINI);
+  await loadFolder(page, MULTIFILE);
   await page.clock.install();
   await page.getByRole('tab', { name: 'Anim view' }).click();
   await expect(page.getByLabel('Scrub timeline')).toBeVisible();

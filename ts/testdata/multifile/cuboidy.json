@@ -1,0 +1,94 @@
+{
+  "name": "multifile",
+  "version": "0.9",
+  "geometry": [
+    "body.json",
+    "limbs.json"
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        6,
+        0
+      ]
+    },
+    {
+      "name": "head",
+      "parent": "body",
+      "position": [
+        0,
+        4,
+        0
+      ]
+    },
+    {
+      "name": "arm-l",
+      "parent": "body",
+      "position": [
+        -3,
+        4,
+        0
+      ]
+    },
+    {
+      "name": "arm-r",
+      "parent": "body",
+      "position": [
+        3,
+        4,
+        0
+      ]
+    },
+    {
+      "name": "leg-l",
+      "parent": "body",
+      "position": [
+        -3,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "leg-r",
+      "parent": "body",
+      "position": [
+        3,
+        0,
+        0
+      ]
+    }
+  ],
+  "animations": {
+    "wave": {
+      "duration": 1.0,
+      "loop": true,
+      "parts": {
+        "arm-l": {
+          "0.0": {
+            "rot": [
+              0,
+              0,
+              20
+            ]
+          },
+          "0.5": {
+            "rot": [
+              0,
+              0,
+              -20
+            ]
+          },
+          "1.0": {
+            "rot": [
+              0,
+              0,
+              20
+            ]
+          }
+        }
+      }
+    }
+  }
+}

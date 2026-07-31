@@ -1,0 +1,29 @@
+{
+  "name": "koi",
+  "version": "0.9",
+  "geometry": ["voxels.json", "fins.json"],
+  "parts": [
+    { "name": "head", "position": [0, 0, 0] },
+    { "name": "spine-1", "parent": "head", "position": [0, 0, 0] },
+    { "name": "spine-2", "parent": "spine-1", "position": [0, 0, 6] },
+    { "name": "spine-3", "parent": "spine-2", "position": [0, 0, 6] },
+    { "name": "peduncle", "parent": "spine-3", "position": [0, 0, 6] },
+    { "name": "tail-fin", "parent": "peduncle", "position": [0, 0, 5] },
+
+    { "name": "fin-dorsal-front", "parent": "spine-1", "position": [0, 5, 1] },
+    { "name": "fin-dorsal-rear", "parent": "spine-2", "position": [0, 4, 0] },
+    { "name": "fin-anal", "parent": "spine-3", "position": [0, -3, 1] },
+
+    { "name": "fin-pec-l", "parent": "spine-1", "position": [-2, -2, 1], "rotation": [0, 45, 28] },
+    { "name": "fin-pec-r", "parent": "spine-1", "position": [2, -2, 1], "rotation": [0, -45, -28] },
+
+    { "name": "fin-pelv-l", "parent": "spine-2", "position": [-1, -4, 2], "rotation": [0, 40, 25] },
+    { "name": "fin-pelv-r", "parent": "spine-2", "position": [1, -4, 2], "rotation": [0, -40, -25] },
+
+    { "name": "barbel-l", "parent": "head", "position": [-1, -2, -7], "rotation": [-35, 20, 0] },
+    { "name": "barbel-r", "parent": "head", "position": [1, -2, -7], "rotation": [-35, -20, 0] }
+  ],
+  "animations": {
+    "swim": "anims/swim.json"
+  }
+}

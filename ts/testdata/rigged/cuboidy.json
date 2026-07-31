@@ -1,0 +1,115 @@
+{
+  "name": "rigged",
+  "version": "0.9",
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        4,
+        0
+      ]
+    },
+    {
+      "name": "head",
+      "parent": "body",
+      "position": [
+        0,
+        4,
+        -3
+      ]
+    },
+    {
+      "name": "tail",
+      "parent": "body",
+      "position": [
+        0,
+        3,
+        3
+      ]
+    },
+    {
+      "name": "leg-l",
+      "parent": "body",
+      "position": [
+        -2,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "leg-r",
+      "parent": "body",
+      "position": [
+        2,
+        0,
+        0
+      ]
+    }
+  ],
+  "animations": {
+    "idle": {
+      "duration": 2.0,
+      "loop": true,
+      "parts": {
+        "head": {
+          "0.0": {
+            "rot": [
+              0,
+              0,
+              0
+            ]
+          },
+          "1.0": {
+            "rot": [
+              0,
+              8,
+              0
+            ],
+            "ease": {
+              "rot": "in-out-sine"
+            }
+          },
+          "2.0": {
+            "rot": [
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "tail": {
+          "0.0": {
+            "rot": [
+              0,
+              0,
+              0
+            ]
+          },
+          "0.5": {
+            "rot": [
+              0,
+              14,
+              0
+            ]
+          },
+          "1.5": {
+            "rot": [
+              0,
+              -14,
+              0
+            ]
+          },
+          "2.0": {
+            "rot": [
+              0,
+              0,
+              0
+            ]
+          }
+        }
+      }
+    },
+    "step": "anims/step.json"
+  }
+}
