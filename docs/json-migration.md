@@ -1,6 +1,6 @@
 # Migrating geometry from `.cvox` to JSON
 
-**Status: done, 2026-07-31**, on branch `json-migration` (not yet merged).
+**Status: done, 2026-07-31.** Merged.
 Decision taken after measuring the format's claimed advantages rather than
 assuming them — see "Why" below.
 

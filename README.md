@@ -80,7 +80,7 @@ Models live under `models/`:
 - `models/cat/` — quadruped with pointy ears, vertical tail, and belly markings; idle tail-twitch animation
 - `models/crown/` — single-part static accessory, designed to attach to wolf's `hat` socket
 - `models/boy/`, `models/girl/` — humanoid rigs (head / body / arms / legs) in standard, `-chibi`, and `-mini` proportions
-- `models/robo-mini/` — v0.7+ project-feature demo: manifest `geometry` list (two geometry files) and external `palette.json` binding (§6.9/§6.10)
+- `models/robo-mini/` — project-feature demo: a manifest `geometry` list (two geometry files) that both point at one shared `palette.json` (§6.9/§7.4)
 
 ## Inspecting models
 

@@ -1,5 +1,14 @@
 # プロジェクトファイル構成 (SPEC v0.7) — 設計 & ロードマップ
 
+> **Partly superseded (v0.9).** Everything about the manifest-level
+> `palette` binding below — the top-level `palette` field, its precedence
+> over inline palettes, and lint hint H03 — was removed in v0.9. A palette
+> is now declared by the geometry file that uses it: one `palette` field
+> taking either an array of colors or a §8 reference path (SPEC §7.4,
+> §6.10). References run `cuboidy.json` → geometry → palette, so there is
+> no precedence rule left. The rest of this document — the geometry list,
+> external animations and the file CRUD roadmap — still holds.
+
 複数 .cvox / 外部パレット / 外部アニメーション / エディタのファイル CRUD。
 2026-07-02 の設計会話の成果物。panel-system-design.md と同じ流儀で、
 決定事項 → データモデル → フェーズ分けロードマップの順。
