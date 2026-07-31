@@ -1,6 +1,6 @@
 # Cuboidy
 
-An open text-based file format for voxel character models, rigs, and animations.
+An open JSON file format for voxel character models, rigs, and animations.
 
 **Status: v0.9 draft. See [SPEC.md](SPEC.md) for the formal specification.**
 
@@ -13,7 +13,7 @@ Cuboidy describes voxel characters as a hierarchy of rigid parts, with named att
 - **MagicaVoxel** — voxel grid + inline palette
 - **VRM** — named attachment points / standardized rig vocabulary (planned)
 
-Files are JSON + plain text only. The format is designed to be:
+Every file is JSON. The format is designed to be:
 
 - **Human-readable** — diff-friendly, editable in any text editor
 - **AI-authorable** — structure favors generation reliability over byte efficiency
@@ -53,9 +53,9 @@ A Cuboidy model is a **folder**, not a single file:
 
 ```
 my-model/
-├── cuboidy.json        manifest: rig hierarchy + animations (+ references)
-├── voxels.json       voxel definition: palette + per-part grid + pivots + sockets
-└── anims/            (optional) shared animations
+├── cuboidy.json     manifest: rig hierarchy + animations (+ references)
+├── voxels.json      voxel definition: palette + per-part grid + pivots + sockets
+└── anims/           (optional) shared animations
     └── walk.json
 ```
 
@@ -84,7 +84,12 @@ Models live under `models/`:
 
 ## Inspecting models
 
-Four CLIs assemble a model (rest pose — translation only, pivot/animation rotations are not applied) for inspection:
+Four CLIs assemble a model in its rest pose and report on it; animation poses
+are never applied. Rest rotations (`rotation`, `pivot.rot`) are handled two
+ways: `cuboidy-snap` draws them as truly oriented cubes, while the
+integer-lattice tools (`cuboidy-view` / `cuboidy-query`) put a rotated part's
+pivot exactly where the rig puts it but keep the part's own voxels
+axis-aligned, and emit a warning saying so.
 
 - **`cuboidy-snap <dir>`** — renders the model to **PNG images from several angles** (a contact sheet plus one PNG per angle), with the angle name and an XYZ axis gnomon baked into each. It is the image counterpart of `cuboidy-view`; the intended workflow is to render a model, look at the pictures, and refine the voxels. Dependency-free — a small software rasterizer + pure-Node (`zlib`) PNG encoder, no browser or native bindings.
 
@@ -98,47 +103,52 @@ Four CLIs assemble a model (rest pose — translation only, pivot/animation rota
 - **`cuboidy-view <dir>`** — orthographic projections as **ASCII grids** of palette-index characters (the `voxels.json` alphabet), for a token-cheap textual read.
 - **`cuboidy-query <dir> --at=x,y,z`** — exact voxel lookup at world coordinates (fractional-safe; the precise tool when half-voxel offsets are present).
 - **`cuboidy-lint <dir>`** — voxel-definition + cross-file lint.
+
+A fifth CLI writes rather than reads:
+
 - **`cuboidy-part`** — author concrete geometry (the way symmetric limbs / repeated parts are made — an AI generator runs this instead of hand-writing mirrored voxels):
   - `cuboidy-part duplicate <from.json> <fromPart> <to.json> <toPart>` — copy a part (cross-file copies remap the palette so colors are preserved).
   - `cuboidy-part mirror <file.json> <part> [axis]` — reflect a part **in place** across `axis` (default `x`). A bilateral pair is *duplicate, then mirror the copy*.
 
 ## Token cost
 
-Cuboidy is meant to be cheap to send to an LLM, and for a long time this
-section claimed a bespoke text format was how that was achieved. That claim was
-measured in 2026-07 and did not hold.
-
+Cuboidy is meant to be cheap to send to an LLM, but not by shrinking the file.
 In a real authoring turn — spec in, model out — **reasoning is 77-93% of the
-output cost**. The geometry file is around 7% of what a sample costs to
-generate; the rest is the model thinking about shape. A 30-50% difference in
-file size therefore moves the bill by single digits, which does not pay for a
-bespoke parser, its grammar specification, and a barrier to every non-Claude
-implementation. On quality, a blind pairwise vote over four briefs went **4-0
-for JSON** (p = 0.125 — suggestive, not significant), and one non-Claude model
-could not produce the text format at all while writing the JSON manifest
-correctly.
+output cost**; the geometry file is around 7%. A 30-50% difference in file size
+therefore moves the bill by single digits, which is why Cuboidy uses plain JSON
+instead of a denser bespoke syntax.
 
-So geometry is JSON, and the efficiency work that matters happens elsewhere:
-the voxel-row alphabet keeps a grid at one character per cell, and
-`cuboidy-view` / `cuboidy-query` exist so a model can inspect a model without
-re-reading the whole file.
+The efficiency work that pays off is elsewhere: the voxel-row alphabet keeps a
+grid at one character per cell, and `cuboidy-view` / `cuboidy-query` let a model
+inspect a model without re-reading the whole file.
 
-Evidence, method and the limits of the sample: [`docs/eval/`](docs/eval/).
+*(This replaced a `.cvox` text format in 2026-07, after measurement:
+the size advantage was real but immaterial next to reasoning, a blind pairwise
+vote over four briefs went 4-0 for JSON, and one non-Claude model could not
+produce the text format at all. Four judged pairs is a small sample — it shows
+the text format never demonstrated its claimed advantage, not that JSON
+generates better models. Harness and raw votes are in git history, `b139ef4`.)*
 
 ## Roadmap
 
-- [x] Spec document (`SPEC.md`) — v0.9 draft (multi-file geometry, shareable external palettes, keyframe easing, per-part rest rotation)
-- [x] Reference parser (TypeScript) — `ts/packages/core/`, full v0.9 grammar (554 tests)
-- [x] Shared project loader — `resolveProject()`: manifest geometry list, external palette, external animations; used by lint, the inspection CLIs and the editor
-- [x] Cross-file lint — project-shaped validation (`validateProject`): manifest↔geometry part matching, cross-file duplicate names, palette resolution/range, animation target checks, W06 geometric l/r symmetry, W07 unreferenced geometry file
-- [x] Shared parity fixtures — `fixtures/geometry/<code>/` and `fixtures/manifest/<code>/`, contract for cross-implementation conformance
-- [x] JSON Schema for `cuboidy.json` — `schema/cuboidy.schema.json` (Draft 2020-12, derived from the Zod ManifestSchema; reference via `"$schema": "https://cuboidy.com/schema/cuboidy.schema.json"` or the GitHub raw URL)
-- [x] Canonical serializer (reader-tolerant / writer-strict) — `serializeGeometry()` emits one canonical form per model; round-trip with `parseGeometry` verified as a byte-level fixed point on every shipped model
-- [x] Voxel definition linter — `lintGeometry(geometry)` library (W01–W05 + H01–H02) and `cuboidy-lint <dir>` CLI (SPEC §11.7 output, `--strict` for warnings-as-errors)
-- [x] Model inspection CLIs — `cuboidy-view` (ASCII projection), `cuboidy-query` (exact coordinate lookup), and `cuboidy-snap` (multi-angle PNG renders; contact sheet + per-angle, dependency-free) for human / multimodal review
-- [x] Image snapshots — `cuboidy-snap <dir>` renders a model to PNG from several angles, the raster counterpart to `cuboidy-view`, for visual review and AI-assisted editing
+Done — the v0.9 spec and a complete TypeScript implementation of it
+(`ts/packages/core/`, 466 tests):
+
+- [x] Reference parser, canonical serializer (a verified byte-level fixed point
+      on every shipped model), and manifest validation
+- [x] Shared project loader (`resolveProject`) behind lint, the CLIs and the
+      editor, so all three read a package the same way
+- [x] Lint — `lintGeometry` (W01–W05, H01–H02) plus cross-file
+      `validateProject` (part matching, duplicate names, palette resolution and
+      range, animation targets, W06 l/r symmetry, W07 unreferenced file)
+- [x] JSON Schemas for both file kinds, generated from the same Zod schemas the
+      runtime uses, plus shared `fixtures/` as the cross-implementation contract
+- [x] Inspection CLIs — `cuboidy-view`, `cuboidy-query`, `cuboidy-snap`
+
+In progress and planned:
+
+- [~] Web-based editor (`ts/packages/editor/`) — loads folders / geometry files / `.cuboidy` ZIPs; Geometry / Rig / Anim views; part, palette and keyframe-animation editing with undo/redo; direct manipulation in the 3D preview; project-aware save/export (FSA writeback or ZIP); Playwright E2E suite. Run locally with `cd ts/packages/editor && npm run dev`
 - [ ] Reference parser (C#)
-- [~] Web-based editor (`ts/packages/editor/`) — loads folders / geometry files / `.cuboidy` ZIPs; Geometry / Rig / Anim views; part, palette and keyframe-animation editing with undo/redo; project-aware save/export (FSA writeback or ZIP); Playwright E2E suite. Run locally with `cd ts/packages/editor && npm run dev`
 - [ ] Rig vocabulary docs (quadruped / biped / winged / ...)
 - [ ] Packed format spec (`.cuboidy` ZIP)
 
