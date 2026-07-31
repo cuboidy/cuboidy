@@ -226,7 +226,7 @@ Per-part shape, pivot, and sockets live in `voxels.json`, not here. See §7.
 | Field | Type | Interpretation | Default at first keyframe |
 |---|---|---|---|
 | `rot` | `[rx, ry, rz]` Euler degrees | **Relative** to rest pose rotation (the manifest part's `rotation` composed with the part's `pivot.rot`; identity when both are absent). Composed as described in §7.7 | `[0, 0, 0]` |
-| `pos` | `[dx, dy, dz]` voxel units | **Delta** added to `part.position` | `[0, 0, 0]` |
+| `pos` | `[dx, dy, dz]` voxel units | **Delta** added to `part.position`, and therefore in the same frame — parent space. It rides the ancestors' rest rotations exactly as `position` does, and is **not** turned by the part's own `rotation` or `pivot.rot` (§7.7 places it outside `M_rot`) | `[0, 0, 0]` |
 | `scale` | `[sx, sy, sz]` multipliers | **Multiplier** from rest scale (`[1,1,1]`). Per-axis, non-uniform allowed. Applied around the same pivot point as `rot` | `[1, 1, 1]` |
 | `visible` | bool | Visibility toggle | `true` |
 | `ease` | object | Map from attribute name (`rot` / `pos` / `scale`) to a named easing preset for that attribute's **outgoing** segment (this keyframe → the next); see §6.7. `visible` always steps and is not a valid key | `{}` (every attribute `linear`) |

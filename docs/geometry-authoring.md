@@ -124,6 +124,11 @@ So a cell `(x,y,z)` is `voxels[y][z][x]`. Consequences:
 - World placement, **when no ancestor is rotated**:
   `v_world = Σ ancestor.position + (v_local − pivot.pos)`.
   Verify exact cells with `cuboidy-query --at=x,y,z` / `--core`.
+- **Use it backwards, because that is the direction you actually work in.** To
+  land a part's cells on the world interval starting at `a`:
+  `position = a + pivot.pos − Σ ancestor.position`. Dropping the ancestor sum
+  on a grandchild is the classic off-by-a-parent bug, and it renders as a part
+  floating one cell away from where it belongs.
 - **The moment any ancestor carries a rest rotation, that sum is wrong** — and
   since rest rotation is the thing this guide recommends for anything diagonal,
   expect to need the real rule. A child's `position` is rotated by the parent's
@@ -215,8 +220,21 @@ hand-math:
   "Shadow under the bangs" has to be a darker *cell*, which is then visible from
   that direction — so use shading sparingly or it looks muddy/dirty. Let SHAPE
   carry the 3D, not lots of color bands.
-- **3D relief (protruding bangs, etc.): keep it ~1 cell.** 2+ cells of forward
-  protrusion reads as a shelf/brim, not soft hair (confirmed in snaps).
+- **Surface relief on a face: keep it ~1 cell.** 2+ cells of forward
+  protrusion reads as a shelf or a brim rather than soft hair. This is about
+  *detail worked into a surface*, where a hard step contradicts the material.
+- **Appendages are the opposite, and the rule above has misled people into
+  starving them.** A beak, an ear, a horn, a fin is a shape in its own right:
+  at 1–2 cells it reads as a flag or a sticker glued to the head, and it needs
+  the depth its silhouette implies. Ask which one you are making — a feature
+  *on* a surface, or a thing sticking *out* of one.
+- **Overlap joints by 1–2 cells.** Rigid parts that merely touch read as a
+  stack of blocks; parts that interpenetrate slightly read as one creature.
+  This is what makes "head sunk into the shoulders" possible at all.
+- **Large flat colour regions are how an animal becomes identifiable** — black
+  stockings, a white bib, a white tail tip, dark ear backs. The warning against
+  shading is about *gradients and speckle*, not about markings. A species with
+  a colour signature needs it at any size.
 
 ## Animation
 
@@ -297,6 +315,12 @@ hand-math:
   the snap instead once parts start turning.
 - `cuboidy-snap` — real PNG from many angles; **reveals what ASCII hides**
   (protrusions, true proportions, muddy shading). Always snap before "done".
+  **The side view is where proportion dies.** A model designed from the front
+  will pass the front view and be a plank or a lamp post from the side; three
+  of the models in this repository were rebuilt after exactly that. Author the
+  side silhouette first, or at least check it first. Note also that snap
+  auto-frames each model, so two renders of different poses are *not* to the
+  same scale — never compare heights across frames by eye.
 - `cuboidy-query` — exact cell lookup; verify attachment & symmetry numerically.
   **On a half-offset axis, an integer `--at` probe lands between cells and
   returns `.`** — it looks like empty space, not like a mis-aimed probe. The
@@ -322,7 +346,14 @@ hand-math:
 - **A rotated part is not drawn rotated by `cuboidy-view` / `cuboidy-query`.**
   They place its pivot correctly but keep its voxels axis-aligned, and warn.
   Only `cuboidy-snap` shows the true orientation, so a model that uses
-  `rotation` has to be checked by eye rather than by ASCII.
+  `rotation` has to be checked by eye rather than by ASCII. The warning is one
+  line *per rotated part*, so on a rig with a dozen of them the header drowns
+  the grid — treat the ASCII tools as a final symmetry audit on such a model,
+  not as the working view.
+- **`half-voxel offsets present` does not mean you wrote a fractional pivot.**
+  A rest rotation puts cells on non-integer world coordinates too, so a model
+  with entirely integer pivots still gets the notice. It reports the state of
+  the world grid, not a mistake.
 
 ## Case study: cat-girl (what the passes caught)
 
