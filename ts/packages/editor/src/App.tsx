@@ -1,9 +1,6 @@
 import {
   useCallback,
-  useEffect,
   useMemo,
-  useReducer,
-  useRef,
   useState,
 } from 'react';
 import {
@@ -35,7 +32,6 @@ import { SaveButton } from './components/SaveButton.js';
 import { SettingsMenu } from './components/SettingsMenu.js';
 import { SourceEditor } from './components/SourceEditor.js';
 import { TimelinePanel } from './components/TimelinePanel.js';
-import { historyReducer, makeHistory } from './lib/history.js';
 import {
   normalizePath,
 } from './lib/load-model.js';
@@ -65,7 +61,6 @@ import {
   mapGeometryFiles,
   mergeGeometries,
   paletteFileText,
-  applyFileEdit,
   pathBasename,
   primaryGeometry,
   sharesPalette,
@@ -76,6 +71,7 @@ import { synthesizeManifest } from './lib/synthesize-manifest.js';
 import { useAnimationEdits } from './lib/useAnimationEdits.js';
 import { useFileOps } from './lib/useFileOps.js';
 import { usePartEdits } from './lib/usePartEdits.js';
+import { useProjectDocument } from './lib/useProjectDocument.js';
 import { useAnimationSession } from './lib/useAnimationSession.js';
 import type {
   GizmoVisibility,
@@ -94,26 +90,24 @@ interface PaletteTargetInfo {
 }
 
 export function App() {
-  // The loaded document plus its undo/redo history, in one pure reducer.
-  // Every structural mutation goes through `dispatchEdit` (recorded, with
-  // optional coalescing tag); reparse successes `amend` (AST half of an
-  // already-recorded text edit); load/reset `replace` (history cleared).
-  const [history, dispatch] = useReducer(
-    historyReducer<LoadResult | null>,
-    null,
-    makeHistory<LoadResult | null>,
-  );
-  const loaded = history.present;
-  // Latest-value ref so a handler can read the CURRENT document without
-  // re-binding every callback on each edit.
-  const loadedRef = useRef(loaded);
-  loadedRef.current = loaded;
-  const dispatchEdit = useCallback(
-    (tag: string | null, apply: (c: LoadResult | null) => LoadResult | null) => {
-      dispatch({ type: 'edit', tag, at: Date.now(), apply });
-    },
-    [],
-  );
+  // The document, its undo history, and the parse state that gates
+  // structural edits (lib/useProjectDocument).
+  const {
+    loaded,
+    loadedRef,
+    canUndo,
+    canRedo,
+    dispatchEdit,
+    replaceDocument,
+    fileParseErrors,
+    setFileParseErrors,
+    geometryParseError,
+    manifestParseError,
+    editsBlocked,
+    handleEditFileText,
+    performUndo,
+    performRedo,
+  } = useProjectDocument();
   const [viewMode, setViewMode] = useState<ViewMode>('geometry');
   // Per-kind visibility of the selected part's preview gizmos (pivot /
   // sockets / frame), toggled from the preview overlay. The flags outlive
@@ -141,40 +135,6 @@ export function App() {
   // part's effective palette, picked from the preview's PaletteStrip.
   // Clamped at use (palettes shrink; selection changes files).
   const [activeColorIndex, setActiveColorIndex] = useState(0);
-  // Syntax errors on the CURRENTLY TYPED text, per file path. One map
-  // covers every file — the primary geometry and the manifest are just
-  // entries in it like any other. Derived from the text by applyFileEdit,
-  // so undo/redo re-derives rather than restoring it.
-  const [fileParseErrors, setFileParseErrors] = useState<
-    ReadonlyMap<string, string>
-  >(new Map());
-  const setFileParseError = useCallback((path: string, msg: string | null) => {
-    setFileParseErrors((prev) => {
-      if (msg === null && !prev.has(path)) return prev;
-      const next = new Map(prev);
-      if (msg === null) next.delete(path);
-      else next.set(path, msg);
-      return next;
-    });
-  }, []);
-  // Named views onto the same map, for the panels that speak in terms of
-  // "the geometry source" and "the manifest source".
-  const geometryParseError =
-    loaded?.source === undefined
-      ? null
-      : (fileParseErrors.get(loaded.source.primaryPath) ?? null);
-  const manifestParseError =
-    loaded?.source?.manifestPath === undefined
-      ? null
-      : (fileParseErrors.get(loaded.source.manifestPath) ?? null);
-  // THE structural-edit gate (audit A-6). A structural edit re-serializes
-  // an AST over a file's text, so it must not run while any text is
-  // mid-edit unparseable — the last good AST would silently overwrite what
-  // the user just typed. This is a STATE check on the current text; the
-  // gate it replaces keyed off whether a debounce timer was pending, which
-  // let an edit through the moment that timer had fired and REPORTED the
-  // error.
-  const editsBlocked = fileParseErrors.size > 0;
 
   // Part + rig editing, and the selection it acts on (lib/usePartEdits).
   const {
@@ -218,8 +178,7 @@ export function App() {
 
   const handleLoad = useCallback(
     (result: LoadResult) => {
-      setFileParseErrors(new Map());
-      dispatch({ type: 'replace', next: result });
+      replaceDocument(result);
       resetPartState();
       setFramingKey((k) => k + 1);
       const hasManifest =
@@ -238,39 +197,14 @@ export function App() {
         setLayout((l) => openPanelById(l, 'console'));
       }
     },
-    [resetPartState],
+    [replaceDocument, resetPartState],
   );
 
   const handleReset = useCallback(() => {
-    setFileParseErrors(new Map());
-    dispatch({ type: 'replace', next: null });
+    replaceDocument(null);
     resetPartState();
     setViewMode('geometry');
-  }, [resetPartState]);
-
-  // ONE source-text edit path for every file — the primary geometry, the
-  // manifest and every other package file alike. The text is recorded and
-  // its derived state re-computed in the SAME dispatch, so there is no
-  // window in which the two disagree and nothing to flush before a
-  // structural edit. applyFileEdit does the deriving; text that does not
-  // parse only records the text and reports the error.
-  const handleEditFileText = useCallback(
-    (path: string, nextText: string) => {
-      const src = loadedRef.current?.source;
-      if (src === undefined) return;
-      setFileParseError(path, applyFileEdit(src, path, nextText).error);
-      // Recorded with a per-file tag: a typing burst (keystrokes < 800ms
-      // apart) is one undo entry whose pre-state is the text before the
-      // burst started.
-      dispatchEdit(`text:${path}`, (current) => {
-        const cur = current?.source;
-        if (cur === undefined) return current;
-        const { source } = applyFileEdit(cur, path, nextText);
-        return source === cur ? current : { ...current, source };
-      });
-    },
-    [dispatchEdit, setFileParseError],
-  );
+  }, [replaceDocument, resetPartState]);
 
   // ── Palette editing. SPEC §7.4: a palette belongs to a GEOMETRY FILE,
   // either spelled out inline or referenced from a shared palette file. So
@@ -488,77 +422,6 @@ export function App() {
   const handleViewModeChange = useCallback((mode: ViewMode) => {
     setViewMode(mode);
   }, []);
-
-  // ─── Undo / Redo ─────────────────────────────────────────────────────
-
-  // Re-derive the parse-error gates from a restored snapshot's text. A
-  // restored state can be a mid-error typing burst's pre-state, so blindly
-  // clearing the errors would re-enable structural edits that re-serialize
-  // from a stale AST and clobber the text. A synchronous parse on a
-  // user-initiated undo is cheap.
-  const revalidateRestored = useCallback((restored: LoadResult | null) => {
-    const src = restored?.source;
-    setFileParseErrors(() => {
-      const next = new Map<string, string>();
-      if (src === undefined) return next;
-      for (const [path, text] of src.files) {
-        const { error } = applyFileEdit(src, path, text);
-        if (error !== null) next.set(path, error);
-      }
-      return next;
-    });
-  }, []);
-
-  // React flushes discrete events synchronously, so consecutive Ctrl+Z
-  // presses each see fresh history state through this closure.
-  const performUndo = useCallback(() => {
-    if (history.past.length === 0) return;
-    const target = history.past[history.past.length - 1]!;
-    dispatch({ type: 'undo' });
-    revalidateRestored(target);
-  }, [
-    history,
-    revalidateRestored,
-  ]);
-
-  const performRedo = useCallback(() => {
-    if (history.future.length === 0) return;
-    const target = history.future[0]!;
-    dispatch({ type: 'redo' });
-    revalidateRestored(target);
-  }, [
-    history,
-    revalidateRestored,
-  ]);
-
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
-      const key = e.key.toLowerCase();
-      const isUndo = key === 'z' && !e.shiftKey;
-      const isRedo = (key === 'z' && e.shiftKey) || key === 'y';
-      if (!isUndo && !isRedo) return;
-      // Mid-IME-composition keystrokes are the IME's business.
-      if (e.isComposing || e.keyCode === 229) return;
-      // Inside a text field, the browser's native undo applies (source
-      // textareas, number inputs); only intercept document-level undo
-      // elsewhere.
-      const t = e.target;
-      if (
-        t instanceof Element &&
-        t.closest(
-          'textarea, input, select, [contenteditable=""], [contenteditable="true"]',
-        ) !== null
-      ) {
-        return;
-      }
-      e.preventDefault();
-      if (isUndo) performUndo();
-      else performRedo();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [performUndo, performRedo]);
 
   const source = loaded?.source;
   const rigAvailable =
@@ -1251,7 +1114,7 @@ export function App() {
                 <button
                   type="button"
                   className="icon-btn"
-                  disabled={history.past.length === 0}
+                  disabled={!canUndo}
                   title="Undo (Ctrl+Z)"
                   aria-label="Undo"
                   onClick={performUndo}
@@ -1261,7 +1124,7 @@ export function App() {
                 <button
                   type="button"
                   className="icon-btn"
-                  disabled={history.future.length === 0}
+                  disabled={!canRedo}
                   title="Redo (Ctrl+Shift+Z)"
                   aria-label="Redo"
                   onClick={performRedo}
