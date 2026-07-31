@@ -4,11 +4,10 @@ import {
   useState,
 } from 'react';
 import {
-  AIR,
   type Geometry,
   type Manifest,
-  type Part,
   type Palette,
+  type Part,
 } from '@cuboidy/core';
 import { ConsolePanel, type ConsoleEntry } from './components/ConsolePanel.js';
 import { Dock, type PanelContent } from './components/Dock.js';
@@ -58,18 +57,16 @@ import {
   fileText,
   geometryAt,
   manifestText,
-  mapGeometryFiles,
   mergeGeometries,
-  paletteFileText,
   pathBasename,
   primaryGeometry,
   sharesPalette,
   withManifest,
-  writeFile,
 } from './lib/source-ops.js';
 import { synthesizeManifest } from './lib/synthesize-manifest.js';
 import { useAnimationEdits } from './lib/useAnimationEdits.js';
 import { useFileOps } from './lib/useFileOps.js';
+import { usePaletteEdits } from './lib/usePaletteEdits.js';
 import { usePartEdits } from './lib/usePartEdits.js';
 import { useProjectDocument } from './lib/useProjectDocument.js';
 import { useAnimationSession } from './lib/useAnimationSession.js';
@@ -86,6 +83,10 @@ import type {
 interface PaletteTargetInfo {
   file: string;
   palette: Palette;
+  // The parts whose voxels resolve against this palette, for usage counts.
+  scopeParts: readonly Part[];
+  // The palette is referenced but the referenced file did not load.
+  unresolved: boolean;
   ref?: string;
 }
 
@@ -206,153 +207,13 @@ export function App() {
     setViewMode('geometry');
   }, [replaceDocument, resetPartState]);
 
-  // ── Palette editing. SPEC §7.4: a palette belongs to a GEOMETRY FILE,
-  // either spelled out inline or referenced from a shared palette file. So
-  // every operation here names the file it acts on — the panel picks that
-  // from the selected part. A reference routes the write to the palette
-  // file, and therefore to every geometry file sharing it; an inline
-  // palette is rewritten in place. There is no model-wide palette and no
-  // precedence rule left to reconcile. ──
-
-  // Overwrite a file's palette colors (edit / add).
-  const handleEditPalette = useCallback(
-    (file: string, next: Palette, tag?: string) => {
-      if (editsBlocked) return;
-      dispatchEdit(tag ?? null, (current) => {
-        const src = current?.source;
-        if (src === undefined) return current;
-        const geometry = geometryAt(src, file);
-        if (geometry === undefined) return current;
-        if (geometry.paletteRef === undefined) {
-          const nextSrc = mapGeometryFiles(src, (g, path) =>
-            path === file ? { ...g, palette: next } : null,
-          );
-          return nextSrc === src ? current : { ...current, source: nextSrc };
-        }
-        // Referenced: the palette FILE is the source of truth. Refresh the
-        // resolved copy on every geometry pointing at it so the 3D view
-        // updates without a reload.
-        const ref = normalizePath(geometry.paletteRef);
-        const withColors = mapGeometryFiles(src, (g) =>
-          sharesPalette(g, ref) ? { ...g, palette: next } : null,
-        );
-        return {
-          ...current,
-          source: writeFile(withColors, ref, paletteFileText(next)),
-        };
-      });
-    },
-    [dispatchEdit, editsBlocked],
-  );
-
-  // Delete an (unused) color: every higher index shifts down, so the voxels
-  // of every file resolving against this palette are remapped in the SAME
-  // edit — a shared palette means all its referrers, an inline one only its
-  // own file. Refuses while any in-scope voxel still uses the color.
-  const handleDeletePaletteColor = useCallback(
-    (file: string, index: number) => {
-      if (editsBlocked) return;
-      dispatchEdit(null, (current) => {
-        const src = current?.source;
-        if (src === undefined) return current;
-        const geometry = geometryAt(src, file);
-        if (geometry === undefined) return current;
-        const palette = geometry.palette;
-        if (index < 0 || index >= palette.length) return current;
-        const ref =
-          geometry.paletteRef !== undefined
-            ? normalizePath(geometry.paletteRef)
-            : undefined;
-        const inScope = (g: Geometry, path: string): boolean =>
-          ref === undefined ? path === file : sharesPalette(g, ref);
-
-        for (const [path, g] of src.geometries) {
-          if (!inScope(g, path)) continue;
-          for (const part of g.parts) {
-            for (const layer of part.voxels) {
-              for (const row of layer) {
-                if (row.includes(index)) return current;
-              }
-            }
-          }
-        }
-
-        const nextPalette = palette.filter((_, i) => i !== index);
-        const nextSrc = mapGeometryFiles(src, (g, path) => {
-          if (!inScope(g, path)) return null;
-          const parts: Part[] = g.parts.map((part) => {
-            let changed = false;
-            const voxels = part.voxels.map((layer) =>
-              layer.map((row) =>
-                row.map((idx) => {
-                  if (idx !== AIR && idx > index) {
-                    changed = true;
-                    return idx - 1;
-                  }
-                  return idx;
-                }),
-              ),
-            );
-            return changed ? { ...part, voxels } : part;
-          });
-          return { ...g, parts, palette: nextPalette };
-        });
-        if (ref === undefined) return { ...current, source: nextSrc };
-        return {
-          ...current,
-          source: writeFile(nextSrc, ref, paletteFileText(nextPalette)),
-        };
-      });
-    },
-    [dispatchEdit, editsBlocked],
-  );
-
-  // Move ONE file's inline palette out to a palette file and point at it.
-  // The colors are unchanged — only where they live. One undo.
-  const handleExternalizePalette = useCallback(
-    (file: string) => {
-      if (editsBlocked) return;
-      dispatchEdit(null, (current) => {
-        const src = current?.source;
-        if (src === undefined || src.files === undefined) return current;
-        const geometry = geometryAt(src, file);
-        if (geometry === undefined) return current;
-        if (geometry.paletteRef !== undefined) return current;
-        if (geometry.palette.length === 0) return current;
-        let path = 'palette.json';
-        let n = 2;
-        while (src.files.has(path)) path = `palette-${n++}.json`;
-        const nextSrc = mapGeometryFiles(src, (g, at) =>
-          at === file ? { ...g, paletteRef: path } : null,
-        );
-        const files = new Map(nextSrc.files);
-        files.set(path, paletteFileText(geometry.palette));
-        return { ...current, source: { ...nextSrc, files } };
-      });
-    },
-    [dispatchEdit, editsBlocked],
-  );
-
-  // The reverse: keep the colors, drop the reference so they are written
-  // into the geometry file itself. The palette file stays (it may be shared)
-  // — delete it from the Files tree if it is truly orphaned.
-  const handleInlinePalette = useCallback(
-    (file: string) => {
-      if (editsBlocked) return;
-      dispatchEdit(null, (current) => {
-        const src = current?.source;
-        if (src === undefined) return current;
-        if (geometryAt(src, file)?.paletteRef === undefined) return current;
-        const nextSrc = mapGeometryFiles(src, (g, path) => {
-          if (path !== file) return null;
-          const { paletteRef: _drop, ...rest } = g;
-          return rest;
-        });
-        return nextSrc === src ? current : { ...current, source: nextSrc };
-      });
-    },
-    [dispatchEdit, editsBlocked],
-  );
+  // Palette editing (lib/usePaletteEdits).
+  const {
+    handleEditPalette,
+    handleDeletePaletteColor,
+    handleExternalizePalette,
+    handleInlinePalette,
+  } = usePaletteEdits({ dispatchEdit, editsBlocked });
 
   // Package file create / rename / move / delete (lib/useFileOps).
   const {
@@ -559,14 +420,39 @@ export function App() {
         ? partFiles?.get(effectiveSelectedPart)
         : undefined) ?? source.primaryPath;
     const geometry = geometryAt(source, file) ?? primaryGeometry(source);
+    const ref =
+      geometry.paletteRef === undefined
+        ? undefined
+        : normalizePath(geometry.paletteRef);
+    // Usage counts span every file resolving against THIS palette: a shared
+    // one covers all its referrers, an inline one only its own file.
+    const scopeParts =
+      ref === undefined
+        ? geometry.parts
+        : (merged?.parts ?? geometry.parts).filter((part) => {
+            const g = geometryAt(source, partFiles?.get(part.name) ?? '');
+            return g !== undefined && sharesPalette(g, ref);
+          });
     return {
       file,
       palette: geometry.palette,
-      ...(geometry.paletteRef !== undefined && {
-        ref: normalizePath(geometry.paletteRef),
-      }),
+      scopeParts,
+      // A reference that did not resolve shows an empty palette plus a
+      // reason, rather than pretending the file declares no colors.
+      unresolved: ref !== undefined && geometry.palette.length === 0,
+      ...(ref !== undefined && { ref }),
     };
-  }, [source, effectiveSelectedPart, partFiles]);
+  }, [source, effectiveSelectedPart, partFiles, merged]);
+
+  // Geometry files a part can be created in or moved to. Undefined for a
+  // single-geometry model, where there is no choice to offer.
+  const geometryPaths = useMemo(
+    () =>
+      source !== undefined && source.geometries.size > 1
+        ? [...source.geometries.keys()]
+        : undefined,
+    [source],
+  );
 
   // Dock layout tree (resizable, rearrangeable). In-memory only — layout is
   // session-scoped by design (no persistence); "Reset layout" restores it.
@@ -947,15 +833,14 @@ export function App() {
           ),
         };
       case 'parts': {
-        const multiFile = source.geometries.size > 1;
         return {
           title: 'Parts',
           fill: true,
           body: (
             <PartsPanel
               parts={merged?.parts ?? primaryGeometry(source).parts}
-              partFiles={multiFile ? partFiles : undefined}
-              geometryFiles={multiFile ? [...source.geometries.keys()] : undefined}
+              partFiles={geometryPaths !== undefined ? partFiles : undefined}
+              geometryFiles={geometryPaths}
               manifest={manifest}
               hiddenParts={hiddenParts}
               selectedPart={effectiveSelectedPart}
@@ -976,13 +861,7 @@ export function App() {
           ),
         };
       }
-      case 'properties': {
-        // Multi-geometry: the inspector shows a defining-file field whose
-        // change moves the part. Same source as the parts panel picker.
-        const movePaths =
-          (source.geometries.size ?? 0) > 1
-            ? [...(source.geometries.keys() ?? [])]
-            : undefined;
+      case 'properties':
         return {
           title: 'Properties',
           body:
@@ -992,18 +871,11 @@ export function App() {
                 geometry={modelGeometry ?? primaryGeometry(source)}
                 manifest={manifest}
                 manifestEditsDisabled={manifestParseError !== null}
-                renameDisabled={
-                  editsBlocked ||
-                  (manifest !== undefined && manifestParseError !== null)
-                }
-                geometryFiles={movePaths}
+                renameDisabled={editsBlocked}
+                geometryFiles={geometryPaths}
                 partFile={partFiles?.get(effectiveSelectedPart)}
-                moveDisabled={
-                  editsBlocked
-                }
-                geometryEditsDisabled={
-                  editsBlocked
-                }
+                moveDisabled={editsBlocked}
+                geometryEditsDisabled={editsBlocked}
                 onChangeParent={handleChangePartParent}
                 onChangePosition={handleChangePartPosition}
                 onChangeRotation={handleChangePartRotation}
@@ -1022,41 +894,27 @@ export function App() {
               </p>
             ),
         };
-      }
       case 'palette': {
         const target: PaletteTargetInfo = paletteTarget ?? {
           file: source.primaryPath,
           palette: primaryGeometry(source).palette,
+          scopeParts: primaryGeometry(source).parts,
+          unresolved: false,
         };
         const shared = target.ref !== undefined;
-        // A reference that didn't resolve (missing / invalid file) shows an
-        // empty palette plus a reason, rather than silently pretending the
-        // geometry file declares no colors.
-        const unresolved = shared && target.palette?.length === 0;
-        // Usage counts span every file resolving against this palette: a
-        // shared one covers its referrers, an inline one just its own file.
-        const scopeParts = shared
-          ? (merged?.parts ?? primaryGeometry(source).parts).filter((p) => {
-              const g = geometryAt(source, partFiles?.get(p.name) ?? '');
-              return g !== undefined && sharesPalette(g, target.ref!);
-            })
-          : (geometryAt(source, target.file)?.parts ?? primaryGeometry(source).parts);
         return {
           title: 'Palette',
           body: (
             <PalettePanel
-              palette={target.palette ?? []}
-              parts={scopeParts}
+              palette={target.palette}
+              parts={target.scopeParts}
               target={{
                 file: target.file,
                 ...(target.ref !== undefined && { ref: target.ref }),
               }}
-              disabled={
-                editsBlocked ||
-                unresolved
-              }
+              disabled={editsBlocked || target.unresolved}
               disabledReason={
-                unresolved
+                target.unresolved
                   ? `The palette ${target.file} points at (${target.ref}) is missing or invalid — fix that file to edit these colors.`
                   : undefined
               }
@@ -1065,14 +923,12 @@ export function App() {
                 handleDeletePaletteColor(target.file, index)
               }
               onExternalize={
-                !shared &&
-                source.files !== undefined &&
-                (target.palette?.length ?? 0) > 0
+                !shared && target.palette.length > 0
                   ? () => handleExternalizePalette(target.file)
                   : undefined
               }
               onInline={
-                shared && !unresolved
+                shared && !target.unresolved
                   ? () => handleInlinePalette(target.file)
                   : undefined
               }
