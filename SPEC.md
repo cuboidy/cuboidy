@@ -262,6 +262,7 @@ Here `pos`, `scale`, and `visible` are constant across all keyframes (`[0,0,0]`,
 Between consecutive keyframes:
 
 - `rot`, `pos`, `scale` interpolate along the segment's **easing curve** (below); with the default `linear` ease this is plain linear interpolation
+- **Interpolation is component-wise on the stored triple.** For `rot` this means the three Euler angles are interpolated independently — *not* converted to quaternions and slerped. The two agree for small rotations and diverge as they grow, so this is a conformance requirement, not an implementation detail. It is also what makes a full revolution expressible: a segment from `0` to `−360` on one axis is a constant-rate turn under component-wise interpolation, where a slerp would treat the endpoints as the same orientation and produce no motion at all.
 - `visible` uses **step** interpolation: the value at the later keyframe takes effect at that keyframe's time
 
 #### Easing
@@ -288,7 +289,9 @@ Sampling outside the explicitly keyed intervals is defined as follows:
 - For `loop: false`, values after the last keyframe are held until `duration`; sampling after `duration` clamps to `duration`
 - For `loop: true`, sampling time wraps modulo `duration`
 - If `loop: true` and a part's last keyframe time is less than `duration`, the interval from that last keyframe to `duration` interpolates toward the `"0.0"` keyframe, along the **last keyframe's** per-attribute ease (it is that segment's outgoing keyframe)
-- If `loop: true` and a part has a keyframe exactly at `duration`, that keyframe is the end value of the final interval before wrap; authors SHOULD make it equal to `"0.0"` for a continuous loop. Sampling exactly at `duration` is equivalent to sampling at `"0.0"`
+- If `loop: true` and a part has a keyframe exactly at `duration`, that keyframe is the end value of the final interval before wrap; authors SHOULD make it **equivalent** to `"0.0"` for a continuous loop. Sampling exactly at `duration` is equivalent to sampling at `"0.0"`
+
+  Equivalent, not numerically equal. For an oscillation the two are the same thing. For a **revolution** they are not: a part making one full turn per loop must key `duration` at `0.0 ± 360` (or any whole multiple), which is the same orientation reached by a complete turn. Keying it back to the literal `"0.0"` value instead makes the last segment unwind everything the earlier ones did. Neither lint nor a rest-pose render can see this, so it is worth checking by sampling.
 
 Custom easing curves (cubic-bezier control points) are reserved for future spec versions.
 
@@ -449,6 +452,14 @@ No other fields are permitted (unknown field → `unknown`). Part names are uniq
   ```
 
   Concretely, for a head parented to a body (no grandparent), a head voxel `v_local` lands at `body.position + head.position + (v_local − head.pivot.pos)`. The `body.pivot.pos` value does **not** appear — it controlled where body's *voxels* sit relative to body's origin, but the head's `position` is already specified relative to that same origin.
+- **Hierarchy composition with rotation.** Once any ancestor carries a rest rotation (§6.2 `rotation`, or `pivot.rot`), the plain sum above no longer holds: a rotated parent turns the frame its children are positioned in. Each part's world transform is then built from its parent's:
+
+  ```
+  W.quat = parent.W.quat · q_rest            q_rest = q_rotation · q_pivot
+  W.pos  = parent.W.pos  + parent.W.quat · part.position
+  ```
+
+  That is, a child's `position` is **rotated by the parent's accumulated world rotation** before being added — the child rides the parent's rotation exactly as it rides the parent's translation. A root part takes `W.quat = q_rest` and `W.pos = position`. The unrotated sum above is the special case where every `q_rest` is identity. Animation composes inside `q_rest` per the quaternion form above, so an animated hierarchy uses the same two lines with `q_rest · q_anim` in place of `q_rest`.
 - **Worked example**: body declares `"size": [5, 4, 8]` with default `"pivot": {"pos": [2.5, 0, 4]}` (bottom-center) and manifest `"position": [0, 4, 0]`. Head declares `"size": [5, 5, 5]` with `"pivot": {"pos": [2.5, 0, 5]}` (back-bottom-center, so the pivot is the connection point at the back of the head), parented to body with `"position": [0, 4, -4]`. Then: body's pivot sits at world `(0, 4, 0)`; head's pivot sits at world `(0, 4, 0) + (0, 4, -4) = (0, 8, -4)` — directly above body's pivot and 4 units forward (−Z). The head's back-bottom-center voxel `(2.5, 0, 5)` lands at world `(0, 8, -4) + ((2.5, 0, 5) − (2.5, 0, 5)) = (0, 8, -4)` ✓ (the pivot lands where `position` names). The head's front-left-bottom voxel `(0, 0, 0)` lands at world `(0, 8, -4) + ((0, 0, 0) − (2.5, 0, 5)) = (−2.5, 8, −9)`. Body's `pivot.pos = (2.5, 0, 4)` never enters either calculation
 
 ### 7.8 `sockets`
@@ -703,7 +714,7 @@ Manifest errors use the same five structural codes (§11.2). The TS reference im
 |---|---|
 | `missing` | Top-level `name` is absent; top-level `parts` is absent or empty; palette file's `colors` is absent (§6.10) |
 | `duplicate` | Duplicate part name; duplicate animation name (planned) |
-| `unknown` | A field other than `name` / `version` / `geometry` / `parts` / `animations` is present at the top level; a field other than `name` / `parent` / `position` is present inside a part; a field other than `colors` in a palette file |
+| `unknown` | A field other than `name` / `version` / `geometry` / `parts` / `animations` is present at the top level; a field other than `name` / `parent` / `position` / `rotation` is present inside a part; a field other than `colors` in a palette file |
 | `invalid-value` | Wrong type for a field (e.g. `name` is a number); identifier failing the §5 regex; a `geometry` / animation reference path violating §8 (wrong extension, backslash, absolute, URL/URI, empty segment); duplicate or empty `geometry` list; malformed color string in a palette file; `parent` references a non-existent part; parent chain contains a cycle; animation `duration` non-positive, non-finite, or less than the largest time key; time keys not decimal-number strings, not strictly increasing, or not starting at `"0.0"` |
 | `wrong-arity` | Palette file's `colors` is empty or exceeds 62 entries (§6.10) |
 
@@ -720,8 +731,9 @@ Cross-file validation operates on the **project**: the manifest plus its referen
 | `unknown` | warning | A geometry file defines a part not listed in `cuboidy.json` `parts` |
 | `missing` | error | A geometry file's voxels use color indices while it declares no palette, or while its §7.4 palette reference does not resolve |
 | `invalid-value` | error | A geometry file references a palette index outside the range of the palette it **points at** (only a referenced palette reaches this check; an inline one is validated at parse time — §7.4) |
+| — | — | **W03 does not apply to a referenced palette.** "Declared but unused" is only meaningful about colors a file owns; a shared palette exists precisely so each file can use a subset of it (§6.10) |
 | `invalid-value` | warning | **[W06]** an `<x>-l` / `<x>-r` part pair (same parent) whose occupied voxels are not mirror images across the parent's YZ plane, computed from manifest position + pivot + voxel occupancy. The check is geometric, not positional: a correctly mirrored part reflects its pivot too, so the matching hand-written position is often legitimately NOT the sign-opposite |
-| `invalid-value` | warning | **[W07]** a geometry file exists in the package but is not referenced by the manifest `geometry` list (usually a forgotten entry — §6.9) |
+| `invalid-value` | warning | **[W07]** a geometry file exists in the package but is not referenced by the manifest `geometry` list (usually a forgotten entry — §6.9). "Geometry file" is decided by **content, not extension**: a file is one if the §7 reader accepts it. Since v0.9 the manifest, palette files and animation clips are all `.json` too, so an extension test would flag every one of them |
 | `unknown` | warning | Animation targets a part not present in `cuboidy.json` `parts` (cross-rig sharing, §6.8) |
 | `unknown` | runtime error | Attempt to attach to a socket name not declared on the host part (planned) |
 

@@ -53,8 +53,12 @@ So a cell `(x,y,z)` is `voxels[y][z][x]`. Consequences:
   format comes from forgetting that. In particular, mirroring across a pivot
   plane sends the cell at `x` to the cell at **`−1−x`**, not to `−x`.
 - **Choose each axis's parity from what the silhouette has to do**, then be
-  consistent about it. A centred part wants the default pivot `[W/2, 0, D/2]`,
-  and the parity decides what that costs you:
+  consistent about it. This only matters for a part whose pivot is meant to be
+  its **centre**; if the pivot belongs on an edge or an axis line — a hinge, a
+  rotor arm, a hanging rope — write that pivot and parity is irrelevant.
+  Putting an integer pivot on an axis you never rotate or mirror about is also
+  a free way to stay on the integer lattice. For a genuinely centred part, the
+  default pivot is `[W/2, 0, D/2]` and the parity decides what it costs:
 
   ```
   W=4, pivot 2   (default)   cells at -2..1     centred, integer lattice
@@ -107,6 +111,12 @@ So a cell `(x,y,z)` is `voxels[y][z][x]`. Consequences:
   alone flips a part where it is; `duplicate` makes the copy to flip.) The
   manifest `position` is still per-part; lint **W06** flags an l/r pair whose
   assembled geometry isn't X-symmetric.
+- **Rotational repetition is the other half of this**, and it is easier than
+  mirroring: a wheel, a fan, a gear, a crown of spikes is *one* part duplicated
+  N times, each copy differing only by its manifest `rotation`. No mirror
+  arithmetic, no W06 — just `cuboidy-part duplicate` and a rotation per copy.
+  Reach for it whenever a shape repeats around an axis rather than across a
+  plane. (Skip the mirror rules above entirely if your subject has no l/r pair.)
 
 ## Authoring an accessory for someone else's socket
 
@@ -163,11 +173,23 @@ hand-math:
 
 - **You cannot render an animated pose.** `cuboidy-snap` draws the rest pose
   only, so the "look at it" loop this guide is built on does not cover the half
-  of the format that moves. Until a tool exists, the workaround is to bake:
-  sample the clip at time *t*, fold the result into a scratch copy of the model
-  (compose the sampled rotation onto each part's manifest `rotation`, add the
-  sampled `pos` to its `position`), and snap that. A dozen lines, and it turns
-  animation from guesswork back into edit → snap → look.
+  of the format that moves. The workaround is to bake: sample the clip at time
+  *t*, fold the result into a scratch copy of the model, and snap that. Two
+  things make it more than a few lines, so budget for them:
+  - Rotations **compose as quaternions** (§7.7), so you cannot add the sampled
+    Euler angles to the manifest `rotation`. Multiply the quaternions and
+    convert back to ZXY Euler — and there is no inverse of
+    `quatFromEulerZXYDeg` in the codebase, so that conversion is yours to
+    write.
+  - `scale` and `visible` have no manifest equivalent, so **a baked frame
+    silently lies about them.** A part that should be hidden or squashed will
+    render at full size. Bake covers `rot` and `pos`; check the rest by
+    sampling numbers.
+- **Nothing checks whether moving parts collide.** Lint sees only the rest
+  pose, and so does every render. A long rotating member — a sail, a tail, a
+  limb against a garment — has to be checked by sweeping the animation and
+  measuring, or it will pass everything and still intersect. This is the one
+  class of defect the whole documented loop cannot see.
 - **Key an attribute on every keyframe you want it to move through.** Omitted
   fields inherit from the previous keyframe (§6.5 carryover), so keying `rot`
   on eight times and `pos` on four does not give `pos` a coarser curve — it
@@ -183,17 +205,45 @@ hand-math:
   foot plants, then solve the knee or the hip height from it. The rest pose
   with straight legs is the *maximum* hip height, so every walk pose sits at or
   below it.
-- **Check the loop closes.** Sample at `duration` and at `0.0` and compare;
-  they should be equal. A clip that nearly closes reads as a hitch once a
-  second, forever.
+- **Check the loop closes — in orientation, not in numbers.** Sample at
+  `duration` and at `0.0` and compare. For an oscillation they should be equal.
+  For a **revolution** they must differ by a whole multiple of 360°: a part
+  turning once per loop keys `duration` at `0 ± 360`. Key it back to a literal
+  `0` and the final segment unwinds the whole turn — the wheel spins forward
+  then snaps backwards, and neither lint nor a rest-pose render can see it.
+- **`rot` interpolates component-wise on the Euler triple**, not as a
+  quaternion slerp. This is why a full turn is expressible at all, and it is
+  why a spin should be keyed as quarter turns: every segment stays under 90°,
+  where the two interpretations agree, and equal angle over equal time is
+  constant rate by construction.
+- **Never ease a constant-speed rotation.** Any curve on a segment of a steady
+  spin puts a velocity discontinuity at each keyframe — a stutter once per key,
+  forever. Easing is for motion that accelerates.
+- **A sparse periodic curve can be exact.** With one key per quarter period,
+  alternating `in-sine` (on keys at an extremum) with `out-sine` (on keys at a
+  midpoint) reconstructs a true cosine: the two presets are `1−cos(uπ/2)` and
+  `sin(uπ/2)`, which meet with matching slope at every key. Measured against
+  the analytic cosine this is exact to floating point. The intuitive choice,
+  `in-out-sine` everywhere, instead stalls the motion at all four keys.
+- **`ease` is per attribute, not per component.** One curve governs all three
+  Euler angles of `rot` together, so two axes of the same part cannot be given
+  different phases at low key density. Split them across two parts if you need
+  that.
 
 ## Verification (don't trust your head-math)
 
 - `cuboidy-lint --strict` — catches row-width / layer-count / palette-range
   typos. Hand-writing WILL produce these; lint is the safety net. (Tip: define
-  the FULL palette up front so you never renumber indices; tolerate W03
-  "unused color" warnings during blockout by linting without `--strict`.)
-- `cuboidy-view` — fast ASCII per axis; best for checking exact rows & symmetry.
+  the FULL palette up front so you never renumber indices. If the palette is
+  inline, tolerate W03 "unused color" during blockout by linting without
+  `--strict`; if it lives in a shared `palette.json`, W03 does not apply at all
+  — a shared palette exists so each file can use a subset — so you can define
+  every colour up front and run `--strict` from the first pass.)
+- `cuboidy-view` — fast ASCII per axis; best for checking exact rows & symmetry
+  **on an axis-aligned model**. It cannot draw a rotated part (see Gotchas), so
+  the more a model leans on `rotation`, the less this tool tells you: a
+  windmill's sails show up as a vertical stack rather than a cross. Reach for
+  the snap instead once parts start turning.
 - `cuboidy-snap` — real PNG from many angles; **reveals what ASCII hides**
   (protrusions, true proportions, muddy shading). Always snap before "done".
 - `cuboidy-query` — exact cell lookup; verify attachment & symmetry numerically.
