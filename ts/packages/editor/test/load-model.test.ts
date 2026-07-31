@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { parseGeometryText, type Geometry, type Manifest } from '@cuboidy/core';
+import { strToU8, zipSync } from 'fflate';
 import {
   isGeometryPath,
+  isSafeEntryPath,
+  loadFromCuboidyZip,
   loadFromFileList,
   normalizePath,
   resolveProjectRefs,
 } from '../src/lib/load-model.js';
+import { packageEntries } from '../src/lib/save.js';
 
 // resolveProjectRefs is the pure `(manifest, files) -> derived state`
 // function the whole project layer hangs off: the loader calls it, the
@@ -375,5 +379,145 @@ describe('loadFromFileList', () => {
       ]),
     );
     expect(r.source?.files?.has('thumb.png')).toBe(false);
+  });
+});
+
+// SPEC §13: the packed format. These pin the decisions the section makes,
+// because until it existed the loader had made them silently — and one of
+// them was losing data.
+describe('loadFromCuboidyZip', () => {
+  const MANIFEST_TEXT = JSON.stringify({
+    name: 'packed',
+    parts: [{ name: 'a' }],
+  });
+  const VOXELS = GEOM('a', ['#FF0000']);
+
+  const zipFile = (entries: Record<string, string | Uint8Array>): File => {
+    const zippable: Record<string, Uint8Array> = {};
+    for (const [k, v] of Object.entries(entries)) {
+      zippable[k] = typeof v === 'string' ? strToU8(v) : v;
+    }
+    return new File([zipSync(zippable) as unknown as BlobPart], 'packed.cuboidy');
+  };
+
+  it('reads an archive with cuboidy.json at the root', async () => {
+    const r = await loadFromCuboidyZip(
+      zipFile({ 'cuboidy.json': MANIFEST_TEXT, 'voxels.json': VOXELS }),
+    );
+    expect(r.error).toBeUndefined();
+    expect(r.source?.manifest?.name).toBe('packed');
+    expect([...r.source!.files.keys()].sort()).toEqual(['cuboidy.json', 'voxels.json']);
+  });
+
+  it('strips one wrapping directory — what compressing a folder produces', async () => {
+    const r = await loadFromCuboidyZip(
+      zipFile({ 'knight/cuboidy.json': MANIFEST_TEXT, 'knight/voxels.json': VOXELS }),
+    );
+    expect(r.error).toBeUndefined();
+    expect([...r.source!.files.keys()].sort()).toEqual(['cuboidy.json', 'voxels.json']);
+  });
+
+  it('leaves two top-level entries alone rather than guessing', async () => {
+    // Not a wrapped package — the manifest is already at the root, so
+    // stripping `gear/` would invent a structure the archive never had.
+    const r = await loadFromCuboidyZip(
+      zipFile({
+        'cuboidy.json': JSON.stringify({
+          name: 'packed',
+          geometry: ['gear/voxels.json'],
+          parts: [{ name: 'a' }],
+        }),
+        'gear/voxels.json': VOXELS,
+      }),
+    );
+    expect(r.error).toBeUndefined();
+    expect([...r.source!.files.keys()].sort()).toEqual([
+      'cuboidy.json',
+      'gear/voxels.json',
+    ]);
+  });
+
+  // §13.3. This is the bug the missing spec was hiding: open a package with
+  // anything the editor does not parse, export it, and the file was gone.
+  it('carries entries it does not understand through a round trip', async () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+    const r = await loadFromCuboidyZip(
+      zipFile({
+        'cuboidy.json': MANIFEST_TEXT,
+        'voxels.json': VOXELS,
+        'thumb.png': png,
+        LICENSE: strToU8('MIT'),
+      }),
+    );
+    expect(r.error).toBeUndefined();
+    const assets = r.source!.assets;
+    expect([...assets!.keys()].sort()).toEqual(['LICENSE', 'thumb.png']);
+    expect(assets!.get('thumb.png')).toEqual(png);
+    // …and they are not mistaken for model files.
+    expect([...r.source!.files.keys()].sort()).toEqual(['cuboidy.json', 'voxels.json']);
+  });
+
+  // §13.2 — reject, do not sanitise.
+  it.each([
+    ['..%2Ftraversal', '../evil.json'],
+    ['absolute', '/etc/passwd.json'],
+    ['backslash', 'a\\b.json'],
+  ])('rejects an unsafe entry path (%s)', async (_label, bad) => {
+    const r = await loadFromCuboidyZip(
+      zipFile({ 'cuboidy.json': MANIFEST_TEXT, 'voxels.json': VOXELS, [bad]: 'x' }),
+    );
+    expect(r.source).toBeUndefined();
+    expect(r.error).toMatch(/unsafe entry path/);
+  });
+
+  it('rejects an archive with more entries than the bound allows', async () => {
+    const many: Record<string, string> = {
+      'cuboidy.json': MANIFEST_TEXT,
+      'voxels.json': VOXELS,
+    };
+    for (let i = 0; i < 10_001; i++) many[`f${i}.txt`] = '';
+    const r = await loadFromCuboidyZip(zipFile(many));
+    expect(r.source).toBeUndefined();
+    expect(r.error).toMatch(/entries \(limit/);
+  });
+});
+
+describe('isSafeEntryPath', () => {
+  it('accepts ordinary package-relative paths', () => {
+    for (const p of ['cuboidy.json', 'anims/walk.json', 'a/b/c.json']) {
+      expect(isSafeEntryPath(p), p).toBe(true);
+    }
+  });
+
+  it('rejects traversal, absolute and Windows-shaped paths', () => {
+    for (const p of ['', '/abs.json', '../up.json', 'a/../../up.json', 'a\\b.json', 'C:/x.json']) {
+      expect(isSafeEntryPath(p), p).toBe(false);
+    }
+  });
+});
+
+// The round trip end to end: what Export writes must contain everything the
+// archive brought in. Asserted on the entry map rather than through a browser
+// download, which is why packageEntries is split out.
+describe('packed round trip', () => {
+  it('re-exports an unrecognised entry byte for byte', async () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 7, 7, 7]);
+    const zippable: Record<string, Uint8Array> = {
+      'cuboidy.json': strToU8(JSON.stringify({ name: 'packed', parts: [{ name: 'a' }] })),
+      'voxels.json': strToU8(GEOM('a', ['#FF0000'])),
+      'thumb.png': png,
+    };
+    const loaded = await loadFromCuboidyZip(
+      new File([zipSync(zippable) as unknown as BlobPart], 'packed.cuboidy'),
+    );
+    expect(loaded.error).toBeUndefined();
+
+    const out = packageEntries(loaded.source!);
+    expect(Object.keys(out).sort()).toEqual([
+      'cuboidy.json',
+      'thumb.png',
+      'voxels.json',
+    ]);
+    expect(new Uint8Array(out['thumb.png'] as Uint8Array)).toEqual(png);
   });
 });

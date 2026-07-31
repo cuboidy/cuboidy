@@ -41,7 +41,7 @@ Cuboidy is **not** a triangle-mesh format. It does not specify skin weights, UV 
 | **Manifest** | `cuboidy.json` — the package's fixed-name anchor: rig hierarchy, animations, and the geometry list |
 | **Geometry file** | A JSON file (§7) — shape, optional inline palette, pivot, sockets. Default (when the manifest lists none): `voxels.json` |
 | **Palette file** | A `.json` file of shareable colors (§6.10), referenced by each geometry file that uses them (§7.4) |
-| **Packed Cuboidy** | `<name>.cuboidy` — ZIP archive of the package (reserved; not specified in v0.9) |
+| **Packed Cuboidy** | `<name>.cuboidy` — the package folder as a single ZIP archive (§13) |
 | **Part** | A rigid voxel sub-object, optionally parented in the hierarchy |
 | **Socket** | A named attachment point on a part |
 | **Keyframe** | A time-indexed pose snapshot for an animated part |
@@ -823,9 +823,82 @@ All reference examples pass the current lint rules at error level.
 
 ---
 
-## 13. Future extensions (out of scope for v0.9)
+## 13. Packed format (`.cuboidy`)
 
-- **Packed format**: `<name>.cuboidy` (ZIP archive of the package)
+A package is a folder (§3). For distribution it may be delivered as a single
+**ZIP archive** named `<name>.cuboidy`. The archive carries no information the
+folder does not: unpacking one and opening the folder MUST give the same model.
+
+### 13.1 Layout
+
+`cuboidy.json` is the anchor inside the archive exactly as it is on disk.
+
+- A writer MUST place `cuboidy.json` at the **archive root**, with every other
+  file at its package-relative path beside it (`palette.json`,
+  `anims/walk.json`).
+- A reader MUST also accept an archive whose entries all sit under **one**
+  top-level directory — what a user gets by right-clicking a folder and
+  compressing it — and MUST strip that directory before resolving anything.
+  The wrapper's name is not the model's name; §3 already says the folder name
+  is not authoritative.
+- Stripping applies only when *every* entry shares one top-level directory. Two
+  top-level entries, or an archive with `cuboidy.json` at the root, are read
+  as-is.
+
+This is the reader-tolerant / writer-strict split the canonical serializer
+already uses: one form is produced, two are understood.
+
+### 13.2 Entry paths
+
+Entry names are UTF-8 and use `/` as the separator. The §8 reference-path rules
+apply to them as well, and for the same reason — an archive is a hostile input:
+
+- An absolute path, a backslash, or a `..` segment is **`invalid-value`**. A
+  reader MUST reject the archive rather than sanitising the path, because a
+  sanitised `../` is silently a different file from the one the author named.
+- Two entries that normalise to the same path are **`duplicate`**.
+- Directory entries (names ending `/`) are optional. A reader MUST NOT depend
+  on them and MUST NOT treat one as a file.
+
+### 13.3 Entries a reader does not understand
+
+An archive may contain files outside this specification — a thumbnail, a
+licence, an editor's own sidecar.
+
+- A reader MUST NOT reject the archive for containing them.
+- A tool that reads an archive and writes it back **MUST preserve them
+  byte-for-byte**. Dropping an unrecognised entry turns "open and save" into
+  silent data loss, and the author has no way to notice until the file is
+  needed.
+- They take no part in validation. §11.6's W07 asks whether a *geometry* file
+  is referenced, and geometry is decided by content, so an unrecognised entry
+  is simply not one.
+
+### 13.4 Archive constraints
+
+- **Compression**: `store` (0) and `deflate` (8) MUST be supported. Any other
+  method is `invalid-value`.
+- **No encryption**, no multi-volume archives, no ZIP64 requirement — a model
+  that needs either is outside what this format is for.
+- **Encoding**: §9 governs file *contents* unchanged (UTF-8, no BOM). Entry
+  *names* are UTF-8; a reader MAY reject names it cannot decode.
+- **Bounds**: a reader MUST bound the total uncompressed size and the entry
+  count before expanding an archive, and SHOULD document the limits it applies.
+  No figure is mandated — the requirement is that a decompression bomb is
+  refused rather than expanded.
+
+### 13.5 What packing does not change
+
+Packing is transport. Reference paths (§8) resolve inside the archive exactly
+as they would inside the folder, the anchor is still `cuboidy.json`, and an
+unreferenced file is still not part of the model (§3). A `.cuboidy` is not a
+different format; it is the same package with one fewer directory to hand
+someone.
+
+---
+
+## 14. Future extensions (out of scope for v0.9)
+
 - **Named palette colors / metadata**: the palette file's object form (§6.10) reserves the room
 - **Multi-character palette encoding**: 2-character indices for palettes larger than 62
 - **Animation blending**: simultaneous animations with weighted contribution
@@ -837,7 +910,7 @@ All reference examples pass the current lint rules at error level.
 
 ---
 
-## 14. Acknowledgments
+## 15. Acknowledgments
 
 Cuboidy's design draws from prior work in voxel and rigging formats:
 Minecraft Bedrock Edition, Mixamo, MagicaVoxel, VRM, glTF, Pixar USD.

@@ -82,7 +82,7 @@ my-model.cuboidy        packed package (ZIP of the folder above)
 | `cuboidy.json` | manifest (fixed name) | JSON | `parseManifest()` (TS reference impl) + shared JSON Schema (`schema/cuboidy.schema.json`) |
 | `voxels.json` | voxel definition | JSON | `parseGeometry()` (TS reference impl) + shared JSON Schema (`schema/cuboidy-geometry.schema.json`) + `cuboidy-lint` CLI |
 | `anims/*.json` | optional shared animations | JSON | same inline-animation schema + semantic rules (§6.6), resolved and checked by lint and the inspection CLIs |
-| `*.cuboidy` | packed package | ZIP | both, after extraction (packed format is reserved for a future spec version) |
+| `*.cuboidy` | packed package | ZIP | both, after extraction; the archive itself is specified in §13 |
 
 ## The example models
 
@@ -204,12 +204,6 @@ Open, roughly in the order the work is worth doing:
       clear its gallery by about two voxels, which its author could establish
       only by hand trigonometry. This is the one defect class the documented
       author's loop cannot catch.
-- [ ] **Packed format spec** (`.cuboidy` ZIP). The editor already reads and
-      writes these, so the implementation is ahead of the specification, and it
-      has quietly made decisions that belong in text: whether a single
-      top-level folder is stripped, what happens to non-text entries (today
-      they are dropped), `..` / absolute / backslash paths, duplicate paths
-      after normalisation, compression, and size limits.
 - [ ] **Rig vocabularies** (quadruped / biped / winged / …). §6.8 binds a
       shared animation to parts *by name*, which makes the naming convention
       the interoperability surface — and it is currently unwritten. The W06

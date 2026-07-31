@@ -44,6 +44,11 @@ export interface LoadedSource {
   // Every text file in the package, keyed by /-relative path. The single
   // store: nothing else holds a file's bytes.
   files: ReadonlyMap<string, string>;
+  // Entries this editor does not understand — a thumbnail, a licence,
+  // another tool's sidecar — carried verbatim so a load/save round trip
+  // cannot silently drop them (SPEC §13.3). Nothing reads them; Export
+  // writes them back unchanged.
+  assets?: ReadonlyMap<string, Uint8Array>;
   // Which entry is the model's primary geometry — the file the geometry
   // panel edits, and the one the loader falls back to without a manifest.
   primaryPath: string;

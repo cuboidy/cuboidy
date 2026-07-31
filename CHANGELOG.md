@@ -40,6 +40,22 @@ geometry file stays independently well-formed either way.
 **Migration:** move `"palette": "x.json"` from `cuboidy.json` into each geometry
 file that uses those colors. Models with inline palettes are unaffected.
 
+### Packed format specified
+
+`<name>.cuboidy` was listed as a future extension while the editor already
+read and wrote it, so the implementation had quietly made every decision the
+specification should have. §13 now settles them: `cuboidy.json` at the archive
+root with readers also accepting one wrapping directory, §8's path rules
+applied to entry names and **rejected rather than sanitised**, duplicate
+normalised paths as `duplicate`, store/deflate only, and a required bound on
+expansion.
+
+The consequential one is §13.3: an entry a reader does not understand must be
+**preserved byte-for-byte** when the archive is written back. The editor had
+been dropping everything that was not `.json` / `.md` / `.txt`, so opening a
+package containing a thumbnail and exporting it silently deleted the
+thumbnail. The reference implementation now carries such entries through.
+
 ### Per-part rest rotation
 
 The manifest part object gains an optional **`rotation`** field (§6.2): the

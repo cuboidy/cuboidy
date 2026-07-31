@@ -61,15 +61,24 @@ export function downloadFile(name: string, text: string): void {
   triggerDownload(blob, name);
 }
 
+// What Export puts in the archive: every file collected at load, so extra
+// geometry files, palette.json and anims/ survive the round trip — AND the
+// entries the editor never understood (SPEC §13.3), byte for byte. Dropping
+// those would make "open and export" quietly lossy, which is exactly what it
+// used to be. Split out from downloadAsZip so the round trip is testable
+// without a browser download.
+export function packageEntries(source: LoadedSource): Zippable {
+  const files: Zippable = {};
+  for (const [path, text] of source.files) files[path] = strToU8(text);
+  for (const [path, bytes] of source.assets ?? []) files[path] = bytes;
+  return files;
+}
+
 export async function downloadAsZip(
   source: LoadedSource,
   zipName: string,
 ): Promise<void> {
-  // Whole package: every file collected at load, so extra geometry
-  // files, palette.json and anims/ survive the round-trip.
-  const files: Zippable = {};
-  for (const [path, text] of source.files) files[path] = strToU8(text);
-  const bytes = await zipAsync(files);
+  const bytes = await zipAsync(packageEntries(source));
   // fflate returns `Uint8Array<ArrayBufferLike>`; lib.dom's Blob ctor
   // wants `BufferSource` (which excludes SharedArrayBuffer-backed views).
   // Cast through BlobPart — the value is always a plain Uint8Array at

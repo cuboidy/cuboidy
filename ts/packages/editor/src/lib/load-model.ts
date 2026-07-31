@@ -56,15 +56,60 @@ export async function loadFromCuboidyZip(file: File): Promise<LoadResult> {
     };
   }
   const paths = Object.keys(entries).filter((p) => !p.endsWith('/'));
+
+  // SPEC §13.4: bound the expansion before trusting it. An archive is a
+  // hostile input and a few kB of ZIP can name gigabytes of output.
+  let total = 0;
+  for (const path of paths) total += entries[path]!.length;
+  if (paths.length > MAX_ZIP_ENTRIES) {
+    return { error: `${file.name} has ${paths.length} entries (limit ${MAX_ZIP_ENTRIES})` };
+  }
+  if (total > MAX_ZIP_BYTES) {
+    return {
+      error:
+        `${file.name} expands to ${Math.round(total / 1e6)} MB ` +
+        `(limit ${Math.round(MAX_ZIP_BYTES / 1e6)} MB)`,
+    };
+  }
+
   const prefix = commonTopDir(paths);
   const files = new Map<string, string>();
+  const assets = new Map<string, Uint8Array>();
+  const seen = new Set<string>();
   for (const path of paths) {
     const rel = prefix === null ? path : path.slice(prefix.length);
-    if (TEXT_FILE_RE.test(rel)) {
-      files.set(normalizePath(rel), strFromU8(entries[path]!));
+    // SPEC §13.2: reject rather than sanitise. A cleaned-up `../` is
+    // silently a different file from the one the archive named.
+    if (!isSafeEntryPath(rel)) {
+      return { error: `${file.name}: unsafe entry path "${rel}"` };
     }
+    const norm = normalizePath(rel);
+    if (seen.has(norm)) {
+      return { error: `${file.name}: duplicate entry "${norm}"` };
+    }
+    seen.add(norm);
+    // SPEC §13.3: entries this reader does not understand are carried
+    // through untouched, so open-and-save cannot quietly drop a
+    // thumbnail or a licence.
+    if (TEXT_FILE_RE.test(rel)) files.set(norm, strFromU8(entries[path]!));
+    else assets.set(norm, entries[path]!);
   }
-  return buildFolderResult(files, file.name.replace(CUBOIDY_EXT, ''));
+  return buildFolderResult(files, file.name.replace(CUBOIDY_EXT, ''), {
+    ...(assets.size > 0 && { assets }),
+  });
+}
+
+// SPEC §13.4 expansion bounds. Generous next to any real model — the
+// largest shipped package is a few tens of kB — and small enough that a
+// bomb is refused rather than expanded.
+const MAX_ZIP_ENTRIES = 10_000;
+const MAX_ZIP_BYTES = 64 * 1024 * 1024;
+
+// SPEC §13.2: `/`-separated, relative, no traversal, no backslash.
+export function isSafeEntryPath(path: string): boolean {
+  if (path === '' || path.startsWith('/') || path.includes('\\')) return false;
+  if (/^[a-zA-Z]:/.test(path)) return false; // drive-letter absolute
+  return !path.split('/').includes('..');
 }
 
 export async function loadFromFileList(files: FileList): Promise<LoadResult> {
@@ -168,7 +213,10 @@ function buildGeometryOnlyResult(name: string, text: string): LoadResult {
 function buildFolderResult(
   fileTexts: Map<string, string>,
   folderName: string,
-  opts: { handle?: FileSystemDirectoryHandle } = {},
+  opts: {
+    handle?: FileSystemDirectoryHandle;
+    assets?: ReadonlyMap<string, Uint8Array>;
+  } = {},
 ): LoadResult {
   // Manifest first — the geometry list depends on it.
   let manifest: Manifest | undefined;
@@ -213,6 +261,7 @@ function buildFolderResult(
     synthetic: false,
     ...(opts.handle !== undefined && { handle: opts.handle }),
     files: new Map(fileTexts),
+    ...(opts.assets !== undefined && { assets: opts.assets }),
     primaryPath: primary,
     ...(manifestText !== undefined && { manifestPath: MANIFEST_FILE }),
     ...(manifest !== undefined && { manifest }),
