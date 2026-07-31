@@ -34,21 +34,24 @@ Every file is JSON. The format is designed to be:
 
 ## At a glance
 
-A minimal Cuboidy voxel definition (`voxels.json`) — a `crown` part, 3×2×3 voxels, gold:
+A complete Cuboidy model — one `cuboidy.json`, one `crown` part, 3×2×3 voxels, gold:
 
 ```json
 {
+  "name": "crown",
   "version": "0.9",
   "palette": ["#FFD700"],
   "parts": [
     {
       "name": "crown",
-      "size": [3, 2, 3],
-      "pivot": { "pos": [1, 0, 1] },
-      "voxels": [
-        ["000", "000", "000"],
-        ["0.0", "...", "0.0"]
-      ]
+      "geometry": {
+        "size": [3, 2, 3],
+        "pivot": { "pos": [1, 0, 1] },
+        "voxels": [
+          ["000", "000", "000"],
+          ["0.0", "...", "0.0"]
+        ]
+      }
     }
   ]
 }
@@ -59,9 +62,21 @@ one character per X cell. `.` is air; every other character is a palette index
 (`0-9a-zA-Z`, hence the 62-colour cap). `size` is `[W, H, D]` and the arrays
 must agree with it. See SPEC §7 for the full shape.
 
+That is the whole file — no sibling `voxels.json`, nothing to reference. A part
+can also point at a geometry file instead, which is what a model with many
+parts usually does:
+
+```json
+{ "name": "head", "parent": "neck", "geometry": { "path": "body.json" } }
+```
+
+Both forms mix inside one manifest (SPEC §6.13). `cuboidy.json` is always
+required — it is the anchor a loader looks for (§3); a lone geometry file has
+shape but no rig, no animations and no name.
+
 ## Folder layout
 
-A Cuboidy model is a **folder**, not a single file:
+A Cuboidy model is a folder anchored by `cuboidy.json`:
 
 ```
 my-model/
@@ -69,6 +84,15 @@ my-model/
 ├── voxels.json      voxel definition: palette + per-part grid + pivots + sockets
 └── anims/           (optional) shared animations
     └── walk.json
+```
+
+`cuboidy.json` is the only fixed filename and the only required one.
+Everything else is named freely and found by reference — so at the small end
+the folder holds exactly one file, with every part's geometry written inline:
+
+```
+tiny-model/
+└── cuboidy.json     manifest + all geometry — the whole model
 ```
 
 For distribution, the folder can be packed into a single ZIP:
@@ -79,8 +103,8 @@ my-model.cuboidy        packed package (ZIP of the folder above)
 
 | File | Role | Format | Validation |
 |---|---|---|---|
-| `cuboidy.json` | manifest (fixed name) | JSON | `parseManifest()` (TS reference impl) + shared JSON Schema (`schema/cuboidy.schema.json`) |
-| `voxels.json` | voxel definition | JSON | `parseGeometry()` (TS reference impl) + shared JSON Schema (`schema/cuboidy-geometry.schema.json`) + `cuboidy-lint` CLI |
+| `cuboidy.json` | manifest (fixed name, **required**) | JSON | `parseManifest()` (TS reference impl) + shared JSON Schema (`schema/cuboidy.schema.json`) |
+| `voxels.json` | voxel definition — optional, since a part may hold its geometry inline instead | JSON | `parseGeometry()` (TS reference impl) + shared JSON Schema (`schema/cuboidy-geometry.schema.json`) + `cuboidy-lint` CLI |
 | `anims/*.json` | optional shared animations | JSON | same inline-animation schema + semantic rules (§6.6), resolved and checked by lint and the inspection CLIs |
 | `*.cuboidy` | packed package | ZIP | both, after extraction; the archive itself is specified in §13 |
 
@@ -159,7 +183,7 @@ generates better models. Harness and raw votes are in git history, `b139ef4`.)*
 ## Roadmap
 
 Done — the v0.9 spec and a complete TypeScript implementation of it
-(`ts/packages/core/`, 508 tests):
+(`ts/packages/core/`, 536 tests):
 
 - [x] Reference parser, canonical serializer (a verified byte-level fixed point
       on every shipped model), and manifest validation

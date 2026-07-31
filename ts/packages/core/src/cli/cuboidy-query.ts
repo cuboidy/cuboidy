@@ -19,8 +19,8 @@ interface Args {
 const HELP_TEXT =
   'Usage: cuboidy-query <dir> (--at=x,y,z | --core=<axis>,<pin1>=<v1>,<pin2>=<v2>)+\n' +
   '\n' +
-  'Assemble a cuboidy model from <dir>/cuboidy.json + <dir>/voxels.json\n' +
-  'in rest pose, then answer one or more coordinate queries. Output is\n' +
+  'Assemble a cuboidy model from <dir>/cuboidy.json (plus any geometry it\n' +
+  'references) in rest pose, then answer coordinate queries. Output is\n' +
   'one line per query plus a short header (model name, bbox, palette).\n' +
   '\n' +
   'Queries:\n' +

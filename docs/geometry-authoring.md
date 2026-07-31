@@ -4,14 +4,43 @@ Notes captured while hand-building characters, and the companion to `SPEC.md`
 for anyone — human or model — authoring from scratch. The spec says what is
 legal; this says what tends to work.
 
-The golden rule: **write the geometry file by hand and let the CLIs give you
+The golden rule: **write the geometry by hand and let the CLIs give you
 feedback** — do not generate it from a script (that defeats the point of a
 readable format and hides what hand-authoring can do).
+
+## Where to put the geometry
+
+Every model is anchored by `cuboidy.json` (SPEC §3) — that file is required,
+and a lone `voxels.json` is not a model. Each part then says where its shape
+lives (§6.13):
+
+```json
+{ "name": "head", "parent": "neck", "geometry": { "path": "body.json" } }
+{ "name": "gem",  "parent": "head", "geometry": { "size": [1,1,1], "voxels": [["0"]] } }
+```
+
+Rules of thumb:
+
+- **Small model, or a quick prototype** — write every part inline and keep the whole
+  thing in one file. Nothing to reference, nothing to keep in sync, and you can
+  paste it somewhere whole.
+- **Anything with a real rig** — put the parts in geometry files grouped the way
+  you think about the body (`body.json` / `arms.json` / `legs.json`, as `knight`
+  does) and point at them. Long voxel arrays crowd out the rig otherwise: the
+  hierarchy is the thing you re-read constantly while animating, and it should
+  fit on a screen.
+- **Mixing is fine and often right** — reference the big parts, inline the
+  one-off 1×1×1 gem that would be silly as its own file.
+
+Omitting `geometry` entirely still works: the part is looked up by name in the
+files listed under the top-level `geometry`. That is how every model here was
+written before §6.13, and it is the most compact form for a model where the
+manifest and one geometry file already line up.
 
 ## The loop (like real 3D modeling)
 
 ```
-edit voxels.json  →  cuboidy-lint  →  cuboidy-snap  →  LOOK at the PNG  →  fix
+edit geometry  →  cuboidy-lint  →  cuboidy-snap  →  LOOK at the PNG  →  fix
 ```
 
 Work in passes, never all at once:

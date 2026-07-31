@@ -19,19 +19,26 @@ import type { Diagnostic } from '../diagnostic.js';
 // thin layer over this: argv → RunOptions, runLint(), format → stdout,
 // process.exit(exitCode).
 //
-// v0.7 project shape: the manifest's `geometry` list (default
-// ["voxels.json"]) names the model's geometry files, and its `palette`
-// reference binds an external palette (SPEC §6.9 / §6.10). A directory
-// with no manifest still lints its voxels.json alone (shape preview).
+// The manifest anchors everything: its `geometry` list and each part's
+// own `geometry` (SPEC §6.9 / §6.13) name the model's geometry files, and
+// palette references resolve from there.
+//
+// `cuboidy.json` is REQUIRED (§3). This runner used to lint a directory
+// holding only `voxels.json` as a shape preview, which the specification
+// never allowed — a lone geometry file has shape but no rig, no
+// animations and no name, so there is nothing to lint it *as*, and half
+// the rules (every cross-file one) could not run. The case that leniency
+// served is now covered properly by inline geometry: one `cuboidy.json`
+// with every part written into it is a complete model (§6.13).
 //
 // Exit code policy:
 //   0  no errors (warnings/hints may be present)
 //   1  one or more errors, OR --strict and any warning. A geometry /
 //      palette file that the manifest references but that can't be read
 //      is a broken reference — a model error, not a setup failure
-//   2  IO / setup failure (no manifest AND no voxels.json — nothing to
-//      lint) — distinct from "model has errors" so CI can tell "we
-//      failed to run" from "we ran and found problems"
+//   2  IO / setup failure (no readable `cuboidy.json` — there is no model
+//      here) — distinct from "model has errors" so CI can tell "we failed
+//      to run" from "we ran and found problems"
 
 export interface RunOptions {
   strict?: boolean;
@@ -60,38 +67,49 @@ export async function runLint(
   const root = resolve(dir);
   const diagnostics: FileDiagnostic[] = [];
 
-  // Manifest is optional. A voxel-only directory (`voxels.json` without a
-  // sibling `cuboidy.json`) is a valid input — useful for previewing a
-  // shape before wiring up rig hierarchy.
+  // SPEC §3: the manifest is the package's anchor and is required. Its
+  // absence is a setup failure, not a model finding — there is no model
+  // to have findings about.
   const manifestPath = join(root, MANIFEST_FILE);
   const manifestText = await tryReadText(manifestPath);
+  if (manifestText === null) {
+    diagnostics.push({
+      file: manifestPath,
+      diag: {
+        code: 'missing',
+        severity: 'error',
+        message: `cannot read ${MANIFEST_FILE} — a Cuboidy model is anchored by its manifest (§3). A lone geometry file is not a model; write its parts inline instead (§6.13)`,
+      },
+    });
+    return { diagnostics, exitCode: 2 };
+  }
+  // A manifest that is present but broken IS a model finding: something is
+  // here and it is wrong, which is the difference from the branch above.
   let manifest: Manifest | null = null;
-  if (manifestText !== null) {
-    let json: unknown = null;
-    let jsonOk = false;
-    try {
-      json = JSON.parse(manifestText);
-      jsonOk = true;
-    } catch (e) {
+  let json: unknown = null;
+  let jsonOk = false;
+  try {
+    json = JSON.parse(manifestText);
+    jsonOk = true;
+  } catch (e) {
+    diagnostics.push({
+      file: manifestPath,
+      diag: {
+        code: 'invalid-value',
+        severity: 'error',
+        message: `JSON parse: ${(e as Error).message}`,
+      },
+    });
+  }
+  if (jsonOk) {
+    const mR = parseManifest(json);
+    if (!mR.ok) {
       diagnostics.push({
         file: manifestPath,
-        diag: {
-          code: 'invalid-value',
-          severity: 'error',
-          message: `JSON parse: ${(e as Error).message}`,
-        },
+        diag: { code: mR.code, severity: 'error', message: mR.message },
       });
-    }
-    if (jsonOk) {
-      const mR = parseManifest(json);
-      if (!mR.ok) {
-        diagnostics.push({
-          file: manifestPath,
-          diag: { code: mR.code, severity: 'error', message: mR.message },
-        });
-      } else {
-        manifest = mR.value;
-      }
+    } else {
+      manifest = mR.value;
     }
   }
 
@@ -114,23 +132,6 @@ export async function runLint(
     if (files.has(ref)) continue;
     const text = await tryReadText(join(root, ref));
     if (text !== null) files.set(ref, text);
-  }
-
-  // Nothing to lint at all: no manifest and no readable voxels.json is a
-  // setup failure (exit 2), not a model error.
-  const anyGeometryRead = paths.geometry.some((ref) => files.has(ref));
-  if (manifestText === null && !anyGeometryRead) {
-    for (const ref of paths.geometry) {
-      diagnostics.push({
-        file: join(root, ref),
-        diag: {
-          code: 'missing',
-          severity: 'error',
-          message: `cannot read ${ref}`,
-        },
-      });
-    }
-    return { diagnostics, exitCode: 2 };
   }
 
   const project = resolveProject(manifest, files);

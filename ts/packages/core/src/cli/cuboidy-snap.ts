@@ -10,8 +10,8 @@ import { DEFAULT_ANGLES, DEFAULTS, runSnap, type SnapOptions } from './snap-runn
 const HELP_TEXT =
   'Usage: cuboidy-snap <dir> [options]\n' +
   '\n' +
-  'Assemble a cuboidy model from <dir>/cuboidy.json + <dir>/voxels.json in\n' +
-  'rest pose, then render orthographic PNG snapshots from several angles.\n' +
+  'Assemble a cuboidy model from <dir>/cuboidy.json (plus any geometry it\n' +
+  'references) in rest pose, then render orthographic PNGs from several angles.\n' +
   'Emits a contact sheet (all angles in one labeled image) plus one PNG\n' +
   'per angle. Each image has its angle name and an XYZ axis gnomon baked\n' +
   'in so a multimodal reader can orient every view.\n' +

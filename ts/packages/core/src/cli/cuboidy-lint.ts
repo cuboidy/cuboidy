@@ -27,10 +27,10 @@ function parseArgs(argv: readonly string[]): Args | { help: true } | null {
 const HELP_TEXT =
   'Usage: cuboidy-lint <dir> [--strict]\n' +
   '\n' +
-  'Lint a cuboidy model directory. Reads <dir>/voxels.json (required)\n' +
-  'and <dir>/cuboidy.json (optional), runs structural parsers, the voxel\n' +
-  'lint rules (W01-W05, H01-H02), and cross-file validation if both\n' +
-  'files are present. Prints diagnostics in SPEC §11.7 format.\n' +
+  'Lint a cuboidy model directory. Reads <dir>/cuboidy.json (REQUIRED —\n' +
+  'SPEC §3) plus the geometry it references, or writes inline (§6.13),\n' +
+  'then runs the structural parsers, the voxel lint rules (W01-W05,\n' +
+  'H01-H02) and cross-file validation. Diagnostics in SPEC §11.7 format.\n' +
   '\n' +
   'Options:\n' +
   '  --strict      treat warnings as errors for exit code\n' +

@@ -14,8 +14,8 @@ interface Args {
 const HELP_TEXT =
   'Usage: cuboidy-view <dir> [--views=front,back,left,right,top,bottom]\n' +
   '\n' +
-  'Assemble a cuboidy model from <dir>/cuboidy.json + <dir>/voxels.json\n' +
-  'in rest pose, then render orthographic projections from one or more\n' +
+  'Assemble a cuboidy model from <dir>/cuboidy.json (plus any geometry it\n' +
+  'references) in rest pose, then render orthographic projections from\n' +
   'cardinal view directions. Each view is a grid of palette-index\n' +
   'characters (same alphabet as geometry voxel rows; `.` = empty).\n' +
   '\n' +

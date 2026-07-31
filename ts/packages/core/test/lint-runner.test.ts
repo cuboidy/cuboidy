@@ -31,6 +31,11 @@ async function makeModel(files: Record<string, string>): Promise<string> {
 const ONE_VOXEL = (name: string, colors?: string[]) =>
   geo([{ name, size: [1, 1, 1], voxels: [['0']] }], colors);
 
+// The manifest every model needs (SPEC §3), for tests whose subject is a
+// geometry-file rule rather than the manifest.
+const MANIFEST_FOR = (parts: string[]): string =>
+  JSON.stringify({ name: 'm', parts: parts.map((name) => ({ name })) });
+
 describe('runLint — corpus models lint clean', () => {
   it('a rigged model lints clean', async () => {
     const r = await runLint(resolve(REPO_ROOT, RIGGED));
@@ -172,13 +177,46 @@ describe('runLint — W06 mirror symmetry (geometric)', () => {
 });
 
 describe('runLint — IO failures', () => {
-  it('returns exit 2 when the geometry file is missing', async () => {
+  it('returns exit 2 when there is no manifest at all', async () => {
+    // SPEC §3: the manifest anchors the package. Its absence is a setup
+    // failure, not a model finding — there is no model to have findings
+    // about, and every cross-file rule would be unrunnable.
     const dir = await makeModel({}); // empty dir
     const r = await runLint(dir);
     expect(r.exitCode).toBe(2);
     expect(r.diagnostics).toHaveLength(1);
     expect(r.diagnostics[0]?.diag.severity).toBe('error');
-    expect(r.diagnostics[0]?.diag.message).toMatch(/voxels\.json/);
+    expect(r.diagnostics[0]?.diag.message).toMatch(/cuboidy\.json/);
+  });
+
+  it('a lone geometry file is NOT a model', async () => {
+    // This runner used to lint it as a "shape preview", which the spec
+    // never allowed. Inline geometry (§6.13) covers the case properly.
+    const dir = await makeModel({ 'voxels.json': ONE_VOXEL('p', ['#F00']) });
+    const r = await runLint(dir);
+    expect(r.exitCode).toBe(2);
+    expect(r.diagnostics[0]?.diag.message).toMatch(/not a model/);
+  });
+
+  it('a manifest that is PRESENT but broken is a model error, not exit 2', async () => {
+    // The distinction the two branches turn on: something is here and it
+    // is wrong, versus nothing is here.
+    const dir = await makeModel({ 'cuboidy.json': '{ broken' });
+    const r = await runLint(dir);
+    expect(r.exitCode).toBe(1);
+  });
+
+  it('a single-file model needs nothing beside its manifest', async () => {
+    const dir = await makeModel({
+      'cuboidy.json': JSON.stringify({
+        name: 'm',
+        palette: ['#F00'],
+        parts: [{ name: 'p', geometry: { size: [1, 1, 1], voxels: [['0']] } }],
+      }),
+    });
+    const r = await runLint(dir, { strict: true });
+    expect(r.diagnostics).toEqual([]);
+    expect(r.exitCode).toBe(0);
   });
 });
 
@@ -187,6 +225,7 @@ describe('runLint — parse errors propagate as exit 1', () => {
     // Written verbatim rather than through geo(), which by construction can
     // only produce valid documents.
     const dir = await makeModel({
+      'cuboidy.json': MANIFEST_FOR(['p']),
       'voxels.json': '{ "parts": [] }', // schema-invalid: needs at least one part
     });
     const r = await runLint(dir);
@@ -211,6 +250,7 @@ describe('runLint — parse errors propagate as exit 1', () => {
 describe('runLint — voxel lint diagnostics', () => {
   it('emits W01 warning for out-of-bounds pivot, exit 0 by default', async () => {
     const dir = await makeModel({
+      'cuboidy.json': MANIFEST_FOR(['p']),
       'voxels.json': geo(
         [{ name: 'p', size: [1, 1, 1], pivot: [9, 0, 0], voxels: [['0']] }],
         ['#F00'],
@@ -225,6 +265,7 @@ describe('runLint — voxel lint diagnostics', () => {
 
   it('--strict promotes warnings to exit 1', async () => {
     const dir = await makeModel({
+      'cuboidy.json': MANIFEST_FOR(['p']),
       'voxels.json': geo(
         [{ name: 'p', size: [1, 1, 1], pivot: [9, 0, 0], voxels: [['0']] }],
         ['#F00'],
@@ -237,6 +278,7 @@ describe('runLint — voxel lint diagnostics', () => {
   it('--strict does not escalate when only hints are present', async () => {
     // H01 (CamelCase name) is a hint, never an error even under --strict.
     const dir = await makeModel({
+      'cuboidy.json': MANIFEST_FOR(['Bad']),
       'voxels.json': ONE_VOXEL('Bad', ['#F00']),
     });
     const r = await runLint(dir, { strict: true });
