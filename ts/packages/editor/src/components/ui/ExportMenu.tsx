@@ -47,7 +47,11 @@ export function ExportMenu({ source }: Props) {
   const close = useCallback(() => setOpen(false), []);
 
   const handleDownloadGeometry = useCallback(() => {
-    downloadFile(source.primaryPath, (fileText(source, source.primaryPath) ?? ''));
+    // Offered only when there IS a geometry file — an all-inline model
+    // (§6.13) has nothing to download here but its manifest.
+    const primary = source.primaryPath;
+    if (primary === undefined) return;
+    downloadFile(primary, fileText(source, primary) ?? '');
     close();
   }, [source, close]);
 

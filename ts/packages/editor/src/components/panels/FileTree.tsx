@@ -1,5 +1,5 @@
 import { useMemo, type DragEvent } from 'react';
-import { manifestGeometry } from '@cuboidy/core';
+import { geometryPaths } from '@cuboidy/core';
 import { ChevronDown, ChevronRight, Plus, X } from 'lucide-react';
 import { InlineNameInput } from '../ui/InlineNameInput.js';
 import { fileIcon } from '../ui/fileIcon.js';
@@ -103,10 +103,15 @@ export function FileTree({
   // W07 — so its row is dimmed with a "not loaded" badge and a hover
   // "+" that references it.
   const loadedGeometry = useMemo(() => {
+    // §6.9 + §6.13: files the top-level list names AND files a part
+    // points at. An all-inline model names none, which is correct — it
+    // has no geometry file to badge.
     const refs =
       source.manifest !== undefined
-        ? manifestGeometry(source.manifest)
-        : [source.primaryPath];
+        ? geometryPaths(source.manifest)
+        : source.primaryPath !== undefined
+          ? [source.primaryPath]
+          : [];
     return new Set(refs.map(normalizePath));
   }, [source]);
 
@@ -541,7 +546,7 @@ export function FileTree({
             )}
           </li>
         </ul>
-      ) : (
+      ) : primary === undefined ? null : (
         <ul className="tree-list">
           <li className="tree-node">
             <div

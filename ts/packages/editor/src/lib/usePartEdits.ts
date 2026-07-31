@@ -13,12 +13,14 @@ import {
 } from '@cuboidy/core';
 import { normalizePath } from './load-model.js';
 import {
+  isInlinePart,
   mapGeometryFiles,
   mergeGeometries,
   primaryGeometry,
   remapPartPalette,
   rewriteExternalAnims,
   uniquePartName,
+  withInlinePart,
   withManifest,
 } from './source-ops.js';
 import type { LoadResult } from './types.js';
@@ -161,6 +163,17 @@ export function usePartEdits({
       dispatchEdit(tag, (current) => {
         const src = current?.source;
         if (src === undefined) return current;
+        // SPEC §6.13: the shape may be in a geometry file or in the
+        // manifest. This is the one place per-part geometry edits pass
+        // through — the inspector, the pivot gizmo and the voxel tools all
+        // funnel here — so routing it once is what keeps every one of them
+        // working on an inline part without knowing that it is one.
+        if (isInlinePart(src, partName)) {
+          const nextSrc = withInlinePart(src, partName, (part) =>
+            part === undefined ? part! : build(part),
+          );
+          return nextSrc === src ? current : { ...current, source: nextSrc };
+        }
         const nextSrc = mapGeometryFiles(src, (geometry) => {
           const i = geometry.parts.findIndex((p) => p.name === partName);
           if (i < 0) return null;
@@ -361,15 +374,22 @@ export function usePartEdits({
         // Target geometry file: the draft row's picker choice, as long
         // as it's still a loaded geometry file; else the primary.
         const target =
-          file !== undefined &&
-          src.geometries.has(file) === true
+          file !== undefined && src.geometries.has(file) === true
             ? file
             : src.primaryPath;
         const targetGeometry =
-          target !== src.primaryPath
-            ? (src.geometries.get(target) ?? primaryGeometry(src))
-            : primaryGeometry(src);
-        const seed = targetGeometry.palette.length > 0 ? 0 : AIR;
+          target === undefined
+            ? undefined
+            : target !== src.primaryPath
+              ? (src.geometries.get(target) ?? primaryGeometry(src))
+              : primaryGeometry(src);
+        // A model with no geometry file (§6.13, all inline) has no palette
+        // in a file either — the manifest's is what its parts resolve
+        // against.
+        const paletteSize =
+          targetGeometry?.palette.length ??
+          (Array.isArray(src.manifest?.palette) ? src.manifest.palette.length : 0);
+        const seed = paletteSize > 0 ? 0 : AIR;
         const newPart: Part = {
           name,
           size: { w: 1, h: 1, d: 1 },
@@ -377,6 +397,20 @@ export function usePartEdits({
           sockets: [],
           voxels: [[[seed]]],
         };
+        // With no geometry file to put it in, the new part is written
+        // inline — which keeps a single-file model a single file instead
+        // of silently growing a voxels.json beside it.
+        if (target === undefined) {
+          if (src.manifest === undefined) return current;
+          let nextSrc = withInlinePart(src, name, () => newPart);
+          if (parent !== null && nextSrc.manifest !== undefined) {
+            const parts = nextSrc.manifest.parts.map((p) =>
+              p.name === name ? { ...p, parent } : p,
+            );
+            nextSrc = withManifest(nextSrc, { ...nextSrc.manifest, parts });
+          }
+          return { ...current, source: nextSrc };
+        }
         const nextSrc = mapGeometryFiles(src, (geometry, path) =>
           path === target
             ? { ...geometry, parts: [...geometry.parts, newPart] }

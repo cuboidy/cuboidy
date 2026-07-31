@@ -3,6 +3,8 @@ import type {
   InlineAnimation,
   KeyAttr,
   Manifest,
+  Palette,
+  Part,
 } from '@cuboidy/core';
 
 // What the editor currently has loaded.
@@ -49,9 +51,27 @@ export interface LoadedSource {
   // cannot silently drop them (SPEC §13.3). Nothing reads them; Export
   // writes them back unchanged.
   assets?: ReadonlyMap<string, Uint8Array>;
-  // Which entry is the model's primary geometry — the file the geometry
-  // panel edits, and the one the loader falls back to without a manifest.
-  primaryPath: string;
+  // Which entry is the model's primary geometry FILE — the one the
+  // geometry panel edits. ABSENT when the model has no geometry file at
+  // all: since SPEC §6.13 a part may carry its shape in the manifest, so
+  // an all-inline model is one `cuboidy.json` and there is no such file.
+  //
+  // Deliberately not faked with a synthetic `cuboidy.json` entry in
+  // `geometries`. That map is file-backed one-to-one with `files`, and
+  // writeFile keeps the two in step; a synthetic key would make
+  // `geometries[p]` and `files[p]` mean different documents at exactly
+  // one path, which is the drift this shape exists to prevent.
+  primaryPath?: string;
+  // SPEC §6.13: parts whose shape is written INLINE in the manifest,
+  // keyed by part name. Their text is the manifest's, so they are not in
+  // `geometries` — but every reader that asks "what parts does this model
+  // have?" must see them, which is what mergeGeometries() is for.
+  //
+  // Carries the resolved `palette` alongside the shape because an inline
+  // part has no file to read colors from: they come from its own
+  // `palette`, else the manifest's (§6.13), and resolving that twice in
+  // two places is how the render and the editor would come to disagree.
+  inlineParts?: ReadonlyMap<string, { part: Part; palette: Palette }>;
   // Which entry is cuboidy.json. Absent for a package that has no manifest
   // (a folder holding only voxels.json, or a bare geometry file).
   manifestPath?: string;

@@ -165,9 +165,9 @@ describe('mapGeometryFiles', () => {
       path === 'body.json' ? { ...g, parts: [] } : null,
     );
     expect(next.geometries.get('body.json')?.parts).toEqual([]);
-    expect(primaryGeometry(next).parts).toEqual([]); // the live primary
+    expect(primaryGeometry(next)?.parts).toEqual([]); // the live primary
     expect(next.files.get('body.json')).not.toContain('"body"');
-    expect(next.files.get(next.primaryPath)).toBe(next.files.get('body.json'));
+    expect(next.files.get(next.primaryPath!)).toBe(next.files.get('body.json'));
     // Untouched files keep their identity.
     expect(next.geometries.get('limbs.json')).toBe(s.geometries.get('limbs.json'));
   });

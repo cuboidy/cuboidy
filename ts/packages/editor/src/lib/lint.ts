@@ -1,9 +1,12 @@
 import {
   lintGeometry,
   parseGeometry,
+  parsePaletteFile,
+  resolvePartGeometry,
   validateProject,
   type Diagnostic,
 } from '@cuboidy/core';
+import { normalizePath } from './load-model.js';
 import type { LoadedSource } from './types.js';
 
 // Core's lint, run against whatever is on screen right now.
@@ -49,12 +52,30 @@ export function lintSource(src: LoadedSource): FileDiagnostic[] {
     ]),
   );
 
+  // SPEC §6.13: bind parts to shapes the way core does, so the rules that
+  // read a part's geometry — W06, published sockets, palette availability
+  // — see parts written inline in the manifest. Without this they would
+  // quietly skip them, and the editor would call a broken model clean.
+  const geometries = [...src.geometries].map(([path, geometry]) => ({
+    path,
+    geometry,
+  }));
+  const bound = resolvePartGeometry(src.manifest, geometries, (ref) => {
+    const text = src.files.get(normalizePath(ref));
+    if (text === undefined) return null;
+    try {
+      const r = parsePaletteFile(JSON.parse(text));
+      return r.ok ? r.value : null;
+    } catch {
+      return null;
+    }
+  });
+
   for (const diag of validateProject({
     manifest: src.manifest,
-    geometries: [...src.geometries].map(([path, geometry]) => ({
-      path,
-      geometry,
-    })),
+    geometries,
+    parts: bound.parts,
+    unresolved: bound.unresolved,
     externalAnims,
     packageCvoxPaths: geometryFilePaths(src),
   })) {

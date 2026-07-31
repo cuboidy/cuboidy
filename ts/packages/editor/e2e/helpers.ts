@@ -13,6 +13,11 @@ const REPO_ROOT = resolve(
 // — replacing an example broke rendering tests that had nothing to do with it.
 export const MULTIFILE = resolve(REPO_ROOT, 'ts/testdata/multifile');
 
+// SPEC §6.13: one cuboidy.json, every part's geometry inline, no sibling
+// files at all. The editor's document model is path-keyed, so this is the
+// case that has nothing for those keys to point at.
+export const INLINE = resolve(REPO_ROOT, 'ts/testdata/inline');
+
 // Open the editor and load a model folder through the legacy
 // <input webkitdirectory> path. Chromium normally exposes the FSA
 // showDirectoryPicker (which Playwright can't drive), so the init

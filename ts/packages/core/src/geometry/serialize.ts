@@ -30,6 +30,18 @@ export function toGeometryDoc(geometry: Geometry): GeometryDoc {
   return doc;
 }
 
+// SPEC §6.13: a part's shape as the manifest writes it INLINE — the §7.5
+// object with `name` dropped, since the enclosing manifest part carries it.
+// The same converter a geometry file's part goes through, so a part means
+// the same bytes wherever it is written and moving one between the two is
+// lossless.
+export function toInlineGeometry(
+  part: Part,
+): Omit<GeometryDoc['parts'][number], 'name'> {
+  const { name: _drop, ...rest } = toPart(part);
+  return rest;
+}
+
 function toPart(part: Part): GeometryDoc['parts'][number] {
   const out: GeometryDoc['parts'][number] = {
     name: part.name,

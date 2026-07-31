@@ -1,13 +1,16 @@
 import {
   InlineAnimationSchema,
+  geometryPaths,
   manifestGeometry,
   parseGeometryText,
   parseManifest,
   parsePaletteFile,
+  resolvePartGeometry,
   type Geometry,
   type InlineAnimation,
   type Manifest,
   type Palette,
+  type Part,
 } from '@cuboidy/core';
 import { strFromU8, unzipSync } from 'fflate';
 import type { LoadResult, LoadedSource } from './types.js';
@@ -233,28 +236,44 @@ function buildFolderResult(
     }
   }
 
+  // SPEC §6.9 + §6.13: which geometry FILES this model has, if any. An
+  // all-inline manifest has none — and `geometryPaths` is what stops the
+  // ["voxels.json"] default being demanded from one.
   const geometryRefs = (
-    manifest !== undefined ? manifestGeometry(manifest) : [GEOMETRY_FILE]
+    manifest !== undefined ? geometryPaths(manifest) : [GEOMETRY_FILE]
   ).map(normalizePath);
-  const primary = geometryRefs[0]!;
-  const primaryText = fileTexts.get(primary);
-  if (primaryText === undefined) {
-    return { error: `No ${primary} in folder '${folderName}'` };
+  const primary: string | undefined = geometryRefs[0];
+
+  // The primary is loaded eagerly (a parse failure here fails the whole
+  // load) because it is the file the geometry panel edits and its AST must
+  // exist for the panel to open. With no geometry file there is nothing to
+  // do here: every part's shape is in the manifest.
+  let primaryGeom: Geometry | undefined;
+  if (primary !== undefined) {
+    const primaryText = fileTexts.get(primary);
+    if (primaryText === undefined) {
+      return { error: `No ${primary} in folder '${folderName}'` };
+    }
+    const geometryR = parseGeometryText(primaryText);
+    if (!geometryR.ok) {
+      return { error: geometryR.message, geometryFileName: primary };
+    }
+    primaryGeom = geometryR.value;
   }
 
-  const geometryR = parseGeometryText(primaryText);
-  if (!geometryR.ok) {
-    return { error: geometryR.message, geometryFileName: primary };
-  }
-
-  const refs = resolveProjectRefs(manifest, (p) => fileTexts.get(p), {
-    path: primary,
-    geometry: geometryR.value,
-  });
-  const { geometries, externalAnims, projectErrors } = refs;
+  const refs = resolveProjectRefs(
+    manifest,
+    (p) => fileTexts.get(p),
+    primary !== undefined && primaryGeom !== undefined
+      ? { path: primary, geometry: primaryGeom }
+      : undefined,
+  );
+  const { geometries, inlineParts, externalAnims, projectErrors } = refs;
   // The primary always resolves (its text parsed above), so the AST store
   // is complete for it even if a sibling ref failed.
-  if (!geometries.has(primary)) geometries.set(primary, geometryR.value);
+  if (primary !== undefined && primaryGeom !== undefined && !geometries.has(primary)) {
+    geometries.set(primary, primaryGeom);
+  }
 
   const source: LoadedSource = {
     folderName,
@@ -262,7 +281,8 @@ function buildFolderResult(
     ...(opts.handle !== undefined && { handle: opts.handle }),
     files: new Map(fileTexts),
     ...(opts.assets !== undefined && { assets: opts.assets }),
-    primaryPath: primary,
+    ...(primary !== undefined && { primaryPath: primary }),
+    ...(inlineParts.size > 0 && { inlineParts }),
     ...(manifestText !== undefined && { manifestPath: MANIFEST_FILE }),
     ...(manifest !== undefined && { manifest }),
     ...(manifestError !== undefined && { manifestError }),
@@ -270,7 +290,7 @@ function buildFolderResult(
     ...(externalAnims !== undefined && { externalAnims }),
     ...(projectErrors.length > 0 && { projectErrors }),
   };
-  return { source, geometryFileName: primary };
+  return { source, ...(primary !== undefined && { geometryFileName: primary }) };
 }
 
 // ── reference resolution ─────────────────────────────────────────────
@@ -281,6 +301,9 @@ export interface ResolvedProjectRefs {
   // §7.4 palette REFERENCE has had it resolved: `palette` holds the colors
   // and `paletteRef` records where they came from.
   geometries: Map<string, Geometry>;
+  // SPEC §6.13 parts written into the manifest, with their palette already
+  // resolved by the same core routine the CLIs use.
+  inlineParts: Map<string, { part: Part; palette: Palette }>;
   externalAnims?: Map<string, { path: string; anim: InlineAnimation }>;
   projectErrors: Array<{ file: string; message: string }>;
 }
@@ -314,16 +337,26 @@ export function withResolvedPalette(
 export function resolveProjectRefs(
   manifest: Manifest | undefined,
   getText: (path: string) => string | undefined,
-  primary: { path: string; geometry: Geometry },
+  // ABSENT for an all-inline model (§6.13): there is no geometry file, so
+  // there is no primary one to hold live-edited text for.
+  primary?: { path: string; geometry: Geometry },
 ): ResolvedProjectRefs {
   const projectErrors: Array<{ file: string; message: string }> = [];
   const geometries = new Map<string, Geometry>();
 
+  // §6.9 + §6.13 via core, so the editor reads the same set of files the
+  // CLIs do — including files reached only by a part-level `geometry.path`,
+  // and NOT the ["voxels.json"] default when no part needs the by-name
+  // lookup (which is what makes a one-file model loadable at all).
   const geometryRefs = (
-    manifest !== undefined ? manifestGeometry(manifest) : [primary.path]
+    manifest !== undefined
+      ? geometryPaths(manifest)
+      : primary !== undefined
+        ? [primary.path]
+        : []
   ).map(normalizePath);
   for (const ref of geometryRefs) {
-    if (ref === primary.path) {
+    if (primary !== undefined && ref === primary.path) {
       geometries.set(ref, primary.geometry);
       continue;
     }
@@ -354,6 +387,23 @@ export function resolveProjectRefs(
       paletteCache.set(ref, palette);
     }
     if (palette !== null) geometries.set(path, { ...geometry, palette });
+  }
+
+  // §6.13 part binding, through core's resolver rather than a second
+  // implementation here — the editor and the CLIs must agree about which
+  // shape a part has and what colors it means. Only the inline results are
+  // kept: a file-backed part is already reachable through `geometries`,
+  // and storing it twice is the shadowing this shape exists to avoid.
+  const inlineParts = new Map<string, { part: Part; palette: Palette }>();
+  if (manifest !== undefined) {
+    const bound = resolvePartGeometry(
+      manifest,
+      [...geometries].map(([path, geometry]) => ({ path, geometry })),
+      (ref) => readPaletteRef(normalizePath(ref), getText, projectErrors),
+    );
+    for (const [name, r] of bound.parts) {
+      if (r.file === null) inlineParts.set(name, { part: r.part, palette: r.palette });
+    }
   }
 
   // External animations (§6.3 string refs): each references a JSON file
@@ -396,6 +446,7 @@ export function resolveProjectRefs(
 
   return {
     geometries,
+    inlineParts,
     ...(externalAnims.size > 0 && { externalAnims }),
     projectErrors,
   };
@@ -443,13 +494,16 @@ function readPaletteRef(
 // is the primary geometry file, which stands in for an absent manifest).
 export function isGeometryPath(
   path: string,
-  primaryName: string,
+  // Absent when the model has no geometry file at all (§6.13 all-inline).
+  primaryName: string | undefined,
   manifest: Manifest | undefined,
 ): boolean {
   const norm = normalizePath(path);
-  if (norm === normalizePath(primaryName)) return true;
+  if (primaryName !== undefined && norm === normalizePath(primaryName)) return true;
   if (manifest === undefined) return false;
-  return manifestGeometry(manifest).some((ref) => normalizePath(ref) === norm);
+  // §6.13: a file may be referenced only by a part's `geometry.path`, so
+  // the top-level list alone no longer answers this.
+  return geometryPaths(manifest).some((ref) => normalizePath(ref) === norm);
 }
 
 export function normalizePath(path: string): string {

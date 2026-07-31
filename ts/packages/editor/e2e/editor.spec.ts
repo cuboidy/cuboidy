@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { MULTIFILE, loadFolder, openTab, tab } from './helpers.js';
+import { INLINE, MULTIFILE, loadFolder, openTab, tab } from './helpers.js';
 
 // Editor E2E regression suite (audit D-1). Covers the workflows the
 // 2026-07-10 audit flagged as untested and the A-6 text/AST races. Those
@@ -281,6 +281,43 @@ test('publishing a socket keeps the manifest in step with the geometry', async (
   await page.getByRole('button', { name: 'Remove socket' }).click();
   await openTab(page, 'cuboidy.json');
   await expect(manifestText).not.toHaveValue(/"sockets"/);
+  await openTab(page, 'Console');
+  await expect(page.locator('.console-entry.error')).toHaveCount(0);
+});
+
+// SPEC §6.13 / §3 — a model whose every part's geometry lives in the
+// manifest. The editor's whole document model is keyed by file path, so
+// the thing under test is that a part with NO file still loads, renders,
+// lints and edits.
+test('a single-file model loads, renders and edits', async ({ page }) => {
+  await loadFolder(page, INLINE);
+
+  // Both inline parts are in the tree.
+  await openTab(page, 'Parts');
+  for (const part of ['body', 'head']) {
+    await expect(
+      page.locator('.tree-name', { hasText: new RegExp(`^${part}$`) }),
+    ).toBeVisible();
+  }
+
+  // No geometry file exists, so the Files tree shows only cuboidy.json.
+  await openTab(page, 'Files');
+  await expect(page.locator('.tree-name', { hasText: /^voxels\.json$/ })).toHaveCount(0);
+
+  // Nothing wrong with it — in particular no "cannot read voxels.json",
+  // which the ["voxels.json"] default would have produced.
+  await openTab(page, 'Console');
+  await expect(page.locator('.console-entry.error')).toHaveCount(0);
+
+  // Editing an inline part's geometry rewrites the MANIFEST.
+  await openTab(page, 'Parts');
+  await page.locator('.tree-name', { hasText: /^head$/ }).click();
+  await openTab(page, 'Properties');
+  const sizeW = page.getByLabel('w', { exact: true });
+  await sizeW.fill('5');
+  await sizeW.blur();
+  await openTab(page, 'cuboidy.json');
+  await expect(page.locator('.source-textarea').first()).toHaveValue(/"size": \[\s*5/);
   await openTab(page, 'Console');
   await expect(page.locator('.console-entry.error')).toHaveCount(0);
 });

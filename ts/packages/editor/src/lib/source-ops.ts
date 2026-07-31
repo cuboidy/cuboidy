@@ -6,9 +6,11 @@ import {
   parsePaletteFile,
   serializeColor,
   serializeGeometry,
+  toInlineGeometry,
   type Geometry,
   type InlineAnimation,
   type Manifest,
+  type ManifestPart,
   type Palette,
   type Part,
 } from '@cuboidy/core';
@@ -36,6 +38,13 @@ import type { LoadedSource } from './types.js';
 // part's defining file — edit routing and the part tree's file badges.
 export function mergeGeometries(src: LoadedSource): {
   parts: Part[];
+  // Part name → the geometry file that defines it. A part written INLINE
+  // in the manifest (SPEC §6.13) is deliberately ABSENT from this map
+  // rather than mapped to `cuboidy.json`: callers use it to answer "which
+  // geometry file do I rewrite?", and for an inline part the answer is
+  // "none — rewrite the manifest". A sentinel would let that difference
+  // pass unnoticed into code that then writes a geometry document over
+  // the manifest.
   files: ReadonlyMap<string, string>;
 } {
   const files = new Map<string, string>();
@@ -47,7 +56,67 @@ export function mergeGeometries(src: LoadedSource): {
       parts.push(part);
     }
   }
+  // Inline parts last so a file's definition wins a name collision, the
+  // same first-wins rule the loop above uses between files.
+  for (const [name, entry] of src.inlineParts ?? []) {
+    if (files.has(name)) continue;
+    parts.push(entry.part);
+  }
   return { parts, files };
+}
+
+// Is this part's shape written in the manifest (SPEC §6.13) rather than
+// in a geometry file? The question every per-part geometry edit has to
+// ask before it knows which document to rewrite.
+export function isInlinePart(src: LoadedSource, name: string): boolean {
+  return src.inlineParts?.has(name) === true;
+}
+
+// Write a part's shape into the manifest as inline geometry (SPEC §6.13),
+// creating the manifest part if it is not there yet. The geometry-file
+// twin of this is mapGeometryFiles; both end at withManifest / writeFile,
+// so either way the text and the AST move together.
+//
+// `build` receives the part's CURRENT shape (undefined when it has none
+// yet) and returns the new one. Returning the same object is a no-op.
+export function withInlinePart(
+  src: LoadedSource,
+  name: string,
+  build: (current: Part | undefined) => Part,
+): LoadedSource {
+  if (src.manifest === undefined) return src;
+  const current = src.inlineParts?.get(name)?.part;
+  const next = build(current);
+  if (next === current) return src;
+  const parts = src.manifest.parts.slice();
+  const i = parts.findIndex((p) => p.name === name);
+  // `toInlineGeometry` is the SAME converter a geometry file's part goes
+  // through, so a shape means identical bytes wherever it is written —
+  // which is what makes moving a part between the two forms lossless.
+  const geometry = {
+    ...toInlineGeometry(next),
+    // A palette the part declared for itself is its own (§6.13) and is not
+    // part of the shape, so it survives a shape edit untouched.
+    ...(currentInlinePalette(src, name) !== undefined && {
+      palette: currentInlinePalette(src, name),
+    }),
+  };
+  const entry: ManifestPart = { ...(i >= 0 ? parts[i]! : { name }), geometry };
+  if (i >= 0) parts[i] = entry;
+  else parts.push(entry);
+  return withManifest(src, { ...src.manifest, parts });
+}
+
+// The `palette` an inline part declared for ITSELF, read back off the
+// manifest rather than off the resolved value — the resolved one may have
+// come from the manifest default, and writing that back would pin a part
+// to colors it was only borrowing.
+function currentInlinePalette(
+  src: LoadedSource,
+  name: string,
+): NonNullable<Manifest['parts'][number]['geometry']>['palette'] {
+  const g = src.manifest?.parts.find((p) => p.name === name)?.geometry;
+  return g?.palette;
 }
 
 // Rewrite a part's voxel indices from one inline palette to another,
@@ -144,11 +213,30 @@ export function rewriteExternalAnims(
 // these are lookups rather than the "which copy is newer" adjudication the
 // primary/manifest side-slots used to require.
 
-// The primary geometry's AST. Defined by construction: the loader refuses a
-// package whose primary does not parse, and a live edit only amends the AST
-// once the new text parses, so the last good one stands in meanwhile.
-export function primaryGeometry(src: LoadedSource): Geometry {
-  return src.geometries.get(src.primaryPath)!;
+// The primary geometry file's AST, or UNDEFINED when the model has no
+// geometry file — every part's shape written inline in the manifest
+// (SPEC §6.13). When there is one it is defined by construction: the
+// loader refuses a package whose primary does not parse, and a live edit
+// only amends the AST once the new text parses, so the last good one
+// stands in meanwhile.
+export function primaryGeometry(src: LoadedSource): Geometry | undefined {
+  return src.primaryPath === undefined
+    ? undefined
+    : src.geometries.get(src.primaryPath);
+}
+
+// The model's fallback palette — the primary geometry FILE's colors, or,
+// when there is no such file (SPEC §6.13, all inline), whatever the
+// manifest resolved for its inline parts. Only a fallback: parts that
+// disagree are covered per part by App's `partPalettes`, which is exactly
+// why this can be a single reasonable guess rather than a merge.
+export function modelPalette(src: LoadedSource): Palette {
+  const primary = primaryGeometry(src);
+  if (primary !== undefined) return primary.palette;
+  for (const entry of src.inlineParts?.values() ?? []) {
+    if (entry.palette.length > 0) return entry.palette;
+  }
+  return [];
 }
 
 export function fileText(src: LoadedSource, path: string): string | undefined {
@@ -576,10 +664,14 @@ export function withResolvedRefs(
   src: LoadedSource,
   manifest: Manifest,
 ): LoadedSource {
-  const refs = resolveProjectRefs(manifest, (p) => src.files.get(p), {
-    path: src.primaryPath,
-    geometry: primaryGeometry(src),
-  });
+  const primary = primaryGeometry(src);
+  const refs = resolveProjectRefs(
+    manifest,
+    (p) => src.files.get(p),
+    src.primaryPath !== undefined && primary !== undefined
+      ? { path: src.primaryPath, geometry: primary }
+      : undefined,
+  );
   const {
     manifestError: _err,
     externalAnims: _anims,
@@ -590,6 +682,10 @@ export function withResolvedRefs(
     ...rest,
     manifest,
     geometries: refs.geometries,
+    // Rebuilt, not merged: the manifest IS where inline geometry lives, so
+    // a manifest change can add, alter or remove an inline part, and
+    // keeping a stale entry would leave a deleted part on screen.
+    inlineParts: refs.inlineParts,
     ...(refs.externalAnims !== undefined && { externalAnims: refs.externalAnims }),
     ...(refs.projectErrors.length > 0 && { projectErrors: refs.projectErrors }),
   };

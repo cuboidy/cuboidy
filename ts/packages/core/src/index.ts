@@ -54,6 +54,7 @@ export {
   formatGeometryDoc,
   serializeGeometry,
   toGeometryDoc,
+  toInlineGeometry,
   SPEC_VERSION,
 } from './geometry/serialize.js';
 export { GeometrySchema, GeometryPartSchema } from './geometry/schema.js';

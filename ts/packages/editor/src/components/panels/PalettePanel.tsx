@@ -6,7 +6,9 @@ import { Plus, X } from 'lucide-react';
 // declared in a shared palette file rather than in the geometry file itself,
 // which is the only difference the panel surfaces.
 export interface PaletteTarget {
-  file: string;
+  // The geometry file these colors belong to. ABSENT means the MANIFEST's
+  // model-level palette (SPEC §6.13) — what parts written inline draw on.
+  file?: string;
   ref?: string;
 }
 
@@ -62,6 +64,10 @@ export function PalettePanel({
   onInline,
 }: Props) {
   const usage = computePaletteUsage(palette, parts);
+  // The document these colors are written in, for the panel's labels: a
+  // geometry file, or the manifest when the target is the model-level
+  // palette inline parts draw on (SPEC §6.13).
+  const owner = target.file ?? 'cuboidy.json';
 
   const handleEditColor = (index: number, hex: string) => {
     if (disabled) return;
@@ -85,11 +91,11 @@ export function PalettePanel({
           className="palette-target"
           title={
             target.ref !== undefined
-              ? `${target.file} uses the shared palette ${target.ref} — editing here writes that file, so every geometry pointing at it changes`
-              : `Editing the palette declared inside ${target.file}`
+              ? `${owner} uses the shared palette ${target.ref} — editing here writes that file, so every geometry pointing at it changes`
+              : `Editing the palette declared inside ${owner}`
           }
         >
-          {target.ref ?? `${target.file} (inline)`}
+          {target.ref ?? `${owner} (inline)`}
         </span>
         <span className="palette-count">
           {palette.length} / {MAX_PALETTE}
@@ -141,7 +147,7 @@ export function PalettePanel({
         <button
           type="button"
           className="btn btn-sm palette-storage-action"
-          title={`Write these colors into ${target.file} and drop the reference (${target.ref} is kept)`}
+          title={`Write these colors into ${owner} and drop the reference (${target.ref} is kept)`}
           onClick={onInline}
         >
           Inline palette

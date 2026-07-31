@@ -82,7 +82,7 @@ export function useFileTreeState(source: LoadedSource) {
   // keeps the tree correct for a lone-file load too.
   const allPaths = useMemo(() => {
     const paths = new Set<string>(source.files.keys());
-    paths.add(source.primaryPath);
+    if (source.primaryPath !== undefined) paths.add(source.primaryPath);
     if (source.manifestPath !== undefined) paths.add(source.manifestPath);
     return paths;
   }, [source]);

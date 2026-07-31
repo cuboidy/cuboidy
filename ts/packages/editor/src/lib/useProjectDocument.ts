@@ -63,8 +63,10 @@ export function useProjectDocument() {
 
   // Named views onto the same map, for the panels that speak in terms of
   // "the geometry source" and "the manifest source".
+  // No primary path means no geometry FILE (§6.13 all-inline), so there
+  // is no geometry source that can be mid-edit unparseable.
   const geometryParseError =
-    loaded?.source === undefined
+    loaded?.source?.primaryPath === undefined
       ? null
       : (fileParseErrors.get(loaded.source.primaryPath) ?? null);
   const manifestParseError =

@@ -59,6 +59,7 @@ import {
   geometryAt,
   manifestText,
   mergeGeometries,
+  modelPalette,
   pathBasename,
   primaryGeometry,
   sharesPalette,
@@ -82,7 +83,10 @@ import type {
 // colors, and — when those colors live in a shared palette file — the path
 // they came from.
 interface PaletteTargetInfo {
-  file: string;
+  // The geometry file whose palette this is. ABSENT means the MANIFEST's
+  // model-level palette (SPEC §6.13) — what a part written inline draws
+  // on, and the only palette an all-inline model has.
+  file?: string;
   palette: Palette;
   // The parts whose voxels resolve against this palette, for usage counts.
   scopeParts: readonly Part[];
@@ -236,7 +240,12 @@ export function App() {
     dispatchEdit(null, (current) => {
       if (current?.source === undefined) return current;
       const src = current.source;
-      const manifest = synthesizeManifest(primaryGeometry(src), src.primaryPath);
+      // Only reachable from a bare-geometry load, which by construction
+      // has a primary file — but the type no longer says so, and a guard
+      // is cheaper than an assertion that could rot.
+      const primary = primaryGeometry(src);
+      if (primary === undefined || src.primaryPath === undefined) return current;
+      const manifest = synthesizeManifest(primary, src.primaryPath);
       // A successful synthesis clears any stale load-time manifest error.
       const { manifestError: _dropped, ...rest } = src;
       const next = withManifest(
@@ -401,23 +410,36 @@ export function App() {
   }, [source]);
   const modelGeometry = useMemo((): Geometry | undefined => {
     if (source === undefined || merged === undefined) return undefined;
-    return { palette: primaryGeometry(source).palette, parts: merged.parts };
+    return { palette: modelPalette(source), parts: merged.parts };
   }, [source, merged]);
-  // Per-part render palettes (SPEC §7.4): every part resolves against its
-  // own defining file's palette. Only needed for multi-file models — with
-  // one file, modelGeometry's palette already covers everything. Files
-  // sharing a palette file resolve to equal colors, so this is a no-op for
-  // them in practice; it exists for files that keep their own.
+  // What the panels render: the WHOLE model — every geometry file's parts
+  // plus every part written inline (SPEC §6.13). This used to fall back to
+  // the primary geometry file, which an all-inline model does not have.
+  const viewGeometry: Geometry = modelGeometry ?? { palette: [], parts: [] };
+  // Per-part render palettes (SPEC §7.4 / §6.13): every part resolves
+  // against its own source's colors — its defining file's, or, for a part
+  // written inline in the manifest, whatever §6.13 resolved for it.
+  //
+  // Skipped when the parts CANNOT disagree: one geometry file and nothing
+  // inline, where modelGeometry's palette already covers everything. Any
+  // inline part makes the map necessary even in a one-file model, because
+  // it takes its colors from the manifest rather than from that file.
   const partPalettes = useMemo(() => {
-    if (source?.geometries === undefined || source.geometries.size <= 1) {
+    if (source === undefined) return undefined;
+    const inline = source.inlineParts;
+    if (source.geometries.size <= 1 && (inline?.size ?? 0) === 0) {
       return undefined;
     }
     const m = new Map<string, Palette>();
     for (const [path, g] of source.geometries) {
-      const geometry = path === source.primaryPath ? primaryGeometry(source) : g;
+      const geometry =
+        path === source.primaryPath ? (primaryGeometry(source) ?? g) : g;
       for (const part of geometry.parts) {
         if (!m.has(part.name)) m.set(part.name, geometry.palette);
       }
+    }
+    for (const [name, entry] of inline ?? []) {
+      if (!m.has(name)) m.set(name, entry.palette);
     }
     return m;
   }, [source]);
@@ -432,7 +454,26 @@ export function App() {
       (effectiveSelectedPart !== null
         ? partFiles?.get(effectiveSelectedPart)
         : undefined) ?? source.primaryPath;
-    const geometry = geometryAt(source, file) ?? primaryGeometry(source);
+    // SPEC §6.13: a part written inline has no defining file, so its
+    // colors are the MANIFEST's — `file: undefined` is that target, and
+    // the palette panel edits `cuboidy.json` instead of a geometry file.
+    // (`partFiles` deliberately omits inline parts for this reason.)
+    const geometry = file === undefined ? undefined : geometryAt(source, file);
+    if (geometry === undefined) {
+      const modelRef =
+        typeof source.manifest?.palette === 'string'
+          ? normalizePath(source.manifest.palette)
+          : undefined;
+      const palette = modelPalette(source);
+      return {
+        palette,
+        // Every inline part that did not declare colors of its own draws
+        // on this one, so those are its usage scope.
+        scopeParts: [...(source.inlineParts?.values() ?? [])].map((e) => e.part),
+        unresolved: modelRef !== undefined && palette.length === 0,
+        ...(modelRef !== undefined && { ref: modelRef }),
+      };
+    }
     const ref =
       geometry.paletteRef === undefined
         ? undefined
@@ -447,7 +488,7 @@ export function App() {
             return g !== undefined && sharesPalette(g, ref);
           });
     return {
-      file,
+      ...(file !== undefined && { file }),
       palette: geometry.palette,
       scopeParts,
       // A reference that did not resolve shows an empty palette plus a
@@ -648,7 +689,9 @@ export function App() {
     ) {
       m.set(source.manifestPath, mErr);
     }
-    if (geometryParseError !== null) m.set(source.primaryPath, geometryParseError);
+    if (geometryParseError !== null && source.primaryPath !== undefined) {
+      m.set(source.primaryPath, geometryParseError);
+    }
     return m;
   }, [source, fileParseErrors, geometryParseError, manifestParseError]);
 
@@ -718,13 +761,13 @@ export function App() {
         const stripPalette =
           (effectiveSelectedPart !== null
             ? partPalettes?.get(effectiveSelectedPart)
-            : undefined) ?? (modelGeometry ?? primaryGeometry(source)).palette;
+            : undefined) ?? viewGeometry.palette;
         return {
           title,
           fill: true,
           body: (
             <PreviewPanel
-              geometry={modelGeometry ?? primaryGeometry(source)}
+              geometry={viewGeometry}
               manifest={source.manifest}
               animManifest={animManifest}
               partPalettes={partPalettes}
@@ -793,18 +836,28 @@ export function App() {
             />
           ),
         };
-      case 'geometry':
+      case 'geometry': {
+        // An all-inline model (§6.13) has no geometry FILE to open here;
+        // its shapes are in cuboidy.json, which the manifest tab shows.
+        const primary = source.primaryPath;
         return {
           title,
           fill: true,
-          body: (
-            <SourceEditor
-              text={(fileText(source, source.primaryPath) ?? '')}
-              {...(geometryParseError !== null && { parseError: geometryParseError })}
-              onChange={(t) => handleEditFileText(source.primaryPath, t)}
-            />
-          ),
+          body:
+            primary === undefined ? (
+              <p className="panel-empty">
+                This model keeps every part&apos;s geometry in the manifest —
+                open cuboidy.json to edit it as text.
+              </p>
+            ) : (
+              <SourceEditor
+                text={fileText(source, primary) ?? ''}
+                {...(geometryParseError !== null && { parseError: geometryParseError })}
+                onChange={(t) => handleEditFileText(primary, t)}
+              />
+            ),
         };
+      }
       case 'manifest':
         return {
           title,
@@ -870,7 +923,7 @@ export function App() {
           fill: true,
           body: (
             <PartsPanel
-              parts={merged?.parts ?? primaryGeometry(source).parts}
+              parts={merged?.parts ?? viewGeometry.parts}
               partFiles={geometryPaths !== undefined ? partFiles : undefined}
               geometryFiles={geometryPaths}
               manifest={manifest}
@@ -900,7 +953,7 @@ export function App() {
             effectiveSelectedPart !== null ? (
               <PartProperties
                 selectedPart={effectiveSelectedPart}
-                geometry={modelGeometry ?? primaryGeometry(source)}
+                geometry={viewGeometry}
                 manifest={manifest}
                 manifestEditsDisabled={manifestParseError !== null}
                 renameDisabled={editsBlocked}
@@ -930,10 +983,12 @@ export function App() {
             ),
         };
       case 'palette': {
+        // paletteTarget is defined whenever a source is, and already
+        // handles the manifest-palette case (§6.13), so this is only a
+        // type-level floor.
         const target: PaletteTargetInfo = paletteTarget ?? {
-          file: source.primaryPath,
-          palette: primaryGeometry(source).palette,
-          scopeParts: primaryGeometry(source).parts,
+          palette: viewGeometry.palette,
+          scopeParts: viewGeometry.parts,
           unresolved: false,
         };
         const shared = target.ref !== undefined;
@@ -944,13 +999,13 @@ export function App() {
               palette={target.palette}
               parts={target.scopeParts}
               target={{
-                file: target.file,
+                ...(target.file !== undefined && { file: target.file }),
                 ...(target.ref !== undefined && { ref: target.ref }),
               }}
               disabled={editsBlocked || target.unresolved}
               disabledReason={
                 target.unresolved
-                  ? `The palette ${target.file} points at (${target.ref}) is missing or invalid — fix that file to edit these colors.`
+                  ? `The palette ${target.file ?? 'cuboidy.json'} points at (${target.ref}) is missing or invalid — fix that file to edit these colors.`
                   : undefined
               }
               onChange={(next, tag) => handleEditPalette(target.file, next, tag)}
@@ -958,13 +1013,13 @@ export function App() {
                 handleDeletePaletteColor(target.file, index)
               }
               onExternalize={
-                !shared && target.palette.length > 0
-                  ? () => handleExternalizePalette(target.file)
+                target.file !== undefined && !shared && target.palette.length > 0
+                  ? () => handleExternalizePalette(target.file!)
                   : undefined
               }
               onInline={
-                shared && !target.unresolved
-                  ? () => handleInlinePalette(target.file)
+                target.file !== undefined && shared && !target.unresolved
+                  ? () => handleInlinePalette(target.file!)
                   : undefined
               }
             />
