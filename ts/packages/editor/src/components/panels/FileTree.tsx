@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState, type DragEvent } from 'react';
+import { useMemo, type DragEvent } from 'react';
 import { manifestGeometry } from '@cuboidy/core';
 import { ChevronDown, ChevronRight, Plus, X } from 'lucide-react';
 import { InlineNameInput } from '../ui/InlineNameInput.js';
 import { fileIcon } from '../ui/fileIcon.js';
+import type { DirNode } from '../../lib/fs-tree.js';
+import { useFileTreeState } from '../../lib/useFileTreeState.js';
 import { normalizePath } from '../../lib/load-model.js';
 import type { LoadedSource } from '../../lib/types.js';
 
@@ -69,121 +71,23 @@ export function FileTree({
   onDeleteFolder,
   onAddFileToModel,
 }: Props) {
-  // Directory path ('' = package root) that has an open new-file draft,
-  // or null. Folder "+" buttons target their own directory.
-  const [creatingIn, setCreatingIn] = useState<string | null>(null);
-  // Directory a new-FOLDER draft is open in ('' = root), or null.
-  const [creatingFolderIn, setCreatingFolderIn] = useState<string | null>(null);
-  // Session-draft empty folders (paths). Materialize on disk only once a
-  // file is created inside; pruned automatically when that happens
-  // (buildFsTree already shows dirs that contain files).
-  const [draftDirs, setDraftDirs] = useState<ReadonlySet<string>>(new Set());
-  const [renamingPath, setRenamingPath] = useState<string | null>(null);
-  // Folder path whose name is being edited inline (double-click), or null.
-  const [renamingDir, setRenamingDir] = useState<string | null>(null);
-  // Collapsed folder paths ('' = package root). Absent = expanded (the
-  // default), so a freshly loaded package shows everything — matches the
-  // Parts tree's collapse model.
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
-  const toggleCollapse = (dir: string): void =>
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(dir)) next.delete(dir);
-      else next.add(dir);
-      return next;
-    });
-  // A new-file / new-folder draft must be visible: expand the folder it
-  // opens in and every ancestor (incl. root) so it can't hide in a
-  // collapsed branch. Mirrors the Parts tree's create-forces-open rule.
-  useEffect(() => {
-    const target = creatingIn ?? creatingFolderIn;
-    if (target === null) return;
-    setCollapsed((prev) => {
-      if (prev.size === 0) return prev;
-      const next = new Set(prev);
-      let changed = next.delete('');
-      if (target !== '') {
-        const segs = target.split('/');
-        for (let i = 1; i <= segs.length; i++) {
-          if (next.delete(segs.slice(0, i).join('/'))) changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [creatingIn, creatingFolderIn]);
-  // The selected NODE (VS Code-style single selection): a folder or a
-  // file. Creation targets the selected folder, or a selected file's
-  // containing folder.
-  const [selected, setSelected] = useState<
-    { kind: 'dir' | 'file'; path: string } | null
-  >(null);
-  // Drag-and-drop move: what's being dragged (a file, or a whole folder)
-  // and the folder path ('' = package root) under the cursor as a drop
-  // target. A file drop reuses onRenameFile and a folder drop
-  // onMoveFolder — a full-path rename IS a move (§8), so the
-  // manifest/extension guards all live in those handlers.
-  const [dragging, setDragging] = useState<
-    { kind: 'file' | 'dir'; path: string } | null
-  >(null);
-  // The row currently under the cursor as a drop target: a folder (drop
-  // INTO it) or a file (drop into the file's containing folder). A drop
-  // always resolves to a directory; the descriptor just drives which row
-  // highlights.
-  const [dropTarget, setDropTarget] = useState<
-    { kind: 'file' | 'dir'; path: string } | null
-  >(null);
-
-  const allPaths = useMemo(() => {
-    const paths = new Set<string>();
-    if (source.files !== undefined) {
-      for (const path of source.files.keys()) paths.add(path);
-    }
-    paths.add(source.primaryPath);
-    if (source.manifestPath !== undefined) {
-      paths.add(source.manifestPath);
-    }
-    return paths;
-  }, [source]);
-  const tree = useMemo(
-    () => buildFsTree(allPaths, draftDirs),
-    [allPaths, draftDirs],
-  );
-  // Every directory that currently exists (all prefixes of file paths +
-  // draft folders). Guards the selection against dirs that vanished.
-  const allDirs = useMemo(() => {
-    const dirs = new Set<string>();
-    const addPrefixes = (p: string, includeSelf: boolean) => {
-      const segs = p.split('/');
-      const upto = includeSelf ? segs.length : segs.length - 1;
-      for (let i = 1; i <= upto; i++) dirs.add(segs.slice(0, i).join('/'));
-    };
-    for (const p of allPaths) addPrefixes(p, false);
-    for (const d of draftDirs) addPrefixes(d, true);
-    return dirs;
-  }, [allPaths, draftDirs]);
-  // Where New file / New folder create: the selected folder, or a
-  // selected file's containing folder. Vanished nodes fall back to root.
-  const effectiveDir = (() => {
-    if (selected === null) return '';
-    if (selected.kind === 'dir') {
-      return selected.path === '' || allDirs.has(selected.path)
-        ? selected.path
-        : '';
-    }
-    if (!allPaths.has(selected.path)) return '';
-    const i = selected.path.lastIndexOf('/');
-    return i === -1 ? '' : selected.path.slice(0, i);
-  })();
-  // Exactly ONE node carries the selection highlight — a folder or a
-  // file, never both. What's OPEN is the dock tabs' job, not the tree's.
-  const selectedDirForHighlight =
-    selected?.kind === 'dir' && (selected.path === '' || allDirs.has(selected.path))
-      ? selected.path
-      : null;
-  const selectedFileForHighlight =
-    selected?.kind === 'file' && allPaths.has(selected.path)
-      ? selected.path
-      : null;
+  // The panel's own state: selection, collapse, drafts, drag
+  // (lib/useFileTreeState).
+  const {
+    creatingIn, setCreatingIn,
+    creatingFolderIn, setCreatingFolderIn,
+    draftDirs, setDraftDirs,
+    renamingPath, setRenamingPath,
+    renamingDir, setRenamingDir,
+    collapsed, toggleCollapse,
+    setSelected,
+    dragging, setDragging,
+    dropTarget, setDropTarget,
+    allPaths, allDirs, tree,
+    effectiveDir,
+    selectedDir: selectedDirForHighlight,
+    selectedFile: selectedFileForHighlight,
+  } = useFileTreeState(source);
 
   // A lone geometry file has no package around it (LoadedSource): the
   // tree draws a flat file row rather than a collapsible package root.
@@ -677,39 +581,6 @@ interface RowOps {
 }
 
 // ── directory tree model ─────────────────────────────────────────────
-
-interface DirNode {
-  dirs: Map<string, DirNode>;
-  files: Array<{ path: string; name: string }>;
-}
-
-function buildFsTree(
-  paths: Iterable<string>,
-  emptyDirs: Iterable<string> = [],
-): DirNode {
-  const root: DirNode = { dirs: new Map(), files: [] };
-  const dirAt = (segments: string[]): DirNode => {
-    let node = root;
-    for (const seg of segments) {
-      let child = node.dirs.get(seg);
-      if (child === undefined) {
-        child = { dirs: new Map(), files: [] };
-        node.dirs.set(seg, child);
-      }
-      node = child;
-    }
-    return node;
-  };
-  for (const dir of [...emptyDirs].sort()) {
-    dirAt(dir.split('/'));
-  }
-  for (const path of [...paths].sort()) {
-    const segments = path.split('/');
-    const name = segments.pop()!;
-    dirAt(segments).files.push({ path, name });
-  }
-  return root;
-}
 
 interface DirChildrenProps {
   node: DirNode;
