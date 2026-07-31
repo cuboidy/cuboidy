@@ -216,6 +216,15 @@ hand-math:
 
 - You don't need a true sphere. **Narrow the layers toward top and bottom**
   (egg silhouette) + **cut the top/back corners** → reads as "rounded, not a cube".
+- **Design the palette against pairs that will touch, not as a list.** Three
+  authors here shipped a colour pair that was individually pleasant and
+  mutually invisible where the geometry put them adjacent — a blade's fuller,
+  a fish's fins, a staff against a skirt — and none noticed until the render.
+  Flat shading removes most of the cue you are unconsciously relying on, so a
+  1-cell feature disappears unless its *neighbour* is high-contrast. Sketch the
+  adjacencies, not the swatches.
+- **A near-black sole is the cheapest readability win there is.** One dark row
+  under a figure gives the whole silhouette a ground line.
 - **Flat-shaded voxels = one color per cell.** You cannot shade a single face.
   "Shadow under the bangs" has to be a darker *cell*, which is then visible from
   that direction — so use shading sparingly or it looks muddy/dirty. Let SHAPE
@@ -252,6 +261,11 @@ hand-math:
     silently lies about them.** A part that should be hidden or squashed will
     render at full size. Bake covers `rot` and `pos`; check the rest by
     sampling numbers.
+  - `cuboidy-snap` **re-fits the camera to each model's bounding box**, so a
+    sequence of baked frames comes out at different scales and offsets and is
+    useless for comparing motion — eight unrelated statues. Fix it by adding
+    two 1×1×1 cells in the background colour at fixed world corners of every
+    baked copy: the bbox is then constant and the frames line up.
 - **Nothing checks whether moving parts collide.** Lint sees only the rest
   pose, and so does every render. A long rotating member — a sail, a tail, a
   limb against a garment — has to be checked by sweeping the animation and
@@ -267,11 +281,26 @@ hand-math:
   swimming body — each part does much the same thing, displaced in time.
   Getting that displacement right is most of what makes it read; make the
   offset explicit when you author the keys rather than eyeballing each part.
+- **Write a contact probe before you trust any pose.** This is the biggest
+  single source of error in the format and the eye cannot catch it. A dozen
+  lines of forward kinematics that print the world position of every contact
+  point — each foot, a staff tip, a talon — at ~16 samples across the clip.
+  Two things to read off it: contact Y should sit at ~0 through stance, and
+  contact Z should slide backward at the *same rate* for every grounded part.
+  Authors here have shipped a first pass with a staff tip 1.3 voxels
+  underground, another with all four feet through the floor, and neither was
+  visible in a render. Build the probe first; it reshapes the keyframes instead
+  of forcing a retrofit onto them.
 - **Derive ground contact, don't invent it.** If a pelvis bob is authored
   independently of the leg angles, the feet float or sink. Choose where the
   foot plants, then solve the knee or the hip height from it. The rest pose
   with straight legs is the *maximum* hip height, so every walk pose sits at or
   below it.
+- **Rotating a grounded part about a pivot that is not its contact point
+  drives that contact through the floor**, and you must cancel it with `pos`
+  on the same key. A boot pivoted at the heel, rotated −8° for toe-off, puts
+  the toe of a 3-deep foot `3·sin8° ≈ 0.42` voxels underground. Every stance
+  key needs the compensation.
 - **Check the loop closes — in orientation, not in numbers.** Sample at
   `duration` and at `0.0` and compare. For an oscillation they should be equal.
   For a **revolution** they must differ by a whole multiple of 360°: a part
@@ -295,7 +324,10 @@ hand-math:
 - **`ease` is per attribute, not per component.** One curve governs all three
   Euler angles of `rot` together, so two axes of the same part cannot be given
   different phases at low key density. Split them across two parts if you need
-  that.
+  that. The same bites harder on `pos`: a part that must cancel its parent's
+  vertical dip wants the parent's curve on Y, while a stance slide on Z wants
+  `linear`, and one `pos` cannot be both. Pick the one that shows and accept a
+  little drift on the other, or move one of the two jobs to another part.
 
 ## Verification (don't trust your head-math)
 

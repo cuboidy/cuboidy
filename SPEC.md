@@ -293,6 +293,8 @@ Sampling outside the explicitly keyed intervals is defined as follows:
 
   Equivalent, not numerically equal. For an oscillation the two are the same thing. For a **revolution** they are not: a part making one full turn per loop must key `duration` at `0.0 ± 360` (or any whole multiple), which is the same orientation reached by a complete turn. Keying it back to the literal `"0.0"` value instead makes the last segment unwind everything the earlier ones did. Neither lint nor a rest-pose render can see this, so it is worth checking by sampling.
 
+  The two rules above do not conflict, but they do leave a gap the author owns: the `duration` keyframe is the **limit** the final interval approaches, while the value **at** `duration` is the `"0.0"` value. If the two differ, sampling shows exactly that — approaching one value and then jumping to the other. It is a discontinuity you authored, not an ambiguity in the rules.
+
 Custom easing curves (cubic-bezier control points) are reserved for future spec versions.
 
 ### 6.8 Missing parts
