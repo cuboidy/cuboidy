@@ -40,6 +40,13 @@ A part is a `W×H×D` grid. `"size": [W, H, D]`, and `voxels` nests to match:
 - Each layer has **D rows** — row *k* is Z.
 - Each row has **W chars** — char *j* is X (`.` = air, else a palette index char).
 
+**`size` is a bounding box, not a canvas.** A Y-layer containing no solid cell
+lints as **W04**, and `--strict` makes that fatal. So the natural blockout
+instinct — give every part of an assembly the same grid and taper it by writing
+air — is not available to you. Shrink `H` instead of padding it, and expect to
+resize parts as their shape settles rather than carving them out of a shared
+box. (A part with no solid cell anywhere is **W05**.)
+
 So a cell `(x,y,z)` is `voxels[y][z][x]`. Consequences:
 
 - **Row 0 of each layer = z=0 = FRONT** (the model faces −Z). Last row = back.
@@ -82,11 +89,19 @@ So a cell `(x,y,z)` is `voxels[y][z][x]`. Consequences:
   odd width. It looks tidier and it puts the part half a cell off centre, so it
   is not mirror-symmetric with itself and an l/r pair built that way trips
   **W06**.
+- **Making two parts in a chain join flush:** work in *world* cells, not local
+  ones. Push the parent's last Z-slice and the child's first Z-slice each
+  through `v_world = Σ position + (v_local − pivot.pos)` and check they occupy
+  the same world cells. Two segments with different `H` and different `pivot.y`
+  will look adjacent in the file and leave a step in the render.
 - **Mirroring an l/r pair by hand:** a part of width `W` with local pivot `q`
   mirrors to a part with local pivot `W − q`, and its voxel rows reversed. So
   a right-side part occupying cells `a..b` needs its partner at `−1−b..−1−a`
   in parent space. `cuboidy-part mirror` does all of this for you and is the
   reason to prefer it over hand-reversing strings.
+- **Mirroring a rest rotation** is not covered by that tool and W06 will not
+  check it: across the YZ plane, Euler `[x, y, z]` mirrors to `[x, −y, −z]`.
+  X is unchanged; Y and Z negate. Any pair of angled limbs needs this.
   (H02 will not catch a mistake here, and it is noisier than it looks. Its
   exemption is the **exact default triple** `[W/2, 0, D/2]` — `y` included —
   not "any centred value". So `[2.5, 0, 2.5]` on a 5×h×5 part is silent, while
@@ -94,12 +109,33 @@ So a cell `(x,y,z)` is `voxels[y][z][x]`. Consequences:
   Raising a pivot to a joint on an odd-width part therefore always hints. It is
   only a hint, `--strict` still passes, and the right response is usually to
   ignore it.)
-- **Limbs:** put the pivot at the joint (top, `y=H`, inner edge) so it swings
-  from the shoulder/hip, not the foot/hand.
+- **Put the pivot on the face that touches the parent.** For a limb hanging
+  downward that is the top, `y=H`, inner edge, so it swings from the
+  shoulder or hip rather than the foot. For a body segment in a chain — a
+  fish's spine, a tail, a neck — it is the *front* face, `z=0`, at mid-height.
+  The grid bound is inclusive, so `y=H` and `z=D` are legal pivot coordinates
+  and do not warn.
+- **The default pivot is not centred in Y.** `[W/2, 0, D/2]` puts it on the
+  floor of the grid, which is what you want for something standing on the
+  ground and wrong for anything that hangs, swims or joins mid-height. Those
+  need an explicit `y`.
 - A child's manifest `position` = where the child's pivot sits **in the parent's
   pivot space** (offset from the parent's pivot).
-- World placement: `v_world = Σ ancestor.position + (v_local − pivot.pos)`.
+- World placement, **when no ancestor is rotated**:
+  `v_world = Σ ancestor.position + (v_local − pivot.pos)`.
   Verify exact cells with `cuboidy-query --at=x,y,z` / `--core`.
+- **The moment any ancestor carries a rest rotation, that sum is wrong** — and
+  since rest rotation is the thing this guide recommends for anything diagonal,
+  expect to need the real rule. A child's `position` is rotated by the parent's
+  accumulated rotation before it is added:
+
+  ```
+  W.quat = parent.W.quat · q_rest        q_rest = q_rotation · q_pivot
+  W.pos  = parent.W.pos  + parent.W.quat · position
+  ```
+
+  Animated `scale` is the one thing that does **not** propagate: it resizes the
+  part's own voxels and leaves its children alone.
 - **Mirror pairs** (l/r) parented to a part: compute the symmetric position,
   don't eyeball it. For pivot.x = p on a width-w child, the two positions that
   mirror about the parent centerline are symmetric around it — get it wrong and
@@ -111,6 +147,11 @@ So a cell `(x,y,z)` is `voxels[y][z][x]`. Consequences:
   alone flips a part where it is; `duplicate` makes the copy to flip.) The
   manifest `position` is still per-part; lint **W06** flags an l/r pair whose
   assembled geometry isn't X-symmetric.
+- **Name mirror pairs `<base>-l` / `<base>-r` to get W06 at all.** The check
+  looks for a name ending in `l` whose preceding character is `-` or `_`. So
+  `foreleg-l` / `foreleg-r` is checked and `leg-fl` / `leg-fr` is silently
+  **not** — the limb identifier has to end at the side letter, not carry it in
+  the middle.
 - **Rotational repetition is the other half of this**, and it is easier than
   mirroring: a wheel, a fan, a gear, a crown of spikes is *one* part duplicated
   N times, each copy differing only by its manifest `rotation`. No mirror
@@ -151,6 +192,14 @@ hand-math:
   It rotates around the part's pivot and children inherit it, so put the pivot
   at the joint first. Remember the projections will not show the rotation
   (see Gotchas) — `cuboidy-snap` will.
+
+  Signs, for a model facing −Z (all three are easy to get backwards):
+
+  ```
+  +X  swings a downward-hanging limb FORWARD
+  +X  pitches a backward-pointing tail DOWN
+  +Z  tilts a part's top toward −X
+  ```
 - **Splitting geometry across files** (`"geometry": ["body.json", "gear.json"]`
   in the manifest). Part names stay unique model-wide, so this is purely
   organizational — worth it when a model has separable pieces you want to work
@@ -233,7 +282,9 @@ hand-math:
 ## Verification (don't trust your head-math)
 
 - `cuboidy-lint --strict` — catches row-width / layer-count / palette-range
-  typos. Hand-writing WILL produce these; lint is the safety net. (Tip: define
+  typos. Hand-writing WILL produce these; lint is the safety net. **The rule
+  `--strict` applies is simply: every `W` fails it, no `H` does.** That is the
+  whole acceptance criterion — clear the warnings, ignore the hints. (Tip: define
   the FULL palette up front so you never renumber indices. If the palette is
   inline, tolerate W03 "unused color" during blockout by linting without
   `--strict`; if it lives in a shared `palette.json`, W03 does not apply at all

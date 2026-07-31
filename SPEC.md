@@ -432,6 +432,7 @@ No other fields are permitted (unknown field → `unknown`). Part names are uniq
 - All values are positive integers in the range `[1, 1024]` per axis (zero or negative values, fractions, and values exceeding 1024 are `invalid-value`)
 - Total voxel cells = W × H × D
 - The 1024 cap is a sanity bound to keep validation and rendering tractable; future spec versions may relax it
+- **Size the grid tight to the occupied volume.** A Y-layer with no solid cell lints as **W04** and a part with no solid cell at all as **W05** (§11.3), and `--strict` makes both fatal. So the common instinct — give every part of an assembly the same grid and taper it with air — is not available: shrink `H` instead of padding it. `size` is the bounding box of what the part contains, not a canvas it sits on
 
 ### 7.7 `pivot`
 
@@ -442,6 +443,7 @@ No other fields are permitted (unknown field → `unknown`). Part names are uniq
 
 - Optional. Default: position bottom-center, `[W/2, 0, D/2]`; rotation absent (identity)
 - Position coordinates in **part-local space**, voxel units; may be fractional; may lie outside the grid bounds (W01 lint warning, not error)
+- **Grid bounds are the closed box `[0, W] × [0, H] × [0, D]`.** Because a cell with index `x` occupies `[x, x+1)`, the coordinate `W` is the far *face* of the last cell, not one past it — so a pivot at `[W, 0, D]`, or a socket on the top face at `y = H`, is in bounds and does not warn. This is the natural place for a joint or an attachment point, so the inclusive reading is the one that matters
 - Optional rotation: 3 Euler angles in degrees, ZXY intrinsic order (§4)
 - **Semantic** (rest pose transform): `part.position` is the parent-space position of this part's pivot (§6.2), while `pivot.pos` is the same pivot point in part-local space. **Parent space is the coordinate frame whose origin coincides with the parent's pivot** (for a root part, parent space is world space). This is the standard rig convention — children attach to the parent's pivot, not to the corner of the parent's voxel grid. With matrix-vector convention and column vectors, a part-local point `v_local` lands at `v_parent = part.position + anim.pos + M_rot · M_pivot · M_anim · S_anim · (v_local − pivot.pos)`, where `anim.pos` is the current keyframe `pos` delta, `M_rot` is the rotation matrix for the manifest part's `rotation` (§6.2; identity when absent), `M_pivot` is the rotation matrix for `pivot.rot` (identity when absent), `M_anim` is the animated rotation matrix, and `S_anim` is the animated scale matrix. Rotation and scale are all applied around `pivot.pos`; no `+ pivot.pos` term is added after the transform because `part.position` already names the pivot's destination in parent space — and crucially, no `− parent.pivot.pos` term appears either, because parent space is *already* parent-pivot-centered (see hierarchy composition below). Equivalently in quaternion form for rotation: `q_total = q_rotation · q_pivot · q_anim` (the animation rotation is applied first, in the rest-pose-local frame, then the two rest terms — the geometry file's pivot rotation, then the manifest rotation — bring it to the rest orientation; `q_rest = q_rotation · q_pivot` is the rest pose rotation of §2)
 - **Hierarchy composition** (rest pose, no rotation/scale): because `v_parent` is already in parent-pivot-centered coordinates, composing through the parent chain is a plain sum of `position` values; the part's own pivot is subtracted exactly once at the leaf, and no ancestor's pivot ever appears:
@@ -460,6 +462,8 @@ No other fields are permitted (unknown field → `unknown`). Part names are uniq
   ```
 
   That is, a child's `position` is **rotated by the parent's accumulated world rotation** before being added — the child rides the parent's rotation exactly as it rides the parent's translation. A root part takes `W.quat = q_rest` and `W.pos = position`. The unrotated sum above is the special case where every `q_rest` is identity. Animation composes inside `q_rest` per the quaternion form above, so an animated hierarchy uses the same two lines with `q_rest · q_anim` in place of `q_rest`.
+
+  **`scale` is the exception: it is not inherited.** Position and rotation propagate down the chain as above, but an animated `scale` applies only to the part's own `(v_local − pivot.pos)` and does **not** scale its children — they hang off the part's pivot at their normal size and ride only its position and rotation. Scaling a torso does not inflate the head attached to it. This follows from the transform equation, where `S_anim` sits inside the part's own local term, but it is worth stating outright because rotation and scale otherwise behave alike.
 - **Worked example**: body declares `"size": [5, 4, 8]` with default `"pivot": {"pos": [2.5, 0, 4]}` (bottom-center) and manifest `"position": [0, 4, 0]`. Head declares `"size": [5, 5, 5]` with `"pivot": {"pos": [2.5, 0, 5]}` (back-bottom-center, so the pivot is the connection point at the back of the head), parented to body with `"position": [0, 4, -4]`. Then: body's pivot sits at world `(0, 4, 0)`; head's pivot sits at world `(0, 4, 0) + (0, 4, -4) = (0, 8, -4)` — directly above body's pivot and 4 units forward (−Z). The head's back-bottom-center voxel `(2.5, 0, 5)` lands at world `(0, 8, -4) + ((2.5, 0, 5) − (2.5, 0, 5)) = (0, 8, -4)` ✓ (the pivot lands where `position` names). The head's front-left-bottom voxel `(0, 0, 0)` lands at world `(0, 8, -4) + ((0, 0, 0) − (2.5, 0, 5)) = (−2.5, 8, −9)`. Body's `pivot.pos = (2.5, 0, 4)` never enters either calculation
 
 ### 7.8 `sockets`
@@ -675,6 +679,11 @@ A Cuboidy package is **well-formed** if it passes all error-level rules.
 | **Warning** (`W`) | Spec-valid but suspicious | Load with warning emitted |
 | **Hint** (`H`) | Style or convention | Load with hint emitted |
 
+A conformance tool offering a strict mode SHOULD draw the line between the two
+advisory levels: **every warning fails strict mode, no hint does.** That makes
+the `W` / `H` split the operative decision when classifying a new rule, not a
+matter of presentation.
+
 ### 11.2 Diagnostic codes (structural)
 
 Cuboidy uses **five structural codes** to describe errors. The code names what *kind* of structural violation occurred; the message text names *what specifically* — which keyword, which field, which line. Implementations MUST use these exact code strings so that cross-language parity tests can compare outputs by code alone.
@@ -732,7 +741,7 @@ Cross-file validation operates on the **project**: the manifest plus its referen
 | `missing` | error | A geometry file's voxels use color indices while it declares no palette, or while its §7.4 palette reference does not resolve |
 | `invalid-value` | error | A geometry file references a palette index outside the range of the palette it **points at** (only a referenced palette reaches this check; an inline one is validated at parse time — §7.4) |
 | — | — | **W03 does not apply to a referenced palette.** "Declared but unused" is only meaningful about colors a file owns; a shared palette exists precisely so each file can use a subset of it (§6.10) |
-| `invalid-value` | warning | **[W06]** an `<x>-l` / `<x>-r` part pair (same parent) whose occupied voxels are not mirror images across the parent's YZ plane, computed from manifest position + pivot + voxel occupancy. The check is geometric, not positional: a correctly mirrored part reflects its pivot too, so the matching hand-written position is often legitimately NOT the sign-opposite |
+| `invalid-value` | warning | **[W06]** an `<x>-l` / `<x>-r` part pair (same parent) whose occupied voxels are not mirror images across the parent's YZ plane, computed from manifest position + pivot + voxel occupancy. The check is geometric, not positional: a correctly mirrored part reflects its pivot too, so the matching hand-written position is often legitimately NOT the sign-opposite. **Scope, both parts of which are easy to trip over:** the side letter must be the *last* character with `-` or `_` before it, so `foreleg-l`/`foreleg-r` is checked while `leg-fl`/`leg-fr` is not; and the pair must share a parent, so `shin-l`/`shin-r` hanging off `thigh-l`/`thigh-r` is never compared. Most limb pairs below the first joint are therefore unchecked. Rest rotations do not participate — mirroring one is the author's responsibility (across the YZ plane, Euler `[x, y, z]` mirrors to `[x, −y, −z]`) |
 | `invalid-value` | warning | **[W07]** a geometry file exists in the package but is not referenced by the manifest `geometry` list (usually a forgotten entry — §6.9). "Geometry file" is decided by **content, not extension**: a file is one if the §7 reader accepts it. Since v0.9 the manifest, palette files and animation clips are all `.json` too, so an extension test would flag every one of them |
 | `unknown` | warning | Animation targets a part not present in `cuboidy.json` `parts` (cross-rig sharing, §6.8) |
 | `unknown` | runtime error | Attempt to attach to a socket name not declared on the host part (planned) |
