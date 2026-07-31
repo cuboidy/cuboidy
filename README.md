@@ -4,6 +4,18 @@ An open JSON file format for voxel character models, rigs, and animations.
 
 **Status: v0.9 draft. See [SPEC.md](SPEC.md) for the formal specification.**
 
+| | | | |
+|:--:|:--:|:--:|:--:|
+| ![knight](docs/media/knight.gif) | ![owl](docs/media/owl.gif) | ![koi](docs/media/koi.gif) | ![fox](docs/media/fox.gif) |
+| **knight** — walk cycle | **owl** — wingbeat launch | **koi** — travelling body wave | **fox** — diagonal trot |
+| ![windmill](docs/media/windmill.gif) | ![herbalist](docs/media/herbalist.gif) | ![sword](docs/media/sword.gif) | |
+| **windmill** — constant-rate sails | **herbalist** — laboured walk | **sword** — turntable, no clip | |
+
+Every one of these was authored from [SPEC.md](SPEC.md) and
+[`docs/geometry-authoring.md`](docs/geometry-authoring.md) alone, with no
+example available to copy from. The turntables are `cuboidy-gif --orbit
+--bg=none` output, unretouched.
+
 ## What it is
 
 Cuboidy describes voxel characters as a hierarchy of rigid parts, with named attachment sockets and shareable keyframe animations. It combines ideas from several established formats:
@@ -72,19 +84,7 @@ my-model.cuboidy        packed package (ZIP of the folder above)
 | `anims/*.json` | optional shared animations | JSON | same inline-animation schema + semantic rules (§6.6), resolved and checked by lint and the inspection CLIs |
 | `*.cuboidy` | packed package | ZIP | both, after extraction (packed format is reserved for a future spec version) |
 
-## Examples
-
-Every model under `models/` was authored from `SPEC.md` and
-[`docs/geometry-authoring.md`](docs/geometry-authoring.md) alone — no example
-was available to copy from. Each turntable below is `cuboidy-gif --orbit
---bg=none` output, unretouched.
-
-| | | | |
-|:--:|:--:|:--:|:--:|
-| ![knight](docs/media/knight.gif) | ![owl](docs/media/owl.gif) | ![koi](docs/media/koi.gif) | ![fox](docs/media/fox.gif) |
-| **knight** — walk cycle | **owl** — wingbeat launch | **koi** — travelling body wave | **fox** — diagonal trot |
-| ![windmill](docs/media/windmill.gif) | ![herbalist](docs/media/herbalist.gif) | ![sword](docs/media/sword.gif) | |
-| **windmill** — constant-rate sails | **herbalist** — laboured walk | **sword** — turntable, no clip | |
+## The example models
 
 - `models/knight/` — 18 parts over three geometry files sharing one palette; sockets for a sword and a helm crest
 - `models/sword/` — single-part accessory, authored against the knight's `hand-r:grip` socket contract without seeing the knight
