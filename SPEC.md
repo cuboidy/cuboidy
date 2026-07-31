@@ -38,8 +38,9 @@ Cuboidy is **not** a triangle-mesh format. It does not specify skin weights, UV 
 |---|---|
 | **Cuboidy format** | The spec defined by this document |
 | **Cuboidy model** (or **package**) | A single asset, stored as a folder |
-| **Manifest** | `cuboidy.json` — the package's fixed-name anchor: rig hierarchy, animations, and the geometry list |
+| **Manifest** | `cuboidy.json` — the package's required, fixed-name anchor: rig hierarchy, animations, and each part's geometry (a reference, or written inline) |
 | **Geometry file** | A JSON file (§7) — shape, optional inline palette, pivot, sockets. Default (when the manifest lists none): `voxels.json` |
+| **Inline geometry** | A part's shape written into the manifest instead of a file (§6.13). A model whose every part is inline is a single text file |
 | **Palette file** | A `.json` file of shareable colors (§6.10), referenced by each geometry file that uses them (§7.4) |
 | **Packed Cuboidy** | `<name>.cuboidy` — the package folder as a single ZIP archive (§13) |
 | **Part** | A rigid voxel sub-object, optionally parented in the hierarchy |
@@ -54,7 +55,9 @@ Cuboidy is **not** a triangle-mesh format. It does not specify skin weights, UV 
 
 A Cuboidy model is stored as a folder. The folder's name is conventional and not authoritative; the manifest's `name` field is.
 
-`cuboidy.json` is the package's **only fixed filename** — the deterministic entry point a loader looks for (the same role `.gltf` or `package.json` play). Every other file is named freely and found by reference from the manifest (§8): geometry files via `geometry` (§6.9), a shared palette via `palette` (§6.10), external animations via `animations` string values (§6.3).
+`cuboidy.json` is the package's **only fixed filename** — the deterministic entry point a loader looks for (the same role `.gltf` or `package.json` play). Every other file is named freely and found by reference from the manifest (§8): geometry files via `geometry` (§6.9) and per-part `geometry.path` (§6.13), a shared palette via `palette` (§6.10 / §6.13), external animations via `animations` string values (§6.3).
+
+It is also **required**. A directory with no `cuboidy.json` is not a model, whatever else it contains: a lone `voxels.json` has shape but no rig, no animations and no name, so there is nothing to load it *as*. A reader MUST report its absence as `missing` rather than inferring a model from the files it finds. (Some tools in this repository used to accept a bare geometry file as a shape preview. That was never in this specification, and §6.13's inline form now covers the case it served — one file, complete model.)
 
 ```
 my-model/
@@ -64,6 +67,15 @@ my-model/
     ├── walk.json
     └── idle.json
 ```
+
+At the small end, a model can be a **single file**: put every part's shape inline (§6.13) and there is nothing left to reference.
+
+```
+tiny-model/
+└── cuboidy.json         manifest + all geometry inline — the whole model
+```
+
+This is the one-text-file form. `<name>.cuboidy` (§13) also packs a model into one file, but as a ZIP; an all-inline `cuboidy.json` stays diffable, pasteable and editable in any text editor, which is what §1 asks of the format.
 
 A larger package, fully reference-driven:
 
@@ -140,20 +152,19 @@ The manifest is a standard JSON document (no comments, no trailing commas).
   "name": "<identifier>",
   "version": "0.9",
   "geometry": ["body.json", "gear/hat.json"],
+  "palette": "palette.json",
   "parts": [ ... ],
   "sockets": { ... },
   "animations": { ... }
 }
 ```
 
-The manifest has no `palette` field. Colors belong to the geometry file that
-uses them (§7.4), which may name a shared palette file (§6.10).
-
 | Field | Required | Type | Notes |
 |---|---|---|---|
 | `name` | **yes** | string (identifier) | Model identifier |
 | `version` | no | string | Spec version this model targets. Absent → the current spec version (`"0.9"` in this draft) |
-| `geometry` | no | array of reference paths | The model's geometry files (§6.9). Absent → `["voxels.json"]` |
+| `geometry` | no | array of reference paths | The model's geometry **files** (§6.9), for parts that do not carry their own geometry. Absent → `["voxels.json"]` |
+| `palette` | no | array of colors, or a reference path | The palette **inline part geometry** uses when it declares none of its own (§6.13). It never applies to a part whose geometry lives in a file — see the scoping rule in §6.13 |
 | `parts` | **yes** | array (non-empty) | At least one part |
 | `sockets` | no | object | The model's **published sockets** (§6.12) — the attachment points it offers to consumers. Absent → the model publishes none |
 | `animations` | no | object | Map from animation name to definition. Absent → no animations |
@@ -165,13 +176,15 @@ uses them (§7.4), which may name a shared palette file (§6.10).
   "name": "<identifier>",
   "parent": "<identifier>",
   "position": [x, y, z],
-  "rotation": [rx, ry, rz]
+  "rotation": [rx, ry, rz],
+  "geometry": { … }
 }
 ```
 
 | Field | Required | Type | Notes |
 |---|---|---|---|
 | `name` | **yes** | string (identifier) | Unique within model |
+| `geometry` | no | object | Where this part's shape comes from — a file, or written out here (§6.13). Absent → looked up by `name` among the files in the top-level `geometry` list |
 | `parent` | no | string (identifier) | Another part's name. Absent → this part is a root |
 | `position` | no | `[number, number, number]` | Where this part's pivot sits in **parent space** — voxel-unit offset from the parent's pivot (root parts: offset from world origin). Default `[0, 0, 0]` (this part's pivot coincides with the parent's pivot). See §7.7 for the full transform semantics |
 | `rotation` | no | `[number, number, number]` | The part's **rest rotation** in parent space: Euler degrees, ZXY intrinsic order (§4), applied around the part's pivot. Composes outside the geometry file's `pivot.rot` (`q_rest = q_rotation · q_pivot`, §7.7) and is inherited by children like any parent transform. Default: absent → identity |
@@ -314,8 +327,10 @@ This rule supports cross-rig sharing: a shared `quadruped_walk.json` that animat
 
 - An array of **reference paths** (§8), each ending in `.json`. Non-empty; duplicate entries are `invalid-value`.
 - Absent → **`["voxels.json"]`** (the pre-v0.7 fixed layout; existing models are unchanged).
-- The model's parts are the union of all listed files, in list order. **Part names are unique across the whole model** (§5) — a name defined in two geometry files is a cross-file `duplicate` error (§11.6).
-- A geometry file present in the package but not listed here is not part of the model and lints as **W07** (§11.6).
+- The list — default included — is consulted **only when some part needs the by-`name` lookup** (§6.13). A manifest in which every part carries its own `geometry` never reads it, so an all-inline single-file model is complete on its own and the absence of `voxels.json` beside it is not an error. Readers MUST NOT demand the default file from a model that does not use it.
+- These are the files searched when a part has no `geometry` of its own (§6.13) — the by-`name` lookup. **Part names are unique across the whole model** (§5), which is what makes that lookup unambiguous; a name defined in two listed files is a cross-file `duplicate` error (§11.6).
+- A part-level `geometry.path` (§6.13) does **not** have to appear here. An all-explicit model needs no `geometry` list at all, and a model with no name-lookup parts may omit it entirely.
+- A geometry file present in the package and referenced by **neither** this list nor any part's `geometry.path` is not part of the model, and lints as **W07** (§11.6).
 
 ### 6.10 External palette file
 
@@ -325,7 +340,7 @@ A geometry file may keep its colors in a separate file and point at it, so sever
 "palette": "palette.json"
 ```
 
-- A **reference path** (§8) ending in `.json`, written in the **geometry file**, not the manifest. Each geometry file decides for itself; two files sharing a palette simply name the same path.
+- A **reference path** (§8) ending in `.json`. Written by whoever owns the colors: a geometry file (§7.4), an inline part, or the manifest as the default for inline parts (§6.13). Each decides for itself; two of them sharing a palette simply name the same path. What no one does is write a palette for *someone else's* file — that is the precedence rule v0.7 had and v0.9 removed.
 - Swapping a palette file recolors every geometry file pointing at it (skins).
 - The referenced file's colors are the referring file's palette outright — there is no inline palette underneath to override, because `palette` is one field with two forms.
 - A geometry file whose voxels use color indices while it declares **no** palette in either form is a cross-file `missing` error, as is one whose reference does not resolve.
@@ -375,6 +390,53 @@ Rules and rationale:
 **Attachment geometry.** When a consumer attaches a guest model to a published socket, the guest is placed so that the guest's **model origin** — world `[0, 0, 0]` in the guest's own coordinate space, before any part transform — coincides with the socket origin, and the guest's axes are rotated by the socket's orientation. Not the guest's root pivot: §6.2 permits multiple root parts, so "the root pivot" is not always a single point, while the origin always is. A model intended to be attached should therefore be authored around its origin, which is where the joining surface goes.
 
 **What is not here.** The manifest publishes attachment points; it does not record attachments. Nothing in a Cuboidy package says that a particular sword is in the knight's hand. Composing several models is a scene-level concern that belongs to a layer above this format — see §14.
+
+### 6.13 Part geometry
+
+A part's rig (`parent`, `position`, `rotation`) lives in the manifest. Its shape — `size`, `pivot`, `sockets`, `voxels` — is a §7 part object, and the part's optional `geometry` object says **where that object is**, in one of two forms.
+
+**Reference form** — the shape is a part in a geometry file:
+
+```json
+{ "name": "head", "parent": "neck", "geometry": { "path": "voxels.json" } }
+{ "name": "cap",  "parent": "head", "geometry": { "path": "gear/caps.json", "part": "beret" } }
+```
+
+| Field | Required | Type | Notes |
+|---|---|---|---|
+| `path` | **yes** | reference path (§8), `.json` | The geometry file |
+| `part` | no | string (identifier) | Which part of that file. Absent → **the enclosing part's `name`** |
+
+**Inline form** — the shape is written here:
+
+```json
+{
+  "name": "foreleg-l", "parent": "body", "position": [-3, -1, -5],
+  "geometry": {
+    "size": [3, 10, 4],
+    "pivot": { "pos": [1, 10, 2] },
+    "voxels": [ … ]
+  }
+}
+```
+
+The inline object is **exactly a §7.5 part object with `name` removed**, plus an optional `palette` (§7.4, either form). `size` and `voxels` are required; `pivot` and `sockets` follow §7.7 and §7.8 unchanged. The name is the enclosing part's `name` — carrying a second copy here would be one field that can disagree with another, so it is not permitted (`unknown`).
+
+The presence of `path` decides the form. `path` together with any inline field, or an inline object missing `size` or `voxels`, is an error.
+
+**Absent `geometry`** → the by-`name` lookup this format has always used: the part's shape is the part of the same `name` found among the files in the top-level `geometry` list (§6.9). Every model written before this revision keeps working unchanged, and a model may mix all three — some parts referenced, some inline, some left to name lookup.
+
+Why the reference is an object rather than a `file.json#part` string: §8's path grammar would read `voxels.json/head` as a file inside a directory, and a fragment would be a second grammar layered on the first. Two named fields need neither, and this format prefers structure that is reliable to generate over notation that is short (§1).
+
+**Palette scoping.** Where an inline part's colors come from:
+
+1. The inline object's own `palette`, if it has one.
+2. Otherwise the manifest's top-level `palette` (§6.1).
+3. Otherwise the part has no palette — using any color index is a `missing` error (§11.6).
+
+A part in the **reference form is never affected by the manifest's `palette`**: its colors are its geometry file's, per §7.4. This is the rule that keeps v0.7's mistake from returning. What v0.9 removed was a manifest palette that *overrode* a geometry file's, so a self-contained file's indices meant different things depending on who loaded it. The palette here reaches only geometry the manifest itself contains, where there is no other declaration to shadow: each part resolves to exactly one palette, decided by which fields are present in the object being read.
+
+A top-level `palette` that no inline part ends up using is dead weight and lints as **W08** (§11.6) — most often a v0.7 manifest binding, which meant something else.
 
 ---
 
@@ -432,6 +494,8 @@ separate parser path.
 - The character `.` is reserved for empty space (air) and is **not** part of the palette
 
 Position-based indexing: reordering the palette requires rewriting voxel data. Tooling can automate this.
+
+**A geometry file's palette is always its own.** The manifest's top-level `palette` (§6.1) does not reach into a file — it is the default for geometry written *inline in the manifest* (§6.13) and nothing else. A file loaded through a `geometry` list or a part's `geometry.path` means the same thing to every reader, whatever manifest points at it.
 
 A file that spells its colors out is range-checked at **parse time** — it is independently well-formed. A file that **references** a palette cannot be: the length is unknown until the referenced file is read, so its index-range check is deferred to cross-file validation (§6.10, §11.6), exactly as a palette-less file's is. Charset (`[.0-9a-zA-Z]`) and row-width checks always apply at parse time.
 
@@ -645,7 +709,9 @@ palette file.
 
 ## 8. Reference paths
 
-Used by every reference field: the manifest's `geometry` entries (§6.9) and `animations` string values (§6.3), and a geometry file's `palette` when written in reference form (§7.4).
+Used by every reference field: the manifest's `geometry` entries (§6.9), its `animations` string values (§6.3), its top-level `palette` in reference form (§6.1), each part's `geometry.path` (§6.13), and a geometry file's `palette` in reference form (§7.4).
+
+These rules govern the **path** only. Nothing in this format layers a fragment or a selector onto a path string — where a reference needs to name something *inside* the file it points at, it does so with a second field (§6.13's `part`), so a path is always just a path.
 
 Rules:
 
@@ -691,6 +757,9 @@ Reference cycles (a → b → a) are an error.
 | `cuboidy.json` | part `rotation` | absent → identity (`[0, 0, 0]`) |
 | `cuboidy.json` | part `parent` | absent → root |
 | `cuboidy.json` | `geometry` | absent → `["voxels.json"]` |
+| `cuboidy.json` | part `geometry` | absent → the part of the same `name` in the `geometry` list (§6.13) |
+| `cuboidy.json` | part `geometry.part` | absent → the enclosing part's `name` |
+| `cuboidy.json` | `palette` | absent → inline geometry has no default palette |
 | `cuboidy.json` | `sockets` | absent → no published sockets (§6.12) |
 | `cuboidy.json` | `animations` | absent → no animations |
 | `cuboidy.json` | `version` | absent → current spec version (`"0.9"` in this draft) |
@@ -758,10 +827,10 @@ Manifest errors use the same five structural codes (§11.2). The TS reference im
 
 | Code | Manifest examples |
 |---|---|
-| `missing` | Top-level `name` is absent; top-level `parts` is absent or empty; palette file's `colors` is absent (§6.10) |
+| `missing` | Top-level `name` is absent; top-level `parts` is absent or empty; **`cuboidy.json` itself is absent** (§3); an inline part `geometry` without `size` or `voxels` (§6.13); palette file's `colors` is absent (§6.10) |
 | `duplicate` | Duplicate part name; duplicate animation name (planned) |
-| `unknown` | A field other than `name` / `version` / `geometry` / `parts` / `sockets` / `animations` is present at the top level; a field other than `name` / `parent` / `position` / `rotation` is present inside a part; a field other than `part` / `socket` inside a published socket (§6.12); a field other than `colors` in a palette file |
-| `invalid-value` | Wrong type for a field (e.g. `name` is a number); identifier failing the §5 regex; a `geometry` / animation reference path violating §8 (wrong extension, backslash, absolute, URL/URI, empty segment); duplicate or empty `geometry` list; malformed color string in a palette file; `parent` references a non-existent part; a published socket's `part` references a non-existent part (§6.12); parent chain contains a cycle; animation `duration` non-positive, non-finite, or less than the largest time key; time keys not decimal-number strings, not strictly increasing, or not starting at `"0.0"` |
+| `unknown` | A field other than `name` / `version` / `geometry` / `palette` / `parts` / `sockets` / `animations` is present at the top level; a field other than `name` / `parent` / `position` / `rotation` / `geometry` is present inside a part; a field other than `part` / `socket` inside a published socket (§6.12); in a part's `geometry` (§6.13), a field other than `path` / `part` in the reference form, or `name` / anything outside §7.5 + `palette` in the inline form — including `path` mixed with inline fields; a field other than `colors` in a palette file |
+| `invalid-value` | Wrong type for a field (e.g. `name` is a number); identifier failing the §5 regex; a `geometry` / `palette` / animation reference path violating §8 (wrong extension, backslash, absolute, URL/URI, empty segment) — including a part's `geometry.path` (§6.13); duplicate or empty `geometry` list; malformed color string in a palette file; `parent` references a non-existent part; a published socket's `part` references a non-existent part (§6.12); parent chain contains a cycle; animation `duration` non-positive, non-finite, or less than the largest time key; time keys not decimal-number strings, not strictly increasing, or not starting at `"0.0"` |
 | `wrong-arity` | Palette file's `colors` is empty or exceeds 62 entries (§6.10) |
 
 Items marked "planned" are not yet implemented in the TS reference; the catch-all `invalid-value` may surface generic Zod messages for those cases until then. External animation files (§6.3 string refs) are validated with the same inline-animation rules when the project is resolved (lint, inspection CLIs, editor); a missing or invalid referenced file is an error there.
@@ -772,14 +841,16 @@ Cross-file validation operates on the **project**: the manifest plus its referen
 
 | Code | Severity | Rule |
 |---|---|---|
-| `missing` | error | A manifest part name is not defined in **any** geometry file |
-| `duplicate` | error | The same part name is defined in **more than one** geometry file (§5 uniqueness is model-wide) |
-| `unknown` | warning | A geometry file defines a part not listed in `cuboidy.json` `parts` |
-| `missing` | error | A geometry file's voxels use color indices while it declares no palette, or while its §7.4 palette reference does not resolve |
+| `missing` | error | A part with no `geometry` (§6.13) is not defined in **any** file of the `geometry` list — the by-`name` lookup found nothing |
+| `missing` | error | A part's `geometry.path` (§6.13) does not resolve, or the file it names has no part called `geometry.part` (default: the enclosing part's `name`). Unlike the row above this names the file it looked in, because the author said which one |
+| `duplicate` | error | The same part name is defined in **more than one** file of the `geometry` list (§5 uniqueness is model-wide, which is what makes the by-`name` lookup unambiguous). Files reached only by an explicit `geometry.path` do not take part in this check |
+| `unknown` | warning | A geometry file in the `geometry` list defines a part that no manifest part resolves to |
+| `missing` | error | A geometry file's voxels use color indices while it declares no palette, or while its §7.4 palette reference does not resolve. Same for an **inline** part (§6.13) that resolves to no palette by either of its two routes — its own, or the manifest's |
 | `invalid-value` | error | A geometry file references a palette index outside the range of the palette it **points at** (only a referenced palette reaches this check; an inline one is validated at parse time — §7.4) |
 | — | — | **W03 does not apply to a referenced palette.** "Declared but unused" is only meaningful about colors a file owns; a shared palette exists precisely so each file can use a subset of it (§6.10) |
 | `invalid-value` | warning | **[W06]** an `<x>-l` / `<x>-r` part pair (same parent) whose occupied voxels are not mirror images across the parent's YZ plane, computed from manifest position + pivot + voxel occupancy. The check is geometric, not positional: a correctly mirrored part reflects its pivot too, so the matching hand-written position is often legitimately NOT the sign-opposite. **Scope, both parts of which are easy to trip over:** the side letter must be the *last* character with `-` or `_` before it, so `foreleg-l`/`foreleg-r` is checked while `leg-fl`/`leg-fr` is not; and the pair must share a parent, so `shin-l`/`shin-r` hanging off `thigh-l`/`thigh-r` is never compared. Most limb pairs below the first joint are therefore unchecked. Rest rotations do not participate — mirroring one is the author's responsibility (across the YZ plane, Euler `[x, y, z]` mirrors to `[x, −y, −z]`) |
-| `invalid-value` | warning | **[W07]** a geometry file exists in the package but is not referenced by the manifest `geometry` list (usually a forgotten entry — §6.9). "Geometry file" is decided by **content, not extension**: a file is one if the §7 reader accepts it. Since v0.9 the manifest, palette files and animation clips are all `.json` too, so an extension test would flag every one of them |
+| `invalid-value` | warning | **[W08]** a manifest-level `palette` (§6.1) that no inline part uses — every part either declares its own or takes its colors from a file, so the binding does nothing. Most often a v0.7 manifest, where the field overrode geometry files instead (§6.13) |
+| `invalid-value` | warning | **[W07]** a geometry file exists in the package but is referenced by neither the manifest `geometry` list nor any part's `geometry.path` (usually a forgotten entry — §6.9). "Geometry file" is decided by **content, not extension**: a file is one if the §7 reader accepts it. Since v0.9 the manifest, palette files and animation clips are all `.json` too, so an extension test would flag every one of them |
 | `unknown` | warning | Animation targets a part not present in `cuboidy.json` `parts` (cross-rig sharing, §6.8) |
 | `missing` | error | A published socket (§6.12) names a `socket` that its host part does not declare in geometry (§7.8). The other half — a `part` that is not in `parts` at all — is a manifest-level `invalid-value` (§11.5), because it needs no geometry file to detect |
 | `unknown` | runtime error | Attempt to attach to a socket name the model does not publish (§6.12). Unlike the two rules above this is a **consumer**-side failure: the package is well-formed, and the name simply is not in its `sockets` object |
@@ -835,8 +906,18 @@ what gets reported — this is what parity testing compares.
      palette is a §7.4 reference or absent — the range is unknown until phase 4
    - **`duplicate`** — two sockets on the part share a name
 4. **Cross-file validation** (§11.6), once the project resolves: part names
-   across geometry files, manifest↔geometry agreement, palette resolution and
-   the index ranges phase 3 deferred.
+   across geometry files, manifest↔geometry agreement, per-part `geometry`
+   references resolving (§6.13), palette resolution and the index ranges
+   phase 3 deferred.
+
+**Inline geometry** (§6.13) takes the same four phases, in the manifest rather
+than a geometry file: its `size` and `voxels` are phase 2, its layer/row/width
+agreement with `size` is phase 3, and its palette indices are range-checked at
+phase 3 only against a palette **it spells out itself**. An inline part that
+references a palette, or inherits the manifest's, defers to phase 4 for the
+same reason a §7.4 reference does — even when the manifest's palette is an
+array in the same document, so that where the colors are written never changes
+when an error is reported.
 
 Where several violations coexist *within* one phase, which is reported is
 implementation-defined; every shared fixture holds exactly one error, so parity

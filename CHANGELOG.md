@@ -5,6 +5,71 @@ the spec as it stands now.
 
 ## v0.9 (draft — current)
 
+### Per-part geometry, and a single-file model
+
+A manifest part gains an optional **`geometry`** object (§6.13) saying where its
+shape comes from — a file, or written out on the spot:
+
+```json
+{ "name": "head",      "parent": "neck", "geometry": { "path": "voxels.json" } }
+{ "name": "cap",       "parent": "head", "geometry": { "path": "gear/caps.json", "part": "beret" } }
+{ "name": "foreleg-l", "parent": "body", "geometry": { "size": [3, 10, 4], "voxels": [ … ] } }
+```
+
+The inline object is exactly a §7.5 part object with `name` removed (the
+enclosing part already has one, and two copies can disagree), plus an optional
+`palette`. `path` present means the reference form; `part` defaults to the
+enclosing part's `name`, so pointing at a file is usually one field.
+
+Two things follow. **A model can now be one text file** — inline every part and
+nothing is left to reference. `<name>.cuboidy` (§13) already packed a model
+into one file, but as a ZIP; an all-inline `cuboidy.json` stays diffable,
+pasteable and editable in a text editor, which is what §1 asks for.
+
+And **the rig↔shape join becomes explicit**. It used to rest entirely on part
+names matching across files, which is why §11.6 carried two rules for the ways
+that could silently fail. With a reference, "defined in a geometry file but in
+no manifest part" is decidable per part and names the file the author actually
+pointed at.
+
+Absent `geometry` keeps the by-`name` lookup, so every existing model is
+unchanged and the three forms mix freely within one manifest.
+
+The reference is an object rather than a `file.json#part` string because §8's
+grammar would read `voxels.json/head` as a file inside a directory, and a
+fragment would be a second grammar layered on the first. Two named fields need
+neither.
+
+### The manifest's `palette` returns, scoped
+
+Inline geometry has no file to take colors from, so the manifest gains a
+top-level **`palette`** (§6.1) that inline parts use when they declare none of
+their own.
+
+This is the field v0.7 had and v0.9 removed, under the same name — but not the
+same thing, and the difference is the whole point. v0.7's palette **overrode**
+geometry files, so a self-contained file's indices meant different things
+depending on who loaded it; that precedence is what made it wrong, and what
+took hint H03 with it. This one **never reaches into a file**. A part in the
+reference form always uses its file's palette (§7.4). The manifest's palette
+covers only geometry the manifest itself contains, where there is no other
+declaration to shadow.
+
+New lint **W08** flags a manifest `palette` that no inline part uses — which is
+exactly what a v0.7 manifest looks like, so the case that would otherwise
+change meaning in silence is reported instead.
+
+### `cuboidy.json` is required
+
+Not a change to this document — §3 has always made it the package's anchor, and
+nothing here ever blessed a manifest-less model. The reference tools were more
+permissive than the spec: `cuboidy-lint` accepted a directory holding only
+`voxels.json`, and the editor would open a lone geometry file as a second-class
+document with no rig view, no animation view and a "Create manifest" promotion
+step. §3 now says outright that the absence is `missing`, and the tools have
+been brought into line. The case that permissiveness served — one file, no
+ceremony — is what inline geometry now covers properly.
+
 ### Published sockets
 
 The manifest gains an optional top-level **`sockets`** object (§6.12) mapping a
