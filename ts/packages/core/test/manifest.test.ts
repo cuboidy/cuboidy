@@ -365,3 +365,78 @@ describe('parseManifest - animation validation (SPEC ss6.4/ss6.6/ss11.5)', () =>
     expect(r.ok).toBe(true);
   });
 });
+
+// SPEC §6.12 — the manifest half of a published socket's contract. The
+// geometry half (the part actually declares that socket) needs the geometry
+// files and lives in cross-file.test.ts.
+describe('parseManifest — published sockets (§6.12)', () => {
+  it('parses the rigged corpus publications, including an aliased name', async () => {
+    const json = await readFixtureJson(`${RIGGED}/cuboidy.json`);
+    const r = parseManifest(json);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    // `headwear` is deliberately NOT the socket's own name: publication is
+    // an alias, so nothing may assume key === socket.
+    expect(r.value.sockets).toEqual({
+      headwear: { part: 'head', socket: 'hat' },
+      mouth: { part: 'head', socket: 'mouth' },
+    });
+  });
+
+  it('absent `sockets` means the model publishes none', async () => {
+    const json = await readFixtureJson(`${SINGLE}/cuboidy.json`);
+    const r = parseManifest(json);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.sockets).toBeUndefined();
+  });
+
+  it('accepts one declared socket published under two names', () => {
+    const r = parseManifest({
+      name: 'm',
+      parts: [{ name: 'body' }],
+      sockets: {
+        top: { part: 'body', socket: 'peg' },
+        crown: { part: 'body', socket: 'peg' },
+      },
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it('invalid-value: `part` names no part in this manifest', () => {
+    const r = parseManifest({
+      name: 'm',
+      parts: [{ name: 'body' }],
+      sockets: { weapon: { part: 'hand-r', socket: 'grip' } },
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      // Same code a dangling `parent` gets (§11.5) — it is the same kind of
+      // failure, and both are decidable without reading a geometry file.
+      expect(r.code).toBe('invalid-value');
+      expect(r.message).toMatch(/published socket "weapon" names part "hand-r"/);
+      expect(r.path).toEqual(['sockets', 'weapon', 'part']);
+    }
+  });
+
+  it('unknown: an extra field inside a published socket', () => {
+    const r = parseManifest({
+      name: 'm',
+      parts: [{ name: 'body' }],
+      // Offsets are reserved (§14) — publication is pure aliasing today.
+      sockets: { top: { part: 'body', socket: 'peg', offset: [0, 1, 0] } },
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('unknown');
+  });
+
+  it('invalid-value: `part` / `socket` absent, or the published name is not an identifier', () => {
+    for (const sockets of [
+      { top: { part: 'body' } },
+      { top: { socket: 'peg' } },
+      { '1bad': { part: 'body', socket: 'peg' } },
+    ]) {
+      const r = parseManifest({ name: 'm', parts: [{ name: 'body' }], sockets });
+      expect(r.ok).toBe(false);
+    }
+  });
+});

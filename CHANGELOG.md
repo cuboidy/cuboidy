@@ -5,6 +5,43 @@ the spec as it stands now.
 
 ## v0.9 (draft — current)
 
+### Published sockets
+
+The manifest gains an optional top-level **`sockets`** object (§6.12) mapping a
+model-wide published name to the part and socket it aliases:
+
+```json
+"sockets": { "weapon": { "part": "hand-r", "socket": "grip" } }
+```
+
+Sockets themselves are unchanged — they are still declared per part in the
+geometry file (§7.8). What changes is that declaring one no longer exposes it.
+`sockets` was the one capability a consumer could not discover from the
+manifest: `geometry`, `animations` and the rig are all declared there, but to
+learn that `hand-r` had a `grip` you had to open the geometry files and read
+past the model's public surface. Publication also gives an attachment point a
+name that survives renaming the part or the socket underneath it, and a name
+that is unique **model-wide** — §5 only makes a socket unique within its part,
+so two parts could each declare `tip`.
+
+Two rules follow. A published `part` that names no part in `parts` is a
+manifest `invalid-value` (§11.5, alongside a bad `parent`); a published
+`socket` the host part does not declare is a cross-file `missing` (§11.6).
+Together they retire the "planned" line §11.6 carried for attaching to a
+socket that does not exist — what remains there is now a well-defined
+consumer-side error: attaching by a name the model does not publish.
+
+Two corrections come with it. §7.8 said an attached asset's **root pivot**
+lands on the socket; §6.2 permits multiple root parts, so that point is not
+always unique. The guest's **model origin** does, and it is what authors
+already do in practice. And §14's attachment entry described publication as
+part of the missing feature; it now scopes the gap to composition proper —
+recording *that* an attachment happens is a scene, not an asset, and is
+deliberately left to a layer above this format.
+
+**Migration:** none. `sockets` is optional and absent means the model publishes
+nothing, which is what every existing model does today.
+
 ### Geometry moves to JSON
 
 The geometry file moves from the bespoke `.cvox` text format to **JSON** —

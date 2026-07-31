@@ -9,6 +9,7 @@ import {
   type Manifest,
   type ManifestPart,
   type Part,
+  type PublishedSocket,
 } from '@cuboidy/core';
 import { normalizePath } from './load-model.js';
 import {
@@ -44,6 +45,66 @@ interface Params {
   // Parenting a new part writes the manifest, so a broken manifest text
   // downgrades "create as a child" to "create at the root".
   manifestParseError: string | null;
+}
+
+// SPEC §6.12: rewrite the manifest's published sockets after something they
+// point at changed name or went away. `build` returning null drops the entry.
+// Key order is preserved (a publication is identified by its key, so a
+// rebuild that reordered them would churn the diff for no reason), and an
+// untouched manifest is returned by identity so callers can skip the write.
+function mapPublishedSockets(
+  m: Manifest,
+  build: (target: PublishedSocket) => PublishedSocket | null,
+): Manifest {
+  if (m.sockets === undefined) return m;
+  const next: Record<string, PublishedSocket> = {};
+  let changed = false;
+  for (const [pub, target] of Object.entries(m.sockets)) {
+    const built = build(target);
+    if (built === null) {
+      changed = true;
+      continue;
+    }
+    next[pub] = built;
+    if (built !== target) changed = true;
+  }
+  if (!changed) return m;
+  // An empty map means "publishes nothing", which the SPEC spells as an
+  // absent field — writing `"sockets": {}` would be a second way to say it.
+  if (Object.keys(next).length === 0) {
+    const { sockets: _drop, ...rest } = m;
+    return rest;
+  }
+  return { ...m, sockets: next };
+}
+
+// Set `sockets`, keeping SPEC §6.1's field order (before `animations`) even
+// when the field is being ADDED — a bare spread would append it after the
+// animations block. Same tidy-diff reason handleChangeModelVersion re-seats
+// `version`. A key that already exists keeps its place under a spread, so
+// this only matters for the first publication.
+function withSockets(
+  m: Manifest,
+  sockets: Record<string, PublishedSocket>,
+): Manifest {
+  const { animations, ...rest } = m;
+  return animations === undefined
+    ? { ...rest, sockets }
+    : { ...rest, sockets, animations };
+}
+
+// The published name a given (part, socket) currently goes by, or null.
+// A socket MAY be published under several names (§6.12); the inspector's
+// one field manages the FIRST, and leaves any others to the source view.
+function publishedNameOf(
+  m: Manifest | undefined,
+  part: string,
+  socket: string,
+): string | null {
+  for (const [pub, t] of Object.entries(m?.sockets ?? {})) {
+    if (t.part === part && t.socket === socket) return pub;
+  }
+  return null;
 }
 
 export function usePartEdits({
@@ -123,6 +184,82 @@ export function usePartEdits({
       mutateGeometryPart(tag ?? null, partName, build);
     },
     [mutateGeometryPart],
+  );
+
+  // A socket's name and its publication (SPEC §6.12) live in two files, so
+  // renaming or removing one has to move both or the manifest is left
+  // pointing at a socket that no longer exists — the exact cross-file
+  // `missing` error §11.6 defines. Both go through ONE dispatchEdit so they
+  // are one undo step, the same reason the pivot gizmo writes both files at
+  // once. (Everything else about a socket — its pos and rot — is
+  // geometry-only and still rides the generic onEditPart path.)
+  const mutateSocket = useCallback(
+    (
+      partName: string,
+      index: number,
+      // Returns the rewritten socket, or null to delete it.
+      buildSocket: (socket: Part['sockets'][number]) => Part['sockets'][number] | null,
+    ) => {
+      if (editsBlocked) return;
+      dispatchEdit(null, (current) => {
+        const src = current?.source;
+        if (src === undefined) return current;
+        let oldName: string | null = null;
+        let newName: string | null = null;
+        const nextSrc = mapGeometryFiles(src, (geometry) => {
+          const i = geometry.parts.findIndex((p) => p.name === partName);
+          if (i < 0) return null;
+          const part = geometry.parts[i]!;
+          const socket = part.sockets[index];
+          if (socket === undefined) return null;
+          const built = buildSocket(socket);
+          if (built === socket) return null;
+          oldName = socket.name;
+          newName = built === null ? null : built.name;
+          const sockets =
+            built === null
+              ? part.sockets.filter((_, j) => j !== index)
+              : part.sockets.map((s, j) => (j === index ? built : s));
+          const parts = geometry.parts.slice();
+          parts[i] = { ...part, sockets };
+          return { ...geometry, parts };
+        });
+        if (nextSrc === src || oldName === null) return current;
+        if (src.manifest === undefined) {
+          return { ...current, source: nextSrc };
+        }
+        const nextManifest = mapPublishedSockets(src.manifest, (t) =>
+          t.part === partName && t.socket === oldName
+            ? newName === null
+              ? null
+              : { ...t, socket: newName }
+            : t,
+        );
+        return {
+          ...current,
+          source:
+            nextManifest === src.manifest
+              ? nextSrc
+              : withManifest(nextSrc, nextManifest),
+        };
+      });
+    },
+    [dispatchEdit, editsBlocked],
+  );
+
+  const handleRenameSocket = useCallback(
+    (partName: string, index: number, name: string) => {
+      if (!isIdentifier(name)) return;
+      mutateSocket(partName, index, (s) => (s.name === name ? s : { ...s, name }));
+    },
+    [mutateSocket],
+  );
+
+  const handleDeleteSocket = useCallback(
+    (partName: string, index: number) => {
+      mutateSocket(partName, index, () => null);
+    },
+    [mutateSocket],
   );
 
   // Begin creating a part: open the inline draft row in the tree. The draft is
@@ -366,6 +503,10 @@ export function usePartEdits({
             return nmp;
           });
           let nextManifest: Manifest = { ...m, parts: nextMParts };
+          // §6.12: a publication names its host part, so it moves too.
+          nextManifest = mapPublishedSockets(nextManifest, (t) =>
+            t.part === oldName ? { ...t, part: newName } : t,
+          );
           if (m.animations !== undefined) {
             const rebuilt: NonNullable<Manifest['animations']> = {};
             let changed = false;
@@ -442,6 +583,11 @@ export function usePartEdits({
             }
           }
           let nextManifest: Manifest = { ...m, parts: nextMParts };
+          // §6.12: the part is gone, so anything it published goes with it —
+          // leaving the entry would be a cross-file error (§11.6).
+          nextManifest = mapPublishedSockets(nextManifest, (t) =>
+            t.part === name ? null : t,
+          );
           if (m.animations !== undefined) {
             const rebuilt: NonNullable<Manifest['animations']> = {};
             let changed = false;
@@ -548,6 +694,40 @@ export function usePartEdits({
     [mutateManifest],
   );
 
+  // Publish a declared socket under a model-level name, or unpublish it
+  // (`publicName` null). Manifest-only: the socket itself is untouched, since
+  // publication is pure aliasing (§6.12).
+  const handlePublishSocket = useCallback(
+    (partName: string, socketName: string, publicName: string | null) => {
+      mutateManifest(null, (m) => {
+        const existing = publishedNameOf(m, partName, socketName);
+        if (publicName === null) {
+          if (existing === null) return m;
+          return mapPublishedSockets(m, (t) =>
+            t.part === partName && t.socket === socketName ? null : t,
+          );
+        }
+        if (!isIdentifier(publicName) || existing === publicName) return m;
+        // Published names are object keys, so they are unique model-wide —
+        // taking one already in use would silently drop the other entry.
+        if (Object.hasOwn(m.sockets ?? {}, publicName)) return m;
+        const target: PublishedSocket = { part: partName, socket: socketName };
+        if (existing === null) {
+          return withSockets(m, { ...(m.sockets ?? {}), [publicName]: target });
+        }
+        // Rename in place: rebuilding with the new key appended would move
+        // the entry to the end of the object for a pure rename.
+        const sockets: Record<string, PublishedSocket> = {};
+        for (const [pub, t] of Object.entries(m.sockets ?? {})) {
+          if (pub === existing) sockets[publicName] = target;
+          else sockets[pub] = t;
+        }
+        return withSockets(m, sockets);
+      });
+    },
+    [mutateManifest],
+  );
+
   const handleChangePartParent = useCallback(
     (partName: string, parent: string | null) => {
       // Discrete select — always its own undo entry.
@@ -643,6 +823,9 @@ export function usePartEdits({
     handleChangePartPosition,
     handleChangePartRotation,
     handleTogglePartRotation,
+    handleRenameSocket,
+    handleDeleteSocket,
+    handlePublishSocket,
     handleGizmoMovePart,
     handleGizmoRotatePart,
     handleGizmoMovePivot,

@@ -1,10 +1,11 @@
 export {
   ManifestSchema,
   ManifestPartSchema,
+  PublishedSocketSchema,
   manifestGeometry,
   parseManifest,
 } from './manifest.js';
-export type { Manifest, ManifestPart } from './manifest.js';
+export type { Manifest, ManifestPart, PublishedSocket } from './manifest.js';
 
 export { PaletteFileSchema, parsePaletteFile } from './palette-file.js';
 export { MAX_PALETTE } from './geometry/palette.js';

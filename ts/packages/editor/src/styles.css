@@ -1263,6 +1263,26 @@ svg.lucide {
   flex-shrink: 0;
 }
 
+/* The publication row (SPEC §6.12): the name this socket goes by OUTSIDE the
+   model. It belongs with the socket's identity, not its coordinates, so it
+   sits directly under the name — and its label doesn't fit the 3rem column
+   the coordinate rows share. Empty is a real state (the socket is internal),
+   which is what the placeholder says. */
+.socket-publish .property-field-label {
+  width: auto;
+}
+
+.socket-publish .text-input {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+
+.socket-publish .text-input::placeholder {
+  color: var(--txt-3);
+  font-style: italic;
+}
+
 .socket-add {
   align-self: flex-start;
 }

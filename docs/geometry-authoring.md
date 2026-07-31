@@ -169,13 +169,29 @@ So a cell `(x,y,z)` is `voxels[y][z][x]`. Consequences:
 A hat, a sword, a lantern — a model built to attach to a socket on a host model
 you may never see. The whole rule is:
 
-- **The guest's root part's pivot is the point that lands on the socket.** So
-  that root part's manifest `position` is `[0, 0, 0]`, and its `pivot.pos` sits
-  at whatever point of its own geometry you want coincident with the socket —
-  the middle of a grip, the underside of a hat's brim.
+- **The guest's model origin is the point that lands on the socket** (SPEC
+  §6.12) — world `[0, 0, 0]` in your own coordinate space, not any one part's
+  pivot. In practice: give the root part `"position": [0, 0, 0]` and put its
+  `pivot.pos` at whatever point of its own geometry you want coincident with
+  the socket — the middle of a grip, the underside of a hat's brim. That makes
+  the origin and the joining point the same place, which is the arrangement
+  every reader will assume.
 - The socket's rotation orients you. With an identity socket rotation, the
   guest's `+Y` points along the host socket's `+Y`.
 - Everything else in the accessory hangs off that root as normal children.
+
+The host side has one job in return: **publish the socket**. A socket declared
+in a geometry file is internal — the manifest's `sockets` map is what offers it
+to anyone else, under a model-level name:
+
+```json
+"sockets": { "weapon": { "part": "hand-r", "socket": "grip" } }
+```
+
+Publish every socket you intend an accessory to use, and only those. The
+published name is what a consumer holds, so it survives you renaming the part
+or the socket underneath it. Lint will tell you if it points at a socket that
+is not there.
 
 Author against the *contract* — where the socket is, how big the attachment
 region is, which way is up — not against the host's geometry. Two models built

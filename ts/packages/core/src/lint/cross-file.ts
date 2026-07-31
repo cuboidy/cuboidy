@@ -74,6 +74,7 @@ export function validateProject(input: ProjectInput): Diagnostic[] {
     }
   }
   checkLrSymmetry(manifest, partsByName, diags); // W06
+  checkPublishedSockets(manifest, partsByName, diags); // §6.12
 
   // §6.8 / §11.6: an animation targeting a part that is not in the
   // manifest is silently skipped at runtime (cross-rig sharing), so lint
@@ -168,6 +169,30 @@ function maxUsedIndex(geometry: Geometry): number {
     }
   }
   return max;
+}
+
+// §6.12 / §11.6 — the geometry half of a published socket's contract: the
+// host part must DECLARE a socket by that name (§7.8). The manifest half
+// (the host part exists at all) is checked at parse time, so a published
+// entry whose part is unknown never reaches here — but a part that is in
+// `parts` and defined in no geometry file does, and it already has its own
+// `missing` error above, so this stays quiet rather than doubling it.
+function checkPublishedSockets(
+  manifest: Manifest,
+  partsByName: ReadonlyMap<string, Part>,
+  out: Diagnostic[],
+): void {
+  for (const [pub, target] of Object.entries(manifest.sockets ?? {})) {
+    const part = partsByName.get(target.part);
+    if (part === undefined) continue; // already reported as a missing part
+    if (!part.sockets.some((s) => s.name === target.socket)) {
+      out.push({
+        code: 'missing',
+        severity: 'error',
+        message: `published socket '${pub}' names socket '${target.socket}' on part '${target.part}', which declares no such socket`,
+      });
+    }
+  }
 }
 
 // W06 — an `<base>-l` / `<base>-r` (or `_l` / `_r`) pair, sharing a

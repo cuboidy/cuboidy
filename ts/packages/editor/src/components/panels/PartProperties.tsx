@@ -58,6 +58,16 @@ interface Props {
     build: (part: Part) => Part,
     tag?: string,
   ) => void;
+  // Socket name / lifetime / publication (SPEC §6.12). Separate from
+  // onEditPart because each may have to rewrite the manifest as well as
+  // the geometry file, in one undo step.
+  onRenameSocket: (partName: string, index: number, name: string) => void;
+  onDeleteSocket: (partName: string, index: number) => void;
+  onPublishSocket: (
+    partName: string,
+    socketName: string,
+    publicName: string | null,
+  ) => void;
   // Duplicate: append a concrete copy of this part to its file (geometry
   // only, no manifest rig). Mirror: reflect this part in place across the
   // axis. Both match the cuboidy-part CLI.
@@ -90,6 +100,9 @@ export function PartProperties({
   onCreateManifest,
   onMovePart,
   onEditPart,
+  onRenameSocket,
+  onDeleteSocket,
+  onPublishSocket,
   onDuplicatePart,
   onMirrorPart,
 }: Props) {
@@ -107,6 +120,19 @@ export function PartProperties({
     manifest !== undefined ? findManifestPart(manifest, selectedPart) : undefined;
   const hasManifest = manifest !== undefined;
   const rigDisabled = !hasManifest || manifestEditsDisabled;
+
+  // SPEC §6.12 publications, split into what the socket rows need: this
+  // part's socket → published name, and every published name in the model
+  // (uniqueness is model-wide, so a row must know about the others).
+  const publishedNames = new Set(Object.keys(manifest?.sockets ?? {}));
+  const publications = new Map<string, string>();
+  for (const [pub, target] of Object.entries(manifest?.sockets ?? {})) {
+    // First wins: a socket may be published twice, and the row edits the
+    // first — same rule the publish handler applies.
+    if (target.part === selectedPart && !publications.has(target.socket)) {
+      publications.set(target.socket, pub);
+    }
+  }
 
   // A model needs at least one part; the last one can't be deleted.
   const isOnlyPart = geometry.parts.length <= 1;
@@ -202,7 +228,13 @@ export function PartProperties({
         <GeometryFields
           part={geometryPart}
           disabled={geometryEditsDisabled}
+          publications={publications}
+          takenNames={publishedNames}
+          publishDisabled={rigDisabled}
           onEditPart={onEditPart}
+          onRenameSocket={onRenameSocket}
+          onDeleteSocket={onDeleteSocket}
+          onPublishSocket={onPublishSocket}
         />
       </div>
 
@@ -363,10 +395,28 @@ function RigFields({
 interface GeometryFieldsProps {
   part: Part;
   disabled: boolean;
+  // SPEC §6.12 publication state. `publications` maps THIS part's socket
+  // names to the model-level names they're published under (absent = not
+  // published); `takenNames` is every published name in the model, for the
+  // uniqueness check; `publishDisabled` is the manifest gate — publishing
+  // writes cuboidy.json, so it's blocked for the same reasons the rig
+  // fields are, independently of `disabled` (which gates geometry).
+  publications: ReadonlyMap<string, string>;
+  takenNames: ReadonlySet<string>;
+  publishDisabled: boolean;
   onEditPart: (
     partName: string,
     build: (part: Part) => Part,
     tag?: string,
+  ) => void;
+  // Renaming or removing a socket may also rewrite its publication, so
+  // these two can't ride the geometry-only onEditPart path.
+  onRenameSocket: (partName: string, index: number, name: string) => void;
+  onDeleteSocket: (partName: string, index: number) => void;
+  onPublishSocket: (
+    partName: string,
+    socketName: string,
+    publicName: string | null,
   ) => void;
 }
 
@@ -400,7 +450,17 @@ function resizeVoxels(
 
 // geometry-side per-part geometry: size, pivot (position + optional rotation) and
 // sockets.
-function GeometryFields({ part, disabled, onEditPart }: GeometryFieldsProps) {
+function GeometryFields({
+  part,
+  disabled,
+  publications,
+  takenNames,
+  publishDisabled,
+  onEditPart,
+  onRenameSocket,
+  onDeleteSocket,
+  onPublishSocket,
+}: GeometryFieldsProps) {
   const rot = part.pivot.rot;
 
   // Resize one dimension. Committed on blur (not per keystroke) so typing
@@ -546,14 +606,7 @@ function GeometryFields({ part, disabled, onEditPart }: GeometryFieldsProps) {
                 isIdentifier(name) &&
                 !part.sockets.some((s, j) => j !== i && s.name === name)
               }
-              onCommit={(name) =>
-                onEditPart(part.name, (p) => ({
-                  ...p,
-                  sockets: p.sockets.map((s, j) =>
-                    j === i ? { ...s, name } : s,
-                  ),
-                }))
-              }
+              onCommit={(name) => onRenameSocket(part.name, i, name)}
             />
             <button
               type="button"
@@ -561,16 +614,31 @@ function GeometryFields({ part, disabled, onEditPart }: GeometryFieldsProps) {
               disabled={disabled}
               title="Remove socket"
               aria-label="Remove socket"
-              onClick={() =>
-                onEditPart(part.name, (p) => ({
-                  ...p,
-                  sockets: p.sockets.filter((_, j) => j !== i),
-                }))
-              }
+              onClick={() => onDeleteSocket(part.name, i)}
             >
               <X size={13} />
             </button>
           </div>
+          <label className="property-field socket-publish">
+            <span className="property-field-label">published as</span>
+            <TextInput
+              value={publications.get(socket.name) ?? ''}
+              disabled={publishDisabled}
+              placeholder="not published"
+              ariaLabel={`Published name for socket ${socket.name}`}
+              // Empty unpublishes. Otherwise a §5 identifier that no OTHER
+              // publication is already using — published names are manifest
+              // object keys, so a collision would drop the other entry.
+              validate={(v) =>
+                v === '' ||
+                (isIdentifier(v) &&
+                  (v === publications.get(socket.name) || !takenNames.has(v)))
+              }
+              onCommit={(v) =>
+                onPublishSocket(part.name, socket.name, v === '' ? null : v)
+              }
+            />
+          </label>
           <div className="property-position">
             {AXES.map((axis) => (
               <NumberInput

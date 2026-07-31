@@ -65,7 +65,7 @@ A Cuboidy model is a **folder**, not a single file:
 
 ```
 my-model/
-├── cuboidy.json     manifest: rig hierarchy + animations (+ references)
+├── cuboidy.json     manifest: rig hierarchy + published sockets + animations
 ├── voxels.json      voxel definition: palette + per-part grid + pivots + sockets
 └── anims/           (optional) shared animations
     └── walk.json
@@ -86,8 +86,8 @@ my-model.cuboidy        packed package (ZIP of the folder above)
 
 ## The example models
 
-- `models/knight/` — 18 parts over three geometry files sharing one palette; sockets for a sword and a helm crest
-- `models/sword/` — single-part accessory, authored against the knight's `hand-r:grip` socket contract without seeing the knight
+- `models/knight/` — 18 parts over three geometry files sharing one palette; publishes two sockets, `weapon` and `crest`
+- `models/sword/` — single-part accessory, authored against the knight's grip contract without seeing the knight
 - `models/owl/` — segmented wings whose shoulder / mid / tip lag by a sixteenth of a cycle
 - `models/koi/` — five body segments carrying a phase-delayed swimming wave
 - `models/fox/` — quadruped on a diagonal gait, with a five-segment brush tail
@@ -159,7 +159,7 @@ generates better models. Harness and raw votes are in git history, `b139ef4`.)*
 ## Roadmap
 
 Done — the v0.9 spec and a complete TypeScript implementation of it
-(`ts/packages/core/`, 497 tests):
+(`ts/packages/core/`, 508 tests):
 
 - [x] Reference parser, canonical serializer (a verified byte-level fixed point
       on every shipped model), and manifest validation
@@ -167,7 +167,8 @@ Done — the v0.9 spec and a complete TypeScript implementation of it
       editor, so all three read a package the same way
 - [x] Lint — `lintGeometry` (W01–W05, H01–H02) plus cross-file
       `validateProject` (part matching, duplicate names, palette resolution and
-      range, animation targets, W06 l/r symmetry, W07 unreferenced file)
+      range, animation targets, published-socket resolution, W06 l/r symmetry,
+      W07 unreferenced file)
 - [x] JSON Schemas for both file kinds, generated from the same Zod schemas the
       runtime uses, plus shared `fixtures/` as the cross-implementation contract
 - [x] Inspection CLIs — `cuboidy-view` (ASCII), `cuboidy-query` (coordinates),
@@ -187,16 +188,19 @@ Shipped alongside it:
 
 Open, roughly in the order the work is worth doing:
 
-- [ ] **Attachment, in the format.** Sockets are currently half a feature: a
-      package can declare `head:crest` or `hand-r:grip`, and nothing anywhere
-      can say *what goes in it*. `models/sword` was authored blind against the
-      knight's grip contract and fits perfectly — but proving that took a
-      hand-built merge of the two packages, because no tool composes them. The
-      missing piece is a manifest-level attachment (asset reference, host part
-      and socket), plus rulings on a socket that does not resolve, and on how
-      palettes and animations scope across the join. `--attach` for
-      `cuboidy-snap` / `cuboidy-gif` falls out of it once the format can
-      express the relationship.
+- [ ] **Composition, above the format.** A package can now state what it
+      offers: sockets are declared per part, and the manifest's `sockets` map
+      (SPEC §6.12) publishes the ones consumers may use, under model-level
+      names — `knight` publishes `weapon` and `crest`. What no package can say
+      is *what goes in one*. `models/sword` was authored blind against the
+      knight's grip contract and fits perfectly, but proving that took a
+      hand-built merge of the two packages, because no tool composes them.
+      That last piece is deliberately **not** going into the format: an
+      attachment is a property of an arrangement of several models — a scene —
+      and a model file should not have to know where it is used. It belongs to
+      a layer above, which would own the scene file and reference models
+      through their published sockets. `--attach` for `cuboidy-snap` /
+      `cuboidy-gif` becomes possible once that layer exists.
 - [ ] **Swept-volume checking.** Lint sees the rest pose; a render shows one
       frame. A part that passes *through* another while moving is invisible to
       both. The knight's thigh swung through its surcoat, found only by

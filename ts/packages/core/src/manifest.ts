@@ -18,6 +18,16 @@ export const ManifestPartSchema = z
   })
   .strict();
 
+// SPEC §6.12: one entry of the manifest's `sockets` map — a published name
+// (the map key) aliasing a socket declared on a part in geometry (§7.8).
+// Pure aliasing: no offset of its own, so the frame is exactly §7.8's.
+export const PublishedSocketSchema = z
+  .object({
+    part: Identifier,
+    socket: Identifier,
+  })
+  .strict();
+
 export const ManifestSchema = z
   .object({
     name: Identifier,
@@ -41,6 +51,12 @@ export const ManifestSchema = z
     // precedence rule (and its H03 shadowing hint) entirely: references
     // run manifest → geometry → palette, never manifest → palette as well.
     parts: z.array(ManifestPartSchema).min(1),
+    // SPEC §6.12: the attachment points this model offers to consumers.
+    // Keys are §5 identifiers and are unique model-wide by virtue of being
+    // object keys — a socket name is only unique WITHIN its part (§7.8),
+    // so publication is what gives an attachment point an unambiguous name.
+    // Absent → the model publishes none.
+    sockets: z.record(Identifier, PublishedSocketSchema).optional(),
     animations: AnimationsSchema.optional(),
   })
   .strict()
@@ -67,6 +83,20 @@ export const ManifestSchema = z
           code: 'custom',
           path: ['parts', i, 'parent'],
           message: `parent "${p.parent}" is not a part in this manifest`,
+        });
+      }
+    }
+    // §6.12: a published socket's host part must be a part of this model.
+    // The other half of the contract — that the part actually DECLARES a
+    // socket by that name — needs the geometry files, so it lives in
+    // cross-file validation (§11.6). No cuboidyCode: the fallback maps this
+    // to `invalid-value`, the same code a dangling `parent` gets (§11.5).
+    for (const [pub, target] of Object.entries(m.sockets ?? {})) {
+      if (!names.has(target.part)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['sockets', pub, 'part'],
+          message: `published socket "${pub}" names part "${target.part}", which is not a part in this manifest`,
         });
       }
     }
@@ -101,6 +131,7 @@ export function manifestGeometry(m: Manifest): readonly string[] {
 
 export type Manifest = z.infer<typeof ManifestSchema>;
 export type ManifestPart = z.infer<typeof ManifestPartSchema>;
+export type PublishedSocket = z.infer<typeof PublishedSocketSchema>;
 
 export function parseManifest(json: unknown): Result<Manifest> {
   const result = ManifestSchema.safeParse(json);

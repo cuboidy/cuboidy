@@ -111,6 +111,47 @@ describe('lintSource', () => {
     expect(found[0]!.diag.message).toMatch(/ghost/);
   });
 
+  // SPEC §6.12 — the editor is where a publication gets typed, so a
+  // publication pointing at a socket that isn't there has to show up in the
+  // Console rather than waiting for the CLI to reject the package.
+  describe('published sockets', () => {
+    const withSocket = (socketName: string) =>
+      JSON.stringify({
+        version: '0.9',
+        palette: ['#FF0000'],
+        parts: [
+          {
+            name: 'hand-r',
+            size: [2, 1, 1],
+            sockets: [{ name: socketName, pos: [1, 0, 0] }],
+            voxels: [['00']],
+          },
+        ],
+      });
+    const manifest = JSON.stringify({
+      name: 'm',
+      parts: [{ name: 'hand-r' }],
+      sockets: { weapon: { part: 'hand-r', socket: 'grip' } },
+    });
+
+    it('reports nothing when the host part declares the socket', () => {
+      expect(
+        lintSource(pkg({ [MANIFEST]: manifest, 'voxels.json': withSocket('grip') })),
+      ).toEqual([]);
+    });
+
+    it('reports a publication whose socket the host part does not declare', () => {
+      const found = lintSource(
+        pkg({ [MANIFEST]: manifest, 'voxels.json': withSocket('hold') }),
+      );
+      expect(found).toHaveLength(1);
+      expect(found[0]!.file).toBe(CROSS_FILE);
+      expect(found[0]!.diag.code).toBe('missing');
+      expect(found[0]!.diag.severity).toBe('error');
+      expect(found[0]!.diag.message).toMatch(/weapon/);
+    });
+  });
+
   it('surfaces hints as well as warnings, since --strict ignores only hints', () => {
     // A fractional pivot that is not the geometric default → H02, a hint.
     const src = pkg({

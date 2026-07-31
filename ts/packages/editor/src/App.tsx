@@ -163,6 +163,9 @@ export function App() {
     handleChangePartPosition,
     handleChangePartRotation,
     handleTogglePartRotation,
+    handleRenameSocket,
+    handleDeleteSocket,
+    handlePublishSocket,
     handleGizmoMovePart,
     handleGizmoRotatePart,
     handleGizmoMovePivot,
@@ -914,6 +917,9 @@ export function App() {
                 onCreateManifest={handleCreateManifest}
                 onMovePart={handleMovePart}
                 onEditPart={handleEditPart}
+                onRenameSocket={handleRenameSocket}
+                onDeleteSocket={handleDeleteSocket}
+                onPublishSocket={handlePublishSocket}
                 onDuplicatePart={handleDuplicatePart}
                 onMirrorPart={handleMirrorPart}
               />

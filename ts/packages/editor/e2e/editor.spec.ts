@@ -218,3 +218,69 @@ test('a cross-file lint finding is attributed to the project', async ({ page }) 
   await expect(entry.locator('.console-source')).toHaveText('<cross-file>');
   await expect(entry).toHaveClass(/error/);
 });
+
+// SPEC §6.12 — a socket's name lives in the geometry file and its
+// publication in the manifest, so every socket edit has to move both or
+// leave the package with a cross-file error (§11.6). This drives the whole
+// life cycle through the UI, checking cuboidy.json after each step.
+test('publishing a socket keeps the manifest in step with the geometry', async ({
+  page,
+}) => {
+  await loadFolder(page, MULTIFILE);
+  await openTab(page, 'Parts');
+  await page.locator('.tree-name', { hasText: /^head$/ }).click();
+  await openTab(page, 'Properties');
+
+  // Declare a socket. Geometry only so far — nothing published.
+  await page.locator('.socket-add').click();
+  await expect(page.getByLabel('Socket name')).toHaveValue('socket1');
+  await openTab(page, 'cuboidy.json');
+  const manifestText = page.locator('.source-textarea').first();
+  await expect(manifestText).not.toHaveValue(/"sockets"/);
+
+  // Publish it under a name that is NOT the socket's own — publication is
+  // an alias, so the two must be tracked separately.
+  await openTab(page, 'Properties');
+  const published = page.getByLabel('Published name for socket socket1');
+  await expect(published).toHaveValue('');
+  await published.fill('headwear');
+  await published.press('Enter');
+  await openTab(page, 'cuboidy.json');
+  await expect(manifestText).toHaveValue(/"headwear"/);
+  await expect(manifestText).toHaveValue(/"part": "head"/);
+  await expect(manifestText).toHaveValue(/"socket": "socket1"/);
+  // Written where §6.1 puts it, not appended after the animations block.
+  await expect(manifestText).toHaveValue(/"sockets"[\s\S]*"animations"/);
+
+  // Renaming the socket retargets the publication; the published name is
+  // what consumers hold, so it must NOT change.
+  await openTab(page, 'Properties');
+  const socketName = page.getByLabel('Socket name');
+  await socketName.fill('crest');
+  await socketName.press('Enter');
+  await openTab(page, 'cuboidy.json');
+  await expect(manifestText).toHaveValue(/"socket": "crest"/);
+  await expect(manifestText).toHaveValue(/"headwear"/);
+
+  // Renaming the PART retargets it too.
+  await openTab(page, 'Parts');
+  await page.locator('.tree-name', { hasText: /^head$/ }).dblclick();
+  const rename = page.getByLabel('Rename head');
+  await rename.fill('noggin');
+  await rename.press('Enter');
+  await openTab(page, 'cuboidy.json');
+  await expect(manifestText).toHaveValue(/"part": "noggin"/);
+
+  // No cross-file error at any point — the two files never disagreed.
+  await openTab(page, 'Console');
+  await expect(page.locator('.console-entry.error')).toHaveCount(0);
+
+  // Removing the socket removes its publication, and the now-empty map is
+  // dropped rather than written as `"sockets": {}`.
+  await openTab(page, 'Properties');
+  await page.getByRole('button', { name: 'Remove socket' }).click();
+  await openTab(page, 'cuboidy.json');
+  await expect(manifestText).not.toHaveValue(/"sockets"/);
+  await openTab(page, 'Console');
+  await expect(page.locator('.console-entry.error')).toHaveCount(0);
+});

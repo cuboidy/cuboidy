@@ -9,6 +9,10 @@ interface Props {
   value: string;
   disabled?: boolean;
   ariaLabel?: string;
+  // Shown when the field is empty. Only useful where empty is a MEANINGFUL
+  // state the user can choose (an unpublished socket), not where it is
+  // simply an unfilled required field.
+  placeholder?: string;
   // Gate for a commit. Only consulted when the trimmed text actually
   // differs from `value` — committing the unchanged name is a silent no-op.
   validate: (next: string) => boolean;
@@ -24,6 +28,7 @@ export function TextInput({
   value,
   disabled = false,
   ariaLabel,
+  placeholder,
   validate,
   onCommit,
 }: Props) {
@@ -67,6 +72,7 @@ export function TextInput({
       value={text}
       disabled={disabled}
       {...(ariaLabel !== undefined && { 'aria-label': ariaLabel })}
+      {...(placeholder !== undefined && { placeholder })}
       onChange={handleChange}
       onBlur={commit}
       onKeyDown={handleKeyDown}

@@ -47,6 +47,16 @@
       ]
     }
   ],
+  "sockets": {
+    "headwear": {
+      "part": "head",
+      "socket": "hat"
+    },
+    "mouth": {
+      "part": "head",
+      "socket": "mouth"
+    }
+  },
   "animations": {
     "idle": {
       "duration": 2.0,

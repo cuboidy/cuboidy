@@ -43,7 +43,8 @@ Cuboidy is **not** a triangle-mesh format. It does not specify skin weights, UV 
 | **Palette file** | A `.json` file of shareable colors (§6.10), referenced by each geometry file that uses them (§7.4) |
 | **Packed Cuboidy** | `<name>.cuboidy` — the package folder as a single ZIP archive (§13) |
 | **Part** | A rigid voxel sub-object, optionally parented in the hierarchy |
-| **Socket** | A named attachment point on a part |
+| **Socket** | A named attachment point on a part, declared in the geometry file (§7.8) |
+| **Published socket** | A socket the manifest offers to consumers under a model-level name (§6.12). An unpublished socket is internal |
 | **Keyframe** | A time-indexed pose snapshot for an animated part |
 | **Rest pose** | A part's pose when no animation is active: position = `part.position` (in parent space), rotation = the manifest part's `rotation` composed with the geometry file's `pivot.rot` (`q_rotation · q_pivot`, both around `pivot.pos`; each identity when absent), scale = `[1,1,1]` |
 
@@ -140,6 +141,7 @@ The manifest is a standard JSON document (no comments, no trailing commas).
   "version": "0.9",
   "geometry": ["body.json", "gear/hat.json"],
   "parts": [ ... ],
+  "sockets": { ... },
   "animations": { ... }
 }
 ```
@@ -153,6 +155,7 @@ uses them (§7.4), which may name a shared palette file (§6.10).
 | `version` | no | string | Spec version this model targets. Absent → the current spec version (`"0.9"` in this draft) |
 | `geometry` | no | array of reference paths | The model's geometry files (§6.9). Absent → `["voxels.json"]` |
 | `parts` | **yes** | array (non-empty) | At least one part |
+| `sockets` | no | object | The model's **published sockets** (§6.12) — the attachment points it offers to consumers. Absent → the model publishes none |
 | `animations` | no | object | Map from animation name to definition. Absent → no animations |
 
 ### 6.2 Part object
@@ -343,6 +346,36 @@ No other fields are permitted (`unknown`). The object form (rather than a bare a
 
 A model may have at most **one active animation** at a time. Blending, layering, and per-part overlays are reserved for future spec versions.
 
+### 6.12 Published sockets
+
+A part declares sockets in its geometry file (§7.8). Those declarations are **internal**: they say where the attachment frames are, not which of them the model offers to anyone else. The manifest's optional `sockets` object publishes a subset of them under model-level names:
+
+```json
+"sockets": {
+  "weapon": { "part": "hand-r", "socket": "grip" },
+  "crest":  { "part": "head",   "socket": "crest" }
+}
+```
+
+| Field | Required | Type | Notes |
+|---|---|---|---|
+| *key* | — | string (identifier) | The **published name** — how consumers refer to this attachment point. Unique across the model (JSON object keys) |
+| `part` | **yes** | string (identifier) | A part in this manifest's `parts` |
+| `socket` | **yes** | string (identifier) | A socket declared on that part in geometry (§7.8) |
+
+No other fields are permitted (`unknown`). Publishing carries no offset of its own: a published name is an **alias** for a declared socket, and the frame is exactly the one §7.8 defines. Per-attachment offsets remain reserved (§14).
+
+Rules and rationale:
+
+- **Publication is what makes a socket addressable from outside.** Without it a consumer has to read the geometry files to discover that `hand-r` has a socket called `grip` — reaching past the manifest, which is otherwise the package's whole public surface (`geometry`, `animations` and the rig are all declared there). An unpublished socket is a private detail; the model may move, rename or drop it.
+- **Published names are stable across internal renames.** Renaming the part `hand-r` to `hand_right`, or the socket `grip` to `hold`, is invisible to consumers as long as `weapon` keeps pointing at whatever the part and socket are now called.
+- **Published names are unique model-wide.** §5 only requires a socket name to be unique *within its part*, so two parts may each declare `tip`; as object keys, published names cannot collide.
+- The same declared socket MAY be published under more than one name. A model MAY publish none — `sockets` is optional, and absent means it offers no attachment points.
+
+**Attachment geometry.** When a consumer attaches a guest model to a published socket, the guest is placed so that the guest's **model origin** — world `[0, 0, 0]` in the guest's own coordinate space, before any part transform — coincides with the socket origin, and the guest's axes are rotated by the socket's orientation. Not the guest's root pivot: §6.2 permits multiple root parts, so "the root pivot" is not always a single point, while the origin always is. A model intended to be attached should therefore be authored around its origin, which is where the joining surface goes.
+
+**What is not here.** The manifest publishes attachment points; it does not record attachments. Nothing in a Cuboidy package says that a particular sword is in the knight's hand. Composing several models is a scene-level concern that belongs to a layer above this format — see §14.
+
 ---
 
 ## 7. `voxels.json` — voxel definition
@@ -481,8 +514,9 @@ No other fields are permitted (unknown field → `unknown`). Part names are uniq
 - `name` must satisfy the §5 identifier rule
 - Position in part-local space, voxel units (fractional allowed)
 - Optional rotation: Euler degrees, ZXY intrinsic order and right-hand sign convention (§4); absent → identity (`[0, 0, 0]`), matching `pivot.rot` (§7.7)
-- Socket name unique within a part
-- A socket defines an attachment frame on the host part. Its origin is `socket.pos` in the host part's local space after the host part's own pivot transform has been applied. Its orientation is the host part's current orientation composed with `socket.rot`. An attached child asset is placed so the child's root pivot coincides with the socket origin; per-attachment offsets and scale overrides are reserved for future versions.
+- Socket name unique within a part — **not** across the model. Two parts may each declare `tip`; §6.12 is what gives an attachment point a model-wide name
+- A socket defines an attachment frame on the host part. Its origin is `socket.pos` in the host part's local space after the host part's own pivot transform has been applied. Its orientation is the host part's current orientation composed with `socket.rot`. An attached guest model is placed so the guest's **model origin** coincides with the socket origin (§6.12); per-attachment offsets and scale overrides are reserved for future versions.
+- Declaring a socket does not expose it. Consumers address a socket through the manifest's published name (§6.12); a socket that is never published is internal to the model.
 
 ### 7.9 `voxels`
 
@@ -657,6 +691,7 @@ Reference cycles (a → b → a) are an error.
 | `cuboidy.json` | part `rotation` | absent → identity (`[0, 0, 0]`) |
 | `cuboidy.json` | part `parent` | absent → root |
 | `cuboidy.json` | `geometry` | absent → `["voxels.json"]` |
+| `cuboidy.json` | `sockets` | absent → no published sockets (§6.12) |
 | `cuboidy.json` | `animations` | absent → no animations |
 | `cuboidy.json` | `version` | absent → current spec version (`"0.9"` in this draft) |
 | Keyframe (first) | `rot` | `[0, 0, 0]` |
@@ -725,8 +760,8 @@ Manifest errors use the same five structural codes (§11.2). The TS reference im
 |---|---|
 | `missing` | Top-level `name` is absent; top-level `parts` is absent or empty; palette file's `colors` is absent (§6.10) |
 | `duplicate` | Duplicate part name; duplicate animation name (planned) |
-| `unknown` | A field other than `name` / `version` / `geometry` / `parts` / `animations` is present at the top level; a field other than `name` / `parent` / `position` / `rotation` is present inside a part; a field other than `colors` in a palette file |
-| `invalid-value` | Wrong type for a field (e.g. `name` is a number); identifier failing the §5 regex; a `geometry` / animation reference path violating §8 (wrong extension, backslash, absolute, URL/URI, empty segment); duplicate or empty `geometry` list; malformed color string in a palette file; `parent` references a non-existent part; parent chain contains a cycle; animation `duration` non-positive, non-finite, or less than the largest time key; time keys not decimal-number strings, not strictly increasing, or not starting at `"0.0"` |
+| `unknown` | A field other than `name` / `version` / `geometry` / `parts` / `sockets` / `animations` is present at the top level; a field other than `name` / `parent` / `position` / `rotation` is present inside a part; a field other than `part` / `socket` inside a published socket (§6.12); a field other than `colors` in a palette file |
+| `invalid-value` | Wrong type for a field (e.g. `name` is a number); identifier failing the §5 regex; a `geometry` / animation reference path violating §8 (wrong extension, backslash, absolute, URL/URI, empty segment); duplicate or empty `geometry` list; malformed color string in a palette file; `parent` references a non-existent part; a published socket's `part` references a non-existent part (§6.12); parent chain contains a cycle; animation `duration` non-positive, non-finite, or less than the largest time key; time keys not decimal-number strings, not strictly increasing, or not starting at `"0.0"` |
 | `wrong-arity` | Palette file's `colors` is empty or exceeds 62 entries (§6.10) |
 
 Items marked "planned" are not yet implemented in the TS reference; the catch-all `invalid-value` may surface generic Zod messages for those cases until then. External animation files (§6.3 string refs) are validated with the same inline-animation rules when the project is resolved (lint, inspection CLIs, editor); a missing or invalid referenced file is an error there.
@@ -746,7 +781,8 @@ Cross-file validation operates on the **project**: the manifest plus its referen
 | `invalid-value` | warning | **[W06]** an `<x>-l` / `<x>-r` part pair (same parent) whose occupied voxels are not mirror images across the parent's YZ plane, computed from manifest position + pivot + voxel occupancy. The check is geometric, not positional: a correctly mirrored part reflects its pivot too, so the matching hand-written position is often legitimately NOT the sign-opposite. **Scope, both parts of which are easy to trip over:** the side letter must be the *last* character with `-` or `_` before it, so `foreleg-l`/`foreleg-r` is checked while `leg-fl`/`leg-fr` is not; and the pair must share a parent, so `shin-l`/`shin-r` hanging off `thigh-l`/`thigh-r` is never compared. Most limb pairs below the first joint are therefore unchecked. Rest rotations do not participate — mirroring one is the author's responsibility (across the YZ plane, Euler `[x, y, z]` mirrors to `[x, −y, −z]`) |
 | `invalid-value` | warning | **[W07]** a geometry file exists in the package but is not referenced by the manifest `geometry` list (usually a forgotten entry — §6.9). "Geometry file" is decided by **content, not extension**: a file is one if the §7 reader accepts it. Since v0.9 the manifest, palette files and animation clips are all `.json` too, so an extension test would flag every one of them |
 | `unknown` | warning | Animation targets a part not present in `cuboidy.json` `parts` (cross-rig sharing, §6.8) |
-| `unknown` | runtime error | Attempt to attach to a socket name not declared on the host part (planned) |
+| `missing` | error | A published socket (§6.12) names a `socket` that its host part does not declare in geometry (§7.8). The other half — a `part` that is not in `parts` at all — is a manifest-level `invalid-value` (§11.5), because it needs no geometry file to detect |
+| `unknown` | runtime error | Attempt to attach to a socket name the model does not publish (§6.12). Unlike the two rules above this is a **consumer**-side failure: the package is well-formed, and the name simply is not in its `sockets` object |
 
 ### 11.7 Diagnostic format
 
@@ -814,8 +850,8 @@ check did not run.
 
 The reference repository includes:
 
-- `models/knight/` — multi-part rigged humanoid over three geometry files sharing one palette, with a walk clip and sockets (`grip`, `crest`)
-- `models/sword/` — single-part static accessory, designed to attach to `knight` via the `hand-r:grip` socket
+- `models/knight/` — multi-part rigged humanoid over three geometry files sharing one palette, with a walk clip and two published sockets (§6.12): `weapon` → `hand-r:grip`, `crest` → `head:crest`
+- `models/sword/` — single-part static accessory, authored around its origin so it seats in `knight`'s published `weapon` socket
 - `models/owl/`, `models/koi/`, `models/fox/` — non-humanoid rigs (segmented wings, a body chain, a quadruped gait)
 - `models/windmill/` — a `geometry` list plus a shared palette file, and two constant-rate rotations in one clip
 
@@ -905,8 +941,8 @@ someone.
 - **Custom easing curves**: cubic-bezier control points beyond the §6.7 named presets
 - **Standardized rig vocabularies**: humanoid / quadruped / biped contracts (analogous to VRM humanoid spec)
 - **Inverse kinematics**: solver-driven part chains
-- **Attachment**, and it is the largest gap in the current draft. §7.8 defines a socket's position and orientation precisely, and §11.6 already reserves a runtime error for attaching to a socket that does not exist — but nothing in the format can state *that* an attachment happens. A package can declare `hand-r:grip`; it cannot record that a particular sword belongs in it. A specification needs to define the asset reference, the host part and socket it binds to, the behaviour when that socket does not resolve, whether the guest inherits the host's animation, and how palettes scope across the join. Until then a socket is a coordinate that an external runtime must be told what to do with, and two packages that fit together can only be shown to fit by merging them by hand.
-- **Per-attachment overrides**: rotation / scale offsets, once attachment itself is specified
+- **Composition** — recording *that* an attachment happens. As of v0.9 a package states what it offers: §7.8 defines a socket's frame, §6.12 publishes the ones consumers may use under model-wide names, and §11.6 makes an unresolvable published name an error. What no package can say is that a particular sword belongs in the knight's hand. That is deliberate rather than pending: an attachment record is about a *arrangement of several models*, and it needs a lifetime, a coordinate root, an animation policy per participant and a resolution rule for missing assets — a scene, not an asset. Cuboidy specifies the asset. A composition layer should own the scene and reference models through their published sockets, and it should be specified separately so that a model file never depends on knowing where it is used.
+- **Per-attachment overrides**: rotation / scale offsets on top of the §7.8 frame, once a composition layer exists to carry them
 
 ---
 

@@ -237,3 +237,98 @@ describe('validateProject (v0.7)', () => {
     expect(diags[0]?.message).toContain('scratch.json');
   });
 });
+
+// SPEC §6.12 / §11.6 — the geometry half of a published socket's contract.
+// The manifest half (the host part is in `parts` at all) is a parse-time
+// error and is covered in manifest.test.ts.
+describe('validateProject — published sockets (§6.12)', () => {
+  function geometryOrThrow(text: string) {
+    const r = parseGeometryText(text);
+    if (!r.ok) throw new Error(`geometry parse failed: ${r.message}`);
+    return r.value;
+  }
+  // A one-voxel `hand-r` declaring a single `grip` socket.
+  const hand = geometryOrThrow(
+    geo([
+      {
+        name: 'hand-r',
+        size: [1, 1, 1],
+        voxels: [['0']],
+        sockets: [{ name: 'grip', pos: [0.5, 0.5, 0.5] }],
+      },
+    ], ['#F00']),
+  );
+  const publish = (socket: string, part = 'hand-r') =>
+    validateProject({
+      manifest: manifestOrThrow({
+        name: 't',
+        parts: [{ name: 'hand-r' }],
+        sockets: { weapon: { part, socket } },
+      }),
+      geometries: [{ path: 'voxels.json', geometry: hand }],
+    });
+
+  it('accepts a publication whose socket the host part declares', () => {
+    expect(publish('grip')).toEqual([]);
+  });
+
+  it('rigged corpus model publishes cleanly', async () => {
+    const { manifest, voxelDef } = await loadModel(RIGGED);
+    expect(manifest.sockets?.['headwear']).toEqual({
+      part: 'head',
+      socket: 'hat',
+    });
+    expect(validateCrossFile(manifest, voxelDef)).toEqual([]);
+  });
+
+  it('errors when the host part declares no socket by that name', () => {
+    const diags = publish('hold');
+    expect(diags).toHaveLength(1);
+    expect(diags[0]?.code).toBe('missing');
+    expect(diags[0]?.severity).toBe('error');
+    expect(diags[0]?.message).toContain("published socket 'weapon'");
+    expect(diags[0]?.message).toContain("socket 'hold'");
+    expect(diags[0]?.message).toContain("part 'hand-r'");
+  });
+
+  it('a socket name declared on a DIFFERENT part does not satisfy the publication', () => {
+    // §7.8 uniqueness is per-part, so `grip` existing somewhere in the model
+    // says nothing about whether `head` has one.
+    const twoParts = geometryOrThrow(
+      geo([
+        {
+          name: 'hand-r',
+          size: [1, 1, 1],
+          voxels: [['0']],
+          sockets: [{ name: 'grip', pos: [0, 0, 0] }],
+        },
+        { name: 'head', size: [1, 1, 1], voxels: [['0']] },
+      ], ['#F00']),
+    );
+    const diags = validateProject({
+      manifest: manifestOrThrow({
+        name: 't',
+        parts: [{ name: 'hand-r' }, { name: 'head' }],
+        sockets: { weapon: { part: 'head', socket: 'grip' } },
+      }),
+      geometries: [{ path: 'voxels.json', geometry: twoParts }],
+    });
+    expect(diags.map((d) => d.code)).toEqual(['missing']);
+  });
+
+  it('stays quiet when the host part is in the manifest but in no geometry file', () => {
+    // That part already has its own `missing` error; a second diagnostic
+    // about its sockets would just be noise pointing at the same cause.
+    const diags = validateProject({
+      manifest: manifestOrThrow({
+        name: 't',
+        parts: [{ name: 'hand-r' }, { name: 'ghost' }],
+        sockets: { weapon: { part: 'ghost', socket: 'grip' } },
+      }),
+      geometries: [{ path: 'voxels.json', geometry: hand }],
+    });
+    expect(diags).toHaveLength(1);
+    expect(diags[0]?.message).toContain("part 'ghost'");
+    expect(diags[0]?.message).toContain('not defined in any geometry file');
+  });
+});

@@ -24,6 +24,10 @@
     { "name": "boot-r",     "parent": "shin-r",    "position": [0, -7, 0] },
     { "name": "boot-l",     "parent": "shin-l",    "position": [0, -7, 0] }
   ],
+  "sockets": {
+    "weapon": { "part": "hand-r", "socket": "grip" },
+    "crest":  { "part": "head",   "socket": "crest" }
+  },
   "animations": {
     "walk": "anims/walk.json"
   }
