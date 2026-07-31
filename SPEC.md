@@ -67,11 +67,11 @@ my-model/
 A larger package, fully reference-driven:
 
 ```
-wolf/
-├── cuboidy.json         { "geometry": ["body.json", "gear/hat.json"], ... }
+knight/
+├── cuboidy.json         { "geometry": ["body.json", "arms.json"], ... }
 ├── palette.json         shared palette (§6.10)
 ├── body.json            geometry — { "palette": "palette.json", ... }
-├── gear/hat.json        geometry — points at the same palette
+├── arms.json            geometry — points at the same palette
 └── anims/walk.json
 ```
 
@@ -622,12 +622,12 @@ Rules:
 - URLs (`http://`, `https://`, `file://`) are forbidden
 - `namespace:key` URIs are forbidden (the format has no registry)
 
-Examples (assuming reference is from `models/wolf/cuboidy.json`):
+Examples (assuming the reference is written in `models/owl/cuboidy.json`):
 
 | Path | Resolves to |
 |---|---|
-| `anims/walk.json` | `models/wolf/anims/walk.json` |
-| `./anims/walk.json` | `models/wolf/anims/walk.json` |
+| `anims/walk.json` | `models/owl/anims/walk.json` |
+| `./anims/walk.json` | `models/owl/anims/walk.json` |
 | `../shared/walk.json` | `models/shared/walk.json` |
 
 A `../` path resolves as shown, but it leaves the package, and §3 defines a
@@ -814,9 +814,10 @@ check did not run.
 
 The reference repository includes:
 
-- `models/wolf/` — multi-part rigged model (body / head / tail / four legs) with idle animation and sockets (`hat`, `mouth`)
-- `models/crown/` — single-part static accessory designed to attach to `wolf` via the `head:hat` socket
-- `models/boy/`, `models/girl/` (plus `-chibi`, `-mini` variants) — humanoid rigs
+- `models/knight/` — multi-part rigged humanoid over three geometry files sharing one palette, with a walk clip and sockets (`grip`, `crest`)
+- `models/sword/` — single-part static accessory, designed to attach to `knight` via the `hand-r:grip` socket
+- `models/owl/`, `models/koi/`, `models/fox/` — non-humanoid rigs (segmented wings, a body chain, a quadruped gait)
+- `models/windmill/` — a `geometry` list plus a shared palette file, and two constant-rate rotations in one clip
 
 All reference examples pass the current lint rules at error level.
 

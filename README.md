@@ -74,28 +74,42 @@ my-model.cuboidy        packed package (ZIP of the folder above)
 
 ## Examples
 
-Models live under `models/`:
+Every model under `models/` was authored from `SPEC.md` and
+[`docs/geometry-authoring.md`](docs/geometry-authoring.md) alone — no example
+was available to copy from — and each animation below is rendered straight out
+of `cuboidy-gif`.
 
-- `models/wolf/` — multi-part rig (body / head / tail / four legs) with idle animation, sockets for `hat` and `mouth`
-- `models/cat/` — quadruped with pointy ears, vertical tail, and belly markings; idle tail-twitch animation
-- `models/crown/` — single-part static accessory, designed to attach to wolf's `hat` socket
-- `models/boy/`, `models/girl/` — humanoid rigs (head / body / arms / legs) in standard, `-chibi`, and `-mini` proportions
-- `models/robo-mini/` — project-feature demo: a manifest `geometry` list (two geometry files) that both point at one shared `palette.json` (§6.9/§7.4)
+| | | |
+|:--:|:--:|:--:|
+| ![knight](docs/media/knight.gif) | ![owl](docs/media/owl.gif) | ![koi](docs/media/koi.gif) |
+| **knight** — walk cycle | **owl** — wingbeat launch | **koi** — travelling body wave |
+| ![fox](docs/media/fox.gif) | ![windmill](docs/media/windmill.gif) | ![herbalist](docs/media/herbalist.gif) |
+| **fox** — diagonal trot | **windmill** — constant-rate sails | **herbalist** — laboured walk |
+
+- `models/knight/` — 18 parts over three geometry files sharing one palette; sockets for a sword and a helm crest
+- `models/sword/` — single-part accessory, authored against the knight's `hand-r:grip` socket contract without seeing the knight
+- `models/owl/` — segmented wings whose shoulder / mid / tip lag by a sixteenth of a cycle
+- `models/koi/` — five body segments carrying a phase-delayed swimming wave
+- `models/fox/` — quadruped on a diagonal gait, with a five-segment brush tail
+- `models/windmill/` — manifest `geometry` list + shared `palette.json` (§6.9/§7.4); two constant-rate rotations in one clip
+- `models/herbalist/` — 21 voxels tall, where placement matters more than detail
 
 ## Inspecting models
 
-Four CLIs assemble a model in its rest pose and report on it; animation poses
-are never applied. Rest rotations (`rotation`, `pivot.rot`) are handled two
-ways: `cuboidy-snap` draws them as truly oriented cubes, while the
-integer-lattice tools (`cuboidy-view` / `cuboidy-query`) put a rotated part's
-pivot exactly where the rig puts it but keep the part's own voxels
-axis-aligned, and emit a warning saying so.
+Five CLIs assemble a model and report on it. Four show the rest pose;
+`cuboidy-gif` is the one that shows a clip in motion.
+
+Rest rotations (`rotation`, `pivot.rot`) are handled two ways: `cuboidy-snap`
+and `cuboidy-gif` draw them as truly oriented cubes, while the integer-lattice
+tools (`cuboidy-view` / `cuboidy-query`) put a rotated part's pivot exactly
+where the rig puts it but keep the part's own voxels axis-aligned, and emit a
+warning saying so.
 
 - **`cuboidy-snap <dir>`** — renders the model to **PNG images from several angles** (a contact sheet plus one PNG per angle), with the angle name and an XYZ axis gnomon baked into each. It is the image counterpart of `cuboidy-view`; the intended workflow is to render a model, look at the pictures, and refine the voxels. Dependency-free — a small software rasterizer + pure-Node (`zlib`) PNG encoder, no browser or native bindings.
 
   ```
-  cuboidy-snap models/cat                       # → models/cat/snapshots/{contact,front,…}.png
-  cuboidy-snap models/cat --angles=cardinal --size=512
+  cuboidy-snap models/fox                       # → models/fox/snapshots/{contact,front,…}.png
+  cuboidy-snap models/fox --angles=cardinal --size=512
   ```
 
   The default is the seven-view **standard** set: four three-quarter corners from above plus front / right-side / top. Other groups: `cardinal` (six faces), `corners` (four), `all`; or list ids directly (`front back side left top bottom fr-up fl-up br-up bl-up`).
@@ -104,7 +118,16 @@ axis-aligned, and emit a warning saying so.
 - **`cuboidy-query <dir> --at=x,y,z`** — exact voxel lookup at world coordinates (fractional-safe; the precise tool when half-voxel offsets are present).
 - **`cuboidy-lint <dir>`** — voxel-definition + cross-file lint.
 
-A fifth CLI writes rather than reads:
+- **`cuboidy-gif <dir>`** — renders an animation clip to an **animated GIF**, the only way to see the half of the format that moves. The camera is fitted once to the union of the whole clip and held there, so the model does not rescale between frames and a foot's height can be compared across them. Same dependency-free policy as `cuboidy-snap`: software rasterizer plus a hand-rolled GIF encoder.
+
+  ```
+  cuboidy-gif models/knight                     # → models/knight/knight-walk.gif
+  cuboidy-gif models/owl --anim=launch --angle=side --fps=20 --size=240
+  ```
+
+  Renders at one sample per pixel by default, which keeps a frame inside GIF's 256-colour table losslessly (a model draws in 37–82 colours) and suits voxel art. `--ss=2` antialiases and quantises instead.
+
+A sixth CLI writes rather than reads:
 
 - **`cuboidy-part`** — author concrete geometry (the way symmetric limbs / repeated parts are made — an AI generator runs this instead of hand-writing mirrored voxels):
   - `cuboidy-part duplicate <from.json> <fromPart> <to.json> <toPart>` — copy a part (cross-file copies remap the palette so colors are preserved).
@@ -143,7 +166,9 @@ Done — the v0.9 spec and a complete TypeScript implementation of it
       range, animation targets, W06 l/r symmetry, W07 unreferenced file)
 - [x] JSON Schemas for both file kinds, generated from the same Zod schemas the
       runtime uses, plus shared `fixtures/` as the cross-implementation contract
-- [x] Inspection CLIs — `cuboidy-view`, `cuboidy-query`, `cuboidy-snap`
+- [x] Inspection CLIs — `cuboidy-view` (ASCII), `cuboidy-query` (coordinates),
+      `cuboidy-snap` (PNG stills) and `cuboidy-gif` (animated GIF), all
+      dependency-free
 
 In progress and planned:
 

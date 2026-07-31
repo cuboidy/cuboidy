@@ -38,3 +38,8 @@ playwright-report/
 
 # Git Bash crash dumps
 *.stackdump
+
+# cuboidy-gif default output (regenerate via `cuboidy-gif <model-dir>`).
+# docs/media/ is committed on purpose — those are the README's GIFs.
+*-*.gif
+!docs/media/*.gif

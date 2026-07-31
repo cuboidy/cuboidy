@@ -97,18 +97,34 @@ export interface WorldTransform {
   quat: QuatTuple;
 }
 
-// Composes the §7.7 rest-pose transform down every parent chain:
-//   W.pos  = parent.pos + rotate(parent.quat, part.position)
-//   W.quat = parent.quat ⊗ (q_rotation ⊗ q_pivot)
+// The animated part of a pose, as SPEC §6.5 defines it. `scale` and
+// `visible` are NOT part of the world transform — scale applies to the
+// part's own geometry and does not propagate to children (§7.7), and
+// visibility is a draw decision — so they ride along here for the
+// caller rather than being folded into the matrix.
+export interface AnimPose {
+  rot: Vec3Tuple;
+  pos: Vec3Tuple;
+}
+
+// Composes the §7.7 transform down every parent chain:
+//   W.pos  = parent.pos + rotate(parent.quat, part.position + anim.pos)
+//   W.quat = parent.quat ⊗ (q_rotation ⊗ q_pivot ⊗ q_anim)
 // `pivotRots` carries each part's geometry-side `pivot.rot` (absent =
 // identity); parts unknown to the map are fine. Renderer-grade
 // leniency, matching the editor's rig tree: a parent that names no
 // entry in `parts`, or a chain that loops, resolves the offending hop
 // as a root instead of failing — validation owns rejecting those
 // (§11.5), display layers must not hang on malformed input.
-export function computeRestWorldTransforms(
+//
+// `poses` is optional so the rest pose is literally this function with
+// nothing sampled — one implementation of the hierarchy math, which is
+// the property that keeps the still renderer and the animated one from
+// drifting apart on §7.7.
+export function computeWorldTransforms(
   parts: readonly ManifestPart[],
   pivotRots: ReadonlyMap<string, Vec3Tuple>,
+  poses?: ReadonlyMap<string, AnimPose>,
 ): Map<string, WorldTransform> {
   const byName = new Map<string, ManifestPart>();
   for (const p of parts) {
@@ -128,8 +144,19 @@ export function computeRestWorldTransforms(
       out.set(name, root);
       return root;
     }
-    const local: Vec3Tuple = mp.position ?? [0, 0, 0];
-    const localQ = composePartRotation(mp.rotation, pivotRots.get(name));
+    const base = mp.position ?? [0, 0, 0];
+    const pose = poses?.get(name);
+    // §6.5: keyframe `pos` is a DELTA on `position`, so it lives in the
+    // same (parent) frame and rides the ancestors' rotations with it.
+    const local: Vec3Tuple =
+      pose === undefined
+        ? base
+        : [base[0] + pose.pos[0], base[1] + pose.pos[1], base[2] + pose.pos[2]];
+    const localQ = composePartRotation(
+      mp.rotation,
+      pivotRots.get(name),
+      pose?.rot,
+    );
     let wt: WorldTransform;
     if (mp.parent === undefined || seen.has(name)) {
       wt = { pos: [local[0], local[1], local[2]], quat: localQ };
@@ -151,4 +178,12 @@ export function computeRestWorldTransforms(
 
   for (const p of parts) resolve(p.name, new Set());
   return out;
+}
+
+// The rest pose: the transform chain with nothing sampled.
+export function computeRestWorldTransforms(
+  parts: readonly ManifestPart[],
+  pivotRots: ReadonlyMap<string, Vec3Tuple>,
+): Map<string, WorldTransform> {
+  return computeWorldTransforms(parts, pivotRots);
 }

@@ -28,6 +28,11 @@ export interface RenderOptions {
   tileSize: number; // final per-tile pixel size (square)
   ss: number; // supersample factor for the 3D pass
   bg: Rgb; // per-tile background
+  // Angle label + axis gnomon baked into the tile. On for stills, where
+  // the reader needs to know which way they are looking; off for
+  // animation frames, where it would flicker and the viewer already has
+  // motion to orient by. Default true.
+  overlay?: boolean;
 }
 
 const PAD_FRAC = 0.08; // fraction of the tile left empty around the model
@@ -99,8 +104,10 @@ export function renderTile(
   }
 
   const tile = fb.downsample(opts.ss);
-  drawGnomon(tile, angle);
-  drawLabel(tile, `${angle.label} AZ${angle.az} EL${angle.el}`);
+  if (opts.overlay !== false) {
+    drawGnomon(tile, angle);
+    drawLabel(tile, `${angle.label} AZ${angle.az} EL${angle.el}`);
+  }
   return tile;
 }
 

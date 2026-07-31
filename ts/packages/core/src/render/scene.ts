@@ -115,6 +115,10 @@ export interface OrientedPart {
   part: Part;
   remap: readonly number[] | null;
   transform: WorldTransform;
+  // Animated §6.5 scale, applied to this part's own geometry about its
+  // pivot and NOT inherited by children (§7.7 puts S_anim inside the
+  // part's local term). Absent = [1, 1, 1].
+  scale?: readonly [number, number, number] | undefined;
 }
 
 // Rotation-aware scene builder: per part, emit the faces its own solid
@@ -133,17 +137,20 @@ export function buildSceneFromParts(
   let minX = Infinity, minY = Infinity, minZ = Infinity;
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
 
-  for (const { part, remap, transform } of parts) {
+  for (const { part, remap, transform, scale } of parts) {
     const { w, h, d } = part.size;
     const solid = (x: number, y: number, z: number): boolean =>
       x >= 0 && x < w && y >= 0 && y < h && z >= 0 && z < d &&
       part.voxels[y]![z]![x]! !== AIR;
     const piv = part.pivot.pos;
+    const [sx, sy, sz] = scale ?? [1, 1, 1];
     const toWorld = (x: number, y: number, z: number): Vec3 => {
+      // Scale acts on the pivot-relative offset, so the part grows about
+      // its pivot rather than about the grid origin.
       const r = quatRotateVec3(transform.quat, [
-        x - piv.x,
-        y - piv.y,
-        z - piv.z,
+        (x - piv.x) * sx,
+        (y - piv.y) * sy,
+        (z - piv.z) * sz,
       ]);
       return [
         transform.pos[0] + r[0],

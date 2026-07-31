@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { parseManifest } from '../manifest.js';
+import { isInlineAnimation, type InlineAnimation } from '../animation.js';
 import type { Manifest, ManifestPart } from '../manifest.js';
 import type { Color, Palette, Part, Vec3 } from '../geometry/types.js';
 import { AIR } from './../geometry/voxel-row.js';
@@ -60,6 +61,9 @@ export interface Assembly {
   // consumers (cuboidy-snap) render the true orientation from here;
   // `grid` below is the axis-aligned projection of the same data.
   resolvedParts: readonly ResolvedPart[];
+  // Every §6.3 clip the model defines, keyed by name, with external
+  // references already resolved — inline and external look the same here.
+  animations: ReadonlyMap<string, InlineAnimation>;
   // World-space voxel grid. Key is `${X},${Y},${Z}` where X/Y/Z are the
   // raw fractional world coords (no rounding). Use stringifyCoord() to
   // build keys, parseCoordKey() to read them back. Values index into
@@ -173,7 +177,16 @@ export async function loadAndAssemble(dir: string): Promise<LoadResult | LoadErr
     pal.value,
     orderResult.order,
   );
-  return { ok: true, assembly };
+  // §6.3 clips in both forms, flattened to one map so consumers never
+  // branch on whether the author wrote the animation inline or pointed
+  // at a file. External entries win only because a clip name cannot be
+  // both — resolveProject keys them by clip, not by path.
+  const animations = new Map<string, InlineAnimation>();
+  for (const [name, anim] of Object.entries(manifest.animations ?? {})) {
+    if (isInlineAnimation(anim)) animations.set(name, anim);
+  }
+  for (const [name, rec] of project.externalAnims) animations.set(name, rec.anim);
+  return { ok: true, assembly: { ...assembly, animations } };
 }
 
 // The effective palette for the assembled grid, plus a per-file index
@@ -290,7 +303,7 @@ function assembleWorld(
   geometries: readonly GeometryFile[],
   eff: EffectivePalette,
   order: readonly ManifestPart[],
-): Assembly {
+): Omit<Assembly, 'animations'> {
   const warnings: string[] = [...eff.warnings];
 
   // Part lookup across ALL geometry files (§6.9: names are model-wide).
