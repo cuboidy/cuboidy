@@ -81,15 +81,19 @@ export type {
 } from './geometry/types.js';
 
 export {
+  geometryPaths,
   normalizeRefPath,
   projectFilePaths,
+  resolvePartGeometry,
   resolveProject,
 } from './project.js';
 export type {
   GeometryFile,
   ProjectDiagnostic,
   ProjectPaths,
+  ResolvedPart,
   ResolvedProject,
+  UnresolvedPart,
 } from './project.js';
 
 export { buildMesh } from './mesh.js';

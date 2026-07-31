@@ -109,7 +109,7 @@ export function buildScene(voxels: readonly Voxel[], palette: Palette): Scene {
 
 // One part ready for oriented rendering: geometry geometry, its palette
 // remap into the effective palette (null = identity), and its rest
-// world transform. Mirrors assemble.ts's ResolvedPart without depending
+// world transform. Mirrors assemble.ts's PlacedPart without depending
 // on the CLI layer.
 export interface OrientedPart {
   part: Part;

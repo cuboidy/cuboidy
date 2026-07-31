@@ -17,6 +17,7 @@ import {
   resolveGeometries,
   resolveProject,
   type GeometryFile,
+  type ResolvedPart as ProjectPart,
 } from '../project.js';
 
 // Shared assembly layer used by cuboidy-view (2D projection),
@@ -44,9 +45,10 @@ export interface BBox {
 
 export interface Assembly {
   manifest: Manifest;
-  // Resolved geometry files in manifest list order (§6.9); cross-file
-  // clone/mirror parts are already materialized. The first entry is the
-  // model's primary file (its header labels view output).
+  // Resolved geometry files in manifest list order (§6.9). The first
+  // entry is the model's primary file (its header labels view output).
+  // EMPTY for an all-inline model (§6.13), which references none — read
+  // `resolvedParts` for the shapes, never this.
   geometries: readonly GeometryFile[];
   // Effective palette for `grid` values: every geometry file's resolved
   // palette (§7.4), merged (per-file indices remapped, duplicate colors
@@ -60,7 +62,7 @@ export interface Assembly {
   // from the shared rig-transform layer (rotation-aware). Quad-based
   // consumers (cuboidy-snap) render the true orientation from here;
   // `grid` below is the axis-aligned projection of the same data.
-  resolvedParts: readonly ResolvedPart[];
+  resolvedParts: readonly PlacedPart[];
   // Every §6.3 clip the model defines, keyed by name, with external
   // references already resolved — inline and external look the same here.
   animations: ReadonlyMap<string, InlineAnimation>;
@@ -79,7 +81,7 @@ export interface Assembly {
   warnings: string[];
 }
 
-export interface ResolvedPart {
+export interface PlacedPart {
   name: string;
   part: Part;
   // Index remap from the defining file's palette into Assembly.palette
@@ -166,13 +168,14 @@ export async function loadAndAssemble(dir: string): Promise<LoadResult | LoadErr
     return { ok: false, message: `${manifestPath}: ${orderResult.error}`, exitCode: 1 };
   }
 
-  const pal = buildEffectivePalette(project.geometries);
+  const pal = buildEffectivePalette(project.parts);
   if (!pal.ok) {
     return { ok: false, message: pal.message, exitCode: 1 };
   }
 
   const assembly = assembleWorld(
     manifest,
+    project.parts,
     project.geometries,
     pal.value,
     orderResult.order,
@@ -198,6 +201,9 @@ export async function loadAndAssemble(dir: string): Promise<LoadResult | LoadErr
 // same entries and all map identically, which is the common case.
 interface EffectivePalette {
   palette: Palette;
+  // Keyed by MANIFEST part name, not by file: with inline geometry a part
+  // may belong to no file, and two parts in one file can now resolve
+  // against different palettes.
   remap: Map<string, readonly number[] | null>;
   warnings: string[];
 }
@@ -207,52 +213,63 @@ type PaletteResult =
   | { ok: false; message: string };
 
 function buildEffectivePalette(
-  geometries: readonly GeometryFile[],
+  parts: ReadonlyMap<string, ProjectPart>,
 ): PaletteResult {
   const warnings: string[] = [];
-  const maxIdxByFile = maxIndexByFile(geometries);
-
   const merged: Color[] = [];
   const byKey = new Map<string, number>();
   const remap = new Map<string, readonly number[] | null>();
+  // Parts sharing one palette object (the common case — a whole file's
+  // worth, or every inline part on the manifest default) merge once and
+  // then reuse the table, so the dedup work is per distinct palette rather
+  // than per part.
+  const tableByPalette = new Map<Palette, readonly number[] | null>();
   let first = true;
-  for (const g of geometries) {
-    const inline = g.geometry.palette;
-    if (inline.length === 0) {
-      // A file with no palette at all (§7.4) may not use color indices.
-      const maxIdx = maxIdxByFile.get(g.path) ?? AIR;
+
+  for (const [name, r] of parts) {
+    const palette = r.palette;
+    const maxIdx = maxIndexIn(r.part);
+    const where = r.file ?? `inline part '${name}'`;
+    if (palette.length === 0) {
+      // §7.4 / §6.13: no palette resolved by any route — the part may then
+      // not name a color.
       if (maxIdx !== AIR) {
         return {
           ok: false,
-          message: `${g.path} uses color indices but no palette is available`,
+          message: `${where} uses color indices but no palette is available`,
         };
       }
-      remap.set(g.path, null);
+      remap.set(name, null);
       continue;
     }
-    // An INLINE palette was range-checked at parse time, but a REFERENCED
-    // one could not be — its length is only known once the project layer
-    // has read the file it points at.
-    const maxIdx = maxIdxByFile.get(g.path) ?? AIR;
-    if (maxIdx >= inline.length) {
+    // An palette written out in place was range-checked at parse time; a
+    // REFERENCED one could not be, since its length is known only once the
+    // project layer has read the file it points at.
+    if (maxIdx >= palette.length) {
       return {
         ok: false,
-        message: `${g.path} references palette index ${maxIdx}, but its palette has ${inline.length} color(s)`,
+        message: `${where} references palette index ${maxIdx}, but its palette has ${palette.length} color(s)`,
       };
     }
+    const cached = tableByPalette.get(palette);
+    if (cached !== undefined) {
+      remap.set(name, cached);
+      continue;
+    }
     if (first) {
-      // First palette-bearing file: identity mapping, palette verbatim.
-      for (const [i, c] of inline.entries()) {
+      // First palette-bearing part: identity mapping, palette verbatim.
+      for (const [i, c] of palette.entries()) {
         merged.push(c);
         const key = colorKey(c);
         if (!byKey.has(key)) byKey.set(key, i);
       }
-      remap.set(g.path, null);
+      remap.set(name, null);
+      tableByPalette.set(palette, null);
       first = false;
       continue;
     }
     const table: number[] = [];
-    for (const c of inline) {
+    for (const c of palette) {
       const key = colorKey(c);
       let idx = byKey.get(key);
       if (idx === undefined) {
@@ -262,7 +279,8 @@ function buildEffectivePalette(
       }
       table.push(idx);
     }
-    remap.set(g.path, table);
+    remap.set(name, table);
+    tableByPalette.set(palette, table);
   }
   if (merged.length > MAX_PALETTE) {
     warnings.push(
@@ -276,56 +294,37 @@ function colorKey(c: Color): string {
   return `${c.r},${c.g},${c.b},${c.a}`;
 }
 
-// Highest voxel index used per geometry file (its indices live in that
-// file's palette space).
-function maxIndexByFile(
-  geometries: readonly GeometryFile[],
-): Map<string, number> {
-  const max = new Map<string, number>();
-  for (const g of geometries) {
-    let m = max.get(g.path) ?? AIR;
-    for (const part of g.geometry.parts) {
-      for (const layer of part.voxels) {
-        for (const row of layer) {
-          for (const idx of row) {
-            if (idx > m) m = idx;
-          }
-        }
+function maxIndexIn(part: Part): number {
+  let m = AIR;
+  for (const layer of part.voxels) {
+    for (const row of layer) {
+      for (const idx of row) {
+        if (idx > m) m = idx;
       }
     }
-    max.set(g.path, m);
   }
-  return max;
+  return m;
 }
 
 function assembleWorld(
   manifest: Manifest,
+  parts: ReadonlyMap<string, ProjectPart>,
   geometries: readonly GeometryFile[],
   eff: EffectivePalette,
   order: readonly ManifestPart[],
 ): Omit<Assembly, 'animations'> {
   const warnings: string[] = [...eff.warnings];
 
-  // Part lookup across ALL geometry files (§6.9: names are model-wide).
-  // Cross-file duplicates are a lint error; assembly stays lenient and
-  // keeps the first definition, with a warning.
+  // SPEC §6.13: parts come pre-bound to their shapes by the project layer,
+  // keyed by the name the RIG uses. Assembly no longer joins anything — it
+  // used to search every geometry file by name, which is exactly the join
+  // that could not see a part written inline in the manifest.
   const cvoxByName = new Map<
     string,
     { part: Part; remap: readonly number[] | null }
   >();
-  for (const g of geometries) {
-    for (const part of g.geometry.parts) {
-      if (cvoxByName.has(part.name)) {
-        warnings.push(
-          `part "${part.name}" is defined in more than one geometry file — using the first definition`,
-        );
-        continue;
-      }
-      cvoxByName.set(part.name, {
-        part,
-        remap: eff.remap.get(g.path) ?? null,
-      });
-    }
+  for (const [name, r] of parts) {
+    cvoxByName.set(name, { part: r.part, remap: eff.remap.get(name) ?? null });
   }
 
   // SPEC §7.7 rest world transforms from the shared rig-transform layer
@@ -339,7 +338,7 @@ function assembleWorld(
   }
   const transforms = computeRestWorldTransforms(manifest.parts, pivotRots);
 
-  const resolvedParts: ResolvedPart[] = [];
+  const resolvedParts: PlacedPart[] = [];
   const grid = new Map<string, number>();
   const bbox: BBox = {
     minX: Infinity, maxX: -Infinity,

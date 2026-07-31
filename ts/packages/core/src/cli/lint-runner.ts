@@ -150,6 +150,8 @@ export async function runLint(
     for (const d of validateProject({
       manifest,
       geometries: project.geometries,
+      parts: project.parts,
+      unresolved: project.unresolved,
       externalAnims: project.externalAnims,
       packageCvoxPaths: await enumerateGeometryFiles(root),
     })) {

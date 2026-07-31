@@ -27,6 +27,15 @@ export const MULTIFILE = 'ts/testdata/multifile';
  */
 export const MIRRORED = 'ts/testdata/mirrored';
 
+/**
+ * SPEC §6.13: a SINGLE FILE. Every part's geometry is inline, the colors
+ * come from the manifest's top-level `palette`, and there is no `geometry`
+ * list — so nothing beside `cuboidy.json` exists to read. Also the guard
+ * that the `["voxels.json"]` default is not demanded from a model that
+ * never looks in it (§6.9).
+ */
+export const INLINE = 'ts/testdata/inline';
+
 /** Every part `RIGGED`'s geometry defines, in hierarchy order. */
 export const RIGGED_PARTS: ReadonlyArray<{ name: string; parent?: string }> = [
   { name: 'body' },

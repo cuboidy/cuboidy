@@ -146,10 +146,21 @@ describe('parseManifest — geometry list', () => {
     ]);
   });
 
-  it('rejects a top-level palette (it moved to the geometry file)', () => {
+  // v0.7 had a top-level `palette` that OVERRODE geometry files; v0.9
+  // removed it for that precedence; §6.13 brings the field back scoped to
+  // inline geometry only. So it parses again — and a v0.7 manifest, which
+  // looks exactly like this one, is caught by W08 rather than by the
+  // schema. See cross-file.test.ts.
+  it('accepts a top-level palette (§6.13: the default for inline geometry)', () => {
     const r = parseManifest({ ...base, palette: 'palette.json' });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('unknown');
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.palette).toBe('palette.json');
+  });
+
+  it('accepts a top-level palette written out as colors', () => {
+    const r = parseManifest({ ...base, palette: ['#FF0000', '#00FF00'] });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.palette).toEqual(['#FF0000', '#00FF00']);
   });
 
   it('manifestGeometry applies the ["voxels.json"] default', () => {

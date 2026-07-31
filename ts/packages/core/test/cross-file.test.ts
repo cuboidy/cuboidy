@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parseManifest } from '../src/manifest.js';
+import { parseManifest, type Manifest } from '../src/manifest.js';
+import { resolveProject } from '../src/project.js';
 import { parseGeometryText } from '../src/geometry/parse.js';
 import { geo } from './helpers/geometry.js';
 import { validateCrossFile, validateProject } from '../src/lint/cross-file.js';
@@ -332,3 +333,98 @@ describe('validateProject — published sockets (§6.12)', () => {
     expect(diags[0]?.message).toContain('not defined in any geometry file');
   });
 });
+
+// SPEC §6.13 / §11.6 — the cross-file rules that only exist because a part
+// can now live in the manifest rather than a file.
+describe('validateProject — inline geometry (§6.13)', () => {
+  const inlineManifest = (extra: object, geometry: object) =>
+    manifestOrThrow({ name: 'm', parts: [{ name: 'body', geometry }], ...extra });
+
+  const run = (m: Manifest, files = new Map<string, string>()) => {
+    const p = resolveProject(m, files);
+    return validateProject({
+      manifest: m,
+      geometries: p.geometries,
+      parts: p.parts,
+      unresolved: p.unresolved,
+    });
+  };
+
+  it('an all-inline model with a manifest palette is clean', () => {
+    const m = inlineManifest(
+      { palette: ['#FF0000'] },
+      { size: [1, 1, 1], voxels: [['0']] },
+    );
+    expect(run(m)).toEqual([]);
+  });
+
+  it('errors when an inline part uses indices and no palette resolved', () => {
+    const m = inlineManifest({}, { size: [1, 1, 1], voxels: [['0']] });
+    const diags = run(m);
+    expect(diags).toHaveLength(1);
+    expect(diags[0]?.code).toBe('missing');
+    expect(diags[0]?.message).toMatch(/inline part 'body'/);
+  });
+
+  it('all-air inline geometry needs no palette', () => {
+    const m = inlineManifest({}, { size: [1, 1, 1], voxels: [['.']] });
+    expect(run(m)).toEqual([]);
+  });
+
+  it('W08: a manifest palette no inline part falls back to', () => {
+    // Exactly the shape of a leftover v0.7 manifest, where the same field
+    // overrode geometry files instead — the one case that would otherwise
+    // change meaning in silence.
+    const m = manifestOrThrow({
+      name: 'm',
+      palette: '../shared/palette.json',
+      parts: [{ name: 'body' }],
+    });
+    const diags = run(m, new Map([['voxels.json', oneVoxelText()]]));
+    const w08 = diags.find((d) => d.ruleId === 'W08');
+    expect(w08?.severity).toBe('warning');
+  });
+
+  it('W08 stays quiet when an inline part does fall back to it', () => {
+    const m = inlineManifest(
+      { palette: ['#FF0000'] },
+      { size: [1, 1, 1], voxels: [['0']] },
+    );
+    expect(run(m).find((d) => d.ruleId === 'W08')).toBeUndefined();
+  });
+
+  it('W08 fires when every inline part declares its own palette', () => {
+    const m = inlineManifest(
+      { palette: ['#FF0000'] },
+      { palette: ['#00FF00'], size: [1, 1, 1], voxels: [['0']] },
+    );
+    expect(run(m).find((d) => d.ruleId === 'W08')).toBeDefined();
+  });
+
+  it('an inline part takes part in W06 and in socket publication', () => {
+    // Both used to read the geometry files only, so a part living in the
+    // manifest would have been skipped by each without a word.
+    const m = manifestOrThrow({
+      name: 'm',
+      palette: ['#FF0000'],
+      parts: [
+        {
+          name: 'hand-r',
+          geometry: {
+            size: [1, 1, 1],
+            voxels: [['0']],
+            sockets: [{ name: 'grip', pos: [0, 0, 0] }],
+          },
+        },
+      ],
+      sockets: { weapon: { part: 'hand-r', socket: 'hold' } },
+    });
+    const diags = run(m);
+    expect(diags).toHaveLength(1);
+    expect(diags[0]?.message).toMatch(/declares no such socket/);
+  });
+});
+
+function oneVoxelText(): string {
+  return geo([{ name: 'body', size: [1, 1, 1], voxels: [['0']] }], ['#FF0000']);
+}

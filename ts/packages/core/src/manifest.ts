@@ -1,10 +1,78 @@
 import { z } from 'zod';
 import { AnimationsSchema } from './animation.js';
+import {
+  GeometryPartSchema,
+  PaletteFieldSchema,
+  checkPartFields,
+} from './geometry/schema.js';
 import { Identifier } from './identifier-schema.js';
 import { refPath } from './ref-path.js';
 import { err, ok, type CuboidyErrorCode, type Result } from './result.js';
 
 const Vec3 = z.tuple([z.number(), z.number(), z.number()]);
+
+// SPEC §6.13: where a part's shape comes from. Two forms in one object,
+// told apart by whether `path` is present:
+//
+//   { "path": "voxels.json" }                    a part in a file
+//   { "path": "caps.json", "part": "beret" }     …under a different name
+//   { "size": …, "voxels": …, … }                written out here
+//
+// Modelled as ONE object rather than a z.union so the diagnostics stay
+// precise. A union reports `invalid_union` with both branches' failures
+// nested, which would land every mistake on the catch-all `invalid-value`;
+// the SPEC asks for `missing` on an incomplete inline object and `unknown`
+// on a field belonging to the other form, and superRefine can say exactly
+// that. Strictness still comes from the schema: a field in NEITHER form is
+// an unrecognized key.
+//
+// The inline half is `GeometryPartSchema` minus `name` (the enclosing part
+// already has one — a second copy is a field that can disagree with
+// another) plus §7.4's palette, with `size` / `voxels` relaxed to optional
+// here and required back in the refinement, since they are required only
+// when the form is inline.
+export const PartGeometrySchema = GeometryPartSchema
+  .omit({ name: true })
+  .extend({
+    palette: PaletteFieldSchema.optional(),
+    path: refPath('.json').optional(),
+    part: Identifier.optional(),
+  })
+  .partial({ size: true, voxels: true })
+  .strict()
+  .superRefine((g, ctx) => {
+    if (g.path !== undefined) {
+      for (const key of ['size', 'pivot', 'sockets', 'voxels', 'palette'] as const) {
+        if (g[key] === undefined) continue;
+        ctx.addIssue({
+          code: 'custom',
+          path: [key],
+          message: `\`${key}\` belongs to inline geometry; a reference has only \`path\` and \`part\``,
+          params: { cuboidyCode: 'unknown' },
+        });
+      }
+      return;
+    }
+    // Inline form.
+    for (const key of ['size', 'voxels'] as const) {
+      if (g[key] === undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [key],
+          message: 'required field is missing',
+          params: { cuboidyCode: 'missing' },
+        });
+      }
+    }
+    if (g.size === undefined || g.voxels === undefined) return;
+    // §11.8 phase 3, by the same code a geometry file's part goes through.
+    // The index range is checked only against a palette written out HERE;
+    // a reference — or the manifest's default — defers to §11.6, so which
+    // phase reports an out-of-range index never depends on where the colors
+    // happen to live.
+    const paletteSize = Array.isArray(g.palette) ? g.palette.length : null;
+    checkPartFields({ ...g, size: g.size, voxels: g.voxels }, [], paletteSize, ctx);
+  });
 
 export const ManifestPartSchema = z
   .object({
@@ -15,6 +83,9 @@ export const ManifestPartSchema = z
     // (§4), applied around the part's pivot on top of the geometry-side
     // pivot.rot (q_rest = q_rotation · q_pivot, §7.7). Absent → identity.
     rotation: Vec3.optional(),
+    // SPEC §6.13. Absent → the by-`name` lookup among the files in the
+    // top-level `geometry` list, which is what every pre-v0.9 model uses.
+    geometry: PartGeometrySchema.optional(),
   })
   .strict();
 
@@ -45,11 +116,14 @@ export const ManifestSchema = z
       // constraint into the generated JSON Schema.
       .meta({ uniqueItems: true })
       .optional(),
-    // NOTE: no `palette` here. A palette is declared by the geometry file
-    // that uses it (§7.4) — inline, or as a reference to a shared palette
-    // file (§6.10). Keeping it out of the manifest is what removes the
-    // precedence rule (and its H03 shadowing hint) entirely: references
-    // run manifest → geometry → palette, never manifest → palette as well.
+    // SPEC §6.1 / §6.13: the palette INLINE part geometry falls back to.
+    // Scoped, unlike v0.7's field of the same name: it never reaches into
+    // a geometry file, so a referenced part still means what its own file
+    // says (§7.4) and there is nothing to shadow. That precedence — not
+    // the existence of a second palette — is what v0.9 removed along with
+    // hint H03. A binding no inline part uses lints as W08 (§11.6), which
+    // is exactly the shape a leftover v0.7 manifest has.
+    palette: PaletteFieldSchema.optional(),
     parts: z.array(ManifestPartSchema).min(1),
     // SPEC §6.12: the attachment points this model offers to consumers.
     // Keys are §5 identifiers and are unique model-wide by virtue of being

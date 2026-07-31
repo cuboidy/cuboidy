@@ -14,9 +14,14 @@ export type LintRuleId =
   // W06: cross-file — an `<x>-l` / `<x>-r` manifest pair whose positions are
   // not X-symmetric about the parent (likely a hand-mirrored asymmetry bug).
   | 'W06'
-  // W07: cross-file — a geometry file exists in the package but is not
-  // referenced by the manifest `geometry` list (SPEC §6.9 v0.7).
+  // W07: cross-file — a geometry file exists in the package but is
+  // referenced by neither the manifest `geometry` list nor any part's
+  // `geometry.path` (SPEC §6.9, §6.13).
   | 'W07'
+  // W08: cross-file — a manifest `palette` (§6.1) that no inline part falls
+  // back to, so the binding does nothing. Usually a leftover v0.7 manifest,
+  // where the same field overrode geometry files instead (SPEC §6.13).
+  | 'W08'
   | 'H01'
   | 'H02'
   // H03: cross-file — a geometry file's inline palette is shadowed by the

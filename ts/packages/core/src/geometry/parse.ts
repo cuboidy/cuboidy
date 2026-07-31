@@ -1,4 +1,8 @@
-import { GeometrySchema, type GeometryDoc } from './schema.js';
+import {
+  GeometrySchema,
+  type GeometryDoc,
+  type GeometryDocPart,
+} from './schema.js';
 import { locateJsonPath } from './locate.js';
 import { parseHexColor } from './palette.js';
 import { charToIndex } from './voxel-row.js';
@@ -51,6 +55,27 @@ export function parseGeometryText(text: string): Result<Geometry> {
   const at = locateJsonPath(text, result.path);
   if (at === null) return result;
   return { ...result, message: `line ${at.line}: ${result.message}` };
+}
+
+// SPEC §6.13: build the runtime Part for geometry written INLINE in the
+// manifest, taking its `name` from the enclosing manifest part (the inline
+// object deliberately has none). The manifest schema has already validated
+// it against the same rules a file's part goes through — literally the same
+// `checkPartFields` — and this is the same mapping, so downstream nothing
+// can tell an inline part from a file one. That is the whole point: no
+// consumer should branch on where a shape was written.
+export function inlinePartToAst(
+  doc: Omit<GeometryDocPart, 'name'>,
+  name: string,
+): Part {
+  return toPart({ ...doc, name });
+}
+
+// §7.4 colors → the runtime palette. Exported for the same reason: inline
+// geometry and the manifest's default palette (§6.13) are hex strings that
+// have to become Colors by exactly the route a file's palette takes.
+export function colorsToPalette(colors: readonly string[]): Color[] {
+  return colors.map(toColor);
 }
 
 // ----- AST construction -------------------------------------------------

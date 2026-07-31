@@ -32,6 +32,23 @@
       },
       "uniqueItems": true
     },
+    "palette": {
+      "anyOf": [
+        {
+          "minItems": 1,
+          "maxItems": 62,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+          }
+        },
+        {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*//)[^\\\\:]+\\.json$"
+        }
+      ]
+    },
     "parts": {
       "minItems": 1,
       "type": "array",
@@ -99,6 +116,181 @@
             ],
             "minItems": 3,
             "maxItems": 3
+          },
+          "geometry": {
+            "type": "object",
+            "properties": {
+              "size": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1024
+                  },
+                  {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1024
+                  },
+                  {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1024
+                  }
+                ],
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "pivot": {
+                "type": "object",
+                "properties": {
+                  "pos": {
+                    "type": "array",
+                    "prefixItems": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ],
+                    "minItems": 3,
+                    "maxItems": 3
+                  },
+                  "rot": {
+                    "type": "array",
+                    "prefixItems": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ],
+                    "minItems": 3,
+                    "maxItems": 3
+                  }
+                },
+                "required": [
+                  "pos"
+                ],
+                "additionalProperties": false
+              },
+              "sockets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "pattern": "^[a-zA-Z_][a-zA-Z0-9_-]*$",
+                      "not": {
+                        "enum": [
+                          "palette",
+                          "part",
+                          "size",
+                          "pivot",
+                          "socket",
+                          "voxels",
+                          "rot"
+                        ]
+                      }
+                    },
+                    "pos": {
+                      "type": "array",
+                      "prefixItems": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ],
+                      "minItems": 3,
+                      "maxItems": 3
+                    },
+                    "rot": {
+                      "type": "array",
+                      "prefixItems": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ],
+                      "minItems": 3,
+                      "maxItems": 3
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "pos"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "voxels": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[.0-9a-zA-Z]*$"
+                  }
+                }
+              },
+              "palette": {
+                "anyOf": [
+                  {
+                    "minItems": 1,
+                    "maxItems": 62,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+                    }
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^(?!/)(?!.*//)[^\\\\:]+\\.json$"
+                  }
+                ]
+              },
+              "path": {
+                "type": "string",
+                "pattern": "^(?!/)(?!.*//)[^\\\\:]+\\.json$"
+              },
+              "part": {
+                "type": "string",
+                "pattern": "^[a-zA-Z_][a-zA-Z0-9_-]*$",
+                "not": {
+                  "enum": [
+                    "palette",
+                    "part",
+                    "size",
+                    "pivot",
+                    "socket",
+                    "voxels",
+                    "rot"
+                  ]
+                }
+              }
+            },
+            "additionalProperties": false
           }
         },
         "required": [

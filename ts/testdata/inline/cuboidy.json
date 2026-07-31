@@ -1,0 +1,43 @@
+{
+  "name": "tiny",
+  "version": "0.9",
+  "palette": ["#8b5a3c", "#f4c9a0"],
+  "parts": [
+    {
+      "name": "body",
+      "position": [0, 0, 0],
+      "geometry": {
+        "size": [3, 4, 2],
+        "pivot": { "pos": [1.5, 0, 1] },
+        "sockets": [{ "name": "neck", "pos": [1.5, 4, 1] }],
+        "voxels": [
+          ["000", "000"],
+          ["000", "000"],
+          ["000", "000"],
+          ["000", "000"]
+        ]
+      }
+    },
+    {
+      "name": "head",
+      "parent": "body",
+      "position": [0, 4, 0],
+      "geometry": {
+        "size": [3, 3, 3],
+        "pivot": { "pos": [1.5, 0, 1.5] },
+        "voxels": [
+          ["111", "111", "111"],
+          ["111", "111", "111"],
+          ["111", "111", "111"]
+        ]
+      }
+    }
+  ],
+  "sockets": { "hat": { "part": "body", "socket": "neck" } },
+  "animations": {
+    "nod": {
+      "duration": 1.0, "loop": true,
+      "parts": { "head": { "0.0": { "rot": [0,0,0] }, "0.5": { "rot": [12,0,0] }, "1.0": { "rot": [0,0,0] } } }
+    }
+  }
+}
