@@ -14,7 +14,7 @@ import {
   type Pose,
 } from '@cuboidy/core';
 import type { SelectedKey } from './types.js';
-import { SNAP_STEP } from '../components/Timeline.js';
+import { SNAP_STEP } from '../components/panels/Timeline.js';
 
 // The animation editing "session": the shared playback + selection state that
 // drives BOTH the Preview viewport (poses the rig at `time`) and the Timeline

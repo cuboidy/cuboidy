@@ -1,12 +1,12 @@
 import { useCallback, useState, type ChangeEvent, type DragEvent } from 'react';
 import { Folder } from 'lucide-react';
-import type { LoadResult } from '../lib/types.js';
+import type { LoadResult } from '../../lib/types.js';
 import {
   loadFromDirectoryEntry,
   loadFromDirectoryHandle,
   loadFromFileList,
   loadSingleFile,
-} from '../lib/load-model.js';
+} from '../../lib/load-model.js';
 
 interface Props {
   onLoad: (result: LoadResult) => void;

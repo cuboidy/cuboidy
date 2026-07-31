@@ -1,4 +1,4 @@
-import type { ViewMode } from '../lib/types.js';
+import type { ViewMode } from '../../lib/types.js';
 
 interface Props {
   mode: ViewMode;

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Check, Save } from 'lucide-react';
-import type { LoadedSource } from '../lib/types.js';
-import { saveToFolder } from '../lib/save.js';
+import type { LoadedSource } from '../../lib/types.js';
+import { saveToFolder } from '../../lib/save.js';
 
 interface Props {
   source: LoadedSource;

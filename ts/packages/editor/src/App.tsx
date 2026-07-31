@@ -9,28 +9,28 @@ import {
   type Palette,
   type Part,
 } from '@cuboidy/core';
-import { ConsolePanel, type ConsoleEntry } from './components/ConsolePanel.js';
+import { ConsolePanel, type ConsoleEntry } from './components/panels/ConsolePanel.js';
 import { Dock, type PanelContent } from './components/Dock.js';
-import { ExportMenu } from './components/ExportMenu.js';
-import { Logo } from './components/Logo.js';
+import { ExportMenu } from './components/ui/ExportMenu.js';
+import { Logo } from './components/ui/Logo.js';
 import {
   FolderOpen,
   Plus,
   Redo2,
   Undo2,
 } from 'lucide-react';
-import { FileDropZone } from './components/FileDropZone.js';
-import { FileTree } from './components/FileTree.js';
-import { ModelProperties } from './components/ModelProperties.js';
-import { KeyInspectorPanel } from './components/KeyInspectorPanel.js';
-import { PalettePanel } from './components/PalettePanel.js';
-import { PreviewPanel } from './components/PreviewPanel.js';
-import { PartProperties } from './components/PartProperties.js';
-import { PartsPanel } from './components/PartsPanel.js';
-import { SaveButton } from './components/SaveButton.js';
-import { SettingsMenu } from './components/SettingsMenu.js';
-import { SourceEditor } from './components/SourceEditor.js';
-import { TimelinePanel } from './components/TimelinePanel.js';
+import { FileDropZone } from './components/ui/FileDropZone.js';
+import { FileTree } from './components/panels/FileTree.js';
+import { ModelProperties } from './components/panels/ModelProperties.js';
+import { KeyInspectorPanel } from './components/panels/KeyInspectorPanel.js';
+import { PalettePanel } from './components/panels/PalettePanel.js';
+import { PreviewPanel } from './components/panels/PreviewPanel.js';
+import { PartProperties } from './components/panels/PartProperties.js';
+import { PartsPanel } from './components/panels/PartsPanel.js';
+import { SaveButton } from './components/ui/SaveButton.js';
+import { SettingsMenu } from './components/ui/SettingsMenu.js';
+import { SourceEditor } from './components/panels/SourceEditor.js';
+import { TimelinePanel } from './components/panels/TimelinePanel.js';
 import {
   normalizePath,
 } from './lib/load-model.js';

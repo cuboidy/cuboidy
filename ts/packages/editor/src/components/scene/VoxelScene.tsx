@@ -22,12 +22,12 @@ import type {
   TransformSubTarget,
   ViewMode,
   VoxelEdit,
-} from '../lib/types.js';
+} from '../../lib/types.js';
 import {
   buildRigTree,
   computeSceneCenter,
   computeSceneSpan,
-} from '../lib/rig.js';
+} from '../../lib/rig.js';
 import { PartGizmos, type GizmoPicking } from './PartGizmos.js';
 import { PartMesh } from './PartMesh.js';
 import {

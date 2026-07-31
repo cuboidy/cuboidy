@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState, type DragEvent } from 'react';
 import { manifestGeometry } from '@cuboidy/core';
 import { ChevronDown, ChevronRight, Plus, X } from 'lucide-react';
-import { InlineNameInput } from './InlineNameInput.js';
-import { fileIcon } from './fileIcon.js';
-import { normalizePath } from '../lib/load-model.js';
-import type { LoadedSource } from '../lib/types.js';
+import { InlineNameInput } from '../ui/InlineNameInput.js';
+import { fileIcon } from '../ui/fileIcon.js';
+import { normalizePath } from '../../lib/load-model.js';
+import type { LoadedSource } from '../../lib/types.js';
 
 interface Props {
   source: LoadedSource;

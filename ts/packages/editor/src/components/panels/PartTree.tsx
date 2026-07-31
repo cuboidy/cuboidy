@@ -6,12 +6,12 @@ import {
   type DragEvent,
 } from 'react';
 import { ChevronDown, ChevronRight, Eye, EyeOff } from 'lucide-react';
-import { InlineNameInput } from './InlineNameInput.js';
+import { InlineNameInput } from '../ui/InlineNameInput.js';
 import {
   buildPartTree,
   descendantNames,
   type PartTreeNode,
-} from '../lib/part-tree.js';
+} from '../../lib/part-tree.js';
 import type { Manifest, Part } from '@cuboidy/core';
 
 interface Props {

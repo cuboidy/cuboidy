@@ -7,9 +7,9 @@ import {
   buildRigTree,
   computeSceneCenter,
   computeSceneSpan,
-} from '../lib/rig.js';
-import type { AnimationSession } from '../lib/useAnimationSession.js';
-import type { GizmoVisibility } from '../lib/types.js';
+} from '../../lib/rig.js';
+import type { AnimationSession } from '../../lib/useAnimationSession.js';
+import type { GizmoVisibility } from '../../lib/types.js';
 import { RiggedParts } from './RiggedParts.js';
 
 interface Props {

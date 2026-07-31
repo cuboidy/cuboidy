@@ -1,6 +1,6 @@
 import { Plus } from 'lucide-react';
 import type { Manifest } from '@cuboidy/core';
-import { TextInput } from './TextInput.js';
+import { TextInput } from '../ui/TextInput.js';
 
 interface Props {
   // The model manifest (cuboidy.json). Undefined for a lone geometry file or a

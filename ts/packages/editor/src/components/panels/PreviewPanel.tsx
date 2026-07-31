@@ -1,17 +1,17 @@
 import { Box, Crosshair, Plug } from 'lucide-react';
 import type { Geometry, Manifest, Palette } from '@cuboidy/core';
-import { AnimationViewport } from './AnimationViewport.js';
-import { PaletteStrip } from './PaletteStrip.js';
-import { PreviewToolbar } from './PreviewToolbar.js';
-import { ViewModeToggle } from './ViewModeToggle.js';
-import { VoxelScene } from './VoxelScene.js';
-import type { AnimationSession } from '../lib/useAnimationSession.js';
+import { AnimationViewport } from '../scene/AnimationViewport.js';
+import { PaletteStrip } from '../ui/PaletteStrip.js';
+import { PreviewToolbar } from '../ui/PreviewToolbar.js';
+import { ViewModeToggle } from '../ui/ViewModeToggle.js';
+import { VoxelScene } from '../scene/VoxelScene.js';
+import type { AnimationSession } from '../../lib/useAnimationSession.js';
 import type {
   GizmoVisibility,
   PreviewTool,
   ViewMode,
   VoxelEdit,
-} from '../lib/types.js';
+} from '../../lib/types.js';
 
 interface Props {
   geometry: Geometry;

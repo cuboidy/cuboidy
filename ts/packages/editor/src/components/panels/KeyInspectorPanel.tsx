@@ -4,7 +4,7 @@ import type {
   EasingName,
   KeyAttr,
 } from '@cuboidy/core';
-import type { AnimationSession } from '../lib/useAnimationSession.js';
+import type { AnimationSession } from '../../lib/useAnimationSession.js';
 import { KeyInspector } from './KeyInspector.js';
 
 interface Props {

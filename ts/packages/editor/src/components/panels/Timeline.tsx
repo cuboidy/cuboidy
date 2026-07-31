@@ -15,7 +15,7 @@ import {
   type InlineAnimation,
   type KeyAttr,
 } from '@cuboidy/core';
-import type { SelectedKey } from '../lib/types.js';
+import type { SelectedKey } from '../../lib/types.js';
 
 // Width (px) of the left label gutter. Single-sourced here and fed to both
 // the gutter elements and the playhead's horizontal offset so the playhead

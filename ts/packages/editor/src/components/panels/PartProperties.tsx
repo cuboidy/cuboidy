@@ -9,9 +9,9 @@ import {
   type Part,
   type Size,
 } from '@cuboidy/core';
-import { findManifestPart } from '../lib/part-tree.js';
-import { NumberInput } from './NumberInput.js';
-import { TextInput } from './TextInput.js';
+import { findManifestPart } from '../../lib/part-tree.js';
+import { NumberInput } from '../ui/NumberInput.js';
+import { TextInput } from '../ui/TextInput.js';
 
 type Axis = 'x' | 'y' | 'z';
 const AXES: readonly Axis[] = ['x', 'y', 'z'];

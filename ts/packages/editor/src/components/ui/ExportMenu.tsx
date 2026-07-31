@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
-import type { LoadedSource } from '../lib/types.js';
-import { fileText, manifestText } from '../lib/source-ops.js';
-import { downloadAsZip, downloadFile } from '../lib/save.js';
+import type { LoadedSource } from '../../lib/types.js';
+import { fileText, manifestText } from '../../lib/source-ops.js';
+import { downloadAsZip, downloadFile } from '../../lib/save.js';
 
 interface Props {
   source: LoadedSource;
