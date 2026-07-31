@@ -39,7 +39,7 @@ export function ViewModeToggle({
         title={
           rigAvailable
             ? 'View parts placed by the manifest'
-            : 'Requires a cuboidy.json (load a folder or click Create manifest)'
+            : 'Fix cuboidy.json to place parts by the rig'
         }
         onClick={() => rigAvailable && onChange('rig')}
       >
@@ -54,7 +54,7 @@ export function ViewModeToggle({
         title={
           animAvailable
             ? 'Play and edit the model’s animations'
-            : 'Requires a cuboidy.json (load a folder or click Create manifest)'
+            : 'This model defines no animations yet'
         }
         onClick={() => animAvailable && onChange('anim')}
       >

@@ -787,14 +787,6 @@ svg.lucide {
   overflow: hidden;
 }
 
-/* Empty-state body for the manifest panel on a model with no cuboidy.json. */
-.manifest-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.6rem;
-}
-
 /* Whole-dock empty state: shown after the last panel is closed. Every panel
    can be re-added here (and layout reset), so closing everything is not a
    dead end. */
@@ -1073,10 +1065,6 @@ svg.lucide {
 
 .property-group-empty p {
   margin: 0;
-}
-
-.create-manifest-inline {
-  align-self: flex-start;
 }
 
 .property-group-note {
@@ -1687,11 +1675,6 @@ svg.ficon-json {
    row's white text. */
 .tree-row.error .tree-name {
   color: var(--danger);
-}
-
-.create-manifest {
-  width: calc(100% - 1.5rem);
-  margin: 0.25rem 0.75rem 0.75rem;
 }
 
 /* Hover-revealed delete, uniform across file AND folder rows. */

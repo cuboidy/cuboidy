@@ -257,30 +257,26 @@ export function manifestJson(manifest: Manifest): string {
 // Write a manifest back into the source: the AST and its re-serialized text,
 // together. EVERY structural edit that touches cuboidy.json goes through
 // here, so the two cannot drift apart — and a package that has no manifest
-// file yet (one just synthesized) gets one. This used to be six lines
-// repeated at fifteen call sites, which is also the shape that made the
-// storage layout hard to change.
+// This used to be six lines repeated at fifteen call sites, which is also
+// the shape that made the storage layout hard to change.
 export function withManifest(
   src: LoadedSource,
   manifest: Manifest,
 ): LoadedSource {
-  const path = src.manifestPath ?? 'cuboidy.json';
-  const anchored = src.manifestPath === path ? src : { ...src, manifestPath: path };
   // Writing the manifest's TEXT is enough: writeFile re-derives the AST and
   // everything the manifest references. So a caller that changes the
   // geometry list, a palette binding or an animation ref does not have to
   // re-resolve anything by hand — that used to be its own block at three
   // call sites, each a chance to forget one of the four reference kinds.
-  return writeFile(anchored, path, manifestJson(manifest));
+  return writeFile(src, src.manifestPath, manifestJson(manifest));
 }
 
 // The typing path: record cuboidy.json's text WITHOUT touching the AST,
 // which the debounced re-parse lands separately once the text parses.
 export function withManifestText(src: LoadedSource, text: string): LoadedSource {
-  const path = src.manifestPath ?? 'cuboidy.json';
   const files = new Map(src.files);
-  files.set(path, text);
-  return { ...src, files, manifestPath: path };
+  files.set(src.manifestPath, text);
+  return { ...src, files };
 }
 
 // Write one package file's text AND re-derive everything that file feeds.

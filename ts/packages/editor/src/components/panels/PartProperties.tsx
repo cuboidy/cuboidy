@@ -48,7 +48,6 @@ interface Props {
   onToggleRotation: (partName: string, on: boolean) => void;
   onRenamePart: (oldName: string, newName: string) => void;
   onDeletePart: (name: string) => void;
-  onCreateManifest: () => void;
   onMovePart: (name: string, targetFile: string) => void;
   // Immutably rewrite the selected part's geometry. `build` runs
   // against the part in whatever file defines it; `tag` coalesces a burst
@@ -97,7 +96,6 @@ export function PartProperties({
   onToggleRotation,
   onRenamePart,
   onDeletePart,
-  onCreateManifest,
   onMovePart,
   onEditPart,
   onRenameSocket,
@@ -193,15 +191,10 @@ export function PartProperties({
       <div className={`property-group${rigDisabled ? ' disabled' : ''}`}>
         {!hasManifest && (
           <div className="property-group-empty">
-            <p>No manifest — parent and position can't be set yet.</p>
-            <button
-              type="button"
-              className="btn btn-create btn-sm create-manifest-inline"
-              onClick={onCreateManifest}
-            >
-              <Plus size={13} />
-              Create manifest
-            </button>
+            <p>
+              cuboidy.json doesn&apos;t parse — fix it to edit this part&apos;s
+              rig.
+            </p>
           </div>
         )}
         {hasManifest && manifestEditsDisabled && (

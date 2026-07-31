@@ -78,10 +78,9 @@ function pkg(files: Record<string, string>, primary = 'voxels.json'): LoadedSour
   if (!geometries.has(primary)) geometries.set(primary, geom(primaryText));
   return {
     folderName: 'pkg',
-    synthetic: false,
     files: new Map(Object.entries(files)),
     primaryPath: primary,
-    ...(manifestText !== undefined && { manifestPath: MANIFEST }),
+    manifestPath: MANIFEST,
     ...(manifest !== undefined && { manifest }),
     geometries,
     ...(refs.externalAnims !== undefined && { externalAnims: refs.externalAnims }),
@@ -474,14 +473,17 @@ describe('withManifest / withManifestText / writeFile', () => {
     expect(JSON.parse(manifestText(next)!)).toEqual(next.manifest);
   });
 
-  it('creates the manifest file for a package that has none yet', () => {
-    // "Create manifest" synthesizes one for a bare-geometry load.
-    const bare = pkg({ 'voxels.json': GEO([{ name: 'p', voxels: '0' }], ['#FF0000']) });
-    const next = withManifest(bare, manifestOf(
+  it('replaces the manifest wholesale, AST and bytes together', () => {
+    const s = pkg({
+      [MANIFEST]: manifestJson({ name: 'old', parts: [{ name: 'p' }] }),
+      'voxels.json': GEO([{ name: 'p', voxels: '0' }], ['#FF0000']),
+    });
+    const next = withManifest(s, manifestOf(
       manifestJson({ name: 'fresh', parts: [{ name: 'p' }] }),
     ));
     expect(next.manifestPath).toBe(MANIFEST);
     expect(next.manifest?.name).toBe('fresh');
+    expect(JSON.parse(manifestText(next)!)).toEqual(next.manifest);
   });
 
   it('withManifestText records bytes WITHOUT touching the AST', () => {

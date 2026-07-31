@@ -60,10 +60,9 @@ function pkg(files: Record<string, string>, primary = 'voxels.json'): LoadedSour
   if (!geometries.has(primary)) geometries.set(primary, geom(primaryText));
   return {
     folderName: 'pkg',
-    synthetic: false,
     files: new Map(Object.entries(files)),
     primaryPath: primary,
-    ...(manifestText !== undefined && { manifestPath: MANIFEST }),
+    manifestPath: MANIFEST,
     ...(manifest !== undefined && { manifest }),
     geometries,
     ...(refs.externalAnims !== undefined && { externalAnims: refs.externalAnims }),
@@ -199,13 +198,17 @@ describe('lintSource', () => {
     });
   });
 
-  it('runs the per-file rules with no manifest, and no cross-file ones', () => {
-    // A bare geometry load has no project to validate. It must still lint,
-    // and must not throw reaching for a manifest that is not there.
+  it('runs the per-file rules with an UNPARSEABLE manifest, and no cross-file ones', () => {
+    // Since SPEC §3 the manifest is required, so "no manifest" now only
+    // arises while its text is mid-edit broken — the AST is absent, the
+    // document is still open, and the per-file rules must keep working
+    // instead of throwing on the way to a project that cannot be built.
     const src = pkg({
+      [MANIFEST]: JSON.stringify({ name: 'm', parts: [{ name: 'body' }] }),
       'voxels.json': GEO([{ name: 'body', pivot: [9, 0, 0] }]),
     });
-    const found = lintSource(src);
+    const { manifest: _dropped, ...broken } = src;
+    const found = lintSource(broken);
     expect(found.map((f) => f.diag.ruleId)).toEqual(['W01']);
     expect(found[0]!.file).toBe('voxels.json');
   });
@@ -246,10 +249,9 @@ describe('lintSource — the shipped models', () => {
     }
     return {
       folderName: 'm',
-      synthetic: false,
       files,
       primaryPath,
-      ...(manifestText !== undefined && { manifestPath: MANIFEST }),
+      manifestPath: MANIFEST,
       ...(manifest !== undefined && { manifest }),
       geometries,
       ...(refs.externalAnims !== undefined && { externalAnims: refs.externalAnims }),

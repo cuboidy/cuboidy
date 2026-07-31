@@ -12,7 +12,6 @@ interface Props {
   disabled: boolean;
   onChangeName: (name: string) => void;
   onChangeVersion: (version: string) => void;
-  onCreateManifest: () => void;
 }
 
 // Model-level cuboidy.json inspector: the fields that describe the whole
@@ -24,21 +23,15 @@ export function ModelProperties({
   disabled,
   onChangeName,
   onChangeVersion,
-  onCreateManifest,
 }: Props) {
+  // Every model HAS a manifest (SPEC §3) — the loader refuses one that
+  // does not. An absent AST therefore means its text does not parse, not
+  // that the model lacks one, so the way out is the source tab.
   if (manifest === undefined) {
     return (
       <section className="model-properties">
         <div className="property-group-empty">
-          <p>No manifest — model name and version can't be set yet.</p>
-          <button
-            type="button"
-            className="btn btn-create btn-sm create-manifest-inline"
-            onClick={onCreateManifest}
-          >
-            <Plus size={13} />
-            Create manifest
-          </button>
+          <p>cuboidy.json doesn&apos;t parse — fix it in its source tab.</p>
         </div>
       </section>
     );

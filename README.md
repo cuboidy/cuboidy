@@ -201,9 +201,10 @@ Done — the v0.9 spec and a complete TypeScript implementation of it
 
 Shipped alongside it:
 
-- [~] **Web-based editor** (`ts/packages/editor/`) — loads folders, geometry
-      files and `.cuboidy` ZIPs; Geometry / Rig / Anim views; part, palette and
-      keyframe editing with undo/redo; direct manipulation in the 3D preview;
+- [~] **Web-based editor** (`ts/packages/editor/`) — loads a model folder, a
+      single `cuboidy.json` or a `.cuboidy` ZIP; Geometry / Rig / Anim views;
+      part, palette and keyframe editing with undo/redo; direct manipulation
+      in the 3D preview;
       core's lint live in the Console panel; project-aware save/export;
       Playwright E2E suite. `cd ts/packages/editor && npm run dev`
       (Remaining polish — dirty-state guard, timeline zoom, a11y — was tracked

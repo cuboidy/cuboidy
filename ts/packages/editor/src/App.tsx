@@ -65,7 +65,6 @@ import {
   sharesPalette,
   withManifest,
 } from './lib/source-ops.js';
-import { synthesizeManifest } from './lib/synthesize-manifest.js';
 import { useAnimationEdits } from './lib/useAnimationEdits.js';
 import { useFileOps } from './lib/useFileOps.js';
 import { usePaletteEdits } from './lib/usePaletteEdits.js';
@@ -234,39 +233,6 @@ export function App() {
     handleDeleteFolder,
   } = useFileOps({ dispatchEdit, setFileParseErrors });
 
-
-  const handleCreateManifest = useCallback(() => {
-    if (editsBlocked) return;
-    dispatchEdit(null, (current) => {
-      if (current?.source === undefined) return current;
-      const src = current.source;
-      // Only reachable from a bare-geometry load, which by construction
-      // has a primary file — but the type no longer says so, and a guard
-      // is cheaper than an assertion that could rot.
-      const primary = primaryGeometry(src);
-      if (primary === undefined || src.primaryPath === undefined) return current;
-      const manifest = synthesizeManifest(primary, src.primaryPath);
-      // A successful synthesis clears any stale load-time manifest error.
-      const { manifestError: _dropped, ...rest } = src;
-      const next = withManifest(
-        {
-          ...rest,
-          // A lone-file load becomes a package here, taking its name from
-          // the manifest just synthesized; a real folder keeps its own.
-          folderName: src.folderName ?? manifest.name,
-          synthetic: true,
-        },
-        manifest,
-      );
-      return { ...current, source: next };
-    });
-    // View switches live OUTSIDE the apply closure — reducer appliers must
-    // stay pure (StrictMode double-invokes them). The button is only
-    // reachable when a source is loaded, so switching unconditionally is
-    // safe even if the edit no-opped.
-    setViewMode('rig');
-    setLayout((l) => openPanelById(l, 'preview'));
-  }, [dispatchEdit, editsBlocked]);
 
   // Creating a clip moves the editor to the anim view. Layout state lives
   // here, so the hook calls back rather than reaching for it.
@@ -862,28 +828,15 @@ export function App() {
         return {
           title,
           fill: true,
-          body:
-            source.manifestPath !== undefined ? (
-              <SourceEditor
-                text={(manifestText(source) ?? '')}
-                {...(manifestParseError !== null && {
-                  parseError: manifestParseError,
-                })}
-                onChange={(t) => handleEditFileText(source.manifestPath!, t)}
-              />
-            ) : (
-              <div className="panel-empty manifest-empty">
-                <p>No manifest in this model yet.</p>
-                <button
-                  type="button"
-                  className="btn btn-create btn-sm"
-                  onClick={handleCreateManifest}
-                >
-                  <Plus size={13} />
-                  Create manifest
-                </button>
-              </div>
-            ),
+          body: (
+            <SourceEditor
+              text={manifestText(source) ?? ''}
+              {...(manifestParseError !== null && {
+                parseError: manifestParseError,
+              })}
+              onChange={(t) => handleEditFileText(source.manifestPath, t)}
+            />
+          ),
         };
       case 'model':
         return {
@@ -894,7 +847,6 @@ export function App() {
               disabled={manifestParseError !== null}
               onChangeName={handleChangeModelName}
               onChangeVersion={handleChangeModelVersion}
-              onCreateManifest={handleCreateManifest}
             />
           ),
         };
@@ -906,7 +858,6 @@ export function App() {
               source={source}
               fileErrors={treeFileErrors}
               onOpenPath={handleOpenPath}
-              onCreateManifest={handleCreateManifest}
               onCreateFile={handleCreateFile}
               onRenameFile={handleRenameFile}
               onMoveFolder={handleMoveFolder}
@@ -967,8 +918,7 @@ export function App() {
                 onToggleRotation={handleTogglePartRotation}
                 onRenamePart={handleRenamePart}
                 onDeletePart={handleDeletePart}
-                onCreateManifest={handleCreateManifest}
-                onMovePart={handleMovePart}
+                  onMovePart={handleMovePart}
                 onEditPart={handleEditPart}
                 onRenameSocket={handleRenameSocket}
                 onDeleteSocket={handleDeleteSocket}

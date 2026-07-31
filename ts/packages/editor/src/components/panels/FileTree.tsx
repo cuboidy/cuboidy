@@ -14,7 +14,6 @@ interface Props {
   // VS Code-style red filename; the tooltip carries the message.
   fileErrors: ReadonlyMap<string, string>;
   onOpenPath: (path: string) => void;
-  onCreateManifest: () => void;
   // File CRUD (v0.7 Phase D). Only meaningful for sources carrying a
   // files map; the tree hides the affordances otherwise.
   onCreateFile: (path: string) => void;
@@ -62,7 +61,6 @@ export function FileTree({
   source,
   fileErrors,
   onOpenPath,
-  onCreateManifest,
   onCreateFile,
   onRenameFile,
   onMoveFolder,
@@ -477,7 +475,6 @@ export function FileTree({
                 </span>
               </button>
               <span className="tree-name">{source.folderName}</span>
-              {source.synthetic && <span className="badge">unsaved</span>}
             </div>
             {!collapsed.has('') && (
               <>
@@ -492,9 +489,7 @@ export function FileTree({
                   dropTarget={dropTarget}
                   folderRowProps={folderRowProps}
                   fileRowProps={fileRowProps}
-                  newBadgePath={
-                    source.synthetic ? source.manifestPath : undefined
-                  }
+                  newBadgePath={undefined}
                   canEdit={canEdit}
                   creatingIn={creatingIn}
                   creatingFolderIn={creatingFolderIn}
@@ -561,16 +556,6 @@ export function FileTree({
             </div>
           </li>
         </ul>
-      )}
-      {canCreateManifest(source) && (
-        <button
-          type="button"
-          className="btn btn-create btn-sm create-manifest"
-          onClick={onCreateManifest}
-        >
-          <Plus size={13} />
-          Create manifest
-        </button>
       )}
     </div>
   );
@@ -964,6 +949,3 @@ function FileNode({
   );
 }
 
-function canCreateManifest(source: LoadedSource): boolean {
-  return source.manifest === undefined;
-}

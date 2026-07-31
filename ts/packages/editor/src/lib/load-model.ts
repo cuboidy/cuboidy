@@ -32,13 +32,26 @@ const TEXT_FILE_RE = /\.(json|md|txt)$/i;
 // buildFolderResult resolves the manifest's references (geometry list,
 // palette binding) from it.
 
+// One loose file, read as the model's MANIFEST (SPEC §3: cuboidy.json is
+// the anchor, and a lone geometry file is not a model). Since §6.13 a
+// manifest can carry every part's geometry inline, so this is a complete
+// model in one file — which is what the old bare-geometry path was
+// reaching for, without the second-class document it produced.
+//
+// The file need not be *named* cuboidy.json: it is the manifest by virtue
+// of being the thing handed to the loader, exactly as the folder's
+// cuboidy.json is. It is stored under that name so every path-keyed
+// reader sees the layout it expects.
 export async function loadFromFile(file: File): Promise<LoadResult> {
   const text = await file.text();
-  return buildGeometryOnlyResult(file.name, text);
+  return buildFolderResult(
+    new Map([[MANIFEST_FILE, text]]),
+    file.name.replace(/\.json$/i, ''),
+  );
 }
 
 // Single-file entrypoint that dispatches on extension. .cuboidy goes to
-// the ZIP unpacker, anything else is treated as a raw geometry file.
+// the ZIP unpacker, anything else is read as a manifest.
 export async function loadSingleFile(file: File): Promise<LoadResult> {
   if (CUBOIDY_EXT.test(file.name)) return loadFromCuboidyZip(file);
   return loadFromFile(file);
@@ -193,26 +206,11 @@ async function collectEntry(
 
 // ── shared assembly ──────────────────────────────────────────────────
 
-function buildGeometryOnlyResult(name: string, text: string): LoadResult {
-  const geometryR = parseGeometryText(text);
-  if (!geometryR.ok) {
-    return { error: geometryR.message, geometryFileName: name };
-  }
-  // No folderName: this is a lone file, not a package (see LoadedSource).
-  const source: LoadedSource = {
-    synthetic: false,
-    files: new Map([[name, text]]),
-    primaryPath: name,
-    geometries: new Map([[name, geometryR.value]]),
-  };
-  return { source, geometryFileName: name };
-}
-
-// Folder assembly (v0.7): resolve the manifest's references against the
-// collected file map. The PRIMARY geometry file (first `geometry` entry,
-// default voxels.json) plays the pre-v0.7 single-geometry role — it is the
-// file the editor edits; the rest are parsed into `geometries` and load
-// problems land in `projectErrors` (shown in the Console panel).
+// Package assembly: resolve the manifest's references against the
+// collected file map. The PRIMARY geometry file (the first one the model
+// reads) is the file the geometry panel edits; the rest are parsed into
+// `geometries`, and load problems land in `projectErrors` (shown in the
+// Console panel). A model may have no geometry file at all — see §6.13.
 function buildFolderResult(
   fileTexts: Map<string, string>,
   folderName: string,
@@ -221,26 +219,47 @@ function buildFolderResult(
     assets?: ReadonlyMap<string, Uint8Array>;
   } = {},
 ): LoadResult {
-  // Manifest first — the geometry list depends on it.
+  // SPEC §3: the manifest is the package's anchor and is REQUIRED. Its
+  // absence is not a model with problems, it is not a model — so it fails
+  // the load outright rather than opening a document half the editor's
+  // features are switched off for. (This used to be tolerated, producing
+  // a second-class package with no rig view, no animation view and a
+  // "Create manifest" promotion step. Inline geometry now covers the case
+  // that leniency served: one file, complete model.)
+  const manifestText = fileTexts.get(MANIFEST_FILE);
+  if (manifestText === undefined) {
+    return {
+      error:
+        `No ${MANIFEST_FILE} in '${folderName}'. Every Cuboidy model is ` +
+        `anchored by its manifest (SPEC §3); a lone geometry file is not a ` +
+        `model. Open a folder containing one, or a single ${MANIFEST_FILE}.`,
+    };
+  }
+  // A manifest that is PRESENT but broken still loads: the point of the
+  // editor is to fix it, and its text has to be on screen to be fixed.
   let manifest: Manifest | undefined;
   let manifestError: string | undefined;
-  const manifestText = fileTexts.get(MANIFEST_FILE);
-  if (manifestText !== undefined) {
-    try {
-      const json: unknown = JSON.parse(manifestText);
-      const mR = parseManifest(json);
-      if (mR.ok) manifest = mR.value;
-      else manifestError = mR.message;
-    } catch (e) {
-      manifestError = `JSON parse: ${(e as Error).message}`;
-    }
+  try {
+    const json: unknown = JSON.parse(manifestText);
+    const mR = parseManifest(json);
+    if (mR.ok) manifest = mR.value;
+    else manifestError = mR.message;
+  } catch (e) {
+    manifestError = `JSON parse: ${(e as Error).message}`;
   }
 
   // SPEC §6.9 + §6.13: which geometry FILES this model has, if any. An
   // all-inline manifest has none — and `geometryPaths` is what stops the
   // ["voxels.json"] default being demanded from one.
+  //
+  // With an UNPARSEABLE manifest there is nothing to ask: what it
+  // references is exactly what could not be read. Guessing the old
+  // `["voxels.json"]` default would refuse to open a one-file model over a
+  // typo in it — the moment the editor is most needed. So: no geometry
+  // files, the manifest error on screen, and everything re-resolves the
+  // instant the text parses again.
   const geometryRefs = (
-    manifest !== undefined ? geometryPaths(manifest) : [GEOMETRY_FILE]
+    manifest !== undefined ? geometryPaths(manifest) : []
   ).map(normalizePath);
   const primary: string | undefined = geometryRefs[0];
 
@@ -277,13 +296,12 @@ function buildFolderResult(
 
   const source: LoadedSource = {
     folderName,
-    synthetic: false,
     ...(opts.handle !== undefined && { handle: opts.handle }),
     files: new Map(fileTexts),
     ...(opts.assets !== undefined && { assets: opts.assets }),
     ...(primary !== undefined && { primaryPath: primary }),
     ...(inlineParts.size > 0 && { inlineParts }),
-    ...(manifestText !== undefined && { manifestPath: MANIFEST_FILE }),
+    manifestPath: MANIFEST_FILE,
     ...(manifest !== undefined && { manifest }),
     ...(manifestError !== undefined && { manifestError }),
     geometries,

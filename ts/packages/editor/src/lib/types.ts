@@ -31,15 +31,11 @@ import type {
 // text into the AST.
 
 export interface LoadedSource {
-  // The package's display name (the Files tree root). ABSENT means the
-  // load was a single geometry file with no package around it: the tree
-  // draws a flat file row instead of a root, and Export offers no ZIP.
-  // "Create manifest" gives such a load a name, promoting it to a package.
-  folderName?: string;
-  // Synthetic packages are created in-editor (Create manifest from a
-  // bare-geometry load). They have no original disk location, so Save
-  // must always go through a file picker / download path.
-  synthetic: boolean;
+  // The package's display name (the Files tree root). Always present:
+  // every load is a package now, anchored by a manifest (SPEC §3). A
+  // single loose file is read AS that manifest, so it is a package too —
+  // there is no longer a lesser kind of document.
+  folderName: string;
   // FSA-aware drop or showDirectoryPicker on Chrome/Edge populates
   // this. When present, Save can write back to the original folder.
   handle?: FileSystemDirectoryHandle;
@@ -72,9 +68,12 @@ export interface LoadedSource {
   // `palette`, else the manifest's (§6.13), and resolving that twice in
   // two places is how the render and the editor would come to disagree.
   inlineParts?: ReadonlyMap<string, { part: Part; palette: Palette }>;
-  // Which entry is cuboidy.json. Absent for a package that has no manifest
-  // (a folder holding only voxels.json, or a bare geometry file).
-  manifestPath?: string;
+  // Which entry is cuboidy.json. Always present — it is what makes the
+  // load a model at all (§3); a folder without one fails to load.
+  manifestPath: string;
+  // The parsed manifest, ABSENT when its text does not parse. That case
+  // still loads: the editor exists to fix it, and the text has to be on
+  // screen to be fixed. `manifestError` says what is wrong.
   manifest?: Manifest;
   manifestError?: string;
   // All geometry files that parsed, keyed by their (normalized) manifest
