@@ -24,7 +24,9 @@ describe('isIdentifier', () => {
       ['has space', false],
       ['has.dot', false],
       ['has/slash', false],
-      ['日本語', false],    // unicode rejected per §5 (ASCII only)
+      // §5 is ASCII-only — two scripts, so the rule is not read as Latin-1 only
+      ['café', false],   // accented Latin
+      ['αβ', false],     // Greek
     ])('isIdentifier(%j) === %s', (input, expected) => {
       expect(isIdentifier(input)).toBe(expected);
     });
