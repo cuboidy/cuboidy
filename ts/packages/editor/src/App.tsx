@@ -35,18 +35,12 @@ import {
   type Palette,
   type Part,
 } from '@cuboidy/core';
-import { AnimationViewport } from './components/AnimationViewport.js';
 import { ConsolePanel, type ConsoleEntry } from './components/ConsolePanel.js';
 import { Dock, type PanelContent } from './components/Dock.js';
 import { ExportMenu } from './components/ExportMenu.js';
 import { Logo } from './components/Logo.js';
 import {
-  Box,
-  Crosshair,
-  Eye,
-  EyeOff,
   FolderOpen,
-  Plug,
   Plus,
   Redo2,
   Undo2,
@@ -56,16 +50,13 @@ import { FileTree } from './components/FileTree.js';
 import { ModelProperties } from './components/ModelProperties.js';
 import { KeyInspectorPanel } from './components/KeyInspectorPanel.js';
 import { PalettePanel } from './components/PalettePanel.js';
-import { PaletteStrip } from './components/PaletteStrip.js';
+import { PreviewPanel } from './components/PreviewPanel.js';
 import { PartProperties } from './components/PartProperties.js';
-import { PartTree } from './components/PartTree.js';
-import { PreviewToolbar } from './components/PreviewToolbar.js';
+import { PartsPanel } from './components/PartsPanel.js';
 import { SaveButton } from './components/SaveButton.js';
 import { SettingsMenu } from './components/SettingsMenu.js';
 import { SourceEditor } from './components/SourceEditor.js';
 import { TimelinePanel } from './components/TimelinePanel.js';
-import { ViewModeToggle } from './components/ViewModeToggle.js';
-import { VoxelScene } from './components/VoxelScene.js';
 import { historyReducer, makeHistory } from './lib/history.js';
 import {
   normalizePath,
@@ -2042,20 +2033,13 @@ export function App() {
   // tools stay visible (the toolbar is the locked design) but disabled.
   const previewToolDisabled = useMemo(() => {
     const d: Partial<Record<PreviewTool, string>> = {};
-    // Every editing tool writes geometry files (and move/rotate the
-    // manifest too) — any of them mid-edit unparseable disables the
-    // tools, matching the inspector.
-    const parseBroken =
-      manifestParseError !== null ||
-      geometryParseError !== null ||
-      fileParseErrors.size > 0;
     if (effectiveViewMode === 'anim') {
       d.move = 'Rest editing lives in the Rig and Geometry views';
       d.rotate = 'Rest editing lives in the Rig and Geometry views';
       d.attach = 'Voxel editing lives in the Rig and Geometry views for now';
       d.erase = 'Voxel editing lives in the Rig and Geometry views for now';
       d.paint = 'Voxel editing lives in the Rig and Geometry views for now';
-    } else if (parseBroken) {
+    } else if (editsBlocked) {
       const msg = 'Fix the syntax errors first';
       d.move = msg;
       d.rotate = msg;
@@ -2064,12 +2048,7 @@ export function App() {
       d.paint = msg;
     }
     return d;
-  }, [
-    effectiveViewMode,
-    manifestParseError,
-    geometryParseError,
-    fileParseErrors,
-  ]);
+  }, [effectiveViewMode, editsBlocked]);
   const effectivePreviewTool: PreviewTool =
     previewToolDisabled[previewTool] !== undefined ? 'select' : previewTool;
 
@@ -2278,6 +2257,47 @@ export function App() {
     },
     [loaded],
   );
+  // The model's current problems, for the Console panel. Derived, never
+  // stored. fileParseErrors already covers EVERY file including the primary
+  // geometry and the manifest, so it is listed once — the panel used to
+  // push those two separately as well, and reported each of them twice.
+  const consoleEntries = useMemo((): ConsoleEntry[] => {
+    const entries: ConsoleEntry[] = [];
+    if (source === undefined) return entries;
+    for (const [path, msg] of fileParseErrors) {
+      entries.push({
+        severity: 'error',
+        source: path,
+        message: (
+          <>
+            <strong>Error:</strong> {msg}
+          </>
+        ),
+      });
+    }
+    // A load-time manifest error stands until the text is edited, at which
+    // point fileParseErrors takes over reporting it.
+    const manifestPath = source.manifestPath ?? 'cuboidy.json';
+    if (
+      source.manifestError !== undefined &&
+      !fileParseErrors.has(manifestPath)
+    ) {
+      entries.push({
+        severity: 'error',
+        source: manifestPath,
+        message: (
+          <>
+            <strong>Error:</strong> {source.manifestError}
+          </>
+        ),
+      });
+    }
+    for (const pe of source.projectErrors ?? []) {
+      entries.push({ severity: 'error', source: pe.file, message: pe.message });
+    }
+    return entries;
+  }, [source, fileParseErrors]);
+
   // Error per file path (parse errors on live-edited files + load-time
   // project errors) — red names in the Files tree.
   const treeFileErrors = useMemo(() => {
@@ -2360,125 +2380,48 @@ export function App() {
     }
     switch (id) {
       case 'preview': {
-        // The paint tool's color choices come from the SELECTED part's
-        // effective palette (§6.10 — unbound multi-file models resolve
-        // per defining file), so the painted index means the right
-        // color in the right file.
+        // The paint strip offers the SELECTED part's effective palette, so
+        // a painted index means the right color in the right file (§7.4).
         const stripPalette =
           (effectiveSelectedPart !== null
             ? partPalettes?.get(effectiveSelectedPart)
             : undefined) ?? (modelGeometry ?? primaryGeometry(source)).palette;
-        const clampedColor =
-          stripPalette.length === 0
-            ? -1
-            : Math.min(activeColorIndex, stripPalette.length - 1);
         return {
           title,
           fill: true,
           body: (
-            <>
-              {/* Panel-local toolbar: the view-mode switch belongs to the
-                  Preview panel, so it floats over the 3D's top-right rather
-                  than the global header (panel-system design A2). The gizmo
-                  toggles sit beside it — they only affect this panel too.
-                  The tool switch (preview-editing design §2.1) floats over
-                  the top-left. */}
-              <div className="preview-toolbar-overlay">
-                <PreviewToolbar
-                  tool={effectivePreviewTool}
-                  disabled={previewToolDisabled}
-                  onSetTool={setPreviewTool}
-                />
-              </div>
-              <div className="view-mode-overlay">
-                <div
-                  className="gizmo-toggles"
-                  role="group"
-                  aria-label="Selected-part gizmos"
-                >
-                  <button
-                    type="button"
-                    className={gizmoVis.pivot ? 'active' : ''}
-                    aria-pressed={gizmoVis.pivot}
-                    title="Show the selected part's pivot"
-                    onClick={() => handleToggleGizmo('pivot')}
-                  >
-                    <Crosshair size={14} />
-                  </button>
-                  <button
-                    type="button"
-                    className={gizmoVis.sockets ? 'active' : ''}
-                    aria-pressed={gizmoVis.sockets}
-                    title="Show the selected part's sockets"
-                    onClick={() => handleToggleGizmo('sockets')}
-                  >
-                    <Plug size={14} />
-                  </button>
-                  <button
-                    type="button"
-                    className={gizmoVis.frame ? 'active' : ''}
-                    aria-pressed={gizmoVis.frame}
-                    title="Show the selected part's bounding frame"
-                    onClick={() => handleToggleGizmo('frame')}
-                  >
-                    <Box size={14} />
-                  </button>
-                </div>
-                <ViewModeToggle
-                  mode={effectiveViewMode}
-                  rigAvailable={rigAvailable}
-                  animAvailable={animAvailable}
-                  onChange={handleViewModeChange}
-                />
-              </div>
-              {effectiveViewMode === 'anim' &&
-              animManifest !== undefined ? (
-                <AnimationViewport
-                  geometry={modelGeometry ?? primaryGeometry(source)}
-                  manifest={animManifest}
-                  hiddenParts={hiddenParts}
-                  session={animSession}
-                  manifestEditsDisabled={manifestParseError !== null}
-                  partPalettes={partPalettes}
-                  selectedPart={effectiveSelectedPart}
-                  gizmos={gizmoVis}
-                  onSelectPart={setSelectedPartName}
-                  framingKey={framingKey}
-                  onCreateClip={handleCreateAnimationClip}
-                />
-              ) : (
-                <VoxelScene
-                  geometry={modelGeometry ?? primaryGeometry(source)}
-                  manifest={source.manifest}
-                  viewMode={effectiveViewMode}
-                  hiddenParts={hiddenParts}
-                  partPalettes={partPalettes}
-                  selectedPart={effectiveSelectedPart}
-                  gizmos={gizmoVis}
-                  onSelectPart={setSelectedPartName}
-                  tool={effectivePreviewTool}
-                  onMovePart={handleGizmoMovePart}
-                  onRotatePart={handleGizmoRotatePart}
-                  onMovePivot={handleGizmoMovePivot}
-                  onRotatePivot={handleGizmoRotatePivot}
-                  onMoveSocket={handleGizmoMoveSocket}
-                  onRotateSocket={handleGizmoRotateSocket}
-                  activeColorIndex={clampedColor}
-                  onStrokeVoxels={handleStrokeVoxels}
-                  framingKey={framingKey}
-                />
-              )}
-              {(effectivePreviewTool === 'paint' ||
-                effectivePreviewTool === 'attach') && (
-                <div className="palette-strip-overlay">
-                  <PaletteStrip
-                    palette={stripPalette}
-                    active={clampedColor}
-                    onPick={setActiveColorIndex}
-                  />
-                </div>
-              )}
-            </>
+            <PreviewPanel
+              geometry={modelGeometry ?? primaryGeometry(source)}
+              manifest={source.manifest}
+              animManifest={animManifest}
+              partPalettes={partPalettes}
+              stripPalette={stripPalette}
+              activeColorIndex={activeColorIndex}
+              viewMode={effectiveViewMode}
+              rigAvailable={rigAvailable}
+              animAvailable={animAvailable}
+              tool={effectivePreviewTool}
+              toolDisabled={previewToolDisabled}
+              gizmos={gizmoVis}
+              hiddenParts={hiddenParts}
+              selectedPart={effectiveSelectedPart}
+              manifestEditsDisabled={manifestParseError !== null}
+              session={animSession}
+              framingKey={framingKey}
+              onSetTool={setPreviewTool}
+              onToggleGizmo={handleToggleGizmo}
+              onChangeViewMode={handleViewModeChange}
+              onSelectPart={setSelectedPartName}
+              onPickColor={setActiveColorIndex}
+              onCreateClip={handleCreateAnimationClip}
+              onMovePart={handleGizmoMovePart}
+              onRotatePart={handleGizmoRotatePart}
+              onMovePivot={handleGizmoMovePivot}
+              onRotatePivot={handleGizmoRotatePivot}
+              onMoveSocket={handleGizmoMoveSocket}
+              onRotateSocket={handleGizmoRotateSocket}
+              onStrokeVoxels={handleStrokeVoxels}
+            />
           ),
         };
       }
@@ -2589,98 +2532,32 @@ export function App() {
           ),
         };
       case 'parts': {
-        const modelParts = merged?.parts ?? primaryGeometry(source).parts;
-        const visibleCount = modelParts.length - hiddenParts.size;
-        const existingNames = new Set(modelParts.map((p) => p.name));
-        let n = 1;
-        while (existingNames.has(`part${n}`)) n += 1;
-        const createSuggested = `part${n}`;
-        // Multi-geometry: the create draft offers a target-file picker.
-        // Insertion order of `geometries` is geometry-list order, so the
-        // first entry is the primary (the single-file default).
-        const geometryPaths =
-          (source.geometries.size ?? 0) > 1
-            ? [...(source.geometries.keys() ?? [])]
-            : undefined;
+        const multiFile = source.geometries.size > 1;
         return {
           title: 'Parts',
-          // Fill panel: the toolbar sits OUTSIDE the scroller (only the
-          // tree scrolls). Inside it, the drag auto-scroll zone at the
-          // scroller's top edge hid behind the sticky toolbar — an
-          // upward drag only scrolled once the pointer cleared it.
           fill: true,
           body: (
-            <>
-              <div className="parts-toolbar">
-                <button
-                  type="button"
-                  className="btn btn-sm"
-                  disabled={
-                    geometryParseError !== null || fileParseErrors.size > 0
-                  }
-                  title={
-                    geometryParseError !== null || fileParseErrors.size > 0
-                      ? 'Fix the geometry file errors to add parts'
-                      : 'New part (child of the selected part)'
-                  }
-                  onClick={handleStartCreatePart}
-                >
-                  <Plus size={13} />
-                  New part
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-sm"
-                  onClick={handleShowAll}
-                  disabled={hiddenParts.size === 0}
-                >
-                  <Eye size={13} />
-                  Show all
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-sm"
-                  onClick={handleHideAll}
-                  disabled={visibleCount === 0}
-                >
-                  <EyeOff size={13} />
-                  Hide all
-                </button>
-              </div>
-              <div className="parts-scroll">
-                <PartTree
-                  parts={modelParts}
-                  partFiles={
-                    (source.geometries.size ?? 0) > 1
-                      ? partFiles
-                      : undefined
-                  }
-                  manifest={manifest}
-                  hiddenParts={hiddenParts}
-                  selectedPart={effectiveSelectedPart}
-                  dndEnabled={manifest !== undefined}
-                  creating={creating}
-                  createSuggested={createSuggested}
-                  geometryFiles={geometryPaths}
-                  validateNewName={(name) =>
-                    isIdentifier(name) && !existingNames.has(name)
-                  }
-                  renameEnabled={
-                    geometryParseError === null &&
-                    fileParseErrors.size === 0 &&
-                    !(manifest !== undefined && manifestParseError !== null)
-                  }
-                  onToggleVisibility={handleToggle}
-                  onSelectPart={setSelectedPartName}
-                  onChangeParent={handleChangePartParent}
-                  onConfirmCreate={(name, file) =>
-                    handleConfirmCreatePart(name, creating?.parent ?? null, file)
-                  }
-                  onCancelCreate={handleCancelCreatePart}
-                  onRenamePart={handleRenamePart}
-                />
-              </div>
-            </>
+            <PartsPanel
+              parts={merged?.parts ?? primaryGeometry(source).parts}
+              partFiles={multiFile ? partFiles : undefined}
+              geometryFiles={multiFile ? [...source.geometries.keys()] : undefined}
+              manifest={manifest}
+              hiddenParts={hiddenParts}
+              selectedPart={effectiveSelectedPart}
+              creating={creating}
+              editsBlocked={editsBlocked}
+              onStartCreate={handleStartCreatePart}
+              onShowAll={handleShowAll}
+              onHideAll={handleHideAll}
+              onToggleVisibility={handleToggle}
+              onSelectPart={setSelectedPartName}
+              onChangeParent={handleChangePartParent}
+              onConfirmCreate={(name, file) =>
+                handleConfirmCreatePart(name, creating?.parent ?? null, file)
+              }
+              onCancelCreate={handleCancelCreatePart}
+              onRenamePart={handleRenamePart}
+            />
           ),
         };
       }
@@ -2701,17 +2578,16 @@ export function App() {
                 manifest={manifest}
                 manifestEditsDisabled={manifestParseError !== null}
                 renameDisabled={
-                  geometryParseError !== null ||
-                  fileParseErrors.size > 0 ||
+                  editsBlocked ||
                   (manifest !== undefined && manifestParseError !== null)
                 }
                 geometryFiles={movePaths}
                 partFile={partFiles?.get(effectiveSelectedPart)}
                 moveDisabled={
-                  geometryParseError !== null || fileParseErrors.size > 0
+                  editsBlocked
                 }
                 geometryEditsDisabled={
-                  geometryParseError !== null || fileParseErrors.size > 0
+                  editsBlocked
                 }
                 onChangeParent={handleChangePartParent}
                 onChangePosition={handleChangePartPosition}
@@ -2761,8 +2637,7 @@ export function App() {
                 ...(target.ref !== undefined && { ref: target.ref }),
               }}
               disabled={
-                geometryParseError !== null ||
-                fileParseErrors.size > 0 ||
+                editsBlocked ||
                 unresolved
               }
               disabledReason={
@@ -2790,61 +2665,8 @@ export function App() {
           ),
         };
       }
-      case 'console': {
-        // Derived, not stored: the model's current problems. Live parse
-        // errors mirror the in-editor banners; the dropped-comments notice
-        // is load-time only (it can't change until the next load).
-        const entries: ConsoleEntry[] = [];
-        if (geometryParseError !== null) {
-          entries.push({
-            severity: 'error',
-            source: source.primaryPath,
-            message: (
-              <>
-                <strong>Error:</strong> {geometryParseError}
-              </>
-            ),
-          });
-        }
-        const manifestErr =
-          manifestParseError ??
-          source.manifestError ??
-          null;
-        if (manifestErr !== null) {
-          entries.push({
-            severity: 'error',
-            source:
-              source.manifestPath ??
-              'cuboidy.json',
-            message: (
-              <>
-                <strong>Error:</strong> {manifestErr}
-              </>
-            ),
-          });
-        }
-        if (source.projectErrors !== undefined) {
-          for (const pe of source.projectErrors) {
-            entries.push({
-              severity: 'error',
-              source: pe.file,
-              message: pe.message,
-            });
-          }
-        }
-        for (const [p, msg] of fileParseErrors) {
-          entries.push({
-            severity: 'error',
-            source: p,
-            message: (
-              <>
-                <strong>Error:</strong> {msg}
-              </>
-            ),
-          });
-        }
-        return { title, body: <ConsolePanel entries={entries} /> };
-      }
+      case 'console':
+        return { title, body: <ConsolePanel entries={consoleEntries} /> };
     }
     // Unreachable for static ids (the switch is exhaustive over them);
     // satisfies TS now that LeafId also includes dynamic file ids.
