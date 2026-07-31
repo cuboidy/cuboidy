@@ -43,3 +43,7 @@ playwright-report/
 # docs/media/ is committed on purpose — those are the README's GIFs.
 *-*.gif
 !docs/media/*.gif
+
+# Scratch space for working notes. Not part of the repository; the
+# English-only rule does not apply inside it.
+tmp/
