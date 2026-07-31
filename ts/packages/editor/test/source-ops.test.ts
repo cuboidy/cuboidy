@@ -7,6 +7,7 @@ import {
 } from '@cuboidy/core';
 import { resolveProjectRefs } from '../src/lib/load-model.js';
 import {
+  applyFileEdit,
   deleteFileInSource,
   mapGeometryFiles,
   mergeGeometries,
@@ -497,5 +498,95 @@ describe('withManifest / withManifestText / writeFile', () => {
     const next = writeFile(s, 'notes.md', 'hello\n');
     expect(next.files.get('notes.md')).toBe('hello\n');
     expect(next.files.get('voxels.json')).toBe(s.files.get('voxels.json'));
+  });
+});
+
+// The single sync point: writing a file's text re-derives everything that
+// file feeds. Nothing else may write `files`, so these are the guarantees
+// every edit path inherits for free.
+describe('writeFile — text and derived state move together', () => {
+  const shared = () =>
+    pkg({
+      [MANIFEST]: manifestJson({
+        name: 'm',
+        geometry: ['body.json', 'limbs.json'],
+        parts: [{ name: 'body' }, { name: 'arm' }],
+      }),
+      'body.json': GEO([{ name: 'body', voxels: '0' }], 'palette.json'),
+      'limbs.json': GEO([{ name: 'arm', voxels: '1' }], 'palette.json'),
+      'palette.json': PALETTE,
+    }, 'body.json');
+
+  it('writing a geometry file updates its AST', () => {
+    const next = writeFile(
+      shared(),
+      'limbs.json',
+      GEO([{ name: 'renamed', voxels: '1' }], 'palette.json'),
+    );
+    expect(next.geometries.get('limbs.json')?.parts[0]?.name).toBe('renamed');
+  });
+
+  it('writing a shared palette re-resolves it into EVERY referrer', () => {
+    const next = writeFile(
+      shared(),
+      'palette.json',
+      '{"colors":["#111111","#222222","#333333"]}',
+    );
+    for (const path of ['body.json', 'limbs.json']) {
+      expect(next.geometries.get(path)?.palette).toHaveLength(3);
+      expect(next.geometries.get(path)?.palette[0]).toMatchObject({ r: 0x11 });
+    }
+  });
+
+  it('writing the manifest re-resolves the references it owns', () => {
+    const s = shared();
+    // Drop limbs.json from the geometry list: its parts leave the model.
+    const dropped = writeFile(
+      s,
+      MANIFEST,
+      manifestJson({
+        name: 'm',
+        geometry: ['body.json'],
+        parts: [{ name: 'body' }],
+      }),
+    );
+    expect(dropped.geometries.has('limbs.json')).toBe(false);
+    // …and putting it back brings them straight back.
+    const restored = writeFile(dropped, MANIFEST, s.files.get(MANIFEST)!);
+    expect(restored.geometries.get('limbs.json')?.parts[0]?.name).toBe('arm');
+  });
+
+  it('writing the manifest resolves a NEW animation reference', () => {
+    const s = writeFile(shared(), 'anims/wave.json', CLIP);
+    // The file alone is inert; the manifest reference is what loads it.
+    expect(s.externalAnims).toBeUndefined();
+    const next = writeFile(
+      s,
+      MANIFEST,
+      manifestJson({
+        name: 'm',
+        geometry: ['body.json', 'limbs.json'],
+        parts: [{ name: 'body' }, { name: 'arm' }],
+        animations: { wave: 'anims/wave.json' },
+      }),
+    );
+    expect(next.externalAnims?.get('wave')?.path).toBe('anims/wave.json');
+  });
+
+  it('text that does not parse keeps the last good AST', () => {
+    // This is what the debounce used to buy: the 3D view does not flicker
+    // through the invalid states every keystroke passes through.
+    const s = shared();
+    const next = writeFile(s, 'limbs.json', '{ broken');
+    expect(next.files.get('limbs.json')).toBe('{ broken');
+    expect(next.geometries.get('limbs.json')).toBe(s.geometries.get('limbs.json'));
+  });
+
+  it('applyFileEdit refuses a path the package no longer has', () => {
+    // A stale handler must not resurrect a deleted file; creating one goes
+    // through writeFile, which has no such guard.
+    const s = shared();
+    expect(applyFileEdit(s, 'gone.json', 'x').source).toBe(s);
+    expect(writeFile(s, 'new.md', 'x\n').files.get('new.md')).toBe('x\n');
   });
 });

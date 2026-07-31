@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { AIR, manifestGeometry, type Geometry, type Manifest, type Part } from '@cuboidy/core';
 import { serializeGeometry } from '@cuboidy/core';
-import { normalizePath, resolveProjectRefs } from './load-model.js';
+import { normalizePath } from './load-model.js';
 import {
   deleteFileInSource,
   mergeGeometries,
@@ -138,29 +138,7 @@ export function useFileOps({ dispatchEdit, setFileParseErrors }: Params) {
         if (geometry.includes(norm)) return current;
         geometry.push(norm);
         const nextManifest: Manifest = { ...src.manifest, geometry };
-        const refs = resolveProjectRefs(
-          nextManifest,
-          (p) => src.files.get(p),
-          { path: src.primaryPath, geometry: primaryGeometry(src) },
-        );
-        const {
-          externalAnims: _anims,
-          projectErrors: _proj,
-          ...rest
-        } = src;
-        return {
-          ...current,
-          source: {
-            ...withManifest(rest, nextManifest),
-            geometries: refs.geometries,
-            ...(refs.externalAnims !== undefined && {
-              externalAnims: refs.externalAnims,
-            }),
-            ...(refs.projectErrors.length > 0 && {
-              projectErrors: refs.projectErrors,
-            }),
-          },
-        };
+        return { ...current, source: withManifest(src, nextManifest) };
       });
     },
     [dispatchEdit],

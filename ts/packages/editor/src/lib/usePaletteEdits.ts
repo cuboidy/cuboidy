@@ -45,13 +45,12 @@ export function usePaletteEdits({ dispatchEdit, editsBlocked }: Params) {
         // Referenced: the palette FILE is the source of truth. Refresh the
         // resolved copy on every geometry pointing at it so the 3D view
         // updates without a reload.
+        // Writing the palette FILE re-resolves it into every geometry that
+        // points at it, so the 3D view updates without a reload.
         const ref = normalizePath(geometry.paletteRef);
-        const withColors = mapGeometryFiles(src, (g) =>
-          sharesPalette(g, ref) ? { ...g, palette: next } : null,
-        );
         return {
           ...current,
-          source: writeFile(withColors, ref, paletteFileText(next)),
+          source: writeFile(src, ref, paletteFileText(next)),
         };
       });
     },
@@ -138,9 +137,10 @@ export function usePaletteEdits({ dispatchEdit, editsBlocked }: Params) {
         const nextSrc = mapGeometryFiles(src, (g, at) =>
           at === file ? { ...g, paletteRef: path } : null,
         );
-        const files = new Map(nextSrc.files);
-        files.set(path, paletteFileText(geometry.palette));
-        return { ...current, source: { ...nextSrc, files } };
+        return {
+          ...current,
+          source: writeFile(nextSrc, path, paletteFileText(geometry.palette)),
+        };
       });
     },
     [dispatchEdit, editsBlocked],

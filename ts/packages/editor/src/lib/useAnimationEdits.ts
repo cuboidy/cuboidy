@@ -364,15 +364,19 @@ export function useAnimationEdits({
         let path = `anims/${name}.json`;
         let n = 2;
         while (src.files.has(path)) path = `anims/${name}-${n++}.json`;
-        const files = new Map(src.files);
-        files.set(path, JSON.stringify(anim, null, 2) + '\n');
-        const externalAnims = new Map(src.externalAnims ?? []);
-        externalAnims.set(name, { path, anim });
+        // Write the clip's file first, then point the manifest at it: the
+        // manifest write resolves the reference, which is what fills in the
+        // record the timeline writes through.
+        const withClipFile = writeFile(
+          src,
+          path,
+          JSON.stringify(anim, null, 2) + '\n',
+        );
         const animations = { ...src.manifest.animations, [name]: path };
         const nextManifest: Manifest = { ...src.manifest, animations };
         return {
           ...current,
-          source: { ...withManifest(src, nextManifest), files, externalAnims },
+          source: withManifest(withClipFile, nextManifest),
         };
       });
     },
@@ -393,14 +397,9 @@ export function useAnimationEdits({
         if (typeof ref !== 'string') return current;
         const rec = src.externalAnims?.get(name);
         if (rec === undefined) return current; // unresolved ref
-        const externalAnims = new Map(src.externalAnims);
-        externalAnims.delete(name);
         const animations = { ...src.manifest.animations, [name]: rec.anim };
         const nextManifest: Manifest = { ...src.manifest, animations };
-        return {
-          ...current,
-          source: { ...withManifest(src, nextManifest), externalAnims },
-        };
+        return { ...current, source: withManifest(src, nextManifest) };
       });
     },
     [dispatchEdit, editsBlocked],

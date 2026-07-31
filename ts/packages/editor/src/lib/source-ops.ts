@@ -177,9 +177,13 @@ export function withManifest(
   manifest: Manifest,
 ): LoadedSource {
   const path = src.manifestPath ?? 'cuboidy.json';
-  const files = new Map(src.files);
-  files.set(path, manifestJson(manifest));
-  return { ...src, files, manifestPath: path, manifest };
+  const anchored = src.manifestPath === path ? src : { ...src, manifestPath: path };
+  // Writing the manifest's TEXT is enough: writeFile re-derives the AST and
+  // everything the manifest references. So a caller that changes the
+  // geometry list, a palette binding or an animation ref does not have to
+  // re-resolve anything by hand — that used to be its own block at three
+  // call sites, each a chance to forget one of the four reference kinds.
+  return writeFile(anchored, path, manifestJson(manifest));
 }
 
 // The typing path: record cuboidy.json's text WITHOUT touching the AST,
@@ -191,12 +195,21 @@ export function withManifestText(src: LoadedSource, text: string): LoadedSource 
   return { ...src, files, manifestPath: path };
 }
 
-// Write one package file's text.
+// Write one package file's text AND re-derive everything that file feeds.
+// This is the single sync point between the text store and the AST store,
+// so the two cannot drift apart no matter what a future edit path does —
+// nothing else may write `files`.
 export function writeFile(
   src: LoadedSource,
   path: string,
   text: string,
 ): LoadedSource {
+  return deriveAfterWrite(src, path, text).source;
+}
+
+// The raw put. Private on purpose: a caller that skipped the deriving
+// wrapper would leave the AST describing text that is no longer there.
+function putText(src: LoadedSource, path: string, text: string): LoadedSource {
   const files = new Map(src.files);
   files.set(path, text);
   return { ...src, files };
@@ -491,8 +504,18 @@ export function applyFileEdit(
   path: string,
   text: string,
 ): FileEditResult {
+  // A stale handler must not resurrect a file the package no longer has.
+  // Creating one goes through writeFile, which has no such guard.
   if (!src.files.has(path)) return { source: src, error: null };
-  const next = writeFile(src, path, text);
+  return deriveAfterWrite(src, path, text);
+}
+
+function deriveAfterWrite(
+  src: LoadedSource,
+  path: string,
+  text: string,
+): FileEditResult {
+  const next = putText(src, path, text);
 
   if (path === src.manifestPath) {
     const json = tryJson(text);
