@@ -79,12 +79,12 @@ Every model under `models/` was authored from `SPEC.md` and
 was available to copy from — and each animation below is rendered straight out
 of `cuboidy-gif`.
 
-| | | |
-|:--:|:--:|:--:|
-| ![knight](docs/media/knight.gif) | ![owl](docs/media/owl.gif) | ![koi](docs/media/koi.gif) |
-| **knight** — walk cycle | **owl** — wingbeat launch | **koi** — travelling body wave |
-| ![fox](docs/media/fox.gif) | ![windmill](docs/media/windmill.gif) | ![herbalist](docs/media/herbalist.gif) |
-| **fox** — diagonal trot | **windmill** — constant-rate sails | **herbalist** — laboured walk |
+| | | | |
+|:--:|:--:|:--:|:--:|
+| ![knight](docs/media/knight.gif) | ![owl](docs/media/owl.gif) | ![koi](docs/media/koi.gif) | ![fox](docs/media/fox.gif) |
+| **knight** — walk cycle | **owl** — wingbeat launch | **koi** — travelling body wave | **fox** — diagonal trot |
+| ![windmill](docs/media/windmill.gif) | ![herbalist](docs/media/herbalist.gif) | ![sword](docs/media/sword.gif) | |
+| **windmill** — constant-rate sails | **herbalist** — laboured walk | **sword** — turntable, no clip | |
 
 - `models/knight/` — 18 parts over three geometry files sharing one palette; sockets for a sword and a helm crest
 - `models/sword/` — single-part accessory, authored against the knight's `hand-r:grip` socket contract without seeing the knight
@@ -118,12 +118,16 @@ warning saying so.
 - **`cuboidy-query <dir> --at=x,y,z`** — exact voxel lookup at world coordinates (fractional-safe; the precise tool when half-voxel offsets are present).
 - **`cuboidy-lint <dir>`** — voxel-definition + cross-file lint.
 
-- **`cuboidy-gif <dir>`** — renders an animation clip to an **animated GIF**, the only way to see the half of the format that moves. The camera is fitted once to the union of the whole clip and held there, so the model does not rescale between frames and a foot's height can be compared across them. Same dependency-free policy as `cuboidy-snap`: software rasterizer plus a hand-rolled GIF encoder.
+- **`cuboidy-gif <dir>`** — renders an animation clip to an **animated GIF**, optionally orbiting the camera around the model. The only way to see the half of the format that moves. The scale is fitted once to the whole clip *and* every viewpoint it will be seen from, so the model never rescales between frames and a foot's height can be compared across them. Same dependency-free policy as `cuboidy-snap`: software rasterizer plus a hand-rolled GIF encoder.
 
   ```
-  cuboidy-gif models/knight                     # → models/knight/knight-walk.gif
+  cuboidy-gif models/knight                          # → models/knight/knight-walk.gif
+  cuboidy-gif models/knight --orbit --loops=4        # walk four times while turning once
+  cuboidy-gif models/sword --orbit                   # turntable — no animation needed
   cuboidy-gif models/owl --anim=launch --angle=side --fps=20 --size=240
   ```
+
+  `--orbit` sweeps a full turn over the GIF, so it closes seamlessly; `--loops` lets the clip repeat under one revolution, because otherwise a one-second walk spins the camera a full turn per second. A model with no animation at all is still a valid subject with `--orbit`.
 
   Renders at one sample per pixel by default, which keeps a frame inside GIF's 256-colour table losslessly (a model draws in 37–82 colours) and suits voxel art. `--ss=2` antialiases and quantises instead.
 
@@ -167,8 +171,8 @@ Done — the v0.9 spec and a complete TypeScript implementation of it
 - [x] JSON Schemas for both file kinds, generated from the same Zod schemas the
       runtime uses, plus shared `fixtures/` as the cross-implementation contract
 - [x] Inspection CLIs — `cuboidy-view` (ASCII), `cuboidy-query` (coordinates),
-      `cuboidy-snap` (PNG stills) and `cuboidy-gif` (animated GIF), all
-      dependency-free
+      `cuboidy-snap` (PNG stills) and `cuboidy-gif` (animated GIF and
+      turntables), all dependency-free
 
 In progress and planned:
 

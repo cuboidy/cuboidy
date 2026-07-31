@@ -159,6 +159,76 @@ describe('renderGif', () => {
   });
 });
 
+describe('renderGif — orbit', () => {
+  it('turns a model that has no animation at all', async () => {
+    // `mirrored` defines no clips. An orbit is the only thing that can
+    // move, and it must be enough on its own.
+    const asm = await assemblyOf(MIRRORED);
+    const { gif, frames } = renderGif(
+      asm,
+      null,
+      opts({ orbit: true, frames: 8, size: 64 }),
+    );
+    expect(frames).toBe(8);
+    const decoded = frameIndices(gif);
+    expect(new Set(decoded.map((f) => f.join(','))).size).toBe(8);
+  });
+
+  it('refuses a still model when nothing would move', async () => {
+    const asm = await assemblyOf(MIRRORED);
+    expect(() => renderGif(asm, null, opts())).toThrow(/nothing would move/);
+  });
+
+  it('fits the scale to every viewpoint, so no frame is clipped', async () => {
+    // The reason computeGlobalScale is fed all the angles rather than
+    // one: a model deeper than it is wide would overflow the tile as it
+    // turned side-on if the scale had been fitted to the start angle.
+    const size = 64;
+    const asm = await assemblyOf(RIGGED);
+    const { gif } = renderGif(
+      asm,
+      'idle',
+      opts({ orbit: true, frames: 12, size }),
+    );
+    const bgIndex = frameIndices(gif)[0]![0]!; // corner pixel is background
+    frameIndices(gif).forEach((f, n) => {
+      for (let x = 0; x < size; x++) {
+        expect(f[x], `frame ${n} touches the top edge`).toBe(bgIndex);
+        expect(f[(size - 1) * size + x], `frame ${n} touches the bottom`).toBe(bgIndex);
+      }
+      for (let y = 0; y < size; y++) {
+        expect(f[y * size], `frame ${n} touches the left edge`).toBe(bgIndex);
+        expect(f[y * size + size - 1], `frame ${n} touches the right`).toBe(bgIndex);
+      }
+    });
+  });
+
+  it('repeats the clip under one revolution with --loops', async () => {
+    const asm = await assemblyOf(RIGGED);
+    const perLoop = 6;
+    const { frames } = renderGif(
+      asm,
+      'idle',
+      opts({ orbit: true, frames: perLoop, loops: 3 }),
+    );
+    expect(frames).toBe(perLoop * 3);
+  });
+
+  it('reuses the pose cycle exactly — a still camera repeats pixel for pixel', async () => {
+    // loops without orbit is a plain repeat, which pins the cycling
+    // index: frame i and frame i+perLoop are the same pose AND the same
+    // camera, so they must be byte-identical.
+    const asm = await assemblyOf(RIGGED);
+    const perLoop = 5;
+    const { gif } = renderGif(asm, 'idle', opts({ frames: perLoop, loops: 2 }));
+    const f = frameIndices(gif);
+    expect(f).toHaveLength(perLoop * 2);
+    for (let i = 0; i < perLoop; i++) {
+      expect(f[i]!.join(',')).toBe(f[i + perLoop]!.join(','));
+    }
+  });
+});
+
 describe('runGif', () => {
   it('writes a GIF and reports what it rendered', async () => {
     const out = resolve(await mkdtemp(resolve(tmpdir(), 'cuboidy-gif-')), 'a.gif');
@@ -186,10 +256,22 @@ describe('runGif', () => {
     expect(r.text).toMatch(/'step'/);
   });
 
-  it('says so when a model has no animations at all', async () => {
+  it('says so when a model has no animations at all, and points at --orbit', async () => {
     const r = await runGif(resolve(REPO_ROOT, MIRRORED), opts());
     expect(r.exitCode).toBe(1);
     expect(r.text).toMatch(/defines no animations/);
+    expect(r.text).toMatch(/--orbit/);
+  });
+
+  it('writes a turntable for an animation-less model given --orbit', async () => {
+    const out = resolve(await mkdtemp(resolve(tmpdir(), 'cuboidy-gif-')), 't.gif');
+    const r = await runGif(
+      resolve(REPO_ROOT, MIRRORED),
+      opts({ orbit: true, frames: 6, outFile: out }),
+    );
+    expect(r.exitCode).toBe(0);
+    expect(r.text).toMatch(/turntable \(6 frames, orbit from/);
+    expect((await readFile(out)).subarray(0, 6).toString('latin1')).toBe('GIF89a');
   });
 
   it('reports a missing model directory as a usage error', async () => {

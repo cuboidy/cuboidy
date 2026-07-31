@@ -5,7 +5,7 @@ import { ANGLES } from '../render/camera.js';
 import { buildSceneFromParts, type OrientedPart, type Scene } from '../render/scene.js';
 import { computeGlobalScale, renderTile } from '../render/snapshot.js';
 import { encodeGif } from '../render/gif.js';
-import { sampleAnimation } from '../animation.js';
+import { sampleAnimation, type InlineAnimation } from '../animation.js';
 import {
   computeWorldTransforms,
   type AnimPose,
@@ -38,7 +38,24 @@ export interface GifOptions {
   bg: Rgb;
   clip?: string | undefined;
   outFile?: string | undefined;
+  /**
+   * Sweep the camera a full turn about +Y over the animation, starting
+   * from `angle`. Combines with a clip (the model animates while you
+   * orbit it) and also stands alone, which is the only way to get a GIF
+   * out of a model that has no animation at all.
+   */
+  orbit?: boolean | undefined;
+  /**
+   * Play the clip this many times over one revolution. Without it an
+   * orbit is bound to the clip's length — a 1-second walk would spin the
+   * camera a full turn per second, which is unwatchable. Ignored when
+   * there is no clip. Default 1.
+   */
+  loops?: number | undefined;
 }
+
+/** Frames in a turntable when there is no clip duration to derive one from. */
+export const DEFAULT_ORBIT_FRAMES = 48;
 
 export interface GifRunResult {
   exitCode: 0 | 1 | 2;
@@ -51,11 +68,17 @@ export const DEFAULT_BG: Rgb = [0.42, 0.44, 0.47];
 
 export function renderGif(
   asm: Assembly,
-  clipName: string,
+  clipName: string | null,
   opts: GifOptions,
 ): { gif: Buffer; frames: number; duration: number } {
-  const anim = asm.animations.get(clipName);
-  if (anim === undefined) throw new Error(`unknown clip '${clipName}'`);
+  let anim: InlineAnimation | null = null;
+  if (clipName !== null) {
+    const found = asm.animations.get(clipName);
+    if (found === undefined) throw new Error(`unknown clip '${clipName}'`);
+    anim = found;
+  } else if (opts.orbit !== true) {
+    throw new Error('renderGif: nothing would move — pass a clip or orbit');
+  }
 
   // Geometry-side pivot rotations, rebuilt from the resolved parts so
   // the animated transform chain sees exactly what the rest one does.
@@ -65,20 +88,44 @@ export function renderGif(
     if (rot !== undefined) pivotRots.set(rp.name, [rot.x, rot.y, rot.z]);
   }
 
-  const frameCount = Math.max(
+  const duration = anim?.duration ?? 0;
+  // One pass of the clip. A still model has no duration to derive from,
+  // so its "loop" is however many steps the turntable takes.
+  const perLoop = Math.max(
     2,
-    opts.frames ?? Math.round(anim.duration * opts.fps),
+    opts.frames ??
+      (anim !== null ? Math.round(duration * opts.fps) : DEFAULT_ORBIT_FRAMES),
   );
+  // The clip repeats under a single revolution, so the two can have
+  // different periods and the GIF still closes on both.
+  const loops = anim !== null ? Math.max(1, Math.trunc(opts.loops ?? 1)) : 1;
+  const frameCount = perLoop * loops;
 
-  // Pass 1: build every frame's scene, and union their bounds.
+  // One camera orientation per frame. A turn is spread over the whole
+  // GIF so it closes seamlessly on loop, and the elevation of the chosen
+  // angle is kept — you orbit at the height you asked to look from.
+  const angles: Angle[] = [];
+  for (let i = 0; i < frameCount; i++) {
+    if (opts.orbit !== true) {
+      angles.push(opts.angle);
+      continue;
+    }
+    const az = opts.angle.az + (i / frameCount) * 360;
+    angles.push({ ...opts.angle, id: `${opts.angle.id}+${i}`, az });
+  }
+
+  // Pass 1: build one pass of the clip's scenes, and union their bounds.
+  // Later loops reuse them — the poses repeat, only the camera differs.
   const scenes: Scene[] = [];
   let minX = Infinity, minY = Infinity, minZ = Infinity;
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-  for (let i = 0; i < frameCount; i++) {
+  for (let i = 0; i < perLoop; i++) {
     // Sample over [0, duration): the frame AT duration is the frame at 0
     // (§6.7), so including both ends would hold the first pose twice.
-    const t = (i / frameCount) * anim.duration;
-    const poses = sampleAnimation(anim, t);
+    const poses: ReturnType<typeof sampleAnimation> =
+      anim === null
+        ? new Map()
+        : sampleAnimation(anim, (i / perLoop) * duration);
 
     const animPoses = new Map<string, AnimPose>();
     for (const [name, p] of poses) animPoses.set(name, { rot: p.rot, pos: p.pos });
@@ -106,6 +153,9 @@ export function renderGif(
     minX = Math.min(minX, scene.min[0]); maxX = Math.max(maxX, scene.max[0]);
     minY = Math.min(minY, scene.min[1]); maxY = Math.max(maxY, scene.max[1]);
     minZ = Math.min(minZ, scene.min[2]); maxZ = Math.max(maxZ, scene.max[2]);
+
+    // A still model only needs building once; the camera is what moves.
+    if (anim === null) break;
   }
 
   // One camera for the whole clip, from the union extent.
@@ -121,17 +171,25 @@ export function renderGif(
     bg: opts.bg,
     overlay: false,
   };
-  const scale = computeGlobalScale(union, [opts.angle], renderOpts);
+  // One scale for every frame AND every viewpoint: computeGlobalScale
+  // already takes the minimum across a set of angles, which is exactly
+  // what an orbit needs — a model wider than it is deep must not grow
+  // as it turns to face the camera edge-on.
+  const scale = computeGlobalScale(union, angles, renderOpts);
 
-  // Pass 2: render each frame against that fixed camera.
-  const frames = scenes.map((s) => ({
-    rgba: renderTile(
-      { ...s, center: union.center, min: union.min, max: union.max },
-      opts.angle,
-      scale,
-      renderOpts,
-    ).toRgba(),
-  }));
+  // Pass 2: render each frame against that fixed scale, cycling the
+  // clip's scenes under a camera that keeps going.
+  const frames = Array.from({ length: frameCount }, (_, i) => {
+    const s = scenes[i % scenes.length]!;
+    return {
+      rgba: renderTile(
+        { ...s, center: union.center, min: union.min, max: union.max },
+        angles[i]!,
+        scale,
+        renderOpts,
+      ).toRgba(),
+    };
+  });
 
   // GIF delays are hundredths of a second and integral, so the achieved
   // rate is quantised. 10 cs (10 fps) and 5 cs (20 fps) land exactly.
@@ -141,7 +199,7 @@ export function renderGif(
     height: opts.size,
     delayCs,
   });
-  return { gif, frames: frameCount, duration: anim.duration };
+  return { gif, frames: frameCount, duration };
 }
 
 export async function runGif(
@@ -155,36 +213,46 @@ export async function runGif(
   const asm = loaded.assembly;
 
   const names = [...asm.animations.keys()];
-  if (names.length === 0) {
-    return {
-      exitCode: 1,
-      text: `cuboidy-gif: ${asm.manifest.name} defines no animations`,
-    };
-  }
-  const clip = opts.clip ?? names[0]!;
-  if (!asm.animations.has(clip)) {
+  if (opts.clip !== undefined && !asm.animations.has(opts.clip)) {
     return {
       exitCode: 1,
       text:
-        `cuboidy-gif: unknown clip '${clip}' — ` +
-        `${asm.manifest.name} has ${names.map((n) => `'${n}'`).join(', ')}`,
+        `cuboidy-gif: unknown clip '${opts.clip}' — ` +
+        (names.length > 0
+          ? `${asm.manifest.name} has ${names.map((n) => `'${n}'`).join(', ')}`
+          : `${asm.manifest.name} defines no animations`),
+    };
+  }
+  // With --orbit a still model is a perfectly good subject, so no clip
+  // is only an error when nothing else would move.
+  const clip = opts.clip ?? names[0] ?? null;
+  if (clip === null && opts.orbit !== true) {
+    return {
+      exitCode: 1,
+      text:
+        `cuboidy-gif: ${asm.manifest.name} defines no animations — ` +
+        `use --orbit to turn it on the spot instead`,
     };
   }
 
   const { gif, frames, duration } = renderGif(asm, clip, opts);
+  const label = clip ?? 'turntable';
   const outPath =
-    opts.outFile ?? join(resolve(dir), `${asm.manifest.name}-${clip}.gif`);
+    opts.outFile ?? join(resolve(dir), `${asm.manifest.name}-${label}.gif`);
   await mkdir(dirname(outPath), { recursive: true });
   await writeFile(outPath, gif);
 
+  const what =
+    clip === null
+      ? `turntable (${frames} frames`
+      : `clip: ${clip} (${duration}s, ${frames} frames`;
+  const view = opts.orbit === true ? `orbit from ${opts.angle.label}` : opts.angle.label;
   const kb = (gif.length / 1024).toFixed(1);
   return {
     exitCode: 0,
     gif,
     outPath,
-    text:
-      `model: ${asm.manifest.name}  clip: ${clip} (${duration}s, ${frames} frames, ` +
-      `${opts.angle.label})\nwrote ${outPath} (${kb} kB)`,
+    text: `model: ${asm.manifest.name}  ${what}, ${view})\nwrote ${outPath} (${kb} kB)`,
   };
 }
 

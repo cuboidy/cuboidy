@@ -54,10 +54,14 @@ export function parseArgs(
   let bg: Rgb = DEFAULT_BG;
   let clip: string | undefined;
   let outFile: string | undefined;
+  let orbit = false;
+  let loops: number | undefined;
 
   for (const a of argv) {
     if (a === '--help' || a === '-h') return { help: true };
-    if (a.startsWith('--anim=')) {
+    if (a === '--orbit') {
+      orbit = true;
+    } else if (a.startsWith('--anim=')) {
       clip = a.slice('--anim='.length);
       if (clip === '') return { error: '--anim needs a clip name' };
     } else if (a.startsWith('--angle=')) {
@@ -81,6 +85,10 @@ export function parseArgs(
         return { error: '--frames must be an integer in 1..300' };
       }
       frames = n;
+    } else if (a.startsWith('--loops=')) {
+      const n = parsePositiveInt(a.slice('--loops='.length));
+      if (n === null || n > 20) return { error: '--loops must be an integer in 1..20' };
+      loops = n;
     } else if (a.startsWith('--ss=')) {
       const n = parsePositiveInt(a.slice('--ss='.length));
       if (n === null || n > 4) return { error: '--ss must be an integer in 1..4' };
@@ -101,7 +109,10 @@ export function parseArgs(
   if (positional.length !== 1) {
     return { error: 'expected exactly one <dir> argument' };
   }
-  return { dir: positional[0]!, angle, size, ss, fps, frames, bg, clip, outFile };
+  return {
+    dir: positional[0]!, angle, size, ss, fps, frames, bg, clip, outFile, orbit,
+    loops,
+  };
 }
 
 function parsePositiveInt(s: string): number | null {
