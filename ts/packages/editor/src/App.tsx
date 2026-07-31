@@ -10,6 +10,7 @@ import {
   type Part,
 } from '@cuboidy/core';
 import { ConsolePanel, type ConsoleEntry } from './components/panels/ConsolePanel.js';
+import { lintSource } from './lib/lint.js';
 import { Dock, type PanelContent } from './components/Dock.js';
 import { ExportMenu } from './components/ui/ExportMenu.js';
 import { Logo } from './components/ui/Logo.js';
@@ -338,6 +339,15 @@ export function App() {
   );
   const partFiles = merged?.files;
 
+  // Core's lint over the current model — the same `lintGeometry` +
+  // `validateProject` the CLI runs, so the editor and `cuboidy-lint`
+  // cannot disagree about a package. Derived from `source`, which is
+  // reparsed as text is typed, so findings follow the edit.
+  const lintDiagnostics = useMemo(
+    () => (source === undefined ? [] : lintSource(source)),
+    [source],
+  );
+
   // Prune a selection that points at a part the model no longer
   // contains (e.g., user edited the source view to remove it). Done
   // at render time rather than via effect so downstream components
@@ -596,8 +606,27 @@ export function App() {
     for (const pe of source.projectErrors ?? []) {
       entries.push({ severity: 'error', source: pe.file, message: pe.message });
     }
+    // Core's lint, on the model as it currently stands. Held back while
+    // anything fails to parse: lint runs on an AST, so a stale one would
+    // report findings about text the author has already replaced.
+    if (fileParseErrors.size === 0 && manifestParseError === null) {
+      for (const { file, diag } of lintDiagnostics) {
+        entries.push({
+          severity: diag.severity,
+          source: file,
+          message: (
+            <>
+              {diag.message}
+              {diag.ruleId !== undefined && (
+                <span className="console-rule"> [{diag.ruleId}]</span>
+              )}
+            </>
+          ),
+        });
+      }
+    }
     return entries;
-  }, [source, fileParseErrors]);
+  }, [source, fileParseErrors, manifestParseError, lintDiagnostics]);
 
   // Error per file path (parse errors on live-edited files + load-time
   // project errors) — red names in the Files tree.

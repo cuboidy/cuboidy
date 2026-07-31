@@ -179,8 +179,11 @@ Shipped alongside it:
 - [~] **Web-based editor** (`ts/packages/editor/`) — loads folders, geometry
       files and `.cuboidy` ZIPs; Geometry / Rig / Anim views; part, palette and
       keyframe editing with undo/redo; direct manipulation in the 3D preview;
-      project-aware save/export; Playwright E2E suite.
-      `cd ts/packages/editor && npm run dev`
+      core's lint live in the Console panel; project-aware save/export;
+      Playwright E2E suite. `cd ts/packages/editor && npm run dev`
+      (Remaining polish — dirty-state guard, timeline zoom, a11y — was tracked
+      in `docs/ux-backlog.md`, removed in `b110ec7`; read it with
+      `git show b110ec7^:docs/ux-backlog.md`.)
 
 Open, roughly in the order the work is worth doing:
 
@@ -213,13 +216,6 @@ Open, roughly in the order the work is worth doing:
       symmetry check only recognises `<base>-l` / `<base>-r`, so the
       `leg-fl` style the spec's own examples used gets no check at all. A
       vocabulary would settle both.
-- [ ] **Wire core's lint into the editor.** `lintGeometry` and
-      `validateProject` run in the CLI; the editor does not call them. The
-      editor is where a model actually gets authored and the one place that
-      cannot currently tell you the model is wrong. (The editor's remaining
-      polish list — dirty-state guard, timeline zoom, a11y — was tracked in
-      `docs/ux-backlog.md`, removed in `b110ec7`; read it with
-      `git show b110ec7^:docs/ux-backlog.md`.)
 - [ ] **Reference parser (C#).** The shared `fixtures/` corpus exists for
       exactly this: a second implementation passes when every fixture yields
       the diagnostic code its directory is named after.

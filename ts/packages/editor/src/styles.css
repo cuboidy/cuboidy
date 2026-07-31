@@ -2023,6 +2023,12 @@ svg.ficon-json {
   color: var(--warn);
 }
 
+/* Hints are advisory (SPEC §11.1) and never fail --strict, so they read
+   as information rather than as something to fix. */
+.console-entry.hint .console-severity {
+  color: var(--txt-3);
+}
+
 .console-source {
   font-family: var(--ui);
   color: var(--txt-3);
@@ -2790,4 +2796,12 @@ input[type='checkbox']:disabled {
 .anim-inspector-delete {
   margin-top: 0.25rem;
   align-self: flex-start;
+}
+
+/* Rule id trailing a lint message, e.g. "… [W01]" — present so a reader
+   can look the rule up in SPEC §11.3/§11.4, muted so it does not compete
+   with the message. */
+.console-rule {
+  color: var(--txt-3);
+  font-family: var(--mono);
 }

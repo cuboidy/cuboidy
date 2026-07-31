@@ -157,3 +157,64 @@ test('A-6: a drag-reparent cannot clobber broken manifest text', async ({
   await openTab(page, 'cuboidy.json');
   await expect(textarea).toHaveValue(broken);
 });
+
+test('lint findings appear in the Console and follow the edit', async ({ page }) => {
+  // Core's lint runs in the CLI; until now the editor never called it, so
+  // the one place a model is authored was the one place that could not say
+  // the model was wrong. The finding must also track the CURRENT text, not
+  // a snapshot from load time.
+  await loadFolder(page, MULTIFILE);
+  await openTab(page, 'Console');
+  // `.panel-empty` is shared by every panel's empty state, so scope to the
+  // Console's own.
+  await expect(page.locator('.console-empty')).toBeVisible();
+
+  // Push `body`'s pivot far outside its 4x4x2 grid — W01.
+  await openTab(page, 'body.json');
+  const textarea = page.locator('.source-textarea').first();
+  const original = await textarea.inputValue();
+  const broken = original.replace(
+    '"name": "body",',
+    '"name": "body",\n      "pivot": { "pos": [99, 0, 0] },',
+  );
+  expect(broken).not.toBe(original);
+  await textarea.fill(broken);
+
+  await openTab(page, 'Console');
+  const entry = page.locator('.console-entry');
+  await expect(entry).toHaveCount(1);
+  await expect(entry).toContainText('outside grid bounds');
+  await expect(entry.locator('.console-rule')).toHaveText('[W01]');
+  await expect(entry.locator('.console-source')).toHaveText('body.json');
+  // A warning, not an error: the model still loads.
+  await expect(entry).toHaveClass(/warning/);
+
+  // Undo the edit and the finding goes away.
+  await openTab(page, 'body.json');
+  await textarea.fill(original);
+  await openTab(page, 'Console');
+  // `.panel-empty` is shared by every panel's empty state, so scope to the
+  // Console's own.
+  await expect(page.locator('.console-empty')).toBeVisible();
+});
+
+test('a cross-file lint finding is attributed to the project', async ({ page }) => {
+  await loadFolder(page, MULTIFILE);
+  // Name a part in the manifest that no geometry file defines.
+  await openTab(page, 'cuboidy.json');
+  const textarea = page.locator('.source-textarea').first();
+  const original = await textarea.inputValue();
+  const withGhost = original.replace(
+    '"parts": [',
+    '"parts": [ { "name": "ghost" },',
+  );
+  expect(withGhost).not.toBe(original);
+  await textarea.fill(withGhost);
+
+  await openTab(page, 'Console');
+  const entry = page.locator('.console-entry');
+  await expect(entry).toHaveCount(1);
+  await expect(entry).toContainText('ghost');
+  await expect(entry.locator('.console-source')).toHaveText('<cross-file>');
+  await expect(entry).toHaveClass(/error/);
+});
