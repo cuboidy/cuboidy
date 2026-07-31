@@ -11,13 +11,14 @@ import {
 } from 'three';
 import type { GizmoVisibility, TransformSubTarget } from '../../lib/types.js';
 
-// Transform-tool integration (design §2.4), non-null while a transform
+// Transform-tool integration, non-null while a transform
 // tool is active. Pivot / socket markers become click targets that pick
 // the gizmo's sub-target, and each registers its Object3D ('pivot' /
 // 'socket:<name>') for the gizmo host to attach TransformControls to.
 export interface GizmoPicking {
-  // Pivot is a move-only target (§2.3: pivot.rot stays inspector-only),
-  // so the rotate tool doesn't offer it.
+  // Whether the pivot marker can be picked as the gizmo's sub-target.
+  // Both transform tools offer it: move edits pivot.pos (compensated so
+  // the render doesn't shift), rotate edits pivot.rot.
   pivotPickable: boolean;
   active: TransformSubTarget;
   onPick: (sub: TransformSubTarget) => void;

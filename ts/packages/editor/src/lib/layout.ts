@@ -1,9 +1,8 @@
-// Binary split-tree layout for the dockable panel system (design:
-// docs/panel-system-design.md). VS Code / react-mosaic style: every split is
-// a 2-way division (a | b) with a direction and a ratio. Closing one side
-// collapses the split into the surviving side, which fills the space; a drop
-// onto a leaf's edge makes a directional binary split (unambiguous). N-way
-// stacks are nested binary splits.
+// Binary split-tree layout for the dockable panel system. VS Code /
+// react-mosaic style: every split is a 2-way division (a | b) with a direction
+// and a ratio. Closing one side collapses the split into the surviving side,
+// which fills the space; a drop onto a leaf's edge makes a directional binary
+// split (unambiguous). N-way stacks are nested binary splits.
 
 export type SplitDir = 'row' | 'col';
 // Path into the tree: a sequence of sides from the root ([] = the root node).

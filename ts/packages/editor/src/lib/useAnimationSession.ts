@@ -20,7 +20,7 @@ import { SNAP_STEP } from '../components/panels/Timeline.js';
 // drives BOTH the Preview viewport (poses the rig at `time`) and the Timeline
 // panel (playhead + lane editing). It used to live privately inside
 // AnimationView; lifting it into a hook that App owns lets the two surfaces be
-// separate dock panels reading the same state (panel-system design §4).
+// separate dock panels reading the same state.
 // A copied keyframe: the sparse entry snapshot plus where it came from (for
 // the paste button's tooltip). Entries are immutable transforms, so holding
 // the reference is a true snapshot — later edits can't mutate it.

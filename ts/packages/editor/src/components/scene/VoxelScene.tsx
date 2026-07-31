@@ -54,7 +54,7 @@ interface Props {
   // Click-to-select: a part click selects it; a click that hits nothing
   // (r3f fires onPointerMissed only for non-drag clicks) deselects.
   onSelectPart: (name: string | null) => void;
-  // Active preview tool (design §2.1). This component acts on 'move' /
+  // Active preview tool. This component acts on 'move' /
   // 'rotate' (rig view only — the App disables them elsewhere);
   // everything else behaves as 'select' here.
   tool: PreviewTool;
@@ -63,7 +63,7 @@ interface Props {
   // euler degrees; all-zero = drop the field).
   onMovePart: (name: string, position: [number, number, number]) => void;
   onRotatePart: (name: string, rotation: [number, number, number]) => void;
-  // Sub-target commits (design §2.3/§2.4), all in part-local voxel
+  // Sub-target commits, all in part-local voxel
   // coords: pivot move (compensated upstream), pivot rotation
   // (geometry-side pivot.rot), socket move, socket rotation (rotations
   // in ZXY euler degrees; all-zero = drop the field).
@@ -79,7 +79,7 @@ interface Props {
     socket: string,
     rot: [number, number, number],
   ) => void;
-  // Voxel tools (design §2.6): the active paint color (index into the
+  // Voxel tools: the active paint color (index into the
   // selected part's effective palette; -1 = none available) and the
   // stroke commit — one completed stroke = one call = one undo.
   activeColorIndex: number;
@@ -135,7 +135,7 @@ export function VoxelScene({
   const voxelActive =
     tool === 'erase' || tool === 'paint' || tool === 'attach';
 
-  // ── Voxel stroke (design §2.6). The in-progress stroke lives here as
+  // ── Voxel stroke. The in-progress stroke lives here as
   // a cell→value overlay; the model renders through `displayGeometry` so
   // the mesh updates live, and pointer-up commits everything as ONE
   // dispatch upstream. A ref mirrors the state for the event handlers
@@ -254,7 +254,7 @@ export function VoxelScene({
     voxelActive && selectedPart !== null && !hiddenParts.has(selectedPart)
       ? {
           onPointerDown: (e) => {
-            // Alt+drag stays the camera (design §2.6); only a plain
+            // Alt+drag stays the camera; only a plain
             // left press starts a stroke.
             if (e.altKey || e.button !== 0) return;
             e.stopPropagation();
@@ -375,7 +375,7 @@ export function VoxelScene({
     return rot === undefined ? undefined : [rot[0], rot[1], rot[2]];
   }, [manifest, selectedPart]);
 
-  // ── Transform sub-target (design §2.4): what the tools grip. ──
+  // ── Transform sub-target: what the tools grip. ──
   // Marker registry, keyed 'pivot' / 'socket:<name>' — only the
   // selected part's PartGizmos registers, so no part prefix needed.
   const subObjects = useRef(new Map<string, Object3D>());
@@ -474,7 +474,7 @@ export function VoxelScene({
   }, [geometry]);
 
   // Which gizmo host to mount for the current sub-target. Part-body
-  // transforms exist only in rig view (design §2.2); pivot / socket
+  // transforms exist only in rig view; pivot / socket
   // markers are grabbable in both geometry and rig views.
   let gizmoHost = null;
   if (
@@ -655,7 +655,7 @@ export function VoxelScene({
       )}
       {gizmoHost}
       {/* While a voxel tool holds the plain left-drag for strokes, the
-          orbit moves to Alt+drag (design §2.6). Pan/zoom unchanged. */}
+          orbit moves to Alt+drag. Pan/zoom unchanged. */}
       <OrbitControls
         target={target}
         makeDefault

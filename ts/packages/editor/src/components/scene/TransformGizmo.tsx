@@ -14,7 +14,7 @@ import { quatFromEulerZXYDeg } from '@cuboidy/core';
 interface Props {
   target: Object3D;
   mode: 'translate' | 'rotate';
-  // Default translation snap step (design §2.5): 1.0 for part bodies,
+  // Default translation snap step: 1.0 for part bodies,
   // 0.5 for pivot / socket markers. Shift always drops to 0.1.
   snapCoarse: number;
   // Rotations to factor OUT of the target's quaternion before the
@@ -246,7 +246,7 @@ function patchGizmo(controls: object): () => void {
   };
 }
 
-// Round to the 0.1 authoring grid (design §2.5): drag math can carry
+// Round to the 0.1 authoring grid: drag math can carry
 // float noise, and the file must never see it. The finest legal drag
 // step is 0.1 units / 1° (Shift), so 0.1 rounding is lossless for
 // positions and comfortably fine for the euler angles a rotate drag
@@ -255,7 +255,7 @@ function round1(v: number): number {
   return Math.round(v * 10) / 10;
 }
 
-// The move/rotate gizmo (docs/preview-editing-design.md §2.4/§3): drei
+// The move/rotate gizmo: drei
 // TransformControls attached to the selected part's rig group. A drag
 // mutates the group's transform imperatively — that IS the live
 // preview — and lands as ONE commit on mouse-up (mid-drag dispatches
@@ -279,7 +279,7 @@ export function TransformGizmo({
   onCommitPosition,
   onCommitRotation,
 }: Props) {
-  // Shift = fine snap (design §2.5). Window-level listeners so the
+  // Shift = fine snap. Window-level listeners so the
   // state is right even when the canvas doesn't have focus.
   const [fine, setFine] = useState(false);
   useEffect(() => {

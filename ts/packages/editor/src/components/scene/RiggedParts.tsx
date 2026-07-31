@@ -37,7 +37,7 @@ interface Props {
   // Marker picking for the SELECTED part's gizmos — see PartGizmos.
   picking?: GizmoPicking | null | undefined;
   // Voxel-tool stroke handlers, attached to the SELECTED part's mesh
-  // group only (design §2.6: other parts are inert while a voxel tool
+  // group only (other parts are inert while a voxel tool
   // is active).
   voxelStroke?: VoxelStrokeHandlers | null | undefined;
 }

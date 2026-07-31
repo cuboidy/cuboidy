@@ -47,7 +47,7 @@ export function usePreviewEdits({
   mutateGeometryPart,
   mutateManifestPart,
 }: Params) {
-  // Move-gizmo drag commit (design §3): the whole drag lands as ONE
+  // Move-gizmo drag commit: the whole drag lands as ONE
   // whole-position write = one undo entry (vs the per-axis coalescing
   // tags of the inspector's number inputs). mutateManifestPart creates
   // the manifest entry if the part didn't have one — dragging an
@@ -75,7 +75,7 @@ export function usePreviewEdits({
     [mutateManifestPart],
   );
 
-  // Pivot drag commit — ALWAYS compensated (design §2.3): ONE
+  // Pivot drag commit — ALWAYS compensated: ONE
   // dispatchEdit rewrites the geometry pivot AND the manifest so the
   // rendered model doesn't move, only the marker does. The part's own
   // position gains q_local·Δ (q_local = q_rotation ⊗ q_pivot — its
@@ -184,10 +184,10 @@ export function usePreviewEdits({
     [mutateGeometryPart],
   );
 
-  // One completed voxel-tool stroke (design §2.6) — every painted /
+  // One completed voxel-tool stroke — every painted /
   // erased / attached cell of the drag lands as ONE geometry edit =
-  // one undo. The grid is then FITTED to the result's solid cells
-  // (§2.7): attach grows it, erase shrinks it, and pre-existing empty
+  // one undo. The grid is then FITTED to the result's solid cells:
+  // attach grows it, erase shrinks it, and pre-existing empty
   // margins (lint W04) heal along the way. Either direction shifts
   // voxels, pivot.pos and every socket.pos together — the render is
   // unchanged because the −pivot draw offset cancels the shift exactly

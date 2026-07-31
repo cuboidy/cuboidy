@@ -16,7 +16,7 @@ interface Props {
   onSetTool: (tool: PreviewTool) => void;
 }
 
-// The preview's tool-mode switch (docs/preview-editing-design.md §2.1):
+// The preview's tool-mode switch:
 // transform tools, then voxel tools behind a divider. Exactly one tool
 // is active; 'select' is the safe default where nothing can mutate the
 // model. Unavailable tools stay visible but disabled with the reason in

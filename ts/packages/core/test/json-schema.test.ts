@@ -73,8 +73,9 @@ describe('cuboidy.schema.json — validation parity with parseManifest', () => {
 });
 
 describe('cuboidy.schema.json — parity corpus (runtime-invalid inputs)', () => {
-  // The audit-2026-07-10 A-4 cases: inputs parseManifest rejects that the
-  // schema previously accepted. Both validators must now agree.
+  // Inputs parseManifest rejects that the generated schema once accepted —
+  // Zod refinements and tuple lengths did not survive the conversion. Both
+  // validators must now agree, or "shared schema" guarantees nothing.
   function expectBothReject(name: string, manifest: unknown) {
     const ajvOk = validate(manifest);
     const zodOk = parseManifest(manifest).ok;

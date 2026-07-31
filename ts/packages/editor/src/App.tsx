@@ -122,7 +122,7 @@ export function App() {
   const handleToggleGizmo = useCallback((kind: keyof GizmoVisibility) => {
     setGizmoVis((v) => ({ ...v, [kind]: !v[kind] }));
   }, []);
-  // Active preview tool (design §2.1). Kept as the user's raw choice —
+  // Active preview tool. Kept as the user's raw choice —
   // the effective tool (computed below with the availability map) falls
   // back to 'select' while the choice isn't usable in the current view,
   // and comes back when it is.
@@ -303,7 +303,7 @@ export function App() {
         ? 'geometry'
         : viewMode;
 
-  // Preview toolbar availability (design §2.1/§2.2): a disabled tool
+  // Preview toolbar availability: a disabled tool
   // carries its reason as the tooltip. Move edits the manifest, so it
   // needs the rig view and a clean manifest AST. The not-yet-built
   // tools stay visible (the toolbar is the locked design) but disabled.

@@ -97,7 +97,7 @@ export interface GizmoVisibility {
   frame: boolean;
 }
 
-// Preview toolbar tools (docs/preview-editing-design.md §2.1). 'select'
+// Preview toolbar tools. 'select'
 // is the safe default: nothing model-mutating can happen in it. A tool
 // that isn't usable in the current view is disabled in the toolbar and
 // the effective tool falls back to 'select' without losing the user's
@@ -110,16 +110,15 @@ export type PreviewTool =
   | 'erase'
   | 'paint';
 
-// What the transform tools are gripping within the selected part
-// (design §2.4): the part body itself, its pivot marker, or one of its
-// socket markers. Picked by clicking the marker; resets to the body on
-// selection change.
+// What the transform tools are gripping within the selected part: the part
+// body itself, its pivot marker, or one of its socket markers. Picked by
+// clicking the marker; resets to the body on selection change.
 export type TransformSubTarget =
   | { kind: 'part' }
   | { kind: 'pivot' }
   | { kind: 'socket'; socket: string };
 
-// One cell of a voxel-tool stroke (design §2.6), in part-local voxel
+// One cell of a voxel-tool stroke, in part-local voxel
 // coords. `value` is a palette index, or AIR for an erase.
 export interface VoxelEdit {
   x: number;
