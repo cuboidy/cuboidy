@@ -14,6 +14,14 @@
 export interface GifFrame {
   /** Row-major RGBA, 4 bytes per pixel — `Framebuffer.toRgba()`. */
   rgba: Uint8Array;
+  /**
+   * Optional per-pixel coverage, 1 = opaque — `Framebuffer.coverage()`.
+   * Where it is 0 the pixel is written as GIF's transparent index. Taken
+   * from the depth buffer rather than by matching a background colour,
+   * so a model that happens to contain that colour keeps its pixels.
+   * If ANY frame carries a mask the whole animation becomes transparent.
+   */
+  mask?: Uint8Array | undefined;
 }
 
 export interface GifOptions {
@@ -34,10 +42,15 @@ export function encodeGif(
   if (frames.length === 0) throw new Error('encodeGif: no frames');
   const { width, height } = opts;
 
-  const { table, indexOf } = buildColorTable(frames);
+  const transparent = frames.some((f) => f.mask !== undefined);
+  const { table, indexOf } = buildColorTable(frames, transparent);
+  // With transparency one index must mean "show nothing"; it is appended
+  // past the real colours so no rendered colour can collide with it.
+  const transparentIndex = transparent ? table.length : -1;
+  const entries = table.length + (transparent ? 1 : 0);
   // A GIF colour table is a power of two, at least 2 entries.
   let tableBits = 1;
-  while (1 << tableBits < table.length) tableBits++;
+  while (1 << tableBits < entries) tableBits++;
   const tableSize = 1 << tableBits;
 
   const out: number[] = [];
@@ -49,7 +62,7 @@ export function encodeGif(
   short(width);
   short(height);
   byte(0x80 | (tableBits - 1)); // global table present, N bits per entry
-  byte(0); // background colour index
+  byte(transparent ? transparentIndex : 0); // background colour index
   byte(0); // pixel aspect ratio: unspecified
 
   for (let i = 0; i < tableSize; i++) {
@@ -65,13 +78,16 @@ export function encodeGif(
   byte(0);
 
   for (const frame of frames) {
-    // Graphic control extension: per-frame delay. Disposal method 1
-    // ("do not dispose") is right because every frame is full-size and
-    // opaque — there is nothing underneath to restore.
+    // Graphic control extension: per-frame delay and disposal.
+    //   opaque      → 1, "do not dispose": every frame is full-size and
+    //                 covers the last, so there is nothing to restore.
+    //   transparent → 2, "restore to background": without it the
+    //                 transparent pixels would show the PREVIOUS frame
+    //                 and the animation would smear a trail behind it.
     byte(0x21); byte(0xf9); byte(4);
-    byte(0x04);
+    byte(transparent ? (2 << 2) | 1 : 1 << 2);
     short(opts.delayCs);
-    byte(0); // transparent colour index (unused)
+    byte(transparent ? transparentIndex : 0);
     byte(0);
 
     // Image descriptor: one full-canvas image, no local colour table.
@@ -82,6 +98,10 @@ export function encodeGif(
 
     const indices = new Uint8Array(width * height);
     for (let i = 0, p = 0; i < indices.length; i++, p += 4) {
+      if (transparent && frame.mask?.[i] === 0) {
+        indices[i] = transparentIndex;
+        continue;
+      }
       indices[i] = indexOf(
         (frame.rgba[p]! << 16) | (frame.rgba[p + 1]! << 8) | frame.rgba[p + 2]!,
       );
@@ -95,21 +115,26 @@ export function encodeGif(
 
 // ----- colour table -------------------------------------------------
 
-function buildColorTable(frames: readonly GifFrame[]): {
-  table: number[];
-  indexOf: (rgb: number) => number;
-} {
+function buildColorTable(
+  frames: readonly GifFrame[],
+  transparent: boolean,
+): { table: number[]; indexOf: (rgb: number) => number } {
   const freq = new Map<number, number>();
   for (const f of frames) {
-    for (let p = 0; p < f.rgba.length; p += 4) {
+    for (let i = 0, p = 0; p < f.rgba.length; i++, p += 4) {
+      // Masked-out pixels never reach the table: their colour is the
+      // background, which nothing will draw.
+      if (transparent && f.mask?.[i] === 0) continue;
       const key = (f.rgba[p]! << 16) | (f.rgba[p + 1]! << 8) | f.rgba[p + 2]!;
       freq.set(key, (freq.get(key) ?? 0) + 1);
     }
   }
+  // One slot is spent on the transparent entry.
+  const limit = transparent ? MAX_COLORS - 1 : MAX_COLORS;
 
   const exact = new Map<number, number>();
   let table: number[];
-  if (freq.size <= MAX_COLORS) {
+  if (freq.size <= limit) {
     // The common case: every colour survives, so the GIF is lossless.
     table = [...freq.keys()];
   } else {
@@ -120,7 +145,7 @@ function buildColorTable(frames: readonly GifFrame[]): {
     // what must stay exact.
     table = [...freq.entries()]
       .sort((a, b) => b[1] - a[1])
-      .slice(0, MAX_COLORS)
+      .slice(0, limit)
       .map(([c]) => c);
   }
   table.forEach((c, i) => exact.set(c, i));

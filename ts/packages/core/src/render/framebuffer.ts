@@ -181,6 +181,18 @@ export class Framebuffer {
         out.color[o + 1] = Math.round(g / n);
         out.color[o + 2] = Math.round(b / n);
         out.color[o + 3] = 255;
+        // Coverage survives the downsample so callers that need a mask
+        // (GIF transparency) still have one. A block counts as covered
+        // if ANY subpixel was: eroding the silhouette instead would eat
+        // exactly the antialiased edge the supersampling was for.
+        let near = Infinity;
+        for (let sy = 0; sy < factor; sy++) {
+          for (let sx = 0; sx < factor; sx++) {
+            const d = this.depth[(y * factor + sy) * this.width + (x * factor + sx)]!;
+            if (d < near) near = d;
+          }
+        }
+        out.depth[y * w + x] = near;
       }
     }
     return out;
@@ -188,6 +200,17 @@ export class Framebuffer {
 
   toRgba(): Uint8Array {
     return this.color;
+  }
+
+  // Which pixels geometry actually covered, from the depth buffer rather
+  // than by matching the background colour — a model containing the
+  // background colour would otherwise punch holes in itself. 1 = drawn.
+  coverage(): Uint8Array {
+    const out = new Uint8Array(this.width * this.height);
+    for (let i = 0; i < out.length; i++) {
+      out[i] = Number.isFinite(this.depth[i]!) ? 1 : 0;
+    }
+    return out;
   }
 }
 

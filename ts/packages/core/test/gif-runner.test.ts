@@ -203,6 +203,29 @@ describe('renderGif — orbit', () => {
     });
   });
 
+  it('marks the uncovered pixels transparent when asked', async () => {
+    const size = 48;
+    const asm = await assemblyOf(RIGGED);
+    const { gif } = renderGif(
+      asm,
+      'idle',
+      opts({ orbit: true, frames: 4, size, transparent: true }),
+    );
+    // The GCE must declare transparency and disposal 2; a corner pixel of
+    // a centred model is always uncovered, so it must carry that index.
+    const i = gif.indexOf(Buffer.from([0x21, 0xf9, 0x04]));
+    const packed = gif[i + 3]!;
+    expect(packed & 1, 'transparency flag').toBe(1);
+    expect((packed >> 2) & 7, 'disposal method').toBe(2);
+    const transparentIndex = gif[i + 6]!;
+    for (const f of frameIndices(gif)) {
+      expect(f[0]).toBe(transparentIndex);
+      expect(f[size - 1]).toBe(transparentIndex);
+      // …and the model itself is still drawn.
+      expect(new Set(f).size).toBeGreaterThan(1);
+    }
+  });
+
   it('repeats the clip under one revolution with --loops', async () => {
     const asm = await assemblyOf(RIGGED);
     const perLoop = 6;

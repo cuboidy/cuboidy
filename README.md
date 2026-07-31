@@ -76,8 +76,8 @@ my-model.cuboidy        packed package (ZIP of the folder above)
 
 Every model under `models/` was authored from `SPEC.md` and
 [`docs/geometry-authoring.md`](docs/geometry-authoring.md) alone — no example
-was available to copy from — and each animation below is rendered straight out
-of `cuboidy-gif`.
+was available to copy from. Each turntable below is `cuboidy-gif --orbit
+--bg=none` output, unretouched.
 
 | | | | |
 |:--:|:--:|:--:|:--:|
@@ -127,7 +127,7 @@ warning saying so.
   cuboidy-gif models/owl --anim=launch --angle=side --fps=20 --size=240
   ```
 
-  `--orbit` sweeps a full turn over the GIF, so it closes seamlessly; `--loops` lets the clip repeat under one revolution, because otherwise a one-second walk spins the camera a full turn per second. A model with no animation at all is still a valid subject with `--orbit`.
+  `--orbit` sweeps a full turn over the GIF, so it closes seamlessly; `--loops` lets the clip repeat under one revolution, because otherwise a one-second walk spins the camera a full turn per second. A model with no animation at all is still a valid subject with `--orbit`. `--bg=none` writes a transparent background — coverage is taken from the depth buffer rather than by matching the background colour, so a model that happens to use that colour keeps its pixels instead of growing holes.
 
   Renders at one sample per pixel by default, which keeps a frame inside GIF's 256-colour table losslessly (a model draws in 37–82 colours) and suits voxel art. `--ss=2` antialiases and quantises instead.
 

@@ -24,6 +24,9 @@ function decodeGif(buf: Buffer): {
   loop: number | null;
   delays: number[];
   frames: number[][][]; // frame -> pixel -> [r,g,b]
+  rawIndices: number[][];
+  transparentIndex: number | null;
+  disposal: number | null;
 } {
   let p = 0;
   const u8 = () => buf[p++]!;
@@ -98,6 +101,9 @@ function decodeGif(buf: Buffer): {
   let loop: number | null = null;
   const delays: number[] = [];
   const frames: number[][][] = [];
+  const rawIndices: number[][] = [];
+  let transparentIndex: number | null = null;
+  let disposal: number | null = null;
   let pendingDelay = 0;
 
   for (;;) {
@@ -107,9 +113,11 @@ function decodeGif(buf: Buffer): {
       const label = u8();
       if (label === 0xf9) {
         u8(); // block size (4)
-        u8(); // packed
+        const packed = u8();
+        disposal = (packed >> 2) & 7;
         pendingDelay = u16();
-        u8(); // transparent index
+        const idx = u8();
+        transparentIndex = (packed & 1) === 1 ? idx : null;
         u8(); // terminator
       } else if (label === 0xff) {
         const n = u8();
@@ -132,9 +140,12 @@ function decodeGif(buf: Buffer): {
     const indices = lzwDecode(minCodeSize, readBlocks());
     expect(indices).toHaveLength(fw * fh);
     frames.push(indices.map((i) => table[i] ?? [0, 0, 0]));
+    rawIndices.push(indices);
     delays.push(pendingDelay);
   }
-  return { width, height, loop, delays, frames };
+  return {
+    width, height, loop, delays, frames, rawIndices, transparentIndex, disposal,
+  };
 }
 
 describe('encodeGif', () => {
@@ -205,6 +216,62 @@ describe('encodeGif', () => {
     // The dominant fill is untouched.
     expect(colours.has(dominant.join(','))).toBe(true);
     for (let i = 300; i < 1024; i++) expect(d.frames[0]![i]).toEqual(dominant);
+  });
+
+  it('writes masked pixels as the transparent index, with disposal 2', () => {
+    const C: [number, number, number] = [0x20, 0x80, 0xc0];
+    const px: [number, number, number][] = Array.from({ length: 16 }, () => C);
+    // Cover only the middle two pixels of a 4x4.
+    const mask = new Uint8Array(16);
+    mask[5] = 1;
+    mask[6] = 1;
+    const gif = encodeGif([{ rgba: rgbaOf(px), mask }], {
+      width: 4,
+      height: 4,
+      delayCs: 8,
+    });
+    const d = decodeGif(gif);
+    expect(d.transparentIndex).not.toBeNull();
+    // Disposal MUST be 2 ("restore to background"). With 1 the
+    // transparent pixels would show the previous frame and the
+    // animation would smear a trail.
+    expect(d.disposal).toBe(2);
+    const raw = d.rawIndices[0]!;
+    raw.forEach((idx, i) => {
+      if (mask[i] === 1) expect(idx).not.toBe(d.transparentIndex);
+      else expect(idx).toBe(d.transparentIndex);
+    });
+  });
+
+  it('does not punch holes when the model uses the background colour', () => {
+    // The reason the mask comes from the depth buffer instead of matching
+    // the background colour: here they are the SAME colour, and the
+    // covered pixels must survive anyway.
+    const SAME: [number, number, number] = [0x6b, 0x70, 0x78];
+    const px: [number, number, number][] = Array.from({ length: 9 }, () => SAME);
+    const mask = new Uint8Array(9).fill(0);
+    mask[4] = 1; // centre pixel is real geometry that happens to match bg
+    const gif = encodeGif([{ rgba: rgbaOf(px), mask }], {
+      width: 3,
+      height: 3,
+      delayCs: 10,
+    });
+    const d = decodeGif(gif);
+    const raw = d.rawIndices[0]!;
+    expect(raw[4]).not.toBe(d.transparentIndex);
+    expect(d.frames[0]![4]).toEqual([...SAME]);
+    for (const i of [0, 1, 2, 3, 5, 6, 7, 8]) {
+      expect(raw[i]).toBe(d.transparentIndex);
+    }
+  });
+
+  it('stays opaque with disposal 1 when no frame carries a mask', () => {
+    const gif = encodeGif([{ rgba: rgbaOf([[9, 9, 9]]) }], {
+      width: 1, height: 1, delayCs: 5,
+    });
+    const d = decodeGif(gif);
+    expect(d.transparentIndex).toBeNull();
+    expect(d.disposal).toBe(1);
   });
 
   it('honours an explicit loop count and refuses an empty animation', () => {

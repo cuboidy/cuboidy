@@ -52,6 +52,13 @@ export interface GifOptions {
    * there is no clip. Default 1.
    */
   loops?: number | undefined;
+  /**
+   * Write the uncovered pixels as GIF's transparent index instead of
+   * `bg`, so the model sits on whatever the page behind it is. Coverage
+   * comes from the depth buffer, not from matching `bg`, so a model
+   * containing the background colour keeps those pixels.
+   */
+  transparent?: boolean | undefined;
 }
 
 /** Frames in a turntable when there is no clip duration to derive one from. */
@@ -181,13 +188,15 @@ export function renderGif(
   // clip's scenes under a camera that keeps going.
   const frames = Array.from({ length: frameCount }, (_, i) => {
     const s = scenes[i % scenes.length]!;
+    const fb = renderTile(
+      { ...s, center: union.center, min: union.min, max: union.max },
+      angles[i]!,
+      scale,
+      renderOpts,
+    );
     return {
-      rgba: renderTile(
-        { ...s, center: union.center, min: union.min, max: union.max },
-        angles[i]!,
-        scale,
-        renderOpts,
-      ).toRgba(),
+      rgba: fb.toRgba(),
+      ...(opts.transparent === true ? { mask: fb.coverage() } : {}),
     };
   });
 

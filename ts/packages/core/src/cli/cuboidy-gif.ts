@@ -52,6 +52,7 @@ export function parseArgs(
   let fps = 20;
   let frames: number | undefined;
   let bg: Rgb = DEFAULT_BG;
+  let transparent = false;
   let clip: string | undefined;
   let outFile: string | undefined;
   let orbit = false;
@@ -95,6 +96,8 @@ export function parseArgs(
       ss = n;
     } else if (a.startsWith('--out=')) {
       outFile = a.slice('--out='.length);
+    } else if (a === '--bg=none') {
+      transparent = true;
     } else if (a.startsWith('--bg=')) {
       const c = parseHexColor(a.slice('--bg='.length));
       if (c === null) return { error: '--bg must be a hex color like #888 or #8a9099' };
@@ -111,7 +114,7 @@ export function parseArgs(
   }
   return {
     dir: positional[0]!, angle, size, ss, fps, frames, bg, clip, outFile, orbit,
-    loops,
+    loops, transparent,
   };
 }
 
