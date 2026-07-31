@@ -48,26 +48,43 @@ So a cell `(x,y,z)` is `voxels[y][z][x]`. Consequences:
 
 ## Pivots & the manifest
 
-- **Keep pivots on integers.** The default pivot (omit the field) is
-  `[W/2, 0, D/2]`, which on an **odd** dimension is fractional — `2.5` for
-  W=5. That is legal and lint stays quiet, but it puts the part, and every
-  descendant hanging off it, on half-voxel world coordinates. `cuboidy-view`
-  and `cuboidy-query` are integer-lattice tools: they then snap to the grid and
-  say `half-voxel offsets present`, so the ASCII view you are about to trust is
-  a rounded picture, not the model. Measured on a 5-wide root part:
+- **A voxel cell fills the unit interval after its index.** Cell `x` occupies
+  `[x, x+1)`, so its centre is `x+0.5`. Almost every symmetry surprise in this
+  format comes from forgetting that. In particular, mirroring across a pivot
+  plane sends the cell at `x` to the cell at **`−1−x`**, not to `−x`.
+- **Make a part's width and depth EVEN if you want it centred.** The default
+  pivot (omit the field) is `[W/2, 0, D/2]`, which centres the part exactly.
+  On an even dimension that value is a whole number and everything is pleasant.
+  On an odd dimension you are forced to choose, and both options cost you
+  something:
 
   ```
-  pivot omitted (2.5)     world X=-3..2 (width 6)   front: .1..1.   ← snapped
-  pivot [2, 0, 2]         world X=-2..2 (width 5)   front: 1..1.    ← exact
+  W=5, pivot 2.5 (default)   cells at -2.5..1.5   centred      projections snap
+  W=5, pivot 2   (integer)   cells at -2..2       off by 0.5   projections exact
+  W=4, pivot 2   (default)   cells at -2..1       centred      projections exact
   ```
 
-  So: omit `pivot` on **even** dimensions, write an integer one on odd. Reach
-  for a half-voxel pivot only when you actually want the part centred between
-  cells, knowing the projections will round it.
-  (H02 does not help you here. It fires on a fractional pivot only when the
-  value is *not* the geometric centre, and it compares the value, not whether
-  you wrote the field — an explicit `[2.5, 0, 2.5]` on a 5-wide part is just as
-  silent as omitting it.)
+  The integer pivot on an odd width looks tidier and is a trap: the part is
+  half a cell off centre, so it is not mirror-symmetric with itself and an l/r
+  pair built that way trips **W06**. The fractional pivot is geometrically
+  right, but it puts the part and everything parented to it on half-voxel
+  world coordinates, and `cuboidy-view` / `cuboidy-query` are integer-lattice
+  tools — they round and report `half-voxel offsets present`, so the ASCII view
+  you were about to trust becomes approximate.
+
+  Choosing even extents for centred parts avoids the whole dilemma. Keep odd
+  widths for parts that are meant to sit off-centre anyway, and for a centred
+  part that genuinely has to be odd, take the fractional default and accept
+  that you check that one by render rather than by ASCII.
+- **Mirroring an l/r pair by hand:** a part of width `W` with local pivot `q`
+  mirrors to a part with local pivot `W − q`, and its voxel rows reversed. So
+  a right-side part occupying cells `a..b` needs its partner at `−1−b..−1−a`
+  in parent space. `cuboidy-part mirror` does all of this for you and is the
+  reason to prefer it over hand-reversing strings.
+  (H02 will not catch a mistake here. It fires on a fractional pivot only when
+  the value is *not* the geometric centre, and it compares the value, not
+  whether you wrote the field — an explicit `[2.5, 0, 2.5]` on a 5-wide part
+  is exactly as silent as omitting it.)
 - **Limbs:** put the pivot at the joint (top, `y=H`, inner edge) so it swings
   from the shoulder/hip, not the foot/hand.
 - A child's manifest `position` = where the child's pivot sits **in the parent's
@@ -116,6 +133,34 @@ hand-math:
 - **3D relief (protruding bangs, etc.): keep it ~1 cell.** 2+ cells of forward
   protrusion reads as a shelf/brim, not soft hair (confirmed in snaps).
 
+## Animation
+
+- **You cannot render an animated pose.** `cuboidy-snap` draws the rest pose
+  only, so the "look at it" loop this guide is built on does not cover the half
+  of the format that moves. Until a tool exists, the workaround is to bake:
+  sample the clip at time *t*, fold the result into a scratch copy of the model
+  (compose the sampled rotation onto each part's manifest `rotation`, add the
+  sampled `pos` to its `position`), and snap that. A dozen lines, and it turns
+  animation from guesswork back into edit → snap → look.
+- **Key an attribute on every keyframe you want it to move through.** Omitted
+  fields inherit from the previous keyframe (§6.5 carryover), so keying `rot`
+  on eight times and `pos` on four does not give `pos` a coarser curve — it
+  gives it a *flat* one between the keys where it is absent, and the part
+  visibly stair-steps. Carryover is for values that genuinely hold, not for
+  brevity.
+- **Motion made of several parts is a phase problem.** A walk, a wingbeat, a
+  swimming body — each part does much the same thing, displaced in time.
+  Getting that displacement right is most of what makes it read; make the
+  offset explicit when you author the keys rather than eyeballing each part.
+- **Derive ground contact, don't invent it.** If a pelvis bob is authored
+  independently of the leg angles, the feet float or sink. Choose where the
+  foot plants, then solve the knee or the hip height from it. The rest pose
+  with straight legs is the *maximum* hip height, so every walk pose sits at or
+  below it.
+- **Check the loop closes.** Sample at `duration` and at `0.0` and compare;
+  they should be equal. A clip that nearly closes reads as a hitch once a
+  second, forever.
+
 ## Verification (don't trust your head-math)
 
 - `cuboidy-lint --strict` — catches row-width / layer-count / palette-range
@@ -134,6 +179,12 @@ hand-math:
   above, which is the other half of the same problem.
 - ASCII views can look fine while the real render is awkward — **the snap is the
   source of truth** for appearance.
+- **W06 only checks l/r pairs that share a parent.** `thigh-l` / `thigh-r`
+  under `hips` are checked; `shin-l` / `shin-r` under `thigh-l` / `thigh-r`
+  are not, because their parents differ. Most limb pairs below the first joint
+  therefore escape the symmetry check entirely — verify those yourself. (The
+  check also ignores rest rotations, so a mirrored `rotation` pair is neither
+  validated nor penalised.)
 - **A rotated part is not drawn rotated by `cuboidy-view` / `cuboidy-query`.**
   They place its pivot correctly but keep its voxels axis-aligned, and warn.
   Only `cuboidy-snap` shows the true orientation, so a model that uses
