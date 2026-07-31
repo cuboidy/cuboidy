@@ -26,7 +26,7 @@ describe('resolvePartGeometry — binding (§6.13)', () => {
     const m = manifest({ name: 'm', parts: [{ name: 'body' }] });
     const r = resolveProject(m, new Map([['voxels.json', cell('body', [RED])]]));
     expect(r.diagnostics).toEqual([]);
-    expect(r.parts.get('body')?.file).toBe('voxels.json');
+    expect(r.parts.get('body')?.source).toEqual({ file: 'voxels.json', part: 'body' });
     expect(r.parts.get('body')?.palette).toHaveLength(1);
   });
 
@@ -37,7 +37,7 @@ describe('resolvePartGeometry — binding (§6.13)', () => {
     });
     const r = resolveProject(m, new Map([['shapes.json', cell('body', [RED])]]));
     expect(r.unresolved).toEqual([]);
-    expect(r.parts.get('body')?.file).toBe('shapes.json');
+    expect(r.parts.get('body')?.source).toEqual({ file: 'shapes.json', part: 'body' });
   });
 
   it('an explicit `part` binds one shape under a different rig name', () => {
@@ -48,8 +48,11 @@ describe('resolvePartGeometry — binding (§6.13)', () => {
     const r = resolveProject(m, new Map([['caps.json', cell('beret', [RED])]]));
     expect(r.unresolved).toEqual([]);
     // The rig knows it as `cap`, so everything downstream — animation
-    // binding (§6.8), the transform tree — sees the MANIFEST's name.
+    // binding (§6.8), the transform tree — sees the MANIFEST's name…
     expect(r.parts.get('cap')?.part.name).toBe('cap');
+    // …while `source` keeps the name it has in the file, which is how a
+    // consumer says WHICH definition this came from.
+    expect(r.parts.get('cap')?.source).toEqual({ file: 'caps.json', part: 'beret' });
   });
 
   it('one file part can back two rig parts', () => {
@@ -65,6 +68,30 @@ describe('resolvePartGeometry — binding (§6.13)', () => {
     expect([...r.parts.keys()]).toEqual(['wheel-l', 'wheel-r']);
   });
 
+  it('a shape used by TWO rig parts is not reported as unused', () => {
+    // The consumed-definition check keyed itself by the RIG's name, so a
+    // shape reached through `geometry.part` looked untouched — and this
+    // model, where one shape backs two parts, was told the shape nothing
+    // uses is the one used twice.
+    const m = manifest({
+      name: 'cart',
+      geometry: ['w.json'],
+      parts: [
+        { name: 'wheel-l', geometry: { path: 'w.json', part: 'wheel' } },
+        { name: 'wheel-r', geometry: { path: 'w.json', part: 'wheel' } },
+      ],
+    });
+    const r = resolveProject(m, new Map([['w.json', cell('wheel', [RED])]]));
+    expect(
+      validateProject({
+        manifest: m,
+        geometries: r.geometries,
+        parts: r.parts,
+        unresolved: r.unresolved,
+      }),
+    ).toEqual([]);
+  });
+
   it('binds inline geometry, with the §7.7 default pivot applied', () => {
     const m = manifest({
       name: 'm',
@@ -74,7 +101,7 @@ describe('resolvePartGeometry — binding (§6.13)', () => {
     const r = resolveProject(m, new Map());
     expect(r.diagnostics).toEqual([]);
     const body = r.parts.get('body');
-    expect(body?.file).toBeNull();
+    expect(body?.source).toBeNull();
     expect(body?.part.name).toBe('body');
     // The same doc→AST mapping a file's part goes through, so nothing
     // downstream can tell where the shape was written.
@@ -190,7 +217,7 @@ describe('the single-file corpus model (§3, §6.13)', () => {
       expect(r.unresolved).toEqual([]);
       expect(r.geometries).toEqual([]);
       expect([...r.parts.keys()]).toEqual(['body', 'head']);
-      expect(r.parts.get('head')?.file).toBeNull();
+      expect(r.parts.get('head')?.source).toBeNull();
       expect(
         validateProject({
           manifest: m,

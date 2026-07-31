@@ -392,8 +392,10 @@ export function App() {
   // it takes its colors from the manifest rather than from that file.
   const partPalettes = useMemo(() => {
     if (source === undefined) return undefined;
-    const inline = source.inlineParts;
-    if (source.geometries.size <= 1 && (inline?.size ?? 0) === 0) {
+    const inlineCount = [...source.parts.values()].filter(
+      (r) => r.source === null,
+    ).length;
+    if (source.geometries.size <= 1 && inlineCount === 0) {
       return undefined;
     }
     const m = new Map<string, Palette>();
@@ -404,9 +406,9 @@ export function App() {
         if (!m.has(part.name)) m.set(part.name, geometry.palette);
       }
     }
-    for (const [name, entry] of inline ?? []) {
-      if (!m.has(name)) m.set(name, entry.palette);
-    }
+    // Every resolved part's own colors win: a file-backed one takes its
+    // file's, an inline one whatever §6.13 resolved for it.
+    for (const [name, r] of source.parts) m.set(name, r.palette);
     return m;
   }, [source]);
   // What the Palette panel edits (§7.4): the palette of the geometry file
@@ -435,7 +437,9 @@ export function App() {
         palette,
         // Every inline part that did not declare colors of its own draws
         // on this one, so those are its usage scope.
-        scopeParts: [...(source.inlineParts?.values() ?? [])].map((e) => e.part),
+        scopeParts: [...source.parts.values()]
+          .filter((r) => r.source === null)
+          .map((r) => r.part),
         unresolved: modelRef !== undefined && palette.length === 0,
         ...(modelRef !== undefined && { ref: modelRef }),
       };

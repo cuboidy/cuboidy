@@ -12,6 +12,7 @@ import {
   type Manifest,
   type Palette,
   type Part,
+  type ResolvedPart,
 } from '@cuboidy/core';
 import { strFromU8, unzipSync } from 'fflate';
 import type { LoadResult, LoadedSource } from './types.js';
@@ -320,7 +321,7 @@ function buildFolderResult(
       ? { path: primary, geometry: primaryGeom }
       : undefined,
   );
-  const { geometries, inlineParts, externalAnims, projectErrors } = refs;
+  const { geometries, externalAnims, projectErrors } = refs;
   // The primary always resolves (its text parsed above), so the AST store
   // is complete for it even if a sibling ref failed.
   if (primary !== undefined && primaryGeom !== undefined && !geometries.has(primary)) {
@@ -333,7 +334,7 @@ function buildFolderResult(
     files: new Map(fileTexts),
     ...(opts.assets !== undefined && { assets: opts.assets }),
     ...(primary !== undefined && { primaryPath: primary }),
-    ...(inlineParts.size > 0 && { inlineParts }),
+    parts: refs.parts,
     manifestPath: MANIFEST_FILE,
     ...(manifest !== undefined && { manifest }),
     ...(manifestError !== undefined && { manifestError }),
@@ -352,9 +353,10 @@ export interface ResolvedProjectRefs {
   // §7.4 palette REFERENCE has had it resolved: `palette` holds the colors
   // and `paletteRef` records where they came from.
   geometries: Map<string, Geometry>;
-  // SPEC §6.13 parts written into the manifest, with their palette already
-  // resolved by the same core routine the CLIs use.
-  inlineParts: Map<string, { part: Part; palette: Palette }>;
+  // SPEC §6.13: every manifest part bound to its shape by the same core
+  // routine the CLIs use, so the editor and they agree about what a part
+  // IS — including one reached under a different name, or shared.
+  parts: Map<string, ResolvedPart>;
   externalAnims?: Map<string, { path: string; anim: InlineAnimation }>;
   projectErrors: Array<{ file: string; message: string }>;
 }
@@ -446,20 +448,17 @@ export function resolveProjectRefs(
 
   // §6.13 part binding, through core's resolver rather than a second
   // implementation here — the editor and the CLIs must agree about which
-  // shape a part has and what colors it means. Only the inline results are
-  // kept: a file-backed part is already reachable through `geometries`,
-  // and storing it twice is the shadowing this shape exists to avoid.
-  const inlineParts = new Map<string, { part: Part; palette: Palette }>();
-  if (manifest !== undefined) {
-    const bound = resolvePartGeometry(
-      manifest,
-      [...geometries].map(([path, geometry]) => ({ path, geometry })),
-      (ref) => readPaletteRef(normalizePath(ref), getText, projectErrors),
-    );
-    for (const [name, r] of bound.parts) {
-      if (r.file === null) inlineParts.set(name, { part: r.part, palette: r.palette });
-    }
-  }
+  // shape a part has and what colors it means. ALL of it is kept: the
+  // file-backed entries used to be dropped and re-derived by name, which
+  // is exactly where an aliased or shared shape lost its rig name.
+  const parts =
+    manifest === undefined
+      ? new Map<string, ResolvedPart>()
+      : resolvePartGeometry(
+          manifest,
+          [...geometries].map(([path, geometry]) => ({ path, geometry })),
+          (ref) => readPaletteRef(normalizePath(ref), getText, projectErrors),
+        ).parts;
 
   // External animations (§6.3 string refs): each references a JSON file
   // holding ONE inline-animation object. Resolved per clip name.
@@ -501,7 +500,7 @@ export function resolveProjectRefs(
 
   return {
     geometries,
-    inlineParts,
+    parts,
     ...(externalAnims.size > 0 && { externalAnims }),
     projectErrors,
   };

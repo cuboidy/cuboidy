@@ -229,7 +229,7 @@ function buildEffectivePalette(
   for (const [name, r] of parts) {
     const palette = r.palette;
     const maxIdx = maxIndexIn(r.part);
-    const where = r.file ?? `inline part '${name}'`;
+    const where = r.source?.file ?? `inline part '${name}'`;
     if (palette.length === 0) {
       // §7.4 / §6.13: no palette resolved by any route — the part may then
       // not name a color.

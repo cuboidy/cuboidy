@@ -4,6 +4,7 @@ import {
   parseGeometryText,
   parseManifest,
   parsePaletteFile,
+  resolvePartGeometry,
   serializeColor,
   resolveRefFrom,
   serializeGeometry,
@@ -33,10 +34,21 @@ import type { LoadedSource } from './types.js';
 // geometry files and the resolved animation records at once, and a
 // half-applied rewrite is exactly the bug a type checker cannot see.
 
-// The DISPLAY model: the union of every geometry file's parts, in
-// geometry-list order. A cross-file duplicate name keeps the first
-// definition (validateProject flags the error). `files` records each
-// part's defining file — edit routing and the part tree's file badges.
+// The DISPLAY model: the model's parts under the names the RIG uses, in
+// manifest order, followed by any geometry-file part no manifest part
+// resolves to.
+//
+// This READS core's resolution (SPEC §6.13) instead of redoing it. It
+// used to union the geometry files by hand, which silently disagreed with
+// the rig the moment a part's shape was reached under another name: two
+// rig parts sharing one shape showed up as the single part the FILE
+// names, so the tree, the selection and every edit routed through it were
+// looking at something the manifest did not contain.
+//
+// The unreferenced trailer is deliberate. Such a part is not in the model
+// (§11.6 warns), but hiding it would mean a part just added to a geometry
+// file were invisible until its manifest entry existed — so it stays
+// listed and fixable.
 export function mergeGeometries(src: LoadedSource): {
   parts: Part[];
   // Part name → the geometry file that defines it. A part written INLINE
@@ -50,18 +62,24 @@ export function mergeGeometries(src: LoadedSource): {
 } {
   const files = new Map<string, string>();
   const parts: Part[] = [];
+  // Which DEFINITIONS the rig used, so the trailer below can tell an
+  // unreferenced part from one reached under a different name.
+  const used = new Map<string, Set<string>>();
+  for (const [name, r] of src.parts) {
+    parts.push(r.part);
+    if (r.source === null) continue;
+    files.set(name, r.source.file);
+    let names = used.get(r.source.file);
+    if (names === undefined) used.set(r.source.file, (names = new Set()));
+    names.add(r.source.part);
+  }
   for (const [path, geometry] of src.geometries) {
     for (const part of geometry.parts) {
-      if (files.has(part.name)) continue;
+      if (used.get(path)?.has(part.name) === true) continue;
+      if (files.has(part.name) || src.parts.has(part.name)) continue;
       files.set(part.name, path);
       parts.push(part);
     }
-  }
-  // Inline parts last so a file's definition wins a name collision, the
-  // same first-wins rule the loop above uses between files.
-  for (const [name, entry] of src.inlineParts ?? []) {
-    if (files.has(name)) continue;
-    parts.push(entry.part);
   }
   return { parts, files };
 }
@@ -70,7 +88,8 @@ export function mergeGeometries(src: LoadedSource): {
 // in a geometry file? The question every per-part geometry edit has to
 // ask before it knows which document to rewrite.
 export function isInlinePart(src: LoadedSource, name: string): boolean {
-  return src.inlineParts?.has(name) === true;
+  const r = src.parts.get(name);
+  return r !== undefined && r.source === null;
 }
 
 // Write a part's shape into the manifest as inline geometry (SPEC §6.13),
@@ -86,7 +105,7 @@ export function withInlinePart(
   build: (current: Part | undefined) => Part,
 ): LoadedSource {
   if (src.manifest === undefined) return src;
-  const current = src.inlineParts?.get(name)?.part;
+  const current = src.parts.get(name)?.part;
   const next = build(current);
   if (next === current) return src;
   const parts = src.manifest.parts.slice();
@@ -181,7 +200,31 @@ export function mapGeometryFiles(
     files.set(path, serializeGeometry(next));
   }
   if (geometries === null || files === null) return src;
-  return { ...src, geometries, files };
+  return withRebuiltParts({ ...src, geometries, files });
+}
+
+// Re-derive `parts` from the manifest and the geometry files (SPEC §6.13).
+// `parts` is DERIVED state: it is what the two of them resolve to, so any
+// write to either has to rebuild it or the model on screen drifts from the
+// documents. Manifest writes go through withResolvedRefs, which rebuilds
+// everything; this is the geometry-file side of the same obligation.
+export function withRebuiltParts(src: LoadedSource): LoadedSource {
+  if (src.manifest === undefined) return src;
+  const { parts } = resolvePartGeometry(
+    src.manifest,
+    [...src.geometries].map(([path, geometry]) => ({ path, geometry })),
+    (ref) => {
+      const text = src.files.get(normalizePath(ref));
+      if (text === undefined) return null;
+      try {
+        const r = parsePaletteFile(JSON.parse(text));
+        return r.ok ? r.value : null;
+      } catch {
+        return null;
+      }
+    },
+  );
+  return { ...src, parts };
 }
 
 // Rewrite every resolved external animation (§6.3) with `fn`, updating
@@ -234,8 +277,8 @@ export function primaryGeometry(src: LoadedSource): Geometry | undefined {
 export function modelPalette(src: LoadedSource): Palette {
   const primary = primaryGeometry(src);
   if (primary !== undefined) return primary.palette;
-  for (const entry of src.inlineParts?.values() ?? []) {
-    if (entry.palette.length > 0) return entry.palette;
+  for (const r of src.parts.values()) {
+    if (r.source === null && r.palette.length > 0) return r.palette;
   }
   return [];
 }
@@ -444,11 +487,33 @@ export function renameFileInSource(
     let m = src.manifest;
     let changed = false;
     if (isPrimary || inGeometry) {
-      const geometry = manifestGeometry(m).map((g) =>
-        normalizePath(g) === from ? to : normalizePath(g),
-      );
-      m = { ...m, geometry };
-      changed = true;
+      // The top-level list — only when the manifest actually HAS one.
+      // This used to call manifestGeometry(), which supplies the
+      // `["voxels.json"]` default, and then wrote the result back: a
+      // model with no list gained one naming a file that does not exist
+      // (§6.9 says the default is not to be materialised).
+      if (m.geometry !== undefined) {
+        const geometry = m.geometry.map((g) =>
+          normalizePath(g) === from ? to : normalizePath(g),
+        );
+        m = { ...m, geometry };
+        changed = true;
+      }
+      // …and every part that reaches the file directly (SPEC §6.13). The
+      // rename used to skip these entirely, leaving `geometry.path`
+      // pointing at a file that had just been renamed away — a model that
+      // loaded fine until the next time it was opened.
+      let partsChanged = false;
+      const parts = m.parts.map((p) => {
+        if (p.geometry?.path === undefined) return p;
+        if (normalizePath(p.geometry.path) !== from) return p;
+        partsChanged = true;
+        return { ...p, geometry: { ...p.geometry, path: to } };
+      });
+      if (partsChanged) {
+        m = { ...m, parts };
+        changed = true;
+      }
     }
     if (m.animations !== undefined) {
       const rebuilt: NonNullable<Manifest['animations']> = {};
@@ -707,10 +772,10 @@ export function withResolvedRefs(
     ...rest,
     manifest,
     geometries: refs.geometries,
-    // Rebuilt, not merged: the manifest IS where inline geometry lives, so
-    // a manifest change can add, alter or remove an inline part, and
-    // keeping a stale entry would leave a deleted part on screen.
-    inlineParts: refs.inlineParts,
+    // Rebuilt, not merged: the manifest IS where part geometry is bound,
+    // so a manifest change can add, alter, retarget or remove a part, and
+    // keeping a stale entry would leave a deleted one on screen.
+    parts: refs.parts,
     ...(refs.externalAnims !== undefined && { externalAnims: refs.externalAnims }),
     ...(refs.projectErrors.length > 0 && { projectErrors: refs.projectErrors }),
   };

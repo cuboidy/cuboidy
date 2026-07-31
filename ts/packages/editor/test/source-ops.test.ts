@@ -83,7 +83,7 @@ function pkg(files: Record<string, string>, primary = 'voxels.json'): LoadedSour
     manifestPath: MANIFEST,
     ...(manifest !== undefined && { manifest }),
     geometries,
-    ...(refs.inlineParts.size > 0 && { inlineParts: refs.inlineParts }),
+    parts: refs.parts,
     ...(refs.externalAnims !== undefined && { externalAnims: refs.externalAnims }),
     // The loader carries these; without them a test could not tell a
     // load-time problem from one that has been fixed.

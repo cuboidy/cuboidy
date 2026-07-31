@@ -65,6 +65,7 @@ function pkg(files: Record<string, string>, primary = 'voxels.json'): LoadedSour
     manifestPath: MANIFEST,
     ...(manifest !== undefined && { manifest }),
     geometries,
+    parts: refs.parts,
     ...(refs.externalAnims !== undefined && { externalAnims: refs.externalAnims }),
   };
 }
@@ -254,6 +255,7 @@ describe('lintSource — the shipped models', () => {
       manifestPath: MANIFEST,
       ...(manifest !== undefined && { manifest }),
       geometries,
+    parts: refs.parts,
       ...(refs.externalAnims !== undefined && { externalAnims: refs.externalAnims }),
     };
   };

@@ -31,6 +31,18 @@ interface Params {
   >;
 }
 
+// The manifest's geometry LIST as it should be written back when adding a
+// reference. `manifestGeometry()` is wrong here: it supplies the
+// `["voxels.json"]` default, and writing that back names a file that does
+// not exist for any model that never had a list — an all-inline one above
+// all (§6.9 says the default is not to be materialised).
+function geometryListToExtend(m: Manifest): string[] {
+  if (m.geometry !== undefined) return m.geometry.map(normalizePath);
+  return m.parts.some((p) => p.geometry === undefined)
+    ? manifestGeometry(m).map(normalizePath)
+    : [];
+}
+
 export function useFileOps({ dispatchEdit, setFileParseErrors }: Params) {
   // ── File CRUD (Phase D). Folder sources with a files map only; each
   // operation is one dispatchEdit = one atomic undo step. The manifest
@@ -104,7 +116,7 @@ export function useFileOps({ dispatchEdit, setFileParseErrors }: Params) {
           // Reference it from the manifest so it's part of the model
           // (unreferenced files are ignored + lint as W07).
           if (src.manifest !== undefined) {
-            const geometry = manifestGeometry(src.manifest).map(normalizePath);
+            const geometry = geometryListToExtend(src.manifest);
             if (!geometry.includes(norm)) geometry.push(norm);
             const nextManifest: Manifest = { ...src.manifest, geometry };
             next = withManifest(next, nextManifest);
@@ -134,7 +146,7 @@ export function useFileOps({ dispatchEdit, setFileParseErrors }: Params) {
         }
         const norm = normalizePath(path);
         if (!src.files.has(norm)) return current;
-        const geometry = manifestGeometry(src.manifest).map(normalizePath);
+        const geometry = geometryListToExtend(src.manifest);
         if (geometry.includes(norm)) return current;
         geometry.push(norm);
         const nextManifest: Manifest = { ...src.manifest, geometry };

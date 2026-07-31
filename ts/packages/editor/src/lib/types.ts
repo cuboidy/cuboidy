@@ -3,8 +3,8 @@ import type {
   InlineAnimation,
   KeyAttr,
   Manifest,
-  Palette,
   Part,
+  ResolvedPart,
 } from '@cuboidy/core';
 
 // What the editor currently has loaded.
@@ -58,16 +58,18 @@ export interface LoadedSource {
   // `geometries[p]` and `files[p]` mean different documents at exactly
   // one path, which is the drift this shape exists to prevent.
   primaryPath?: string;
-  // SPEC §6.13: parts whose shape is written INLINE in the manifest,
-  // keyed by part name. Their text is the manifest's, so they are not in
-  // `geometries` — but every reader that asks "what parts does this model
-  // have?" must see them, which is what mergeGeometries() is for.
+  // SPEC §6.13: EVERY manifest part bound to its shape, keyed by the name
+  // the rig uses, straight from core's resolvePartGeometry.
   //
-  // Carries the resolved `palette` alongside the shape because an inline
-  // part has no file to read colors from: they come from its own
-  // `palette`, else the manifest's (§6.13), and resolving that twice in
-  // two places is how the render and the editor would come to disagree.
-  inlineParts?: ReadonlyMap<string, { part: Part; palette: Palette }>;
+  // This is the model. The editor used to keep only the inline entries
+  // here and re-derive the rest by matching part names across geometry
+  // files — resolving twice, with the second pass not knowing about §6.13.
+  // A shape reached through `geometry.part`, or shared by two rig parts,
+  // came out under the FILE's name: a two-wheeled cart showed one part
+  // called `wheel` and the rig, the animation bindings and the edit
+  // routing all disagreed with it. Reading core's answer instead of
+  // recomputing a worse one is the whole fix.
+  parts: ReadonlyMap<string, ResolvedPart>;
   // Which entry is cuboidy.json. Always present — it is what makes the
   // load a model at all (§3); a folder without one fails to load.
   manifestPath: string;

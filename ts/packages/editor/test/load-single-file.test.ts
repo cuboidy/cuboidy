@@ -26,7 +26,7 @@ describe('loadSingleFile', () => {
     // A package like any other — not the lesser document the old path made.
     expect(r.source?.folderName).toBe('tiny');
     expect(r.source?.manifestPath).toBe('cuboidy.json');
-    expect([...(r.source?.inlineParts?.keys() ?? [])]).toEqual(['body']);
+    expect([...(r.source?.parts.keys() ?? [])]).toEqual(['body']);
   });
 
   it('stores it under cuboidy.json whatever the file was called', async () => {

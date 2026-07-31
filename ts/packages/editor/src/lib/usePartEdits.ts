@@ -459,7 +459,11 @@ export function usePartEdits({
             ? primaryGeometry(src)
             : src.geometries.get(targetPath);
         if (fromGeometry === undefined || toGeometry === undefined) return current;
-        const part = fromGeometry.parts.find((p) => p.name === name);
+        // The name the part has IN THE FILE, which is not the rig's name
+        // when `geometry.part` renames it (§6.13). Searching by the rig's
+        // name found nothing there and the move silently did nothing.
+        const sourceName = src.parts.get(name)?.source?.part ?? name;
+        const part = fromGeometry.parts.find((p) => p.name === sourceName);
         if (part === undefined) return current;
         let moved = part;
         let toPalette = toGeometry.palette;
@@ -475,15 +479,34 @@ export function usePartEdits({
           moved = remapped.part;
           toPalette = remapped.palette;
         }
-        const nextSrc = mapGeometryFiles(src, (geometry, path) => {
+        let nextSrc = mapGeometryFiles(src, (geometry, path) => {
           if (path === fromPath) {
-            return { ...geometry, parts: geometry.parts.filter((p) => p.name !== name) };
+            return {
+              ...geometry,
+              parts: geometry.parts.filter((p) => p.name !== sourceName),
+            };
           }
           if (path === targetPath) {
             return { ...geometry, palette: toPalette, parts: [...geometry.parts, moved] };
           }
           return null;
         });
+        // Any part reaching the shape by an explicit path (§6.13) has to
+        // follow it to its new file, or the move leaves the manifest
+        // pointing where the shape no longer is.
+        if (src.manifest !== undefined) {
+          let changed = false;
+          const parts = src.manifest.parts.map((mp) => {
+            if (mp.geometry?.path === undefined) return mp;
+            if (normalizePath(mp.geometry.path) !== fromPath) return mp;
+            if ((mp.geometry.part ?? mp.name) !== sourceName) return mp;
+            changed = true;
+            return { ...mp, geometry: { ...mp.geometry, path: targetPath } };
+          });
+          if (changed) {
+            nextSrc = withManifest(nextSrc, { ...src.manifest, parts });
+          }
+        }
         return { ...current, source: nextSrc };
       });
     },

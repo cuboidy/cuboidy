@@ -114,8 +114,9 @@ export function usePaletteEdits({ dispatchEdit, editsBlocked }: Params) {
         // The manifest's palette (§6.13): scope is the inline parts that
         // fall back to it, and the same refuse-if-used rule applies.
         if (file === undefined) {
-          const scope = [...(src.inlineParts ?? [])].filter(
-            ([name]) =>
+          const scope = [...src.parts].filter(
+            ([name, r]) =>
+              r.source === null &&
               src.manifest?.parts.find((p) => p.name === name)?.geometry
                 ?.palette === undefined,
           );
@@ -139,7 +140,7 @@ export function usePaletteEdits({ dispatchEdit, editsBlocked }: Params) {
             const nextSrc = next?.source;
             if (nextSrc === undefined) break;
             let changed = false;
-            const voxels = entry.part.voxels.map((layer) =>
+            const voxels = entry.part.voxels.map((layer: readonly (readonly number[])[]) =>
               layer.map((row) =>
                 row.map((idx) => {
                   if (idx !== AIR && idx > index) {

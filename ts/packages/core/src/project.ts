@@ -125,9 +125,15 @@ export interface ResolvedPart {
   // What this part's voxel indices mean. Empty when nothing supplied a
   // palette, which cross-file validation reports if any index is used.
   palette: Palette;
-  // The geometry file it came from, or null when written inline in the
-  // manifest. The editor needs this to know which document an edit rewrites.
-  file: string | null;
+  // Where the shape was WRITTEN: the geometry file and the name the part
+  // has *there*, or null when it is inline in the manifest (§6.13).
+  //
+  // Both halves are needed. `part` differs from the rig's name whenever
+  // `geometry.part` renames it or two rig parts share one shape, and
+  // without it a consumer cannot say which definition in the file this
+  // came from — which is how "used by no manifest part" came to fire on a
+  // part that two manifest parts were using.
+  source: { file: string; part: string } | null;
 }
 
 export interface ResolvedProject {
@@ -252,7 +258,7 @@ export function resolvePartGeometry(
       out.set(mp.name, {
         part: inlinePartToAst({ ...shape, size: g.size, voxels: g.voxels }, mp.name),
         palette,
-        file: null,
+        source: null,
       });
       continue;
     }
@@ -285,10 +291,12 @@ export function resolvePartGeometry(
     }
     out.set(mp.name, {
       // The rig knows this part by the MANIFEST's name; under an explicit
-      // `part` the two differ on purpose (one shape, two rig slots).
+      // `part` the two differ on purpose (one shape, two rig slots). The
+      // name it has in the FILE survives in `source`, because renaming it
+      // here would otherwise lose which definition this is.
       part: found.name === mp.name ? found : { ...found, name: mp.name },
       palette: file.geometry.palette,
-      file: file.path,
+      source: { file: file.path, part: found.name },
     });
   }
   return { parts: out, unresolved };
