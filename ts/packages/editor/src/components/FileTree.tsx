@@ -138,9 +138,9 @@ export function FileTree({
     if (source.files !== undefined) {
       for (const path of source.files.keys()) paths.add(path);
     }
-    paths.add(source.geometryFile.name);
-    if (source.manifestFile !== undefined) {
-      paths.add(source.manifestFile.name);
+    paths.add(source.primaryPath);
+    if (source.manifestPath !== undefined) {
+      paths.add(source.manifestPath);
     }
     return paths;
   }, [source]);
@@ -189,10 +189,10 @@ export function FileTree({
   // tree draws a flat file row rather than a collapsible package root.
   const isFolder = source.folderName !== undefined;
   const canEdit = source.files !== undefined;
-  const anchor = isFolder ? (source.manifestFile?.name ?? 'cuboidy.json') : null;
-  const primary = source.geometryFile.name;
+  const anchor = isFolder ? (source.manifestPath ?? 'cuboidy.json') : null;
+  const primary = source.primaryPath;
   const hasManifest = source.manifest !== undefined;
-  const hasManifestFile = source.manifestFile !== undefined;
+  const hasManifestFile = source.manifestPath !== undefined;
 
   // Normalized refs the manifest's geometry list loads (default = the
   // primary alone). A package geometry file outside this set is inert — lint
@@ -202,7 +202,7 @@ export function FileTree({
     const refs =
       source.manifest !== undefined
         ? manifestGeometry(source.manifest)
-        : [source.geometryFile.name];
+        : [source.primaryPath];
     return new Set(refs.map(normalizePath));
   }, [source]);
 
@@ -211,11 +211,8 @@ export function FileTree({
   // these are `.json` too and must not be mistaken for stray geometry.
   const referencedNonGeometry = useMemo(() => {
     const out = new Set<string>();
-    for (const g of source.geometries?.values() ?? [source.geometry]) {
+    for (const g of source.geometries.values()) {
       if (g.paletteRef !== undefined) out.add(normalizePath(g.paletteRef));
-    }
-    if (source.geometry.paletteRef !== undefined) {
-      out.add(normalizePath(source.geometry.paletteRef));
     }
     for (const clip of Object.values(source.manifest?.animations ?? {})) {
       if (typeof clip === 'string') out.add(normalizePath(clip));
@@ -231,7 +228,7 @@ export function FileTree({
     const norm = normalizePath(path);
     if (!norm.toLowerCase().endsWith('.json')) return false;
     if (loadedGeometry.has(norm)) return false;
-    if (norm === normalizePath(source.manifestFile?.name ?? '')) return false;
+    if (norm === normalizePath(source.manifestPath ?? '')) return false;
     return !referencedNonGeometry.has(norm);
   };
 
@@ -587,7 +584,7 @@ export function FileTree({
                   folderRowProps={folderRowProps}
                   fileRowProps={fileRowProps}
                   newBadgePath={
-                    source.synthetic ? source.manifestFile?.name : undefined
+                    source.synthetic ? source.manifestPath : undefined
                   }
                   canEdit={canEdit}
                   creatingIn={creatingIn}

@@ -10,7 +10,7 @@ import {
   type Palette,
 } from '@cuboidy/core';
 import { strFromU8, unzipSync } from 'fflate';
-import type { FileEntry, LoadResult, LoadedSource } from './types.js';
+import type { LoadResult, LoadedSource } from './types.js';
 
 const GEOMETRY_FILE = 'voxels.json';
 const MANIFEST_FILE = 'cuboidy.json';
@@ -153,8 +153,9 @@ function buildGeometryOnlyResult(name: string, text: string): LoadResult {
   // No folderName: this is a lone file, not a package (see LoadedSource).
   const source: LoadedSource = {
     synthetic: false,
-    geometry: geometryR.value,
-    geometryFile: { name, text },
+    files: new Map([[name, text]]),
+    primaryPath: name,
+    geometries: new Map([[name, geometryR.value]]),
   };
   return { source, geometryFileName: name };
 }
@@ -172,10 +173,8 @@ function buildFolderResult(
   // Manifest first — the geometry list depends on it.
   let manifest: Manifest | undefined;
   let manifestError: string | undefined;
-  let manifestFile: FileEntry | undefined;
   const manifestText = fileTexts.get(MANIFEST_FILE);
   if (manifestText !== undefined) {
-    manifestFile = { name: MANIFEST_FILE, text: manifestText };
     try {
       const json: unknown = JSON.parse(manifestText);
       const mR = parseManifest(json);
@@ -205,23 +204,19 @@ function buildFolderResult(
     geometry: geometryR.value,
   });
   const { geometries, externalAnims, projectErrors } = refs;
-  const resolvedPrimary = geometries.get(primary) ?? geometryR.value;
-
-  const files = new Map<string, FileEntry>();
-  for (const [path, text] of fileTexts) {
-    files.set(path, { name: path, text });
-  }
+  // The primary always resolves (its text parsed above), so the AST store
+  // is complete for it even if a sibling ref failed.
+  if (!geometries.has(primary)) geometries.set(primary, geometryR.value);
 
   const source: LoadedSource = {
     folderName,
     synthetic: false,
     ...(opts.handle !== undefined && { handle: opts.handle }),
-    geometry: resolvedPrimary,
-    geometryFile: { name: primary, text: primaryText },
+    files: new Map(fileTexts),
+    primaryPath: primary,
+    ...(manifestText !== undefined && { manifestPath: MANIFEST_FILE }),
     ...(manifest !== undefined && { manifest }),
-    ...(manifestFile !== undefined && { manifestFile }),
     ...(manifestError !== undefined && { manifestError }),
-    files,
     geometries,
     ...(externalAnims !== undefined && { externalAnims }),
     ...(projectErrors.length > 0 && { projectErrors }),

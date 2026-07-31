@@ -9,7 +9,7 @@ import {
   type Part,
 } from '@cuboidy/core';
 import { normalizePath } from './load-model.js';
-import type { FileEntry, LoadedSource } from './types.js';
+import type { LoadedSource } from './types.js';
 
 // Pure operations over a loaded source: the union of every geometry file's
 // parts, per-file AST rewrites, palette-reference following, and the
@@ -21,24 +21,17 @@ import type { FileEntry, LoadedSource } from './types.js';
 // geometry files and the resolved animation records at once, and a
 // half-applied rewrite is exactly the bug a type checker cannot see.
 
-// v0.7 multi-geometry (Phase C): the DISPLAY model is the union of every
-// geometry file's parts, in geometry-list order. The primary file's
-// live AST (source.geometry) overrides its load-time snapshot in
-// source.geometries so mid-edit state stays current. A cross-file
-// duplicate name keeps the first definition (validateProject flags the
-// error). `files` records each part's defining file — edit routing and
-// the part tree's file badges.
+// The DISPLAY model: the union of every geometry file's parts, in
+// geometry-list order. A cross-file duplicate name keeps the first
+// definition (validateProject flags the error). `files` records each
+// part's defining file — edit routing and the part tree's file badges.
 export function mergeGeometries(src: LoadedSource): {
   parts: Part[];
   files: ReadonlyMap<string, string>;
 } {
   const files = new Map<string, string>();
-  if (src.geometries === undefined) {
-    return { parts: src.geometry.parts, files };
-  }
   const parts: Part[] = [];
-  for (const [path, g] of src.geometries) {
-    const geometry = path === src.geometryFile.name ? src.geometry : g;
+  for (const [path, geometry] of src.geometries) {
     for (const part of geometry.parts) {
       if (files.has(part.name)) continue;
       files.set(part.name, path);
@@ -90,50 +83,26 @@ export function pathBasename(path: string): string {
   return i === -1 ? path : path.slice(i + 1);
 }
 
-// Apply `fn` to every geometry file AST (or the lone geometry when the
-// source has no geometries map). Returns the source with each CHANGED
-// file kept fully in sync: geometries map, the files snapshot (so
-// export sees the edit), and — when the primary file changed — the live
-// geometry/geometryFile pair the rest of the editor reads. `fn` returns
-// null for "no change to this file".
+// Apply `fn` to every geometry file AST. Each CHANGED file is written to
+// both stores at once — the AST and its re-serialized text — which is now
+// the whole job: there is no third copy of the primary to patch. `fn`
+// returns null for "no change to this file".
 export function mapGeometryFiles(
   src: LoadedSource,
   fn: (geometry: Geometry, path: string) => Geometry | null,
 ): LoadedSource {
-  if (src.geometries === undefined) {
-    const next = fn(src.geometry, src.geometryFile.name);
-    if (next === null) return src;
-    return {
-      ...src,
-      geometry: next,
-      geometryFile: { ...src.geometryFile, text: serializeGeometry(next) },
-    };
-  }
   let geometries: Map<string, Geometry> | null = null;
-  let files: Map<string, FileEntry> | null = null;
-  let primaryPatch: Pick<typeof src, 'geometry' | 'geometryFile'> | null = null;
-  for (const [path, g] of src.geometries) {
-    const cur = path === src.geometryFile.name ? src.geometry : g;
-    const next = fn(cur, path);
+  let files: Map<string, string> | null = null;
+  for (const [path, geometry] of src.geometries) {
+    const next = fn(geometry, path);
     if (next === null) continue;
-    const text = serializeGeometry(next);
     if (geometries === null) geometries = new Map(src.geometries);
+    if (files === null) files = new Map(src.files);
     geometries.set(path, next);
-    if (src.files !== undefined) {
-      if (files === null) files = new Map(src.files);
-      files.set(path, { name: path, text });
-    }
-    if (path === src.geometryFile.name) {
-      primaryPatch = { geometry: next, geometryFile: { ...src.geometryFile, text } };
-    }
+    files.set(path, serializeGeometry(next));
   }
-  if (geometries === null) return src;
-  return {
-    ...src,
-    geometries,
-    ...(files !== null && { files }),
-    ...(primaryPatch !== null && primaryPatch),
-  };
+  if (geometries === null || files === null) return src;
+  return { ...src, geometries, files };
 }
 
 // Rewrite every resolved external animation (§6.3) with `fn`, updating
@@ -148,22 +117,39 @@ export function rewriteExternalAnims(
 ): LoadedSource {
   if (src.externalAnims === undefined) return src;
   let anims: Map<string, { path: string; anim: InlineAnimation }> | null = null;
-  let files: Map<string, FileEntry> | null = null;
+  let files: Map<string, string> | null = null;
   for (const [clip, rec] of src.externalAnims) {
     const built = fn(rec.anim);
     if (built === null || built === rec.anim) continue;
     if (anims === null) anims = new Map(src.externalAnims);
+    if (files === null) files = new Map(src.files);
     anims.set(clip, { path: rec.path, anim: built });
-    if (src.files !== undefined) {
-      if (files === null) files = new Map(src.files);
-      files.set(rec.path, {
-        name: rec.path,
-        text: JSON.stringify(built, null, 2) + '\n',
-      });
-    }
+    files.set(rec.path, JSON.stringify(built, null, 2) + '\n');
   }
-  if (anims === null) return src;
-  return { ...src, externalAnims: anims, ...(files !== null && { files }) };
+  if (anims === null || files === null) return src;
+  return { ...src, externalAnims: anims, files };
+}
+
+// ── accessors ──────────────────────────────────────────────────────────
+// `files` is the only text store and `geometries` the only AST store, so
+// these are lookups rather than the "which copy is newer" adjudication the
+// primary/manifest side-slots used to require.
+
+// The primary geometry's AST. Defined by construction: the loader refuses a
+// package whose primary does not parse, and a live edit only amends the AST
+// once the new text parses, so the last good one stands in meanwhile.
+export function primaryGeometry(src: LoadedSource): Geometry {
+  return src.geometries.get(src.primaryPath)!;
+}
+
+export function fileText(src: LoadedSource, path: string): string | undefined {
+  return src.files.get(path);
+}
+
+export function manifestText(src: LoadedSource): string | undefined {
+  return src.manifestPath === undefined
+    ? undefined
+    : src.files.get(src.manifestPath);
 }
 
 // Canonical text for cuboidy.json.
@@ -181,19 +167,19 @@ export function withManifest(
   src: LoadedSource,
   manifest: Manifest,
 ): LoadedSource {
-  const base = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
-  return {
-    ...src,
-    manifest,
-    manifestFile: { ...base, text: manifestJson(manifest) },
-  };
+  const path = src.manifestPath ?? 'cuboidy.json';
+  const files = new Map(src.files);
+  files.set(path, manifestJson(manifest));
+  return { ...src, files, manifestPath: path, manifest };
 }
 
 // The typing path: record cuboidy.json's text WITHOUT touching the AST,
 // which the debounced re-parse lands separately once the text parses.
 export function withManifestText(src: LoadedSource, text: string): LoadedSource {
-  const base = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
-  return { ...src, manifestFile: { ...base, text } };
+  const path = src.manifestPath ?? 'cuboidy.json';
+  const files = new Map(src.files);
+  files.set(path, text);
+  return { ...src, files, manifestPath: path };
 }
 
 // Write one package file's text.
@@ -202,9 +188,8 @@ export function writeFile(
   path: string,
   text: string,
 ): LoadedSource {
-  if (src.files === undefined) return src;
   const files = new Map(src.files);
-  files.set(path, { name: path, text });
+  files.set(path, text);
   return { ...src, files };
 }
 
@@ -221,21 +206,8 @@ export function sharesPalette(geometry: Geometry, ref: string): boolean {
   );
 }
 
-// Every (path, AST) pair in the model, with the LIVE primary preferred over
-// its load-time snapshot — the same rule mergeGeometries applies.
-export function geometryEntries(src: LoadedSource): Array<[string, Geometry]> {
-  if (src.geometries === undefined) {
-    return [[src.geometryFile.name, src.geometry]];
-  }
-  return [...src.geometries].map(([path, g]) => [
-    path,
-    path === src.geometryFile.name ? src.geometry : g,
-  ]);
-}
-
 export function geometryAt(src: LoadedSource, path: string): Geometry | undefined {
-  if (path === src.geometryFile.name) return src.geometry;
-  return src.geometries?.get(path);
+  return src.geometries.get(path);
 }
 
 // Every §7.4 palette path the model's geometry files currently point at.
@@ -246,8 +218,7 @@ export function geometryPaletteRefs(src: LoadedSource): ReadonlySet<string> {
   const add = (g: Geometry): void => {
     if (g.paletteRef !== undefined) out.add(normalizePath(g.paletteRef));
   };
-  add(src.geometry);
-  for (const g of src.geometries?.values() ?? []) add(g);
+  for (const g of src.geometries.values()) add(g);
   return out;
 }
 
@@ -288,14 +259,13 @@ export function renameFileInSource(
   from: string,
   to: string,
 ): LoadedSource | null {
-  if (src.files === undefined) return null;
   if (from === to || to === '' || to.startsWith('../')) return null;
-  if (src.manifestFile?.name === from) return null; // the anchor
-  if (src.files.has(to) || src.manifestFile?.name === to) return null;
-  const entry = src.files.get(from);
-  if (entry === undefined) return null;
-  const isPrimary = src.geometryFile.name === from;
-  const inGeometry = src.geometries?.has(from) === true;
+  if (src.manifestPath === from) return null; // the anchor
+  if (src.files.has(to)) return null;
+  const text = src.files.get(from);
+  if (text === undefined) return null;
+  const isPrimary = src.primaryPath === from;
+  const inGeometry = src.geometries.has(from);
   // Geometry renames must be recorded in the manifest — without one the
   // loader can't find the file next time. And a reference keeps its §8
   // extension.
@@ -314,22 +284,19 @@ export function renameFileInSource(
 
   const files = new Map(src.files);
   files.delete(from);
-  files.set(to, { name: to, text: entry.text });
+  files.set(to, text);
   const removedFiles = new Set(src.removedFiles ?? []);
   removedFiles.add(from);
   removedFiles.delete(to);
   let next: LoadedSource = { ...src, files, removedFiles };
 
-  if (src.geometries?.has(from) === true) {
+  if (inGeometry) {
     const geometries = new Map(src.geometries);
-    const geometry = geometries.get(from)!;
+    geometries.set(to, geometries.get(from)!);
     geometries.delete(from);
-    geometries.set(to, geometry);
     next = { ...next, geometries };
   }
-  if (isPrimary) {
-    next = { ...next, geometryFile: { ...src.geometryFile, name: to } };
-  }
+  if (isPrimary) next = { ...next, primaryPath: to };
   // Keep the resolved externalAnims records pointing at the new path —
   // timeline edits write through `rec.path`, so a stale one would
   // resurrect the old file and orphan the manifest's ref.
@@ -370,17 +337,7 @@ export function renameFileInSource(
         changed = true;
       }
     }
-    if (changed) {
-      const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
-      next = {
-        ...next,
-        manifest: m,
-        manifestFile: {
-          ...baseFile,
-          text: JSON.stringify(m, null, 2) + '\n',
-        },
-      };
-    }
+    if (changed) next = withManifest(next, m);
   }
   // A palette file rename is followed by the geometry files that point
   // at it, in this same step (one undo).
@@ -397,7 +354,6 @@ export function moveFolderInSource(
   from: string,
   newDir: string,
 ): LoadedSource | null {
-  if (src.files === undefined) return null;
   if (newDir === from || newDir === '') return null;
   if (newDir.startsWith(`${from}/`)) return null; // into itself
   const prefix = `${from}/`;
@@ -419,16 +375,15 @@ export function moveFolderInSource(
 // anchor or primary geometry) or already gone. Extracted from
 // handleDeleteFile so a folder delete can fold it over the subtree.
 export function deleteFileInSource(src: LoadedSource, p: string): LoadedSource | null {
-  if (src.files === undefined) return null;
-  if (src.manifestFile?.name === p) return null; // the anchor
-  if (src.geometryFile.name === p) return null; // primary geometry
+  if (src.manifestPath === p) return null; // the anchor
+  if (src.primaryPath === p) return null; // primary geometry
   if (!src.files.has(p)) return null;
   const files = new Map(src.files);
   files.delete(p);
   const removedFiles = new Set(src.removedFiles ?? []);
   removedFiles.add(p);
   let next: LoadedSource = { ...src, files, removedFiles };
-  if (src.geometries?.has(p) === true) {
+  if (src.geometries.has(p)) {
     const geometries = new Map(src.geometries);
     geometries.delete(p);
     next = { ...next, geometries };
@@ -482,17 +437,7 @@ export function deleteFileInSource(src: LoadedSource, p: string): LoadedSource |
         changed = true;
       }
     }
-    if (changed) {
-      const baseFile = src.manifestFile ?? { name: 'cuboidy.json', text: '' };
-      next = {
-        ...next,
-        manifest: m,
-        manifestFile: {
-          ...baseFile,
-          text: JSON.stringify(m, null, 2) + '\n',
-        },
-      };
-    }
+    if (changed) next = withManifest(next, m);
   }
   // Deleting the palette file itself: the geometry files that pointed at
   // it keep the colors they last resolved, written back out inline.

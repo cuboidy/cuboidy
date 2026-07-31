@@ -31,7 +31,7 @@ declare global {
 //
 // Pre-edit phase note: until the editor mutates the loaded AST, save
 // just round-trips the original text bytes. When edits land, the
-// dirty-tracking layer will swap `source.geometryFile.text` for a fresh
+// dirty-tracking layer will swap `(fileText(source, source.primaryPath) ?? '')` for a fresh
 // serialize. This file doesn't need to change at that point — it
 // already takes text and writes text.
 
@@ -42,16 +42,9 @@ export async function saveToFolder(
     throw new Error('No folder handle — cannot save in place');
   }
   await ensureReadwritePermission(source.handle);
-  // Whole package (v0.7): every collected file, with the live-edited
-  // pair overriding their load-time snapshots.
-  const files = new Map<string, string>();
-  if (source.files !== undefined) {
-    for (const [path, entry] of source.files) files.set(path, entry.text);
-  }
-  files.set(source.geometryFile.name, source.geometryFile.text);
-  if (source.manifestFile !== undefined) {
-    files.set(source.manifestFile.name, source.manifestFile.text);
-  }
+  // Whole package: `files` holds every file including the primary
+  // geometry and the manifest, so there is nothing to override.
+  const files = source.files;
   for (const [path, text] of files) {
     await writeTextFile(source.handle, path, text);
   }
@@ -72,19 +65,10 @@ export async function downloadAsZip(
   source: LoadedSource,
   zipName: string,
 ): Promise<void> {
-  // Whole package (v0.7): every file collected at load, with the two
-  // live-edited files overriding their load-time snapshots — so extra
-  // geometry files, palette.json and anims/ survive the round-trip.
+  // Whole package: every file collected at load, so extra geometry
+  // files, palette.json and anims/ survive the round-trip.
   const files: Zippable = {};
-  if (source.files !== undefined) {
-    for (const [path, entry] of source.files) {
-      files[path] = strToU8(entry.text);
-    }
-  }
-  files[source.geometryFile.name] = strToU8(source.geometryFile.text);
-  if (source.manifestFile !== undefined) {
-    files[source.manifestFile.name] = strToU8(source.manifestFile.text);
-  }
+  for (const [path, text] of source.files) files[path] = strToU8(text);
   const bytes = await zipAsync(files);
   // fflate returns `Uint8Array<ArrayBufferLike>`; lib.dom's Blob ctor
   // wants `BufferSource` (which excludes SharedArrayBuffer-backed views).

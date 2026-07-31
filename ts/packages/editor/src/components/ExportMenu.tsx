@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import type { LoadedSource } from '../lib/types.js';
+import { fileText, manifestText } from '../lib/source-ops.js';
 import { downloadAsZip, downloadFile } from '../lib/save.js';
 
 interface Props {
@@ -46,13 +47,13 @@ export function ExportMenu({ source }: Props) {
   const close = useCallback(() => setOpen(false), []);
 
   const handleDownloadGeometry = useCallback(() => {
-    downloadFile(source.geometryFile.name, source.geometryFile.text);
+    downloadFile(source.primaryPath, (fileText(source, source.primaryPath) ?? ''));
     close();
   }, [source, close]);
 
   const handleDownloadManifest = useCallback(() => {
-    if (source.manifestFile !== undefined) {
-      downloadFile(source.manifestFile.name, source.manifestFile.text);
+    if (source.manifestPath !== undefined) {
+      downloadFile(source.manifestPath, (manifestText(source) ?? ''));
     }
     close();
   }, [source, close]);
@@ -66,7 +67,7 @@ export function ExportMenu({ source }: Props) {
   }, [source, close]);
 
   const isFolder = source.folderName !== undefined;
-  const hasManifest = source.manifestFile !== undefined;
+  const hasManifest = source.manifestPath !== undefined;
 
   return (
     <div className="export-menu" ref={containerRef}>
@@ -88,7 +89,7 @@ export function ExportMenu({ source }: Props) {
             role="menuitem"
             onClick={handleDownloadGeometry}
           >
-            Download {source.geometryFile.name}
+            Download {source.primaryPath}
           </button>
           {hasManifest && (
             <button
@@ -97,7 +98,7 @@ export function ExportMenu({ source }: Props) {
               role="menuitem"
               onClick={handleDownloadManifest}
             >
-              Download {source.manifestFile?.name ?? 'cuboidy.json'}
+              Download {source.manifestPath ?? 'cuboidy.json'}
             </button>
           )}
           {isFolder && (

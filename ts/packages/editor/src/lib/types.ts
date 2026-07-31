@@ -15,15 +15,18 @@ import type {
 // places now read `folderName`, and everything else just reads the
 // optional field it cares about.
 //
-// The source carries the originating file text alongside the parsed AST
-// so the editor can re-export untouched files verbatim (preserving raw
-// formatting the parser dropped). A structural edit re-serializes the
-// AST into that text; a source-panel edit reparses the text into the AST.
-
-export interface FileEntry {
-  name: string;
-  text: string;
-}
+// ONE text store. `files` holds every file in the package, INCLUDING the
+// primary geometry and the manifest; `primaryPath` / `manifestPath` just
+// name which entries those are. Previously each of those two lived in a
+// second slot of its own (`geometryFile` / `manifestFile`) that shadowed
+// the map, so every reader had to adjudicate which copy was newer —
+// `path === src.geometryFile.name ? src.geometry : g` and its friends —
+// and every writer had to update both. That whole question is gone.
+//
+// The text is kept alongside the parsed AST so untouched files re-export
+// verbatim (preserving formatting the parser drops). A structural edit
+// re-serializes the AST into the text; a source-panel edit reparses the
+// text into the AST.
 
 export interface LoadedSource {
   // The package's display name (the Files tree root). ABSENT means the
@@ -38,22 +41,21 @@ export interface LoadedSource {
   // FSA-aware drop or showDirectoryPicker on Chrome/Edge populates
   // this. When present, Save can write back to the original folder.
   handle?: FileSystemDirectoryHandle;
-  geometry: Geometry;
-  geometryFile: FileEntry;
-  // Optional: a folder containing only voxels.json (no cuboidy.json) is
-  // a valid load, as is a bare geometry file.
+  // Every text file in the package, keyed by /-relative path. The single
+  // store: nothing else holds a file's bytes.
+  files: ReadonlyMap<string, string>;
+  // Which entry is the model's primary geometry — the file the geometry
+  // panel edits, and the one the loader falls back to without a manifest.
+  primaryPath: string;
+  // Which entry is cuboidy.json. Absent for a package that has no manifest
+  // (a folder holding only voxels.json, or a bare geometry file).
+  manifestPath?: string;
   manifest?: Manifest;
-  manifestFile?: FileEntry;
   manifestError?: string;
-  // ── v0.7 project layer (SPEC §6.9/§6.10), populated at load ──
-  // Every text file in the package, keyed by /-relative path. The two
-  // LIVE-edited files above (geometryFile / manifestFile) hold the current
-  // text; this map holds the load-time snapshot of everything else.
-  // Absent on synthetic packages (they have no other files).
-  files?: ReadonlyMap<string, FileEntry>;
-  // All geometry files that parsed, keyed by their (normalized)
-  // manifest `geometry` ref. Includes the primary (= geometryFile) entry.
-  geometries?: ReadonlyMap<string, Geometry>;
+  // All geometry files that parsed, keyed by their (normalized) manifest
+  // `geometry` ref, INCLUDING the primary. §7.4 palette references are
+  // already resolved into each one.
+  geometries: ReadonlyMap<string, Geometry>;
   // Resolved external animations (§6.3 string refs), keyed by CLIP
   // name. The manifest keeps the reference path; clip edits
   // re-serialize into the referenced file (files map), never into

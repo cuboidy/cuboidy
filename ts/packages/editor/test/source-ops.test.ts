@@ -14,6 +14,8 @@ import {
   remapPartPalette,
   renameFileInSource,
   repointPaletteRef,
+  manifestText,
+  primaryGeometry,
   uniquePartName,
   withManifest,
   withManifestText,
@@ -71,19 +73,16 @@ function pkg(files: Record<string, string>, primary = 'voxels.json'): LoadedSour
     path: primary,
     geometry: geom(primaryText),
   });
+  const geometries = new Map(refs.geometries);
+  if (!geometries.has(primary)) geometries.set(primary, geom(primaryText));
   return {
     folderName: 'pkg',
     synthetic: false,
-    geometry: refs.geometries.get(primary) ?? geom(primaryText),
-    geometryFile: { name: primary, text: primaryText },
-    ...(manifest !== undefined && {
-      manifest,
-      manifestFile: { name: MANIFEST, text: manifestText! },
-    }),
-    files: new Map(
-      Object.entries(files).map(([p, text]) => [p, { name: p, text }]),
-    ),
-    geometries: refs.geometries,
+    files: new Map(Object.entries(files)),
+    primaryPath: primary,
+    ...(manifestText !== undefined && { manifestPath: MANIFEST }),
+    ...(manifest !== undefined && { manifest }),
+    geometries,
     ...(refs.externalAnims !== undefined && { externalAnims: refs.externalAnims }),
   };
 }
@@ -127,7 +126,7 @@ describe('mergeGeometries', () => {
     expect(files.get('dup')).toBe('a.json');
   });
 
-  it("prefers the primary's live AST over its load-time snapshot", () => {
+  it('reads the primary from the one AST store, like any other file', () => {
     const src = pkg({
       [MANIFEST]: manifestJson({
         name: 'm',
@@ -136,11 +135,9 @@ describe('mergeGeometries', () => {
       }),
       'body.json': GEO([{ name: 'body', voxels: '0' }], ['#FF0000']),
     }, 'body.json');
-    const edited: LoadedSource = {
-      ...src,
-      geometry: geom(GEO([{ name: 'live', voxels: '0' }], ['#FF0000'])),
-    };
-    expect(mergeGeometries(edited).parts.map((p) => p.name)).toEqual(['live']);
+    // There is no second slot to disagree with it any more.
+    expect(primaryGeometry(src)).toBe(src.geometries.get('body.json'));
+    expect(mergeGeometries(src).parts.map((p) => p.name)).toEqual(['body']);
   });
 });
 
@@ -166,12 +163,12 @@ describe('mapGeometryFiles', () => {
     const next = mapGeometryFiles(s, (g, path) =>
       path === 'body.json' ? { ...g, parts: [] } : null,
     );
-    expect(next.geometries?.get('body.json')?.parts).toEqual([]);
-    expect(next.geometry.parts).toEqual([]); // the live primary
-    expect(next.files?.get('body.json')?.text).not.toContain('"body"');
-    expect(next.geometryFile.text).toBe(next.files?.get('body.json')?.text);
+    expect(next.geometries.get('body.json')?.parts).toEqual([]);
+    expect(primaryGeometry(next).parts).toEqual([]); // the live primary
+    expect(next.files.get('body.json')).not.toContain('"body"');
+    expect(next.files.get(next.primaryPath)).toBe(next.files.get('body.json'));
     // Untouched files keep their identity.
-    expect(next.geometries?.get('limbs.json')).toBe(s.geometries?.get('limbs.json'));
+    expect(next.geometries.get('limbs.json')).toBe(s.geometries.get('limbs.json'));
   });
 
   it('rewrites a NON-primary file without disturbing the primary', () => {
@@ -179,9 +176,9 @@ describe('mapGeometryFiles', () => {
     const next = mapGeometryFiles(s, (g, path) =>
       path === 'limbs.json' ? { ...g, parts: [] } : null,
     );
-    expect(next.geometry).toBe(s.geometry);
-    expect(next.geometryFile).toBe(s.geometryFile);
-    expect(next.files?.get('limbs.json')?.text).not.toContain('"arm"');
+    expect(primaryGeometry(next)).toBe(primaryGeometry(s));
+    expect(next.primaryPath).toBe(s.primaryPath);
+    expect(next.files.get('limbs.json')).not.toContain('"arm"');
   });
 });
 
@@ -203,18 +200,18 @@ describe('repointPaletteRef', () => {
   it('re-points every file sharing the palette', () => {
     const next = repointPaletteRef(shared(), 'palette.json', 'skins/dark.json');
     for (const path of ['body.json', 'limbs.json']) {
-      expect(next.geometries?.get(path)?.paletteRef).toBe('skins/dark.json');
-      expect(next.files?.get(path)?.text).toContain('skins/dark.json');
+      expect(next.geometries.get(path)?.paletteRef).toBe('skins/dark.json');
+      expect(next.files.get(path)).toContain('skins/dark.json');
     }
   });
 
   it('dropping the reference writes the resolved colors back inline', () => {
     // Better than leaving a dangling reference, which cannot load at all.
     const next = repointPaletteRef(shared(), 'palette.json', null);
-    const g = next.geometries?.get('body.json');
+    const g = next.geometries.get('body.json');
     expect(g?.paletteRef).toBeUndefined();
     expect(g?.palette).toHaveLength(2);
-    expect(next.files?.get('body.json')?.text).toContain('#FF0000');
+    expect(next.files.get('body.json')).toContain('#FF0000');
   });
 
   it('leaves files pointing somewhere else alone', () => {
@@ -279,9 +276,9 @@ describe('renameFileInSource', () => {
     const next = renameFileInSource(full(), 'limbs.json', 'arms.json');
     expect(next).not.toBeNull();
     expect(next!.manifest?.geometry).toEqual(['body.json', 'arms.json']);
-    expect(next!.manifestFile?.text).toContain('arms.json');
-    expect(next!.geometries?.has('arms.json')).toBe(true);
-    expect(next!.geometries?.has('limbs.json')).toBe(false);
+    expect(manifestText(next!)).toContain('arms.json');
+    expect(next!.geometries.has('arms.json')).toBe(true);
+    expect(next!.geometries.has('limbs.json')).toBe(false);
     expect(next!.removedFiles?.has('limbs.json')).toBe(true);
   });
 
@@ -289,8 +286,8 @@ describe('renameFileInSource', () => {
     const next = renameFileInSource(full(), 'palette.json', 'skin.json');
     expect(next).not.toBeNull();
     for (const path of ['body.json', 'limbs.json']) {
-      expect(next!.geometries?.get(path)?.paletteRef).toBe('skin.json');
-      expect(next!.files?.get(path)?.text).toContain('skin.json');
+      expect(next!.geometries.get(path)?.paletteRef).toBe('skin.json');
+      expect(next!.files.get(path)).toContain('skin.json');
     }
     // The manifest never mentioned the palette, so it is untouched.
     expect(next!.manifest?.geometry).toEqual(['body.json', 'limbs.json']);
@@ -307,7 +304,7 @@ describe('renameFileInSource', () => {
   it('renames the primary geometry, following it into the manifest', () => {
     const next = renameFileInSource(full(), 'body.json', 'torso.json');
     expect(next).not.toBeNull();
-    expect(next!.geometryFile.name).toBe('torso.json');
+    expect(next!.primaryPath).toBe('torso.json');
     expect(next!.manifest?.geometry).toEqual(['torso.json', 'limbs.json']);
   });
 
@@ -330,7 +327,7 @@ describe('renameFileInSource', () => {
   it('allows renaming an unreferenced file freely', () => {
     const next = renameFileInSource(full(), 'README.md', 'docs/NOTES.txt');
     expect(next).not.toBeNull();
-    expect(next!.files?.has('docs/NOTES.txt')).toBe(true);
+    expect(next!.files.has('docs/NOTES.txt')).toBe(true);
   });
 
   it('refuses to rename a geometry file with no manifest to record it', () => {
@@ -363,8 +360,8 @@ describe('moveFolderInSource', () => {
   it('moves every file under the folder and follows the references', () => {
     const next = moveFolderInSource(withFolder(), 'gear', 'parts/gear');
     expect(next).not.toBeNull();
-    expect(next!.files?.has('parts/gear/hat.json')).toBe(true);
-    expect(next!.files?.has('parts/gear/notes.md')).toBe(true);
+    expect(next!.files.has('parts/gear/hat.json')).toBe(true);
+    expect(next!.files.has('parts/gear/notes.md')).toBe(true);
     expect(next!.manifest?.geometry).toEqual(['voxels.json', 'parts/gear/hat.json']);
   });
 
@@ -412,7 +409,7 @@ describe('deleteFileInSource', () => {
     const next = deleteFileInSource(full(), 'limbs.json');
     expect(next).not.toBeNull();
     expect(next!.manifest?.geometry).toEqual(['body.json']);
-    expect(next!.geometries?.has('limbs.json')).toBe(false);
+    expect(next!.geometries.has('limbs.json')).toBe(false);
     expect(next!.removedFiles?.has('limbs.json')).toBe(true);
   });
 
@@ -420,10 +417,10 @@ describe('deleteFileInSource', () => {
     const next = deleteFileInSource(full(), 'palette.json');
     expect(next).not.toBeNull();
     for (const path of ['body.json', 'limbs.json']) {
-      const g = next!.geometries?.get(path);
+      const g = next!.geometries.get(path);
       expect(g?.paletteRef).toBeUndefined();
       expect(g?.palette).toHaveLength(2);
-      expect(next!.files?.get(path)?.text).toContain('#FF0000');
+      expect(next!.files.get(path)).toContain('#FF0000');
     }
   });
 
@@ -469,11 +466,11 @@ describe('withManifest / withManifestText / writeFile', () => {
       manifestJson({ name: 'renamed', parts: [{ name: 'p' }] }),
     ));
     expect(next.manifest?.name).toBe('renamed');
-    expect(next.manifestFile?.text).toBe(
+    expect(manifestText(next)).toBe(
       JSON.stringify({ name: 'renamed', parts: [{ name: 'p' }] }, null, 2) + '\n',
     );
     // The AST and the bytes agree — that is the whole point of the helper.
-    expect(JSON.parse(next.manifestFile!.text)).toEqual(next.manifest);
+    expect(JSON.parse(manifestText(next)!)).toEqual(next.manifest);
   });
 
   it('creates the manifest file for a package that has none yet', () => {
@@ -482,7 +479,7 @@ describe('withManifest / withManifestText / writeFile', () => {
     const next = withManifest(bare, manifestOf(
       manifestJson({ name: 'fresh', parts: [{ name: 'p' }] }),
     ));
-    expect(next.manifestFile?.name).toBe(MANIFEST);
+    expect(next.manifestPath).toBe(MANIFEST);
     expect(next.manifest?.name).toBe('fresh');
   });
 
@@ -491,14 +488,14 @@ describe('withManifest / withManifestText / writeFile', () => {
     // the debounced re-parse lands the AST separately once it parses.
     const s = src();
     const next = withManifestText(s, '{ broken');
-    expect(next.manifestFile?.text).toBe('{ broken');
+    expect(manifestText(next)).toBe('{ broken');
     expect(next.manifest).toBe(s.manifest);
   });
 
   it('writeFile replaces one path and leaves the rest identical', () => {
     const s = src();
     const next = writeFile(s, 'notes.md', 'hello\n');
-    expect(next.files?.get('notes.md')?.text).toBe('hello\n');
-    expect(next.files?.get('voxels.json')).toBe(s.files?.get('voxels.json'));
+    expect(next.files.get('notes.md')).toBe('hello\n');
+    expect(next.files.get('voxels.json')).toBe(s.files.get('voxels.json'));
   });
 });

@@ -98,13 +98,15 @@ import {
 import {
   deleteFileInSource,
   geometryAt,
-  geometryEntries,
+  fileText,
   geometryPaletteRefs,
+  manifestText,
   mapGeometryFiles,
   mergeGeometries,
   moveFolderInSource,
   paletteFileText,
   pathBasename,
+  primaryGeometry,
   remapPartPalette,
   renameFileInSource,
   rewriteExternalAnims,
@@ -112,6 +114,7 @@ import {
   uniquePartName,
   withManifest,
   withManifestText,
+  writeFile,
 } from './lib/source-ops.js';
 import { synthesizeManifest } from './lib/synthesize-manifest.js';
 import { useAnimationSession } from './lib/useAnimationSession.js';
@@ -242,11 +245,11 @@ export function App() {
     dispatch({
       type: 'amend',
       apply: (current) => {
-        if (current?.source === undefined) return current;
-        return {
-          ...current,
-          source: { ...current.source, geometry: result.value },
-        };
+        const src = current?.source;
+        if (src === undefined) return current;
+        const geometries = new Map(src.geometries);
+        geometries.set(src.primaryPath, result.value);
+        return { ...current, source: { ...src, geometries } };
       },
     });
     return true;
@@ -263,7 +266,7 @@ export function App() {
     reparseGeometryTimer.current = null;
     const src = loadedRef.current?.source;
     if (src === undefined) return true;
-    return landGeometryReparse(src.geometryFile.text);
+    return landGeometryReparse((fileText(src, src.primaryPath) ?? ''));
   }, [landGeometryReparse]);
 
   // Manifest counterpart of landGeometryReparse: parse + amend with a full
@@ -290,8 +293,8 @@ export function App() {
         const src = current.source;
         const refs = resolveProjectRefs(
           result.value,
-          (p) => src.files?.get(p)?.text,
-          { path: src.geometryFile.name, geometry: src.geometry },
+          (p) => src.files.get(p),
+          { path: src.primaryPath, geometry: primaryGeometry(src) },
         );
         // Destructure away the maybe-now-absent keys (a successful
         // reparse also clears any stale load-time manifest error).
@@ -302,14 +305,12 @@ export function App() {
           ...rest
         } = src;
         // A changed geometry list can pull a different primary AST in.
-        const primaryNext = refs.geometries.get(src.geometryFile.name);
         return {
           ...current,
           source: {
             ...rest,
             manifest: result.value,
             geometries: refs.geometries,
-            ...(primaryNext !== undefined && { geometry: primaryNext }),
             ...(refs.externalAnims !== undefined && {
               externalAnims: refs.externalAnims,
             }),
@@ -329,7 +330,7 @@ export function App() {
     reparseManifestTimer.current = null;
     const src = loadedRef.current?.source;
     if (src === undefined) return true;
-    const text = src.manifestFile?.text;
+    const text = manifestText(src);
     if (text === undefined) return true;
     return landManifestReparse(text);
   }, [landManifestReparse]);
@@ -420,10 +421,7 @@ export function App() {
       dispatchEdit('text:geometry', (current) => {
         if (current?.source === undefined) return current;
         const src = current.source;
-        return {
-          ...current,
-          source: { ...src, geometryFile: { ...src.geometryFile, text: nextText } },
-        };
+        return { ...current, source: writeFile(src, src.primaryPath, nextText) };
       });
       cancelPendingGeometryReparse();
       reparseGeometryTimer.current = window.setTimeout(() => {
@@ -471,7 +469,7 @@ export function App() {
       const current = loadedRef.current?.source;
       const isGeometry =
         current !== undefined &&
-        isGeometryPath(path, current.geometryFile.name, current.manifest);
+        isGeometryPath(path, current.primaryPath, current.manifest);
       if (isGeometry) {
         const r = parseGeometryText(text);
         if (!r.ok) {
@@ -485,7 +483,7 @@ export function App() {
             const src = current?.source;
             if (
               src === undefined ||
-              src.geometries?.has(path) !== true
+              src.geometries.has(path) !== true
             ) {
               return current;
             }
@@ -563,11 +561,8 @@ export function App() {
         ) {
           return current;
         }
-        const prev = src.files.get(path);
-        if (prev === undefined) return current;
-        const files = new Map(src.files);
-        files.set(path, { ...prev, text: nextText });
-        return { ...current, source: { ...src, files } };
+        if (!src.files.has(path)) return current;
+        return { ...current, source: writeFile(src, path, nextText) };
       });
       const timers = fileReparseTimers.current;
       const existing = timers.get(path);
@@ -597,7 +592,7 @@ export function App() {
     if (src === undefined) return true;
     let ok = true;
     for (const path of paths) {
-      const text = src.files?.get(path)?.text;
+      const text = src.files.get(path);
       if (text === undefined) continue;
       if (!reparseFileNow(path, text)) ok = false;
     }
@@ -650,12 +645,9 @@ export function App() {
         const withColors = mapGeometryFiles(src, (g) =>
           sharesPalette(g, ref) ? { ...g, palette: next } : null,
         );
-        const files =
-          withColors.files !== undefined ? new Map(withColors.files) : undefined;
-        files?.set(ref, { name: ref, text: paletteFileText(next) });
         return {
           ...current,
-          source: { ...withColors, ...(files !== undefined && { files }) },
+          source: writeFile(withColors, ref, paletteFileText(next)),
         };
       });
     },
@@ -683,7 +675,7 @@ export function App() {
         const inScope = (g: Geometry, path: string): boolean =>
           ref === undefined ? path === file : sharesPalette(g, ref);
 
-        for (const [path, g] of geometryEntries(src)) {
+        for (const [path, g] of src.geometries) {
           if (!inScope(g, path)) continue;
           for (const part of g.parts) {
             for (const layer of part.voxels) {
@@ -715,12 +707,9 @@ export function App() {
           return { ...g, parts, palette: nextPalette };
         });
         if (ref === undefined) return { ...current, source: nextSrc };
-        const files =
-          nextSrc.files !== undefined ? new Map(nextSrc.files) : undefined;
-        files?.set(ref, { name: ref, text: paletteFileText(nextPalette) });
         return {
           ...current,
-          source: { ...nextSrc, ...(files !== undefined && { files }) },
+          source: writeFile(nextSrc, ref, paletteFileText(nextPalette)),
         };
       });
     },
@@ -745,11 +734,8 @@ export function App() {
         const nextSrc = mapGeometryFiles(src, (g, at) =>
           at === file ? { ...g, paletteRef: path } : null,
         );
-        const files = new Map(nextSrc.files ?? src.files);
-        files.set(path, {
-          name: path,
-          text: paletteFileText(geometry.palette),
-        });
+        const files = new Map(nextSrc.files);
+        files.set(path, paletteFileText(geometry.palette));
         return { ...current, source: { ...nextSrc, files } };
       });
     },
@@ -796,8 +782,8 @@ export function App() {
         if (norm === '' || norm.startsWith('../')) return current;
         if (
           src.files.has(norm) ||
-          src.geometryFile.name === norm ||
-          src.manifestFile?.name === norm
+          src.primaryPath === norm ||
+          src.manifestPath === norm
         ) {
           return current;
         }
@@ -836,13 +822,13 @@ export function App() {
           text = norm.toLowerCase().endsWith('.json') ? '{}\n' : '';
         }
         const files = new Map(src.files);
-        files.set(norm, { name: norm, text });
+        files.set(norm, text);
         const removedFiles = new Set(src.removedFiles ?? []);
         removedFiles.delete(norm); // re-creating a removed path revives it
         let next: typeof src = { ...src, files, removedFiles };
         if (isGeometry && parsed !== null) {
           const geometries = new Map(
-            src.geometries ?? [[src.geometryFile.name, src.geometry]],
+            src.geometries ?? [[src.primaryPath, primaryGeometry(src)]],
           );
           geometries.set(norm, parsed);
           next = { ...next, geometries };
@@ -885,21 +871,19 @@ export function App() {
         const nextManifest: Manifest = { ...src.manifest, geometry };
         const refs = resolveProjectRefs(
           nextManifest,
-          (p) => src.files?.get(p)?.text,
-          { path: src.geometryFile.name, geometry: src.geometry },
+          (p) => src.files.get(p),
+          { path: src.primaryPath, geometry: primaryGeometry(src) },
         );
         const {
           externalAnims: _anims,
           projectErrors: _proj,
           ...rest
         } = src;
-        const primaryNext = refs.geometries.get(src.geometryFile.name);
         return {
           ...current,
           source: {
             ...withManifest(rest, nextManifest),
             geometries: refs.geometries,
-            ...(primaryNext !== undefined && { geometry: primaryNext }),
             ...(refs.externalAnims !== undefined && {
               externalAnims: refs.externalAnims,
             }),
@@ -1174,7 +1158,7 @@ export function App() {
         if (source === undefined || m.parts.some((p) => p.name === newName)) {
           return current;
         }
-        const file = m.files.get(sourceName) ?? src.geometryFile.name;
+        const file = m.files.get(sourceName) ?? src.primaryPath;
         const newPart = make(source, newName);
         const nextSrc = mapGeometryFiles(src, (geometry, path) =>
           path === file ? { ...geometry, parts: [...geometry.parts, newPart] } : null,
@@ -1224,13 +1208,13 @@ export function App() {
         // as it's still a loaded geometry file; else the primary.
         const target =
           file !== undefined &&
-          src.geometries?.has(file) === true
+          src.geometries.has(file) === true
             ? file
-            : src.geometryFile.name;
+            : src.primaryPath;
         const targetGeometry =
-          target !== src.geometryFile.name
-            ? (src.geometries?.get(target) ?? src.geometry)
-            : src.geometry;
+          target !== src.primaryPath
+            ? (src.geometries.get(target) ?? primaryGeometry(src))
+            : primaryGeometry(src);
         const seed = targetGeometry.palette.length > 0 ? 0 : AIR;
         const newPart: Part = {
           name,
@@ -1280,12 +1264,12 @@ export function App() {
         const fromPath = mergeGeometries(src).files.get(name);
         if (fromPath === undefined || fromPath === targetPath) return current;
         const fromGeometry =
-          fromPath === src.geometryFile.name
-            ? src.geometry
+          fromPath === src.primaryPath
+            ? primaryGeometry(src)
             : src.geometries.get(fromPath);
         const toGeometry =
-          targetPath === src.geometryFile.name
-            ? src.geometry
+          targetPath === src.primaryPath
+            ? primaryGeometry(src)
             : src.geometries.get(targetPath);
         if (fromGeometry === undefined || toGeometry === undefined) return current;
         const part = fromGeometry.parts.find((p) => p.name === name);
@@ -1918,20 +1902,19 @@ export function App() {
     dispatchEdit(null, (current) => {
       if (current?.source === undefined) return current;
       const src = current.source;
-      const manifest = synthesizeManifest(src.geometry, src.geometryFile.name);
-      const manifestText = JSON.stringify(manifest, null, 2) + '\n';
-      const manifestFile = { name: 'cuboidy.json', text: manifestText };
+      const manifest = synthesizeManifest(primaryGeometry(src), src.primaryPath);
       // A successful synthesis clears any stale load-time manifest error.
       const { manifestError: _dropped, ...rest } = src;
-      const next: LoadedSource = {
-        ...rest,
-        // A lone-file load becomes a package here, taking its name from
-        // the manifest just synthesized; a real folder keeps its own.
-        folderName: src.folderName ?? manifest.name,
-        synthetic: true,
+      const next = withManifest(
+        {
+          ...rest,
+          // A lone-file load becomes a package here, taking its name from
+          // the manifest just synthesized; a real folder keeps its own.
+          folderName: src.folderName ?? manifest.name,
+          synthetic: true,
+        },
         manifest,
-        manifestFile,
-      };
+      );
       return { ...current, source: next };
     });
     // View switches live OUTSIDE the apply closure — reducer appliers must
@@ -1970,18 +1953,11 @@ export function App() {
           if (built === rec.anim) return current;
           const externalAnims = new Map(src.externalAnims);
           externalAnims.set(animName, { path: rec.path, anim: built });
-          const files =
-            src.files !== undefined ? new Map(src.files) : undefined;
-          files?.set(rec.path, {
-            name: rec.path,
-            text: JSON.stringify(built, null, 2) + '\n',
-          });
           return {
             ...current,
             source: {
-              ...src,
+              ...writeFile(src, rec.path, JSON.stringify(built, null, 2) + '\n'),
               externalAnims,
-              ...(files !== undefined && { files }),
             },
           };
         }
@@ -2273,10 +2249,7 @@ export function App() {
         let n = 2;
         while (src.files.has(path)) path = `anims/${name}-${n++}.json`;
         const files = new Map(src.files);
-        files.set(path, {
-          name: path,
-          text: JSON.stringify(anim, null, 2) + '\n',
-        });
+        files.set(path, JSON.stringify(anim, null, 2) + '\n');
         const externalAnims = new Map(src.externalAnims ?? []);
         externalAnims.set(name, { path, anim });
         const animations = { ...src.manifest.animations, [name]: path };
@@ -2349,12 +2322,12 @@ export function App() {
       setManifestParseError(null);
       return;
     }
-    const geometryR = parseGeometryText(src.geometryFile.text);
+    const geometryR = parseGeometryText((fileText(src, src.primaryPath) ?? ''));
     setGeometryParseError(geometryR.ok ? null : geometryR.message);
-    if (src.manifestFile !== undefined) {
+    if (src.manifestPath !== undefined) {
       let err: string | null = null;
       try {
-        const r = parseManifest(JSON.parse(src.manifestFile.text));
+        const r = parseManifest(JSON.parse((manifestText(src) ?? '')));
         if (!r.ok) err = r.message;
       } catch (e) {
         err = `JSON parse: ${(e as Error).message}`;
@@ -2371,15 +2344,15 @@ export function App() {
     setFileParseErrors(() => {
       const next = new Map<string, string>();
       if (src.files === undefined) return next;
-      for (const [path, entry] of src.files) {
-        if (path === src.geometryFile.name) continue; // covered by geometryParseError
-        if (path === src.manifestFile?.name) continue;
-        if (isGeometryPath(path, src.geometryFile.name, src.manifest)) {
-          const r = parseGeometryText(entry.text);
+      for (const [path, text] of src.files) {
+        if (path === src.primaryPath) continue; // covered by geometryParseError
+        if (path === src.manifestPath) continue;
+        if (isGeometryPath(path, src.primaryPath, src.manifest)) {
+          const r = parseGeometryText(text);
           if (!r.ok) next.set(path, r.message);
         } else if (path.endsWith('.json')) {
           try {
-            JSON.parse(entry.text);
+            JSON.parse(text);
           } catch (e) {
             next.set(path, `JSON parse: ${(e as Error).message}`);
           }
@@ -2572,7 +2545,7 @@ export function App() {
   }, [source]);
   const modelGeometry = useMemo((): Geometry | undefined => {
     if (source === undefined || merged === undefined) return undefined;
-    return { palette: source.geometry.palette, parts: merged.parts };
+    return { palette: primaryGeometry(source).palette, parts: merged.parts };
   }, [source, merged]);
   // Per-part render palettes (SPEC §7.4): every part resolves against its
   // own defining file's palette. Only needed for multi-file models — with
@@ -2585,7 +2558,7 @@ export function App() {
     }
     const m = new Map<string, Palette>();
     for (const [path, g] of source.geometries) {
-      const geometry = path === source.geometryFile.name ? source.geometry : g;
+      const geometry = path === source.primaryPath ? primaryGeometry(source) : g;
       for (const part of geometry.parts) {
         if (!m.has(part.name)) m.set(part.name, geometry.palette);
       }
@@ -2602,8 +2575,8 @@ export function App() {
     const file =
       (effectiveSelectedPart !== null
         ? partFiles?.get(effectiveSelectedPart)
-        : undefined) ?? source.geometryFile.name;
-    const geometry = geometryAt(source, file) ?? source.geometry;
+        : undefined) ?? source.primaryPath;
+    const geometry = geometryAt(source, file) ?? primaryGeometry(source);
     return {
       file,
       palette: geometry.palette,
@@ -2645,12 +2618,9 @@ export function App() {
         case 'console':
           return 'Console';
         case 'geometry':
-          return source?.geometryFile.name ?? 'voxels.json';
+          return source?.primaryPath ?? 'voxels.json';
         case 'manifest':
-          return (
-            source?.manifestFile?.name ??
-            'cuboidy.json'
-          );
+          return source?.manifestPath ?? 'cuboidy.json';
         default:
           return id;
       }
@@ -2711,9 +2681,9 @@ export function App() {
       const src = loaded?.source;
       if (src === undefined) return;
       const id: LeafId =
-        path === src.geometryFile.name
+        path === src.primaryPath
           ? 'geometry'
-          : src.manifestFile?.name === path
+          : src.manifestPath === path
             ? 'manifest'
             : filePanel(path);
       setLayout((l) => openPanelById(l, id));
@@ -2733,11 +2703,11 @@ export function App() {
     if (
       mErr !== undefined &&
       mErr !== null &&
-      source.manifestFile !== undefined
+      source.manifestPath !== undefined
     ) {
-      m.set(source.manifestFile.name, mErr);
+      m.set(source.manifestPath, mErr);
     }
-    if (geometryParseError !== null) m.set(source.geometryFile.name, geometryParseError);
+    if (geometryParseError !== null) m.set(source.primaryPath, geometryParseError);
     return m;
   }, [source, fileParseErrors, geometryParseError, manifestParseError]);
 
@@ -2780,7 +2750,7 @@ export function App() {
     // tree opened that isn't the primary geometry / manifest pair.
     const fpath = filePanelPath(id);
     if (fpath !== null) {
-      const entry = source.files?.get(fpath);
+      const entry = source.files.get(fpath);
       if (entry === undefined) {
         return {
           title,
@@ -2793,7 +2763,7 @@ export function App() {
         fill: true,
         body: (
           <SourceEditor
-            text={entry.text}
+            text={entry}
             {...(err !== undefined && { parseError: err })}
             onChange={(t) => handleEditFileText(fpath, t)}
           />
@@ -2809,7 +2779,7 @@ export function App() {
         const stripPalette =
           (effectiveSelectedPart !== null
             ? partPalettes?.get(effectiveSelectedPart)
-            : undefined) ?? (modelGeometry ?? source.geometry).palette;
+            : undefined) ?? (modelGeometry ?? primaryGeometry(source)).palette;
         const clampedColor =
           stripPalette.length === 0
             ? -1
@@ -2876,7 +2846,7 @@ export function App() {
               {effectiveViewMode === 'anim' &&
               animManifest !== undefined ? (
                 <AnimationViewport
-                  geometry={modelGeometry ?? source.geometry}
+                  geometry={modelGeometry ?? primaryGeometry(source)}
                   manifest={animManifest}
                   hiddenParts={hiddenParts}
                   session={animSession}
@@ -2890,7 +2860,7 @@ export function App() {
                 />
               ) : (
                 <VoxelScene
-                  geometry={modelGeometry ?? source.geometry}
+                  geometry={modelGeometry ?? primaryGeometry(source)}
                   manifest={source.manifest}
                   viewMode={effectiveViewMode}
                   hiddenParts={hiddenParts}
@@ -2965,7 +2935,7 @@ export function App() {
           fill: true,
           body: (
             <SourceEditor
-              text={source.geometryFile.text}
+              text={(fileText(source, source.primaryPath) ?? '')}
               {...(geometryParseError !== null && { parseError: geometryParseError })}
               onChange={handleEditGeometryText}
             />
@@ -2976,9 +2946,9 @@ export function App() {
           title,
           fill: true,
           body:
-            source.manifestFile !== undefined ? (
+            source.manifestPath !== undefined ? (
               <SourceEditor
-                text={source.manifestFile.text}
+                text={(manifestText(source) ?? '')}
                 {...(manifestParseError !== null && {
                   parseError: manifestParseError,
                 })}
@@ -3031,7 +3001,7 @@ export function App() {
           ),
         };
       case 'parts': {
-        const modelParts = merged?.parts ?? source.geometry.parts;
+        const modelParts = merged?.parts ?? primaryGeometry(source).parts;
         const visibleCount = modelParts.length - hiddenParts.size;
         const existingNames = new Set(modelParts.map((p) => p.name));
         let n = 1;
@@ -3041,8 +3011,8 @@ export function App() {
         // Insertion order of `geometries` is geometry-list order, so the
         // first entry is the primary (the single-file default).
         const geometryPaths =
-          (source.geometries?.size ?? 0) > 1
-            ? [...(source.geometries?.keys() ?? [])]
+          (source.geometries.size ?? 0) > 1
+            ? [...(source.geometries.keys() ?? [])]
             : undefined;
         return {
           title: 'Parts',
@@ -3093,7 +3063,7 @@ export function App() {
                 <PartTree
                   parts={modelParts}
                   partFiles={
-                    (source.geometries?.size ?? 0) > 1
+                    (source.geometries.size ?? 0) > 1
                       ? partFiles
                       : undefined
                   }
@@ -3130,8 +3100,8 @@ export function App() {
         // Multi-geometry: the inspector shows a defining-file field whose
         // change moves the part. Same source as the parts panel picker.
         const movePaths =
-          (source.geometries?.size ?? 0) > 1
-            ? [...(source.geometries?.keys() ?? [])]
+          (source.geometries.size ?? 0) > 1
+            ? [...(source.geometries.keys() ?? [])]
             : undefined;
         return {
           title: 'Properties',
@@ -3139,7 +3109,7 @@ export function App() {
             effectiveSelectedPart !== null ? (
               <PartProperties
                 selectedPart={effectiveSelectedPart}
-                geometry={modelGeometry ?? source.geometry}
+                geometry={modelGeometry ?? primaryGeometry(source)}
                 manifest={manifest}
                 manifestEditsDisabled={manifestParseError !== null}
                 renameDisabled={
@@ -3176,8 +3146,8 @@ export function App() {
       }
       case 'palette': {
         const target: PaletteTargetInfo = paletteTarget ?? {
-          file: source.geometryFile.name,
-          palette: source.geometry.palette,
+          file: source.primaryPath,
+          palette: primaryGeometry(source).palette,
         };
         const shared = target.ref !== undefined;
         // A reference that didn't resolve (missing / invalid file) shows an
@@ -3187,11 +3157,11 @@ export function App() {
         // Usage counts span every file resolving against this palette: a
         // shared one covers its referrers, an inline one just its own file.
         const scopeParts = shared
-          ? (merged?.parts ?? source.geometry.parts).filter((p) => {
+          ? (merged?.parts ?? primaryGeometry(source).parts).filter((p) => {
               const g = geometryAt(source, partFiles?.get(p.name) ?? '');
               return g !== undefined && sharesPalette(g, target.ref!);
             })
-          : (geometryAt(source, target.file)?.parts ?? source.geometry.parts);
+          : (geometryAt(source, target.file)?.parts ?? primaryGeometry(source).parts);
         return {
           title: 'Palette',
           body: (
@@ -3240,7 +3210,7 @@ export function App() {
         if (geometryParseError !== null) {
           entries.push({
             severity: 'error',
-            source: source.geometryFile.name,
+            source: source.primaryPath,
             message: (
               <>
                 <strong>Error:</strong> {geometryParseError}
@@ -3256,7 +3226,7 @@ export function App() {
           entries.push({
             severity: 'error',
             source:
-              source.manifestFile?.name ??
+              source.manifestPath ??
               'cuboidy.json',
             message: (
               <>
