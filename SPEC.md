@@ -3,33 +3,15 @@
 **Version:** 0.9 (draft)
 **Status:** Early draft. Subject to change before v1.0.
 
-**Changes in this draft revision (v0.9), geometry container:** The geometry file moves from the bespoke `.cvox` text format to **JSON** — `voxels.json` (§7). The data model is unchanged: parts, sizes, pivots, sockets and the positional H×D×W voxel grid all keep their meaning, and voxel rows remain strings in the same `[.0-9a-zA-Z]` alphabet (`"0220"`), so a grid still reads as a grid. What goes away is the container: the lexical structure, the grammar, the reserved-token machinery and comments (§7.2, §7.3, §7.11 are retired; the reserved-keyword list they defined moves to §5, where it still constrains identifiers). Surviving subsections keep their numbers so cross-references stay valid. Rationale: the text format existed to be token-cheap and AI-authorable, and neither claim survived measurement — reasoning dominates generation cost, so the file size difference moves the total by single digits, while a hand-written parser blocks every third-party implementation. Evidence and the migration plan are in `docs/eval/` and `docs/json-migration.md`.
-
-**Also in v0.9, palette ownership:** The palette moves from the manifest to the **geometry file that uses it**. The manifest's top-level `palette` binding (added in v0.7) is **removed**; a geometry file's `palette` field (§7.4) now takes either form: an array of hex colors, or a **§8 reference path** to a shared palette file (§6.10). References therefore run `cuboidy.json` → geometry → palette, a tree — replacing the v0.7 arrangement where the manifest reached past the geometry file and overrode it. What goes away with the override is the concept of precedence: a file spells its colors out or points at a file that does, never both, so there is nothing to shadow and lint hint **H03** is retired. Index-range validation is unchanged in principle — checked at parse time for an inline palette, cross-file for a referenced one (§11.6) — and a geometry file stays independently well-formed either way. Migration: move `"palette": "x.json"` from `cuboidy.json` into each geometry file that uses those colors. Models with inline palettes are unaffected.
-
-**Also in v0.9:** Added an optional per-part **`rotation`** field to the manifest part object (§6.2) — the part's **rest rotation** in parent space: 3 Euler angles in degrees, ZXY intrinsic order (§4), applied around the part's pivot. It composes **outside** the geometry file's `pivot.rot` and inside the parent's transform, so the full §7.7 rotation becomes `q_total = q_rotation · q_pivot · q_anim`; keyframe `rot` values remain relative to the (now two-term) rest rotation, and children ride a parent's rest rotation like any other parent transform (§6.2 rigid hierarchy). Absent → identity, so existing models are unchanged. Tooling note: `cuboidy-snap` renders rest rotations (both `rotation` and `pivot.rot`) as true oriented cubes; the integer-lattice projections (`cuboidy-view` / `cuboidy-query`) place a rotated part's **pivot** exactly where the rig puts it but keep the part's own voxels axis-aligned, and emit a warning saying so.
-
-**Changes in v0.8:** Added **per-attribute keyframe easing** (§6.5, §6.7). A keyframe gains an optional `ease` object mapping an attribute (`rot` / `pos` / `scale`) to the interpolation curve of that attribute's **outgoing** segment (this keyframe → the next). Curves are 20 named presets — `linear` (default), `step`, and `in` / `out` / `in-out` variants of `sine` / `quad` / `cubic` / `back` / `elastic` / `bounce` — applied as a remap of normalized segment progress before linear interpolation (`visible` always steps and cannot be eased). `ease` is deliberately **exempt from §6.5 carryover**: a curve applies only where it is written, and only to its own attribute — it never propagates to later keyframes or leaks onto other attributes. Custom cubic-bezier curves remain reserved for a future revision. This revision also **removes part reuse** (the `clone` / `mirror` reuse-clause added in v0.6): every part is now concrete voxel data, and symmetric or repeated geometry is authored by copy/mirror tooling that emits plain voxels. `clone` and `mirror` are no longer reserved keywords (now **7**, §7.3.1) and the `Part.from` AST field is gone.
-
-**Changes in v0.7:** The package generalizes from the fixed two-file layout to **manifest-anchored references**. (1) **Multiple geometry files**: the manifest gains an optional top-level `geometry` array (§6.9) listing the package's `.cvox` files by reference path (§8); absent → the previous fixed `["voxels.cvox"]`, so existing models are unchanged. Part names remain unique across the whole model (§5) — a name defined in two geometry files is a cross-file `duplicate` error. (2) **Shareable palettes**: the cvox `palette` declaration is relaxed from "exactly one" to **"at most one"** (§7.4); a new external palette file (`{ "colors": [...] }`, §6.10) can be bound model-wide via the manifest's optional top-level `palette` reference. The binding **takes precedence over inline palettes** (enabling palette swapping / skins; a shadowed inline palette lints as hint **H03**), and a palette-less file's voxel index-range validation moves from parse time to cross-file validation. *(The manifest-level binding, its precedence rule and H03 were all removed in v0.9 — the reference moved into the geometry file; see the top of this changelog.)* (3) New lint **W07**: a `.cvox` file present in the package but not referenced by `geometry`. `cuboidy.json` remains the package's only fixed filename (the load anchor); every other file is named freely and found by reference. External animation files were already specified in v0.6 (§6.3, §8) and are unchanged.
-
-**Changes in v0.6:** Added **part reuse** — a `clone` / `mirror` reuse-clause in the part header. *(Removed in v0.8; see the top of this changelog. The companion lint **W06**, §11.6, which flags an `l`/`r` pair whose assembled geometry is not mirror-symmetric, remains.)*
-
-**Changes since v0.5:** Comment preservation policy is now explicit. The **file header** — consecutive `//` comment lines (with optional interspersed blank lines) appearing before the first declaration — is preserved verbatim by spec-compliant parsers and serializers (§7.11.1). All other comments (end-of-line, between declarations, inside `voxels { … }` blocks) are **advisory** and MAY be discarded by tooling. This replaces the v0.5 aspirational rule that "writers SHOULD preserve all comments attached to enclosing structural elements" — that rule was too expensive to implement without a CST and not justified by demand. The file header narrowing covers the legitimate use cases (license notices, "generated by" markers, file-level documentation) at trivial cost while leaving inline comments as pure source-code aids that round-trip-aware tools do not promise to keep. AST gains an optional `header?: readonly string[]` field; absent when the file has no header, never an empty array.
-
-**Changes since v0.4:** Identifier names in `voxels.cvox` revert to **bare tokens** (`part head`, `socket hat 1 3 1`) — the v0.4 mandatory-quote rule is dropped. The disambiguation that quotes provided is moved into the identifier rule itself (§5): an identifier MUST NOT match any reserved cvox keyword. With that rule in place, bare `part part` correctly errors as "invalid identifier 'part'" (a reserved keyword cannot be used as an identifier), while bare `part head` parses cleanly as a part named `head`. Net result: no quotes anywhere in cvox files, and the cross-file `cuboidy.json` schema applies the same stronger rule (`manifest.ts` uses the strengthened `isIdentifier` function) so any name valid in one file is valid in the other. Migration from v0.4 is a mechanical strip of quotes from `part "<name>"` → `part <name>` and `socket "<name>" …` → `socket <name> …`. String-kind tokenization (`"..."`) is preserved at the lexer level for future use but has no role in cvox v0.5 grammar.
-
-**Changes since v0.3:** (superseded by v0.5; see above for the current rule.) v0.4 added mandatory quoting to identifier slots to disambiguate from reserved keywords. v0.5 collapses that into the identifier rule, recovering bare-name syntax.
-
-**Changes since v0.2:** Voxel data is now wrapped in a **`voxels { … }` block** with `,` separating layers — this replaces the v0.2 `layer N` keyword and resolves the systemic ambiguity where a voxel-row token spelling a reserved word (e.g. `rot`, `size`, `part`) could collide with grammar. Lexical scoping is reframed as a two-layer model (universal `{` `}` `//` whitespace + context-scoped reserved words); each block-introducing keyword decides what is reserved inside its `{ … }`. The `voxels` block reserves nothing — so any voxel-row character sequence is unambiguously voxel data. The `rot` keyword is no longer a "sub-keyword" but a normal reserved word with **structural validity constrained to `pivot` / `socket` declarations**. Free-order layer indices are dropped (positional now); free-order for `palette` / `part` / `size` / `pivot` / `socket` / `voxels` within their respective scopes is retained.
-
-**Changes since v0.1:** Comments (`//`) added. Declaration order is free for palette / parts / metadata. Token separator is any whitespace including newlines — the entire file (after `//` comment stripping) is a single token stream, so `size\n3\n2\n3` is equivalent to `size 3 2 3`. Pivot may carry an optional rotation (`pivot x y z rot rx ry rz`). **Diagnostic codes are restructured around 5 structural categories** (`missing` / `duplicate` / `unknown` / `invalid-value` / `wrong-arity`); the v0.1 keyword-centric Exx / Cxx / Xxx codes are removed.
+**Revision history:** [CHANGELOG.md](CHANGELOG.md). v0.9 changed the geometry
+container to JSON, moved palette ownership into the geometry file, and added a
+per-part rest rotation; read it before porting a pre-v0.9 model.
 
 ---
 
 ## 1. Overview
 
-Cuboidy is a text-based open file format for voxel character models with rigged parts, named attachment sockets, and shareable keyframe animations.
+Cuboidy is an open JSON file format for voxel character models with rigged parts, named attachment sockets, and shareable keyframe animations.
 
 Design goals:
 
@@ -58,7 +40,7 @@ Cuboidy is **not** a triangle-mesh format. It does not specify skin weights, UV 
 | **Cuboidy model** (or **package**) | A single asset, stored as a folder |
 | **Manifest** | `cuboidy.json` — the package's fixed-name anchor: rig hierarchy, animations, and the geometry list |
 | **Geometry file** | A JSON file (§7) — shape, optional inline palette, pivot, sockets. Default (when the manifest lists none): `voxels.json` |
-| **Palette file** | A `.json` file of shareable colors (§6.10), bound model-wide via the manifest |
+| **Palette file** | A `.json` file of shareable colors (§6.10), referenced by each geometry file that uses them (§7.4) |
 | **Packed Cuboidy** | `<name>.cuboidy` — ZIP archive of the package (reserved; not specified in v0.9) |
 | **Part** | A rigid voxel sub-object, optionally parented in the hierarchy |
 | **Socket** | A named attachment point on a part |
@@ -130,8 +112,8 @@ Names for parts, sockets, animations, and the model itself match:
 - **Must not match a reserved keyword** — `palette`, `part`, `size`, `pivot`, `socket`, `voxels`, `rot` are not valid identifiers, even though they satisfy the regex above
 
 The reserved-keyword exclusion is inherited from the text container that
-preceded JSON (§7 changelog), where a bare `part part` would otherwise have been
-ambiguous. JSON has no such ambiguity, so the rule is no longer load-bearing —
+preceded JSON, where a bare `part part` would otherwise have been ambiguous.
+JSON has no such ambiguity, so the rule is no longer load-bearing —
 it is kept because it costs nothing, no existing model uses those names, and
 lifting it would be a separate breaking change to a rule that `cuboidy.json`
 and `voxels.json` currently share. Both files apply it identically: names are
@@ -157,11 +139,13 @@ The manifest is a standard JSON document (no comments, no trailing commas).
   "name": "<identifier>",
   "version": "0.9",
   "geometry": ["body.json", "gear/hat.json"],
-  "palette": "palette.json",
   "parts": [ ... ],
   "animations": { ... }
 }
 ```
+
+The manifest has no `palette` field. Colors belong to the geometry file that
+uses them (§7.4), which may name a shared palette file (§6.10).
 
 | Field | Required | Type | Notes |
 |---|---|---|---|
@@ -350,7 +334,7 @@ The palette file itself is a standard JSON document:
 
 No other fields are permitted (`unknown`). The object form (rather than a bare array) reserves room for future metadata without a breaking change.
 
-### 6.9 Concurrency
+### 6.11 Concurrency
 
 A model may have at most **one active animation** at a time. Blending, layering, and per-part overlays are reserved for future spec versions.
 
@@ -578,17 +562,33 @@ Layer 0 is a solid base; layer 1 keeps only the four corner pillars, so `.` carv
 }
 ```
 
-**Palette-less file** — the model binds a palette via the manifest (§6.10), so
-this file declares none and its index range is checked cross-file:
+**Shared palette by reference** — `palette` in its §8 reference form (§7.4).
+Every geometry file in the model can name the same palette file, so the colors
+are defined once; the index range is then checked cross-file, once the
+reference resolves (§11.6):
 
 ```json
 {
   "version": "0.9",
+  "palette": "palette.json",
   "parts": [
-    { "name": "block", "size": [1, 1, 1], "voxels": [["0"]] }
+    {
+      "name": "body",
+      "size": [4, 4, 2],
+      "voxels": [
+        ["0000", "0000"],
+        ["0220", "0000"],
+        ["0000", "0000"],
+        ["0000", "0000"]
+      ]
+    }
   ]
 }
 ```
+
+`palette` may be omitted entirely only when the file has no colored voxels at
+all — a file that uses indices must either spell its colors out or reference a
+palette file.
 
 ---
 
@@ -612,6 +612,13 @@ Examples (assuming reference is from `models/wolf/cuboidy.json`):
 | `anims/walk.json` | `models/wolf/anims/walk.json` |
 | `./anims/walk.json` | `models/wolf/anims/walk.json` |
 | `../shared/walk.json` | `models/shared/walk.json` |
+
+A `../` path resolves as shown, but it leaves the package, and §3 defines a
+model as a self-contained folder. Such a reference is syntactically valid and
+may load in a tool that can see the parent directory, while a tool scoped to
+one folder — a browser editor granted access to that folder, for instance —
+cannot resolve it and reports it as unreadable. Keep references inside the
+package unless the consumer is known to be workspace-aware.
 
 Reference cycles (a → b → a) are an error.
 
@@ -663,13 +670,13 @@ Cuboidy uses **five structural codes** to describe errors. The code names what *
 
 | Code | Meaning | Voxel-definition examples |
 |---|---|---|
-| `missing` | A required structural element is absent. | File contains no `part` declarations; `size` missing in a part; `voxels` missing in a part; `voxels { … }` block unclosed (EOF before `}`); a reserved word used outside its structurally valid scope (e.g. `size` before any `part`, `rot` outside `pivot` / `socket`). (A missing `palette` declaration is **not** an error — §7.4; palette availability is validated cross-file, §11.6) |
-| `duplicate` | A unique-constraint violation: an element that should appear at most once appears more than once. | Two `palette` declarations; duplicate `part` name; duplicate socket name within a part; duplicate `size` / `pivot` / `voxels` within a part |
-| `unknown` | An unrecognized name appears where the spec defines a closed set. | A non-keyword identifier appears where no statement is expected; a top-level token has no valid grammatical role |
-| `invalid-value` | A value is present but malformed. | Malformed color hex (`#GG`); voxel row contains a character outside `[.0-9a-zA-Z]`; voxel cell references a palette index that does not exist (only checked at parse time when the file spells its colors out — a referenced palette is checked cross-file, §7.4); size dimension out of range `[1..1024]`, fractional, or non-numeric; non-numeric `pivot` / `socket` coord; expected `rot` marker but got something else; identifier failing the §5 rule (regex failure or reserved-keyword name like `part part`); identifier slot received a quoted string instead of a bare token (e.g. `part "head"`); numeric or color slot received a string token (e.g. `size "3" 1 1`) |
-| `wrong-arity` | An incorrect number of items. | Voxel-row width does not match declared `W`; a layer-section row count differs from declared `D`; layer-section count differs from declared `H`; palette has 0 colors or more than 62; wrong number of arguments to a keyword (`size` not 3, `pivot` not 3-or-7, `socket` not 4-or-8, `part` not 1) |
+| `missing` | A required structural element is absent. | No `parts`, or `parts` present but empty; `name`, `size` or `voxels` absent on a part. (An absent `palette` is **not** an error — §7.4; palette availability is validated cross-file, §11.6) |
+| `duplicate` | A unique-constraint violation: an element that should appear at most once appears more than once. | Two parts sharing a `name`; two sockets on one part sharing a `name` |
+| `unknown` | An unrecognized name appears where the spec defines a closed set. | A top-level field other than `version` / `palette` / `parts`; a part field other than `name` / `size` / `pivot` / `sockets` / `voxels`; an unrecognized key on a `pivot` or `socket` object |
+| `invalid-value` | A value is present but malformed. | Malformed color (`#GG`); a voxel row containing a character outside `[.0-9a-zA-Z]`; a voxel cell naming a palette index that does not exist (checked at parse time only when the file spells its colors out — a referenced palette is checked cross-file, §7.4); a `size` dimension outside `[1..1024]` or non-integer; a non-numeric coordinate in `pivot` / `socket`; an identifier failing the §5 rule; a value of the wrong JSON type for its field (e.g. `"size": ["3", 1, 1]`) |
+| `wrong-arity` | An incorrect number of items. | Voxel-row width does not match declared `W`; a layer's row count differs from declared `D`; the layer count differs from declared `H`; an inline palette with 0 colors or more than 62; `size` or a coordinate that is not a triple |
 
-Note: v0.1 used per-keyword codes (E01–E19). v0.2 restructured them into the five structural categories above. v0.3 removed the `layer` keyword and the active-layer concept (replaced by `voxels { … }` blocks), simplifying the precedence rules; the five codes are unchanged. The keyword/context survives in the message string and in the fixture filenames (`fixtures/geometry/<code>/<descriptor>.json`).
+Note: v0.1 used per-keyword codes (E01–E19); v0.2 restructured them into the five structural categories above, and they have been stable since — the move to a JSON container in v0.9 changed which mistakes are *possible*, not what the codes mean. What specifically went wrong survives in the message string and in the fixture filenames (`fixtures/geometry/<code>/<descriptor>.json`).
 
 ### 11.3 `voxels.json` warnings
 
@@ -738,26 +745,45 @@ This format is gcc / clang compatible for IDE integration.
 
 ### 11.8 Error precedence
 
-When a single input could match more than one error (common under free-order rules), implementations MUST report **the first error encountered during a single forward pass over the token stream**, with errors raised during assembly (after all tokens are consumed) coming after all stream-pass errors.
+Validation runs in four phases, and **a phase runs only if every earlier phase
+passed**. When violations from different phases coexist, the earlier phase is
+what gets reported — this is what parity testing compares.
 
-Concrete precedence:
+1. **JSON syntax.** A document that is not well-formed JSON fails here, and no
+   Cuboidy code applies: the JSON parser's own error is reported.
+2. **Structural schema** — each field considered on its own:
+   - **`unknown`** — a field the spec does not define, at any level
+   - **`missing`** — a required field is absent (`parts`; a part's `name`,
+     `size` or `voxels`; the manifest's `name`), or `parts` is present but
+     empty, which means the same thing
+   - **`wrong-arity`** — a fixed-length array of the wrong length (`size` or a
+     coordinate that is not a triple); a palette with more than 62 colors, or
+     an inline palette with none
+   - **`invalid-value`** — right shape, wrong content: a malformed color, a
+     `size` dimension outside `[1..1024]` or non-integer, a voxel row
+     containing a character outside `[.0-9a-zA-Z]`, an identifier failing §5,
+     a reference path violating §8
+3. **Cross-field rules**, which need more than one field at a time and are
+   therefore only reachable once the document is structurally sound. Parts are
+   examined in document order; within a part:
+   - **`duplicate`** — the part's name repeats one already seen in this file
+   - **`wrong-arity`** — the layer count differs from `H`; then, per layer, the
+     row count differs from `D`; then, per row, the width differs from `W`.
+     Each level stops descending when it fails, so a part with the wrong layer
+     count reports that rather than a cascade of row errors
+   - **`invalid-value`** — a cell names a palette index the file's own palette
+     does not define, at most one report per row. Skipped entirely when the
+     palette is a §7.4 reference or absent — the range is unknown until phase 4
+   - **`duplicate`** — two sockets on the part share a name
+4. **Cross-file validation** (§11.6), once the project resolves: part names
+   across geometry files, manifest↔geometry agreement, palette resolution and
+   the index ranges phase 3 deferred.
 
-1. Per-line `//` comment stripping (no errors possible).
-2. Tokenization (no errors possible; any non-whitespace sequence becomes a token; `{` `}` `,` are 1-char tokens).
-3. Token-stream forward pass — raised at the point the offending token is consumed:
-   - **`duplicate`** — duplicate `palette` declaration; duplicate `part` name; duplicate socket within a part; duplicate `size` / `pivot` / `voxels` within a part
-   - **`wrong-arity`** — too-few args for any keyword (`palette` empty, `size` < 3, `pivot` < 3, `socket` < 4, `part` < 1) detected when the token stream ends before the slot is filled; palette overflow (`> 62` colors); `voxels` not followed by `{`. (A bare reserved word or quoted string appearing where a number/identifier was expected does *not* produce `wrong-arity` — it produces `invalid-value`, since the parser successfully pulled a token whose kind or shape doesn't match the slot.)
-   - **`invalid-value`** — bad color hex; non-numeric value where number expected; size dimension out of range; identifier failing the §5 rule (regex or reserved-keyword); missing or wrong `rot` marker; identifier slot received a quoted string (`part "head"` → "expected bare identifier, got quoted string"); numeric or color slot received a string token
-   - **`missing`** — a reserved token consumed outside its structurally valid scope (per §7.3.3): a part-scoped keyword (`size` / `pivot` / `socket` / `voxels`) before any `part` declaration; `rot` outside `pivot` / `socket`; `{` / `}` / `,` at top level or in any position where its enclosing scope is absent; `voxels { … }` block reaches EOF without `}`
-   - **`unknown`** — non-reserved token with no valid grammatical role at this point. This includes extras left over after a keyword consumed its required args (e.g. the `9` in `size 1 1 1 9`, the `b` in `part a b`, the `5` in `pivot 1 0 1 5` — see per-keyword notes in §7.5–§7.9), and stray identifiers / numbers / quoted strings at top level (a misplaced `"foo"` at top-level reports `unknown` with "unexpected quoted string at top level")
-4. End-of-stream assembly — raised after all tokens are consumed (validation deferred because palette may be declared anywhere in the file, so voxel-row content cannot be validated at consumption time):
-   - **`missing`** — no part declarations in the file; `size` missing in a part; `voxels` missing in a part
-   - **`invalid-value`** — voxel cell character outside `[.0-9a-zA-Z]`; voxel cell references a palette index outside the declared palette (skipped when the file declares none or references one — deferred to cross-file validation, §7.4 / §11.6)
-   - **`wrong-arity`** — layer-section count differs from `H`; a layer-section row count differs from `D`; voxel row width does not match `W`
-
-**Too-many-args is never `wrong-arity`** (informational): the integrated parser (`parseCvox`, the sole parsing entry point) *cannot* return `wrong-arity` for too-many arguments to a keyword, because per §7.2 it consumes only the required count and lets the extras fall through to the main loop (diagnosed there as `unknown` for a stray identifier/number, or `invalid-value`). An argument-count `wrong-arity` therefore always means **too few** — the stream reached the next reserved token or EOF before the slot was filled. (Palette overflow — more than 62 colors — and voxel-grid dimension mismatches are the other `wrong-arity` cases; those are genuine count violations detected at consumption or at assembly.)
-
-A conformant implementation that reports a different code than this precedence implies is non-conforming for cross-implementation parity testing, but its output is still useful to the user.
+Where several violations coexist *within* one phase, which is reported is
+implementation-defined; every shared fixture holds exactly one error, so parity
+does not depend on that choice. Reporting a violation from a **later** phase
+than one that is also present is non-conforming, because it means an earlier
+check did not run.
 
 ---
 
@@ -783,7 +809,6 @@ All reference examples pass the current lint rules at error level.
 - **Standardized rig vocabularies**: humanoid / quadruped / biped contracts (analogous to VRM humanoid spec)
 - **Inverse kinematics**: solver-driven part chains
 - **Per-attachment overrides**: rotation / scale offsets when attaching accessories to sockets
-- **JSON-style comments in `cuboidy.json`**: JSON itself does not support comments; a side-car or JSON5-style extension is under discussion
 
 ---
 
