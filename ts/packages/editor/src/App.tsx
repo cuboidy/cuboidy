@@ -8,7 +8,6 @@ import {
 } from 'react';
 import {
   AIR,
-  InlineAnimationSchema,
   addAttrAtTime,
   composePartRotation,
   deleteAttrAtKey,
@@ -18,9 +17,6 @@ import {
   mergeKeyframeAtTime,
   mirrorPart,
   moveAttrKey,
-  parseGeometryText,
-  parseManifest,
-  parsePaletteFile,
   quatRotateVec3,
   serializeGeometry,
   setAttrAtKey,
@@ -72,7 +68,6 @@ import { ViewModeToggle } from './components/ViewModeToggle.js';
 import { VoxelScene } from './components/VoxelScene.js';
 import { historyReducer, makeHistory } from './lib/history.js';
 import {
-  isGeometryPath,
   normalizePath,
   resolveProjectRefs,
 } from './lib/load-model.js';
@@ -99,12 +94,12 @@ import {
   deleteFileInSource,
   geometryAt,
   fileText,
-  geometryPaletteRefs,
   manifestText,
   mapGeometryFiles,
   mergeGeometries,
   moveFolderInSource,
   paletteFileText,
+  applyFileEdit,
   pathBasename,
   primaryGeometry,
   remapPartPalette,
@@ -113,7 +108,6 @@ import {
   sharesPalette,
   uniquePartName,
   withManifest,
-  withManifestText,
   writeFile,
 } from './lib/source-ops.js';
 import { synthesizeManifest } from './lib/synthesize-manifest.js';
@@ -126,12 +120,6 @@ import type {
   ViewMode,
   VoxelEdit,
 } from './lib/types.js';
-
-// Debounce window for live re-parse of the geometry source view. Long
-// enough that mid-keystroke typing doesn't constantly fire (and
-// flicker palette/3D between transient invalid states); short enough
-// that a deliberate pause feels live.
-const REPARSE_DEBOUNCE_MS = 300;
 
 // What the Palette panel is pointed at: one geometry file, its resolved
 // colors, and — when those colors live in a shared palette file — the path
@@ -153,8 +141,8 @@ export function App() {
     makeHistory<LoadResult | null>,
   );
   const loaded = history.present;
-  // Latest-value ref so the synchronous flush helpers (below) can read
-  // the CURRENT text without re-binding every callback on each edit.
+  // Latest-value ref so a handler can read the CURRENT document without
+  // re-binding every callback on each edit.
   const loadedRef = useRef(loaded);
   loadedRef.current = loaded;
   const dispatchEdit = useCallback(
@@ -200,158 +188,48 @@ export function App() {
   // name field (VS Code-style). `parent` is the part it will be nested under
   // (null = root). Cleared on confirm / cancel / load.
   const [creating, setCreating] = useState<{ parent: string | null } | null>(null);
-  // Live parse error on the geometry source text. Non-null only while the
-  // user's currently-typed text doesn't parse. Palette panel disables
-  // itself in this state so its re-serialize doesn't clobber the
-  // in-progress text.
-  const [geometryParseError, setGeometryParseError] = useState<string | null>(null);
-  // Same role for the manifest source view. Independent timer and
-  // error state, so a broken geometry doesn't block manifest editing
-  // and vice versa.
-  const [manifestParseError, setManifestParseError] = useState<string | null>(null);
-
-  // Holds the timeout ID of the pending debounced reparse so we can
-  // cancel it whenever new authoritative state arrives (further typing
-  // resets the timer; structural edit pre-empts it entirely).
-  const reparseGeometryTimer = useRef<number | null>(null);
-  const reparseManifestTimer = useRef<number | null>(null);
-
-  const cancelPendingGeometryReparse = useCallback(() => {
-    if (reparseGeometryTimer.current !== null) {
-      window.clearTimeout(reparseGeometryTimer.current);
-      reparseGeometryTimer.current = null;
-    }
-  }, []);
-
-  const cancelPendingManifestReparse = useCallback(() => {
-    if (reparseManifestTimer.current !== null) {
-      window.clearTimeout(reparseManifestTimer.current);
-      reparseManifestTimer.current = null;
-    }
-  }, []);
-
-  // Parse geometry text and land the outcome — error state plus (on success)
-  // the AST amend. The single
-  // implementation behind BOTH the debounced timer and the synchronous
-  // flush below, so the two paths can't drift. Returns true when the
-  // text parsed and the AST landed.
-  const landGeometryReparse = useCallback((text: string): boolean => {
-    const result = parseGeometryText(text);
-    if (!result.ok) {
-      setGeometryParseError(result.message);
-      return false;
-    }
-    setGeometryParseError(null);
-    dispatch({
-      type: 'amend',
-      apply: (current) => {
-        const src = current?.source;
-        if (src === undefined) return current;
-        const geometries = new Map(src.geometries);
-        geometries.set(src.primaryPath, result.value);
-        return { ...current, source: { ...src, geometries } };
-      },
+  // Syntax errors on the CURRENTLY TYPED text, per file path. One map
+  // covers every file — the primary geometry and the manifest are just
+  // entries in it like any other. Derived from the text by applyFileEdit,
+  // so undo/redo re-derives rather than restoring it.
+  const [fileParseErrors, setFileParseErrors] = useState<
+    ReadonlyMap<string, string>
+  >(new Map());
+  const setFileParseError = useCallback((path: string, msg: string | null) => {
+    setFileParseErrors((prev) => {
+      if (msg === null && !prev.has(path)) return prev;
+      const next = new Map(prev);
+      if (msg === null) next.delete(path);
+      else next.set(path, msg);
+      return next;
     });
-    return true;
   }, []);
-
-  // Flush (not discard) a pending debounced geometry reparse: parse the
-  // CURRENT text synchronously and land the amend / error now. Returns
-  // false when the text doesn't parse — a structural edit must abort
-  // rather than serialize from the stale AST, which would silently
-  // overwrite what was just typed (audit A-6).
-  const flushPendingGeometryReparse = useCallback((): boolean => {
-    if (reparseGeometryTimer.current === null) return true;
-    window.clearTimeout(reparseGeometryTimer.current);
-    reparseGeometryTimer.current = null;
-    const src = loadedRef.current?.source;
-    if (src === undefined) return true;
-    return landGeometryReparse((fileText(src, src.primaryPath) ?? ''));
-  }, [landGeometryReparse]);
-
-  // Manifest counterpart of landGeometryReparse: parse + amend with a full
-  // reference re-resolve (geometry ASTs, bound palette, external
-  // animations, project errors track the edited manifest).
-  const landManifestReparse = useCallback((text: string): boolean => {
-    let json: unknown;
-    try {
-      json = JSON.parse(text);
-    } catch (e) {
-      setManifestParseError(`JSON parse: ${(e as Error).message}`);
-      return false;
-    }
-    const result = parseManifest(json);
-    if (!result.ok) {
-      setManifestParseError(result.message);
-      return false;
-    }
-    setManifestParseError(null);
-    dispatch({
-      type: 'amend',
-      apply: (current) => {
-        if (current?.source === undefined) return current;
-        const src = current.source;
-        const refs = resolveProjectRefs(
-          result.value,
-          (p) => src.files.get(p),
-          { path: src.primaryPath, geometry: primaryGeometry(src) },
-        );
-        // Destructure away the maybe-now-absent keys (a successful
-        // reparse also clears any stale load-time manifest error).
-        const {
-          manifestError: _err,
-          externalAnims: _anims,
-          projectErrors: _proj,
-          ...rest
-        } = src;
-        // A changed geometry list can pull a different primary AST in.
-        return {
-          ...current,
-          source: {
-            ...rest,
-            manifest: result.value,
-            geometries: refs.geometries,
-            ...(refs.externalAnims !== undefined && {
-              externalAnims: refs.externalAnims,
-            }),
-            ...(refs.projectErrors.length > 0 && {
-              projectErrors: refs.projectErrors,
-            }),
-          },
-        };
-      },
-    });
-    return true;
-  }, []);
-
-  const flushPendingManifestReparse = useCallback((): boolean => {
-    if (reparseManifestTimer.current === null) return true;
-    window.clearTimeout(reparseManifestTimer.current);
-    reparseManifestTimer.current = null;
-    const src = loadedRef.current?.source;
-    if (src === undefined) return true;
-    const text = manifestText(src);
-    if (text === undefined) return true;
-    return landManifestReparse(text);
-  }, [landManifestReparse]);
+  // Named views onto the same map, for the panels that speak in terms of
+  // "the geometry source" and "the manifest source".
+  const geometryParseError =
+    loaded?.source === undefined
+      ? null
+      : (fileParseErrors.get(loaded.source.primaryPath) ?? null);
+  const manifestParseError =
+    loaded?.source?.manifestPath === undefined
+      ? null
+      : (fileParseErrors.get(loaded.source.manifestPath) ?? null);
+  // THE structural-edit gate (audit A-6). A structural edit re-serializes
+  // an AST over a file's text, so it must not run while any text is
+  // mid-edit unparseable — the last good AST would silently overwrite what
+  // the user just typed. This is a STATE check on the current text; the
+  // gate it replaces keyed off whether a debounce timer was pending, which
+  // let an edit through the moment that timer had fired and REPORTED the
+  // error.
+  const editsBlocked = fileParseErrors.size > 0;
 
   const handleLoad = useCallback(
     (result: LoadResult) => {
-      cancelPendingGeometryReparse();
-      cancelPendingManifestReparse();
-      // Per-file reparse timers / errors belong to the previous package.
-      // (Ref + setter are stable — safe to use without listing as deps.)
-      for (const t of fileReparseTimers.current.values()) {
-        window.clearTimeout(t);
-      }
-      fileReparseTimers.current.clear();
       setFileParseErrors(new Map());
       dispatch({ type: 'replace', next: result });
       setHiddenParts(new Set());
       setSelectedPartName(null);
       setCreating(null);
-      setGeometryParseError(null);
-      setManifestParseError(null);
       setFramingKey((k) => k + 1);
       const hasManifest =
         result.source !== undefined &&
@@ -369,25 +247,17 @@ export function App() {
         setLayout((l) => openPanelById(l, 'console'));
       }
     },
-    [cancelPendingGeometryReparse, cancelPendingManifestReparse],
+    [],
   );
 
   const handleReset = useCallback(() => {
-    cancelPendingGeometryReparse();
-    cancelPendingManifestReparse();
-    for (const t of fileReparseTimers.current.values()) {
-      window.clearTimeout(t);
-    }
-    fileReparseTimers.current.clear();
     setFileParseErrors(new Map());
     dispatch({ type: 'replace', next: null });
     setHiddenParts(new Set());
     setSelectedPartName(null);
     setCreating(null);
-    setGeometryParseError(null);
-    setManifestParseError(null);
     setViewMode('geometry');
-  }, [cancelPendingGeometryReparse, cancelPendingManifestReparse]);
+  }, []);
 
   const handleToggle = useCallback((name: string) => {
     setHiddenParts((prev) => {
@@ -408,212 +278,29 @@ export function App() {
     }
   }, [loaded]);
 
-  // Geometry source-text edit (geometry tab textarea typing). Updates the text
-  // immediately so every keystroke persists; schedules a debounced
-  // reparse that updates the AST when it succeeds. The text remains
-  // primary even while temporarily unparseable — Save / Export still
-  // write what the user typed.
-  const handleEditGeometryText = useCallback(
-    (nextText: string) => {
+  // ONE source-text edit path for every file — the primary geometry, the
+  // manifest and every other package file alike. The text is recorded and
+  // its derived state re-computed in the SAME dispatch, so there is no
+  // window in which the two disagree and nothing to flush before a
+  // structural edit. applyFileEdit does the deriving; text that does not
+  // parse only records the text and reports the error.
+  const handleEditFileText = useCallback(
+    (path: string, nextText: string) => {
+      const src = loadedRef.current?.source;
+      if (src === undefined) return;
+      setFileParseError(path, applyFileEdit(src, path, nextText).error);
       // Recorded with a per-file tag: a typing burst (keystrokes < 800ms
       // apart) is one undo entry whose pre-state is the text before the
       // burst started.
-      dispatchEdit('text:geometry', (current) => {
-        if (current?.source === undefined) return current;
-        const src = current.source;
-        return { ...current, source: writeFile(src, src.primaryPath, nextText) };
-      });
-      cancelPendingGeometryReparse();
-      reparseGeometryTimer.current = window.setTimeout(() => {
-        reparseGeometryTimer.current = null;
-        // The AST half of the already-recorded text edit — landGeometryReparse
-        // amends, doesn't push (an entry whose undo changed only the
-        // invisible AST would be a dead Ctrl+Z step).
-        landGeometryReparse(nextText);
-      }, REPARSE_DEBOUNCE_MS);
-    },
-    [dispatchEdit, cancelPendingGeometryReparse, landGeometryReparse],
-  );
-
-  // Per-file source editing for the dynamic file tabs (v0.7 packages).
-  // Same shape as the geometry/manifest pipelines: record the text now
-  // (per-file coalescing tag), debounce a reparse that amends derived
-  // state (a geometry file's AST, the bound palette) on success.
-  const [fileParseErrors, setFileParseErrors] = useState<
-    ReadonlyMap<string, string>
-  >(new Map());
-  const fileReparseTimers = useRef<Map<string, number>>(new Map());
-  const cancelAllFileReparse = useCallback(() => {
-    for (const t of fileReparseTimers.current.values()) {
-      window.clearTimeout(t);
-    }
-    fileReparseTimers.current.clear();
-  }, []);
-  const setFileParseError = useCallback((path: string, msg: string | null) => {
-    setFileParseErrors((prev) => {
-      if (msg === null && !prev.has(path)) return prev;
-      const next = new Map(prev);
-      if (msg === null) next.delete(path);
-      else next.set(path, msg);
-      return next;
-    });
-  }, []);
-
-  // Parse one non-primary file's text and land the outcome (error state
-  // + derived-state amend). Shared by the per-file debounce timer and
-  // the synchronous flush. Returns true when the text is well-formed.
-  const reparseFileNow = useCallback(
-    (path: string, text: string): boolean => {
-      // Which files are geometry is a manifest fact, not an extension one —
-      // read it off the live source rather than the path suffix.
-      const current = loadedRef.current?.source;
-      const isGeometry =
-        current !== undefined &&
-        isGeometryPath(path, current.primaryPath, current.manifest);
-      if (isGeometry) {
-        const r = parseGeometryText(text);
-        if (!r.ok) {
-          setFileParseError(path, r.message);
-          return false;
-        }
-        setFileParseError(path, null);
-        dispatch({
-          type: 'amend',
-          apply: (current) => {
-            const src = current?.source;
-            if (
-              src === undefined ||
-              src.geometries.has(path) !== true
-            ) {
-              return current;
-            }
-            const geometries = new Map(src.geometries);
-            geometries.set(path, r.value);
-            return { ...current, source: { ...src, geometries } };
-          },
-        });
-        return true;
-      }
-      if (path.endsWith('.json')) {
-        let json: unknown;
-        try {
-          json = JSON.parse(text);
-        } catch (e) {
-          setFileParseError(path, `JSON parse: ${(e as Error).message}`);
-          return false;
-        }
-        setFileParseError(path, null);
-        // If this file is the manifest-bound palette or an external
-        // animation, re-derive that state. A schema-invalid edit
-        // keeps the last good value (a reload surfaces it as a
-        // project error).
-        dispatch({
-          type: 'amend',
-          apply: (current) => {
-            const src = current?.source;
-            if (src === undefined) {
-              return current;
-            }
-            let next = src;
-            // Editing a palette FILE re-resolves it into every geometry
-            // that points at it (§7.4), so the 3D view tracks the edit.
-            if (geometryPaletteRefs(src).has(path)) {
-              const pR = parsePaletteFile(json);
-              if (pR.ok) {
-                const colors = pR.value;
-                next = mapGeometryFiles(next, (g) =>
-                  sharesPalette(g, path) ? { ...g, palette: colors } : null,
-                );
-              }
-            }
-            if (src.externalAnims !== undefined) {
-              let anims: Map<
-                string,
-                { path: string; anim: InlineAnimation }
-              > | null = null;
-              for (const [clip, rec] of src.externalAnims) {
-                if (rec.path !== path) continue;
-                const parsed = InlineAnimationSchema.safeParse(json);
-                if (!parsed.success) break; // keep last good
-                if (anims === null) anims = new Map(src.externalAnims);
-                anims.set(clip, { path, anim: parsed.data });
-              }
-              if (anims !== null) next = { ...next, externalAnims: anims };
-            }
-            return next === src ? current : { ...current, source: next };
-          },
-        });
-        return true;
-      }
-      setFileParseError(path, null);
-      return true;
-    },
-    [setFileParseError],
-  );
-
-  const handleEditFileText = useCallback(
-    (path: string, nextText: string) => {
       dispatchEdit(`text:${path}`, (current) => {
-        const src = current?.source;
-        if (
-          src === undefined ||
-          src.files === undefined
-        ) {
-          return current;
-        }
-        if (!src.files.has(path)) return current;
-        return { ...current, source: writeFile(src, path, nextText) };
+        const cur = current?.source;
+        if (cur === undefined) return current;
+        const { source } = applyFileEdit(cur, path, nextText);
+        return source === cur ? current : { ...current, source };
       });
-      const timers = fileReparseTimers.current;
-      const existing = timers.get(path);
-      if (existing !== undefined) window.clearTimeout(existing);
-      timers.set(
-        path,
-        window.setTimeout(() => {
-          timers.delete(path);
-          reparseFileNow(path, nextText);
-        }, REPARSE_DEBOUNCE_MS),
-      );
     },
-    [dispatchEdit, reparseFileNow],
+    [dispatchEdit, setFileParseError],
   );
-
-  // Flush every pending per-file reparse against the CURRENT file texts
-  // (a debounce closure's text can be superseded by a structural edit —
-  // the state text is authoritative). False when any flushed file is
-  // currently unparseable.
-  const flushPendingFileReparse = useCallback((): boolean => {
-    const timers = fileReparseTimers.current;
-    if (timers.size === 0) return true;
-    const paths = [...timers.keys()];
-    for (const t of timers.values()) window.clearTimeout(t);
-    timers.clear();
-    const src = loadedRef.current?.source;
-    if (src === undefined) return true;
-    let ok = true;
-    for (const path of paths) {
-      const text = src.files.get(path);
-      if (text === undefined) continue;
-      if (!reparseFileNow(path, text)) ok = false;
-    }
-    return ok;
-  }, [reparseFileNow]);
-
-  // Structural-edit gates (audit A-6). Every structural editor lands the
-  // pending reparses it depends on BEFORE mutating, and aborts when the
-  // corresponding text is mid-edit unparseable — serializing from the
-  // last good AST would overwrite what the user just typed.
-  const flushGeometryReparse = useCallback((): boolean => {
-    const geometryOk = flushPendingGeometryReparse();
-    const filesOk = flushPendingFileReparse();
-    return geometryOk && filesOk;
-  }, [flushPendingGeometryReparse, flushPendingFileReparse]);
-
-  const flushAllReparse = useCallback((): boolean => {
-    const geomOk = flushGeometryReparse();
-    const manifestOk = flushPendingManifestReparse();
-    return geomOk && manifestOk;
-  }, [flushGeometryReparse, flushPendingManifestReparse]);
 
   // ── Palette editing. SPEC §7.4: a palette belongs to a GEOMETRY FILE,
   // either spelled out inline or referenced from a shared palette file. So
@@ -626,7 +313,7 @@ export function App() {
   // Overwrite a file's palette colors (edit / add).
   const handleEditPalette = useCallback(
     (file: string, next: Palette, tag?: string) => {
-      if (!flushGeometryReparse()) return;
+      if (editsBlocked) return;
       dispatchEdit(tag ?? null, (current) => {
         const src = current?.source;
         if (src === undefined) return current;
@@ -651,7 +338,7 @@ export function App() {
         };
       });
     },
-    [dispatchEdit, flushGeometryReparse],
+    [dispatchEdit, editsBlocked],
   );
 
   // Delete an (unused) color: every higher index shifts down, so the voxels
@@ -660,7 +347,7 @@ export function App() {
   // own file. Refuses while any in-scope voxel still uses the color.
   const handleDeletePaletteColor = useCallback(
     (file: string, index: number) => {
-      if (!flushGeometryReparse()) return;
+      if (editsBlocked) return;
       dispatchEdit(null, (current) => {
         const src = current?.source;
         if (src === undefined) return current;
@@ -713,14 +400,14 @@ export function App() {
         };
       });
     },
-    [dispatchEdit, flushGeometryReparse],
+    [dispatchEdit, editsBlocked],
   );
 
   // Move ONE file's inline palette out to a palette file and point at it.
   // The colors are unchanged — only where they live. One undo.
   const handleExternalizePalette = useCallback(
     (file: string) => {
-      if (!flushGeometryReparse()) return;
+      if (editsBlocked) return;
       dispatchEdit(null, (current) => {
         const src = current?.source;
         if (src === undefined || src.files === undefined) return current;
@@ -739,7 +426,7 @@ export function App() {
         return { ...current, source: { ...nextSrc, files } };
       });
     },
-    [dispatchEdit, flushGeometryReparse],
+    [dispatchEdit, editsBlocked],
   );
 
   // The reverse: keep the colors, drop the reference so they are written
@@ -747,7 +434,7 @@ export function App() {
   // — delete it from the Files tree if it is truly orphaned.
   const handleInlinePalette = useCallback(
     (file: string) => {
-      if (!flushGeometryReparse()) return;
+      if (editsBlocked) return;
       dispatchEdit(null, (current) => {
         const src = current?.source;
         if (src === undefined) return current;
@@ -760,7 +447,7 @@ export function App() {
         return nextSrc === src ? current : { ...current, source: nextSrc };
       });
     },
-    [dispatchEdit, flushGeometryReparse],
+    [dispatchEdit, editsBlocked],
   );
 
   // ── File CRUD (Phase D). Folder sources with a files map only; each
@@ -904,7 +591,6 @@ export function App() {
       // Land any pending reparses first: the rename re-keys the file's
       // AST/geometry entry, and a timer firing later (keyed to the OLD
       // path) would no-op, leaving a stale AST under the new name.
-      flushPendingFileReparse();
       dispatchEdit(null, (current) => {
         const src = current?.source;
         if (
@@ -926,7 +612,7 @@ export function App() {
         return next;
       });
     },
-    [dispatchEdit, flushPendingFileReparse],
+    [dispatchEdit],
   );
 
   // Relocate a whole folder (and everything under it) so its new path is
@@ -938,7 +624,6 @@ export function App() {
   const relocateFolder = useCallback(
     (from: string, newDir: string) => {
       if (newDir === from) return;
-      flushPendingFileReparse();
       dispatchEdit(null, (current) => {
         const src = current?.source;
         if (
@@ -963,7 +648,7 @@ export function App() {
         return next ?? prev;
       });
     },
-    [dispatchEdit, flushPendingFileReparse],
+    [dispatchEdit],
   );
 
   // Move a folder INTO destDir ('' = package root), keeping its name.
@@ -996,13 +681,6 @@ export function App() {
   const handleDeleteFile = useCallback(
     (path: string) => {
       const p = normalizePath(path);
-      // A pending reparse for the deleted path must not fire afterwards
-      // (its error/amend would resurrect state for a gone file).
-      const t = fileReparseTimers.current.get(p);
-      if (t !== undefined) {
-        window.clearTimeout(t);
-        fileReparseTimers.current.delete(p);
-      }
       dispatchEdit(null, (current) => {
         const src = current?.source;
         if (
@@ -1032,13 +710,6 @@ export function App() {
     (dir: string) => {
       const from = normalizePath(dir);
       const prefix = `${from}/`;
-      // Cancel pending reparses for files about to vanish (a later timer
-      // would resurrect state for a gone file).
-      for (const key of [...fileReparseTimers.current.keys()]) {
-        if (!key.startsWith(prefix)) continue;
-        window.clearTimeout(fileReparseTimers.current.get(key)!);
-        fileReparseTimers.current.delete(key);
-      }
       dispatchEdit(null, (current) => {
         const src = current?.source;
         if (
@@ -1079,7 +750,7 @@ export function App() {
   // history reducer drops the entry). Backs PartProperties' Geometry section.
   const mutateGeometryPart = useCallback(
     (tag: string | null, partName: string, build: (part: Part) => Part) => {
-      if (!flushGeometryReparse()) return;
+      if (editsBlocked) return;
       dispatchEdit(tag, (current) => {
         const src = current?.source;
         if (src === undefined) return current;
@@ -1095,7 +766,7 @@ export function App() {
         return nextSrc === src ? current : { ...current, source: nextSrc };
       });
     },
-    [dispatchEdit, flushGeometryReparse],
+    [dispatchEdit, editsBlocked],
   );
 
   // Adapter for PartProperties' Geometry section: (partName, build, tag?) —
@@ -1143,7 +814,7 @@ export function App() {
       base: string,
       make: (source: Part, newName: string) => Part,
     ) => {
-      if (!flushGeometryReparse()) return;
+      if (editsBlocked) return;
       const cur = loadedRef.current?.source;
       if (cur === undefined) return;
       const merged = mergeGeometries(cur);
@@ -1167,7 +838,7 @@ export function App() {
       });
       setSelectedPartName(newName);
     },
-    [dispatchEdit, flushGeometryReparse],
+    [dispatchEdit, editsBlocked],
   );
 
   const handleDuplicatePart = useCallback(
@@ -1195,7 +866,7 @@ export function App() {
   // but a race could sneak a dup in). Then selects the new part.
   const handleConfirmCreatePart = useCallback(
     (name: string, parent: string | null, file?: string) => {
-      if (!flushAllReparse()) return;
+      if (editsBlocked) return;
       dispatchEdit(null, (current) => {
         if (current?.source === undefined) return current;
         const src = current.source;
@@ -1235,11 +906,10 @@ export function App() {
         }
         return { ...current, source: nextSrc };
       });
-      setManifestParseError(null);
       setSelectedPartName(name);
       setCreating(null);
     },
-    [dispatchEdit, flushAllReparse],
+    [dispatchEdit, editsBlocked],
   );
 
   // Move a part's declaration to another geometry file, atomically (one
@@ -1251,7 +921,7 @@ export function App() {
   // target palette).
   const handleMovePart = useCallback(
     (name: string, targetPath: string) => {
-      if (!flushGeometryReparse()) return;
+      if (editsBlocked) return;
       dispatchEdit(null, (current) => {
         const src = current?.source;
         if (
@@ -1300,7 +970,7 @@ export function App() {
         return { ...current, source: nextSrc };
       });
     },
-    [dispatchEdit, flushGeometryReparse],
+    [dispatchEdit, editsBlocked],
   );
 
   // Rename a part everywhere it's referenced, atomically (one dispatchEdit =
@@ -1314,7 +984,7 @@ export function App() {
   const handleRenamePart = useCallback(
     (oldName: string, newName: string) => {
       if (oldName === newName || !isIdentifier(newName)) return;
-      if (!flushAllReparse()) return;
+      if (editsBlocked) return;
       dispatchEdit(null, (current) => {
         if (current?.source === undefined) return current;
         const src = current.source;
@@ -1371,7 +1041,6 @@ export function App() {
         }
         return { ...current, source: nextSrc };
       });
-      setManifestParseError(null);
       setSelectedPartName(newName);
       // Carry a hidden part's visibility over to the new name.
       setHiddenParts((prev) => {
@@ -1382,7 +1051,7 @@ export function App() {
         return next;
       });
     },
-    [dispatchEdit, flushAllReparse],
+    [dispatchEdit, editsBlocked],
   );
 
   // Delete a part, cleaning up its references atomically (one undo). Removes
@@ -1392,7 +1061,7 @@ export function App() {
   // safety net (same as clip delete).
   const handleDeletePart = useCallback(
     (name: string) => {
-      if (!flushAllReparse()) return;
+      if (editsBlocked) return;
       dispatchEdit(null, (current) => {
         if (current?.source === undefined) return current;
         const src = current.source;
@@ -1445,7 +1114,6 @@ export function App() {
         }
         return { ...current, source: nextSrc };
       });
-      setManifestParseError(null);
       setSelectedPartName((prev) => (prev === name ? null : prev));
       setHiddenParts((prev) => {
         if (!prev.has(name)) return prev;
@@ -1454,29 +1122,7 @@ export function App() {
         return next;
       });
     },
-    [dispatchEdit, flushAllReparse],
-  );
-
-  // Manifest source-text edit (manifest tab textarea typing). Same
-  // shape as the geometry counterpart but uses JSON.parse + parseManifest.
-  // No-ops on a source with no manifest file to edit.
-  const handleEditManifestText = useCallback(
-    (nextText: string) => {
-      dispatchEdit('text:manifest', (current) => {
-        if (current?.source === undefined) return current;
-        const src = current.source;
-        return { ...current, source: withManifestText(src, nextText) };
-      });
-      cancelPendingManifestReparse();
-      reparseManifestTimer.current = window.setTimeout(() => {
-        reparseManifestTimer.current = null;
-        // Re-runs reference resolution on success so the derived maps
-        // (geometry ASTs, bound palette, external animations, project
-        // errors) track the edited manifest.
-        landManifestReparse(nextText);
-      }, REPARSE_DEBOUNCE_MS);
-    },
-    [dispatchEdit, cancelPendingManifestReparse, landManifestReparse],
+    [dispatchEdit, editsBlocked],
   );
 
   // Single-part edits coming from PartTree (D&D parent change) and
@@ -1494,7 +1140,7 @@ export function App() {
       partName: string,
       build: (entry: ManifestPart) => ManifestPart,
     ) => {
-      if (!flushPendingManifestReparse()) return;
+      if (editsBlocked) return;
       dispatchEdit(tag, (current) => {
         if (current?.source === undefined) return current;
         const src = current.source;
@@ -1508,9 +1154,8 @@ export function App() {
         const nextManifest: Manifest = { ...src.manifest, parts };
         return { ...current, source: withManifest(src, nextManifest) };
       });
-      setManifestParseError(null);
     },
-    [dispatchEdit, flushPendingManifestReparse],
+    [dispatchEdit, editsBlocked],
   );
 
   // Model-level manifest fields (name / version) — the cuboidy.json data that
@@ -1518,7 +1163,7 @@ export function App() {
   // but rewrites the top-level object. Backs the Model panel.
   const mutateManifest = useCallback(
     (tag: string | null, build: (m: Manifest) => Manifest) => {
-      if (!flushPendingManifestReparse()) return;
+      if (editsBlocked) return;
       dispatchEdit(tag, (current) => {
         if (current?.source === undefined) return current;
         const src = current.source;
@@ -1527,9 +1172,8 @@ export function App() {
         if (nextManifest === src.manifest) return current;
         return { ...current, source: withManifest(src, nextManifest) };
       });
-      setManifestParseError(null);
     },
-    [dispatchEdit, flushPendingManifestReparse],
+    [dispatchEdit, editsBlocked],
   );
 
   const handleChangeModelName = useCallback(
@@ -1625,7 +1269,7 @@ export function App() {
   // enough to keep the invariant, sane enough for the file.
   const handleGizmoMovePivot = useCallback(
     (partName: string, pos: [number, number, number]) => {
-      if (!flushAllReparse()) return;
+      if (editsBlocked) return;
       dispatchEdit(null, (current) => {
         const src = current?.source;
         if (src === undefined) return current;
@@ -1700,9 +1344,8 @@ export function App() {
         const nextManifest: Manifest = { ...m, parts };
         return { ...current, source: withManifest(nextSrc, nextManifest) };
       });
-      setManifestParseError(null);
     },
-    [dispatchEdit, flushAllReparse],
+    [dispatchEdit, editsBlocked],
   );
 
   // Pivot rotate commit — writes the geometry-side pivot.rot (§7.7
@@ -1898,7 +1541,7 @@ export function App() {
   );
 
   const handleCreateManifest = useCallback(() => {
-    if (!flushAllReparse()) return;
+    if (editsBlocked) return;
     dispatchEdit(null, (current) => {
       if (current?.source === undefined) return current;
       const src = current.source;
@@ -1923,7 +1566,7 @@ export function App() {
     // safe even if the edit no-opped.
     setViewMode('rig');
     setLayout((l) => openPanelById(l, 'preview'));
-  }, [dispatchEdit, flushAllReparse]);
+  }, [dispatchEdit, editsBlocked]);
 
   // ─── Animation (keyframe editor) edits ──────────────────────────────
   //
@@ -1939,7 +1582,7 @@ export function App() {
       animName: string,
       build: (anim: InlineAnimation) => InlineAnimation,
     ) => {
-      if (!flushPendingManifestReparse()) return;
+      if (editsBlocked) return;
       dispatchEdit(tag, (current) => {
         if (current?.source === undefined) return current;
         const src = current.source;
@@ -1970,9 +1613,8 @@ export function App() {
         const nextManifest: Manifest = { ...src.manifest, animations };
         return { ...current, source: withManifest(src, nextManifest) };
       });
-      setManifestParseError(null);
     },
-    [dispatchEdit, flushPendingManifestReparse],
+    [dispatchEdit, editsBlocked],
   );
 
   // Overwrite an existing key's attribute value. Vec3 fields commit per
@@ -2125,7 +1767,7 @@ export function App() {
   // the anim view. Can't go through mutateManifestAnimation since the entry
   // doesn't exist yet.
   const handleCreateAnimationClip = useCallback(() => {
-    if (!flushPendingManifestReparse()) return;
+    if (editsBlocked) return;
     dispatchEdit(null, (current) => {
       if (current?.source === undefined) return current;
       const src = current.source;
@@ -2145,7 +1787,7 @@ export function App() {
     // Outside the apply closure for reducer purity (see handleCreateManifest).
     setViewMode('anim');
     setLayout((l) => openPanelById(l, 'preview'));
-  }, [dispatchEdit, flushPendingManifestReparse]);
+  }, [dispatchEdit, editsBlocked]);
 
   // Rename a clip, preserving its position in the animations map (rebuild
   // entries in insertion order, swapping the key) so the JSON diff is one
@@ -2155,7 +1797,7 @@ export function App() {
   const handleRenameClip = useCallback(
     (oldName: string, newName: string) => {
       if (oldName === newName || !isIdentifier(newName)) return;
-      if (!flushPendingManifestReparse()) return;
+      if (editsBlocked) return;
       dispatchEdit(null, (current) => {
         if (current?.source === undefined) return current;
         const src = current.source;
@@ -2185,9 +1827,8 @@ export function App() {
               source: { ...withManifest(src, nextManifest), ...(externalAnims !== undefined && { externalAnims }), },
             };
       });
-      setManifestParseError(null);
     },
-    [dispatchEdit, flushPendingManifestReparse],
+    [dispatchEdit, editsBlocked],
   );
 
   // Delete a clip. No confirmation — undo is the safety net. Deleting the
@@ -2195,7 +1836,7 @@ export function App() {
   // animations; cleaner authored JSON).
   const handleDeleteClip = useCallback(
     (name: string) => {
-      if (!flushPendingManifestReparse()) return;
+      if (editsBlocked) return;
       dispatchEdit(null, (current) => {
         if (current?.source === undefined) return current;
         const src = current.source;
@@ -2226,9 +1867,8 @@ export function App() {
           source: { ...withManifest(src, nextManifest), ...(externalAnims !== undefined && { externalAnims }), },
         };
       });
-      setManifestParseError(null);
     },
-    [dispatchEdit, flushPendingManifestReparse],
+    [dispatchEdit, editsBlocked],
   );
 
   // Move an inline clip out to its own file (§6.3): write
@@ -2236,7 +1876,7 @@ export function App() {
   // value to the reference path. One dispatchEdit = one undo.
   const handleExternalizeClip = useCallback(
     (name: string) => {
-      if (!flushPendingManifestReparse()) return;
+      if (editsBlocked) return;
       dispatchEdit(null, (current) => {
         if (current?.source === undefined) return current;
         const src = current.source;
@@ -2259,9 +1899,8 @@ export function App() {
           source: { ...withManifest(src, nextManifest), files, externalAnims },
         };
       });
-      setManifestParseError(null);
     },
-    [dispatchEdit, flushPendingManifestReparse],
+    [dispatchEdit, editsBlocked],
   );
 
   // The reverse: copy an external clip's object back into the manifest.
@@ -2269,7 +1908,7 @@ export function App() {
   // unreferenced; delete it from the Files tree if it's orphaned.
   const handleInlineClip = useCallback(
     (name: string) => {
-      if (!flushPendingManifestReparse()) return;
+      if (editsBlocked) return;
       dispatchEdit(null, (current) => {
         if (current?.source === undefined) return current;
         const src = current.source;
@@ -2287,9 +1926,8 @@ export function App() {
           source: { ...withManifest(src, nextManifest), externalAnims },
         };
       });
-      setManifestParseError(null);
     },
-    [dispatchEdit, flushPendingManifestReparse],
+    [dispatchEdit, editsBlocked],
   );
 
   // Remove a part's whole track from a clip (the timeline's per-part ×).
@@ -2317,46 +1955,12 @@ export function App() {
   // user-initiated undo is cheap.
   const revalidateRestored = useCallback((restored: LoadResult | null) => {
     const src = restored?.source;
-    if (src === undefined) {
-      setGeometryParseError(null);
-      setManifestParseError(null);
-      return;
-    }
-    const geometryR = parseGeometryText((fileText(src, src.primaryPath) ?? ''));
-    setGeometryParseError(geometryR.ok ? null : geometryR.message);
-    if (src.manifestPath !== undefined) {
-      let err: string | null = null;
-      try {
-        const r = parseManifest(JSON.parse((manifestText(src) ?? '')));
-        if (!r.ok) err = r.message;
-      } catch (e) {
-        err = `JSON parse: ${(e as Error).message}`;
-      }
-      setManifestParseError(err);
-    } else {
-      setManifestParseError(null);
-    }
-    // Per-file (non-primary) parse errors need the same re-derivation:
-    // the restored snapshot can predate or postdate the text a live
-    // error was computed from. Mirrors the per-file typing pipeline —
-    // geometry files parse as geometry, other .json only for
-    // well-formedness.
     setFileParseErrors(() => {
       const next = new Map<string, string>();
-      if (src.files === undefined) return next;
+      if (src === undefined) return next;
       for (const [path, text] of src.files) {
-        if (path === src.primaryPath) continue; // covered by geometryParseError
-        if (path === src.manifestPath) continue;
-        if (isGeometryPath(path, src.primaryPath, src.manifest)) {
-          const r = parseGeometryText(text);
-          if (!r.ok) next.set(path, r.message);
-        } else if (path.endsWith('.json')) {
-          try {
-            JSON.parse(text);
-          } catch (e) {
-            next.set(path, `JSON parse: ${(e as Error).message}`);
-          }
-        }
+        const { error } = applyFileEdit(src, path, text);
+        if (error !== null) next.set(path, error);
       }
       return next;
     });
@@ -2367,36 +1971,20 @@ export function App() {
   const performUndo = useCallback(() => {
     if (history.past.length === 0) return;
     const target = history.past[history.past.length - 1]!;
-    // Discard (don't flush) every pending reparse — their closures hold
-    // pre-undo text; firing after the restore would graft a post-edit
-    // AST onto the restored text (audit A-6). revalidateRestored
-    // re-derives the error gates from the restored text synchronously.
-    cancelPendingGeometryReparse();
-    cancelPendingManifestReparse();
-    cancelAllFileReparse();
     dispatch({ type: 'undo' });
     revalidateRestored(target);
   }, [
     history,
-    cancelPendingGeometryReparse,
-    cancelPendingManifestReparse,
-    cancelAllFileReparse,
     revalidateRestored,
   ]);
 
   const performRedo = useCallback(() => {
     if (history.future.length === 0) return;
     const target = history.future[0]!;
-    cancelPendingGeometryReparse();
-    cancelPendingManifestReparse();
-    cancelAllFileReparse();
     dispatch({ type: 'redo' });
     revalidateRestored(target);
   }, [
     history,
-    cancelPendingGeometryReparse,
-    cancelPendingManifestReparse,
-    cancelAllFileReparse,
     revalidateRestored,
   ]);
 
@@ -2937,7 +2525,7 @@ export function App() {
             <SourceEditor
               text={(fileText(source, source.primaryPath) ?? '')}
               {...(geometryParseError !== null && { parseError: geometryParseError })}
-              onChange={handleEditGeometryText}
+              onChange={(t) => handleEditFileText(source.primaryPath, t)}
             />
           ),
         };
@@ -2952,7 +2540,7 @@ export function App() {
                 {...(manifestParseError !== null && {
                   parseError: manifestParseError,
                 })}
-                onChange={handleEditManifestText}
+                onChange={(t) => handleEditFileText(source.manifestPath!, t)}
               />
             ) : (
               <div className="panel-empty manifest-empty">

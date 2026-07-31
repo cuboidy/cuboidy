@@ -1,5 +1,9 @@
 import {
+  InlineAnimationSchema,
   manifestGeometry,
+  parseGeometryText,
+  parseManifest,
+  parsePaletteFile,
   serializeColor,
   serializeGeometry,
   type Geometry,
@@ -8,7 +12,12 @@ import {
   type Palette,
   type Part,
 } from '@cuboidy/core';
-import { normalizePath } from './load-model.js';
+import {
+  isGeometryPath,
+  normalizePath,
+  resolveProjectRefs,
+  withResolvedPalette,
+} from './load-model.js';
 import type { LoadedSource } from './types.js';
 
 // Pure operations over a loaded source: the union of every geometry file's
@@ -453,4 +462,120 @@ export function uniquePartName(existing: ReadonlySet<string>, base: string): str
   let n = 2;
   while (existing.has(`${base}-${n}`)) n += 1;
   return `${base}-${n}`;
+}
+
+// ── text edits ─────────────────────────────────────────────────────────
+
+export interface FileEditResult {
+  source: LoadedSource;
+  // Non-null while the new text does not parse. UI state, not document
+  // state: it is a pure function of the text, so undo/redo re-derives it
+  // rather than restoring it.
+  error: string | null;
+}
+
+// Record `text` for `path` and re-derive whatever that file feeds:
+//   a geometry file   → its AST (with its §7.4 palette resolved)
+//   the manifest      → the manifest AST and every reference it resolves
+//   a palette file    → the colors of every geometry pointing at it
+//   an animation file → the resolved clip records
+//
+// Text that does NOT parse only records the text; the last good derived
+// value stands until it parses again. That is what keeps the 3D view from
+// flickering through the invalid states every keystroke passes through —
+// the job a 300ms debounce used to do, without a timer to cancel, flush,
+// or reason about. Parsing a package file costs microseconds, so there is
+// nothing to defer.
+export function applyFileEdit(
+  src: LoadedSource,
+  path: string,
+  text: string,
+): FileEditResult {
+  if (!src.files.has(path)) return { source: src, error: null };
+  const next = writeFile(src, path, text);
+
+  if (path === src.manifestPath) {
+    const json = tryJson(text);
+    if ('error' in json) return { source: next, error: json.error };
+    const r = parseManifest(json.value);
+    if (!r.ok) return { source: next, error: r.message };
+    return { source: withResolvedRefs(next, r.value), error: null };
+  }
+
+  if (isGeometryPath(path, src.primaryPath, src.manifest)) {
+    const r = parseGeometryText(text);
+    if (!r.ok) return { source: next, error: r.message };
+    const geometries = new Map(next.geometries);
+    geometries.set(
+      path,
+      withResolvedPalette(r.value, (p) => next.files.get(p)),
+    );
+    return { source: { ...next, geometries }, error: null };
+  }
+
+  if (path.toLowerCase().endsWith('.json')) {
+    const json = tryJson(text);
+    if ('error' in json) return { source: next, error: json.error };
+    let out = next;
+    // A palette file feeds every geometry that points at it (§7.4). A
+    // schema-invalid edit keeps the last good colors.
+    if (geometryPaletteRefs(out).has(path)) {
+      const pR = parsePaletteFile(json.value);
+      if (pR.ok) {
+        const colors = pR.value;
+        out = mapGeometryFiles(out, (g) =>
+          sharesPalette(g, path) ? { ...g, palette: colors } : null,
+        );
+      }
+    }
+    // An animation file feeds the clip records the timeline writes through.
+    if (out.externalAnims !== undefined) {
+      let anims: Map<string, { path: string; anim: InlineAnimation }> | null =
+        null;
+      for (const [clip, rec] of out.externalAnims) {
+        if (rec.path !== path) continue;
+        const parsed = InlineAnimationSchema.safeParse(json.value);
+        if (!parsed.success) break; // keep last good
+        if (anims === null) anims = new Map(out.externalAnims);
+        anims.set(clip, { path, anim: parsed.data });
+      }
+      if (anims !== null) out = { ...out, externalAnims: anims };
+    }
+    return { source: out, error: null };
+  }
+
+  // Anything else (.md / .txt) is just text.
+  return { source: next, error: null };
+}
+
+// Re-resolve everything the manifest references, after it changed.
+export function withResolvedRefs(
+  src: LoadedSource,
+  manifest: Manifest,
+): LoadedSource {
+  const refs = resolveProjectRefs(manifest, (p) => src.files.get(p), {
+    path: src.primaryPath,
+    geometry: primaryGeometry(src),
+  });
+  const {
+    manifestError: _err,
+    externalAnims: _anims,
+    projectErrors: _proj,
+    ...rest
+  } = src;
+  return {
+    ...rest,
+    manifest,
+    geometries: refs.geometries,
+    ...(refs.externalAnims !== undefined && { externalAnims: refs.externalAnims }),
+    ...(refs.projectErrors.length > 0 && { projectErrors: refs.projectErrors }),
+  };
+}
+
+function tryJson(text: string): { value: unknown } | { error: string } {
+  try {
+    return { value: JSON.parse(text) };
+  } catch (e) {
+    return { error: `JSON parse: ${(e as Error).message}` };
+  }
 }
