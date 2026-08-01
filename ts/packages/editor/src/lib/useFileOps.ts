@@ -2,14 +2,7 @@ import { useCallback } from 'react';
 import { AIR, manifestGeometry, type Geometry, type Manifest, type Part } from '@cuboidy/core';
 import { serializeGeometry } from '@cuboidy/core';
 import { normalizePath } from './load-model.js';
-import {
-  deleteFileInSource,
-  mergeGeometries,
-  moveFolderInSource,
-  primaryGeometry,
-  renameFileInSource,
-  withManifest,
-} from './source-ops.js';
+import { deleteFileInSource, mergeGeometries, moveFolderInSource, primaryGeometry, renameFileInSource, withManifest } from './source-ops.js';
 import type { LoadedSource, LoadResult } from './types.js';
 
 // Creating, renaming, moving and deleting package files. Each operation is

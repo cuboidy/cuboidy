@@ -2,12 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  parseGeometryText,
-  parseManifest,
-  type Geometry,
-  type Manifest,
-} from '@cuboidy/core';
+import { parseGeometryText, parseManifest, type Geometry, type Manifest } from '@cuboidy/core';
 import { resolveProjectRefs } from '../src/lib/load-model.js';
 import { CROSS_FILE, lintSource } from '../src/lib/lint.js';
 import type { LoadedSource } from '../src/lib/types.js';

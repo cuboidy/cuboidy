@@ -1,23 +1,7 @@
 import { useCallback } from 'react';
-import {
-  AIR,
-  serializeColor,
-  type Geometry,
-  type Manifest,
-  type Palette,
-  type Part,
-} from '@cuboidy/core';
+import { AIR, serializeColor, type Geometry, type Manifest, type Palette, type Part } from '@cuboidy/core';
 import { normalizePath } from './load-model.js';
-import {
-  geometryAt,
-  mapGeometryFiles,
-  modelPalette,
-  paletteFileText,
-  sharesPalette,
-  withInlinePart,
-  withManifest,
-  writeFile,
-} from './source-ops.js';
+import { geometryAt, mapGeometryFiles, modelPalette, paletteFileText, sharesPalette, withInlinePart, withManifest, writeFile } from './source-ops.js';
 import type { LoadResult } from './types.js';
 
 interface Params {

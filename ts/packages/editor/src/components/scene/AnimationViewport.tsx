@@ -3,14 +3,9 @@ import { Pause, Play, Plus } from 'lucide-react';
 import { OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import type { Geometry, Manifest, Palette } from '@cuboidy/core';
-import {
-  buildRigTree,
-  computeSceneCenter,
-  computeSceneSpan,
-} from '../../lib/rig.js';
+import { RiggedParts, buildRigTree, computeSceneCenter, computeSceneSpan } from '@cuboidy/ui';
+import type { GizmoVisibility } from '@cuboidy/ui';
 import type { AnimationSession } from '../../lib/useAnimationSession.js';
-import type { GizmoVisibility } from '../../lib/types.js';
-import { RiggedParts } from './RiggedParts.js';
 
 interface Props {
   geometry: Geometry;

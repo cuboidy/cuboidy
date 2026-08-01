@@ -1,27 +1,5 @@
-import {
-  InlineAnimationSchema,
-  manifestGeometry,
-  parseGeometryText,
-  parseManifest,
-  parsePaletteFile,
-  resolvePartGeometry,
-  serializeColor,
-  resolveRefFrom,
-  serializeGeometry,
-  toInlineGeometry,
-  type Geometry,
-  type InlineAnimation,
-  type Manifest,
-  type ManifestPart,
-  type Palette,
-  type Part,
-} from '@cuboidy/core';
-import {
-  isGeometryPath,
-  normalizePath,
-  resolveProjectRefs,
-  withResolvedPalette,
-} from './load-model.js';
+import { InlineAnimationSchema, manifestGeometry, parseGeometryText, parseManifest, parsePaletteFile, resolvePartGeometry, serializeColor, resolveRefFrom, serializeGeometry, toInlineGeometry, type Geometry, type InlineAnimation, type Manifest, type ManifestPart, type Palette, type Part } from '@cuboidy/core';
+import { isGeometryPath, normalizePath, resolveProjectRefs, withResolvedPalette } from './load-model.js';
 import type { LoadedSource } from './types.js';
 
 // Pure operations over a loaded source: the union of every geometry file's
@@ -638,7 +616,6 @@ export function deleteFileInSource(src: LoadedSource, p: string): LoadedSource |
   if (geometryPaletteRefs(src).has(p)) next = repointPaletteRef(next, p, null);
   return next;
 }
-
 
 // A model-wide-unique part name (§5): `base` if free, else `base-2`, `-3`…
 // (`-` is a legal identifier char, so the suffix keeps the name valid).

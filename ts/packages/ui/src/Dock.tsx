@@ -15,7 +15,7 @@ import type {
   LeafNode,
   Side,
   SplitNode,
-} from '../lib/layout.js';
+} from './layout.js';
 
 export interface PanelContent {
   title: string;

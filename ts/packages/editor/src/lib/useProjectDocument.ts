@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
-import { historyReducer, makeHistory } from './history.js';
+import { historyReducer, makeHistory } from '@cuboidy/ui';
 import { applyFileEdit } from './source-ops.js';
 import type { LoadResult } from './types.js';
 

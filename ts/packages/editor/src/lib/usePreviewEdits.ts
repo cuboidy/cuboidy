@@ -1,14 +1,8 @@
 import { useCallback } from 'react';
-import {
-  AIR,
-  composePartRotation,
-  quatRotateVec3,
-  type Manifest,
-  type ManifestPart,
-  type Part,
-} from '@cuboidy/core';
+import { AIR, composePartRotation, quatRotateVec3, type Manifest, type ManifestPart, type Part } from '@cuboidy/core';
 import { mapGeometryFiles, mergeGeometries, withManifest } from './source-ops.js';
-import type { LoadResult, VoxelEdit } from './types.js';
+import type { LoadResult } from './types.js';
+import type { VoxelEdit } from '@cuboidy/ui';
 
 // Committing a direct manipulation in the 3D preview: the gizmo drags and
 // the voxel-tool strokes.

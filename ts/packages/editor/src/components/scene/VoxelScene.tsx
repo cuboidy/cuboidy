@@ -9,32 +9,10 @@ import {
 import { OrbitControls } from '@react-three/drei';
 import { Canvas, type ThreeEvent } from '@react-three/fiber';
 import type { Object3D } from 'three';
-import {
-  AIR,
-  type Geometry,
-  type Manifest,
-  type Palette,
-  type Part,
-} from '@cuboidy/core';
-import type {
-  GizmoVisibility,
-  PreviewTool,
-  TransformSubTarget,
-  ViewMode,
-  VoxelEdit,
-} from '../../lib/types.js';
-import {
-  buildRigTree,
-  computeSceneCenter,
-  computeSceneSpan,
-} from '../../lib/rig.js';
-import { PartGizmos, type GizmoPicking } from './PartGizmos.js';
-import { PartMesh } from './PartMesh.js';
-import {
-  RiggedParts,
-  type VoxelStrokeHandlers,
-} from './RiggedParts.js';
-import { TransformGizmo } from './TransformGizmo.js';
+import { AIR, type Geometry, type Manifest, type Palette, type Part } from '@cuboidy/core';
+
+import { PartGizmos, PartMesh, RiggedParts, TransformGizmo, buildRigTree, computeSceneCenter, computeSceneSpan } from '@cuboidy/ui';
+import type { GizmoPicking, GizmoVisibility, PreviewTool, TransformSubTarget, ViewMode, VoxelEdit, VoxelStrokeHandlers } from '@cuboidy/ui';
 
 interface Props {
   geometry: Geometry;

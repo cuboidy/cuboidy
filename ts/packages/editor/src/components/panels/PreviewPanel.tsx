@@ -6,12 +6,7 @@ import { PreviewToolbar } from '../ui/PreviewToolbar.js';
 import { ViewModeToggle } from '../ui/ViewModeToggle.js';
 import { VoxelScene } from '../scene/VoxelScene.js';
 import type { AnimationSession } from '../../lib/useAnimationSession.js';
-import type {
-  GizmoVisibility,
-  PreviewTool,
-  ViewMode,
-  VoxelEdit,
-} from '../../lib/types.js';
+import type { GizmoVisibility, PreviewTool, ViewMode, VoxelEdit } from '@cuboidy/ui';
 
 interface Props {
   geometry: Geometry;

@@ -1,11 +1,4 @@
-import {
-  lintGeometry,
-  parseGeometry,
-  parsePaletteFile,
-  resolvePartGeometry,
-  validateProject,
-  type Diagnostic,
-} from '@cuboidy/core';
+import { lintGeometry, parseGeometry, parsePaletteFile, resolvePartGeometry, validateProject, type Diagnostic } from '@cuboidy/core';
 import { normalizePath } from './load-model.js';
 import type { LoadedSource } from './types.js';
 

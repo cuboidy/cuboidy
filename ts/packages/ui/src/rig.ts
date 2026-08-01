@@ -9,7 +9,7 @@ import {
   type Vec3Tuple,
   type WorldTransform,
 } from '@cuboidy/core';
-import type { ViewMode } from './types.js';
+import type { ViewMode } from './view-types.js';
 
 // Rig math shared by the static rig view (VoxelScene) and the animation
 // view (AnimationView). Two concerns live here:

@@ -4,8 +4,8 @@ import {
   HISTORY_CAP,
   historyReducer,
   makeHistory,
-  type HistoryState,
-} from '../src/lib/history.js';
+} from '@cuboidy/ui';
+import type { HistoryState } from '@cuboidy/ui';
 
 // The undo/redo reducer backs every editing operation in App.tsx, so its
 // contract — what records an entry, what coalesces, what clears the redo

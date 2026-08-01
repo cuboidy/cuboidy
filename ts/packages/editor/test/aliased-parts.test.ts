@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseGeometryText, parseManifest, type Manifest } from '@cuboidy/core';
 import { resolveProjectRefs } from '../src/lib/load-model.js';
-import {
-  manifestText,
-  mergeGeometries,
-  renameFileInSource,
-} from '../src/lib/source-ops.js';
+import { manifestText, mergeGeometries, renameFileInSource } from '../src/lib/source-ops.js';
 import type { LoadedSource } from '../src/lib/types.js';
 
 // SPEC §6.13 lets a part reach a shape under a different name, and lets two

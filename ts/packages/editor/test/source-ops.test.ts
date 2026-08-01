@@ -1,27 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import {
-  parseGeometryText,
-  parseManifest,
-  type Geometry,
-  type Manifest,
-} from '@cuboidy/core';
+import { parseGeometryText, parseManifest, type Geometry, type Manifest } from '@cuboidy/core';
 import { resolveProjectRefs } from '../src/lib/load-model.js';
-import {
-  applyFileEdit,
-  deleteFileInSource,
-  mapGeometryFiles,
-  mergeGeometries,
-  moveFolderInSource,
-  remapPartPalette,
-  renameFileInSource,
-  repointPaletteRef,
-  manifestText,
-  primaryGeometry,
-  uniquePartName,
-  withManifest,
-  withManifestText,
-  writeFile,
-} from '../src/lib/source-ops.js';
+import { applyFileEdit, deleteFileInSource, mapGeometryFiles, mergeGeometries, moveFolderInSource, remapPartPalette, renameFileInSource, repointPaletteRef, manifestText, primaryGeometry, uniquePartName, withManifest, withManifestText, writeFile } from '../src/lib/source-ops.js';
 import type { LoadedSource } from '../src/lib/types.js';
 
 // These are the operations that keep a package's REFERENCES intact while its

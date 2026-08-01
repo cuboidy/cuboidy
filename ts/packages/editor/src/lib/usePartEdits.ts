@@ -1,28 +1,7 @@
 import { useCallback, useState } from 'react';
-import {
-  AIR,
-  duplicatePart,
-  isIdentifier,
-  mirrorPart,
-  type Axis,
-  type InlineAnimation,
-  type Manifest,
-  type ManifestPart,
-  type Part,
-  type PublishedSocket,
-} from '@cuboidy/core';
+import { AIR, duplicatePart, isIdentifier, mirrorPart, type Axis, type InlineAnimation, type Manifest, type ManifestPart, type Part, type PublishedSocket } from '@cuboidy/core';
 import { normalizePath } from './load-model.js';
-import {
-  isInlinePart,
-  mapGeometryFiles,
-  mergeGeometries,
-  primaryGeometry,
-  remapPartPalette,
-  rewriteExternalAnims,
-  uniquePartName,
-  withInlinePart,
-  withManifest,
-} from './source-ops.js';
+import { isInlinePart, mapGeometryFiles, mergeGeometries, primaryGeometry, remapPartPalette, rewriteExternalAnims, uniquePartName, withInlinePart, withManifest } from './source-ops.js';
 import type { LoadResult } from './types.js';
 import { usePreviewEdits } from './usePreviewEdits.js';
 

@@ -1,4 +1,5 @@
-import type { ViewMode } from '../../lib/types.js';
+
+import type { ViewMode } from '@cuboidy/ui';
 
 interface Props {
   mode: ViewMode;

@@ -1,12 +1,7 @@
-import {
-  EASING_NAMES,
-  formatTimeKey,
-  type AttrValue,
-  type EasingName,
-  type Keyframe,
-} from '@cuboidy/core';
-import type { SelectedKey } from '../../lib/types.js';
+import { EASING_NAMES, formatTimeKey, type AttrValue, type EasingName, type Keyframe } from '@cuboidy/core';
+
 import { NumberInput } from '../ui/NumberInput.js';
+import type { SelectedKey } from '@cuboidy/ui';
 
 interface Props {
   selectedKey: SelectedKey;

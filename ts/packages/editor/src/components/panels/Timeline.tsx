@@ -8,14 +8,8 @@ import {
   type PointerEvent,
 } from 'react';
 import { ChevronDown, ChevronRight, Plus, X } from 'lucide-react';
-import {
-  formatTimeKey,
-  type AnimationTrack,
-  type EasingName,
-  type InlineAnimation,
-  type KeyAttr,
-} from '@cuboidy/core';
-import type { SelectedKey } from '../../lib/types.js';
+import { formatTimeKey, type AnimationTrack, type EasingName, type InlineAnimation, type KeyAttr } from '@cuboidy/core';
+import type { SelectedKey } from '@cuboidy/ui';
 
 // Width (px) of the left label gutter. Single-sourced here and fed to both
 // the gutter elements and the playhead's horizontal offset so the playhead

@@ -7,7 +7,7 @@ import {
   SquarePlus,
   type LucideIcon,
 } from 'lucide-react';
-import type { PreviewTool } from '../../lib/types.js';
+import type { PreviewTool } from '@cuboidy/ui';
 
 interface Props {
   tool: PreviewTool;

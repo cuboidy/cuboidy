@@ -3,15 +3,10 @@ import {
   useMemo,
   useState,
 } from 'react';
-import {
-  type Geometry,
-  type Manifest,
-  type Palette,
-  type Part,
-} from '@cuboidy/core';
+import { type Geometry, type Manifest, type Palette, type Part } from '@cuboidy/core';
 import { ConsolePanel, type ConsoleEntry } from './components/panels/ConsolePanel.js';
 import { lintSource } from './lib/lint.js';
-import { Dock, type PanelContent } from './components/Dock.js';
+
 import { ExportMenu } from './components/ui/ExportMenu.js';
 import { Logo } from './components/ui/Logo.js';
 import {
@@ -32,51 +27,18 @@ import { SaveButton } from './components/ui/SaveButton.js';
 import { SettingsMenu } from './components/ui/SettingsMenu.js';
 import { SourceEditor } from './components/panels/SourceEditor.js';
 import { TimelinePanel } from './components/panels/TimelinePanel.js';
-import {
-  normalizePath,
-} from './lib/load-model.js';
-import {
-  addPanelAt,
-  closePanelAt,
-  filePanel,
-  filePanelPath,
-  initialLayout,
-  isPanelVisible,
-  openPanelById,
-  placePanelBeside,
-  placedPanels,
-  splitLeafWith,
-  withActiveAt,
-  withRatioAt,
-  ALL_PANELS,
-  type Edge,
-  type LayoutNode,
-  type LeafId,
-  type Side,
-} from './lib/layout.js';
-import {
-  fileText,
-  geometryAt,
-  manifestText,
-  mergeGeometries,
-  modelPalette,
-  pathBasename,
-  primaryGeometry,
-  sharesPalette,
-  withManifest,
-} from './lib/source-ops.js';
+import { normalizePath } from './lib/load-model.js';
+
+import { fileText, geometryAt, manifestText, mergeGeometries, modelPalette, pathBasename, primaryGeometry, sharesPalette, withManifest } from './lib/source-ops.js';
 import { useAnimationEdits } from './lib/useAnimationEdits.js';
 import { useFileOps } from './lib/useFileOps.js';
 import { usePaletteEdits } from './lib/usePaletteEdits.js';
 import { usePartEdits } from './lib/usePartEdits.js';
 import { useProjectDocument } from './lib/useProjectDocument.js';
 import { useAnimationSession } from './lib/useAnimationSession.js';
-import type {
-  GizmoVisibility,
-  LoadResult,
-  PreviewTool,
-  ViewMode,
-} from './lib/types.js';
+import type { LoadResult } from './lib/types.js';
+import { ALL_PANELS, Dock, addPanelAt, closePanelAt, filePanel, filePanelPath, initialLayout, isPanelVisible, openPanelById, placePanelBeside, placedPanels, splitLeafWith, withActiveAt, withRatioAt } from '@cuboidy/ui';
+import type { Edge, GizmoVisibility, LayoutNode, LeafId, PanelContent, PreviewTool, Side, ViewMode } from '@cuboidy/ui';
 
 // What the Palette panel is pointed at: one geometry file, its resolved
 // colors, and — when those colors live in a shared palette file — the path
@@ -232,7 +194,6 @@ export function App() {
     handleDeleteFile,
     handleDeleteFolder,
   } = useFileOps({ dispatchEdit, setFileParseErrors });
-
 
   // Creating a clip moves the editor to the anim view. Layout state lives
   // here, so the hook calls back rather than reaching for it.

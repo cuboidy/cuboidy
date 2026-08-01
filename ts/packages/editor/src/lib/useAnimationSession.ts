@@ -1,20 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  formatTimeKey,
-  isInlineAnimation,
-  nearestExistingKey,
-  restValue,
-  sampleAnimation,
-  type AttrValue,
-  type Geometry,
-  type InlineAnimation,
-  type KeyAttr,
-  type Keyframe,
-  type Manifest,
-  type Pose,
-} from '@cuboidy/core';
-import type { SelectedKey } from './types.js';
+import { formatTimeKey, isInlineAnimation, nearestExistingKey, restValue, sampleAnimation, type AttrValue, type Geometry, type InlineAnimation, type KeyAttr, type Keyframe, type Manifest, type Pose } from '@cuboidy/core';
+
 import { SNAP_STEP } from '../components/panels/Timeline.js';
+import type { SelectedKey } from '@cuboidy/ui';
 
 // The animation editing "session": the shared playback + selection state that
 // drives BOTH the Preview viewport (poses the rig at `time`) and the Timeline

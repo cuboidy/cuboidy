@@ -1,19 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import {
-  parseGeometryText,
-  parseManifest,
-  type Geometry,
-  type Manifest,
-} from '@cuboidy/core';
+import { parseGeometryText, parseManifest, type Geometry, type Manifest } from '@cuboidy/core';
 import { strToU8, zipSync } from 'fflate';
-import {
-  isGeometryPath,
-  isSafeEntryPath,
-  loadFromCuboidyZip,
-  loadFromFileList,
-  normalizePath,
-  resolveProjectRefs,
-} from '../src/lib/load-model.js';
+import { isGeometryPath, isSafeEntryPath, loadFromCuboidyZip, loadFromFileList, normalizePath, resolveProjectRefs } from '../src/lib/load-model.js';
 import { packageEntries } from '../src/lib/save.js';
 
 // resolveProjectRefs is the pure `(manifest, files) -> derived state`

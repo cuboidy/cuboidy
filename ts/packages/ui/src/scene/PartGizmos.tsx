@@ -9,7 +9,7 @@ import {
   Mesh,
   type Object3D,
 } from 'three';
-import type { GizmoVisibility, TransformSubTarget } from '../../lib/types.js';
+import type { GizmoVisibility, TransformSubTarget } from '../view-types.js';
 
 // Transform-tool integration, non-null while a transform
 // tool is active. Pivot / socket markers become click targets that pick

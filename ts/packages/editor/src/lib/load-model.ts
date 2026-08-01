@@ -1,19 +1,4 @@
-import {
-  InlineAnimationSchema,
-  geometryPaths,
-  manifestGeometry,
-  parseGeometryText,
-  parseManifest,
-  parsePaletteFile,
-  resolvePartGeometry,
-  resolveRefFrom,
-  type Geometry,
-  type InlineAnimation,
-  type Manifest,
-  type Palette,
-  type Part,
-  type ResolvedPart,
-} from '@cuboidy/core';
+import { InlineAnimationSchema, geometryPaths, manifestGeometry, parseGeometryText, parseManifest, parsePaletteFile, resolvePartGeometry, resolveRefFrom, type Geometry, type InlineAnimation, type Manifest, type Palette, type Part, type ResolvedPart } from '@cuboidy/core';
 import { strFromU8, unzipSync } from 'fflate';
 import type { LoadResult, LoadedSource } from './types.js';
 

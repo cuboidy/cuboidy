@@ -1,0 +1,28 @@
+{
+  "name": "@cuboidy/ui",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shared editor UI: dock layout, undo history, and the r3f scene components that draw a rigged Cuboidy model",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cuboidy/core": "*",
+    "@react-three/drei": "^10.0.6",
+    "@react-three/fiber": "^9.0.0",
+    "lucide-react": "^1.24.0",
+    "react": "^19.0.0",
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/three": "^0.170.0",
+    "typescript": "^6.0.3"
+  }
+}
