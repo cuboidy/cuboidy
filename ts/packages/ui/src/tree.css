@@ -1,0 +1,141 @@
+/* Tree rows.
+ *
+ * The shape a tree takes in this product: a caret slot (or a spacer, so
+ * leaf names line up with expandable siblings'), an icon, a name that
+ * ellipsises, and depth carried as inline padding-left on the row.
+ *
+ * Shared so the editor's Parts tree and the workspace's Instances tree
+ * are the same tree. They answer the same question — what is inside
+ * what, and what carries what — and two hand-matched stylesheets would
+ * be two things to keep matching. */
+
+.tree-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding-right: 1rem;
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid transparent;
+  border-radius: var(--r-1);
+  /* Inline padding-left encodes tree depth (set per row). */
+}
+
+.tree-row:hover {
+  background: var(--bg-3);
+}
+
+.tree-row.selected {
+  background: var(--accent-tint);
+  color: #fff;
+}
+
+.tree-row.selected:hover {
+  background: var(--accent-tint);
+}
+
+/* Active drop target while a drag hovers it. Border-based so it doesn't
+   shift layout, and visible over selected/hover. */
+.tree-row.drop-target {
+  border-color: var(--accent-lo);
+  background: var(--accent-tint);
+}
+
+.tree-row.drop-forbidden {
+  cursor: not-allowed;
+}
+
+/* The row being dragged for a move — dimmed like VS Code's cut. */
+.tree-row.dragging {
+  opacity: 0.5;
+}
+
+.tree-row.draft {
+  cursor: default;
+}
+
+/* Expand/collapse caret at the left; fixed width so leaf rows (which use
+   the spacer) keep their names aligned with expandable siblings'. */
+.tree-caret-btn {
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--txt-2);
+  cursor: pointer;
+  font-size: 0.6rem;
+  line-height: 1;
+}
+
+.tree-caret-btn:hover {
+  color: var(--txt-1);
+}
+
+.tree-caret-spacer {
+  width: 1rem;
+  flex-shrink: 0;
+}
+
+.tree-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--txt-2);
+}
+
+/* Per-extension file-icon tints (folders carry no icon at all). */
+svg.ficon-geometry {
+  color: #9a86c9;
+}
+svg.ficon-json {
+  color: #c9a86a;
+}
+
+.tree-caret {
+  display: inline-flex;
+  align-items: center;
+}
+
+.tree-name {
+  flex: 1;
+  font-family: var(--ui);
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-name-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-2);
+  color: var(--txt-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
+  padding: 0.05rem 0.25rem;
+  font-family: var(--ui);
+  font-size: 0.85rem;
+}
+
+.tree-name-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.tree-name-input.invalid {
+  animation: text-input-invalid 0.45s ease-out;
+}
+

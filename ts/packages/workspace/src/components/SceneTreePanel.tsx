@@ -1,5 +1,5 @@
 import { useState, type DragEvent } from 'react';
-import { AlertTriangle, Box, Plug, X } from 'lucide-react';
+import { AlertTriangle, Box, ChevronDown, ChevronRight, Plug, X } from 'lucide-react';
 import type { PlacedInstance, SceneNode } from '../lib/scene.js';
 
 interface Props {
@@ -15,9 +15,11 @@ interface Props {
 
 // The scene as a tree, with drag-to-attach.
 //
-// Modelled on the editor's Parts panel, down to the drop-to-unparent
-// strip, because it answers the same question — what is carried by what
-// — and a person who has used one should not have to learn the other.
+// The editor's Parts tree in every visible respect — same row, caret,
+// icon and name classes from @cuboidy/ui, same drag signals, same
+// drop-to-unparent strip. They answer the same question (what carries
+// what), so someone who has used one already knows this one.
+//
 // The nesting IS the attachment: a socket join is otherwise visible only
 // as two models touching, which is not something you can read.
 export function SceneTreePanel({
@@ -30,10 +32,20 @@ export function SceneTreePanel({
 }: Props) {
   const [dragging, setDragging] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | 'root' | null>(null);
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
 
   const end = (): void => {
     setDragging(null);
     setDropTarget(null);
+  };
+
+  const toggle = (id: string): void => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   // Which rows this drag may NOT land on: itself, and anything it already
@@ -65,7 +77,7 @@ export function SceneTreePanel({
 
   return (
     <div className="scene-tree-panel">
-      <ul className="scene-tree">
+      <ul className="tree-list" role="tree">
         {roots.map((n) => (
           <Row
             key={n.placed.instance.id}
@@ -75,7 +87,9 @@ export function SceneTreePanel({
             dragging={dragging}
             dropTarget={dropTarget}
             forbidden={forbidden}
+            collapsed={collapsed}
             canHost={publishes}
+            onToggle={toggle}
             onSelect={onSelect}
             onRemove={onRemove}
             onDragStartId={setDragging}
@@ -119,7 +133,9 @@ function Row({
   dragging,
   dropTarget,
   forbidden,
+  collapsed,
   canHost,
+  onToggle,
   onSelect,
   onRemove,
   onDragStartId,
@@ -133,7 +149,9 @@ function Row({
   dragging: string | null;
   dropTarget: string | 'root' | null;
   forbidden: ReadonlySet<string>;
+  collapsed: ReadonlySet<string>;
   canHost: (id: string) => boolean;
+  onToggle: (id: string) => void;
   onSelect: (id: string) => void;
   onRemove: (id: string) => void;
   onDragStartId: (id: string) => void;
@@ -143,9 +161,9 @@ function Row({
 }) {
   const { instance, problem } = node.placed;
   const id = instance.id;
-  const blocked =
-    dragging !== null && (forbidden.has(id) || !canHost(id));
-  const isTarget = dropTarget === id;
+  const blocked = dragging !== null && (forbidden.has(id) || !canHost(id));
+  const open = !collapsed.has(id);
+  const hasChildren = node.children.length > 0;
 
   const onDragStart = (e: DragEvent<HTMLDivElement>): void => {
     e.dataTransfer.effectAllowed = 'move';
@@ -168,16 +186,17 @@ function Row({
   };
 
   const cls = [
-    'scene-row',
+    'tree-row',
     id === selected ? 'selected' : '',
-    isTarget ? 'drop-target' : '',
+    dropTarget === id ? 'drop-target' : '',
     blocked ? 'drop-forbidden' : '',
+    dragging === id ? 'dragging' : '',
   ]
     .filter(Boolean)
     .join(' ');
 
   return (
-    <li>
+    <li className="tree-node" role="treeitem" aria-expanded={hasChildren ? open : undefined}>
       <div
         className={cls}
         style={{ paddingLeft: `${0.35 + depth * 0.85}rem` }}
@@ -186,37 +205,52 @@ function Row({
         onDragEnd={onDragEnd}
         onDragOver={onDragOver}
         onDrop={onDrop}
+        onClick={() => onSelect(id)}
       >
-        <button
-          type="button"
-          className="scene-row-main"
-          onClick={() => onSelect(id)}
-        >
+        {hasChildren ? (
+          <button
+            type="button"
+            className="tree-caret-btn"
+            aria-label={open ? `Collapse ${id}` : `Expand ${id}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggle(id);
+            }}
+          >
+            {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          </button>
+        ) : (
+          <span className="tree-caret-spacer" aria-hidden="true" />
+        )}
+        <span className="tree-icon">
           {instance.attach === undefined ? (
-            <Box size={13} className="scene-row-icon" />
+            <Box size={13} />
           ) : (
-            <Plug size={13} className="scene-row-icon attached" />
+            <Plug size={13} className="icon-attached" />
           )}
-          <span className="scene-row-id">{id}</span>
-          {instance.attach !== undefined && (
-            <span className="scene-row-socket">{instance.attach.socket}</span>
-          )}
-          {problem !== undefined && (
-            <AlertTriangle size={12} className="scene-row-warn" aria-label={problem} />
-          )}
-        </button>
+        </span>
+        <span className="tree-name">{id}</span>
+        {instance.attach !== undefined && (
+          <span className="tree-note">{instance.attach.socket}</span>
+        )}
+        {problem !== undefined && (
+          <AlertTriangle size={12} className="tree-warn" aria-label={problem} />
+        )}
         <button
           type="button"
-          className="scene-row-remove"
+          className="icon-btn tree-action"
           title={`Remove ${id} from the scene`}
           aria-label={`Remove ${id}`}
-          onClick={() => onRemove(id)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove(id);
+          }}
         >
           <X size={12} />
         </button>
       </div>
-      {node.children.length > 0 && (
-        <ul>
+      {hasChildren && open && (
+        <ul className="tree-list" role="group">
           {node.children.map((c) => (
             <Row
               key={c.placed.instance.id}
@@ -226,7 +260,9 @@ function Row({
               dragging={dragging}
               dropTarget={dropTarget}
               forbidden={forbidden}
+              collapsed={collapsed}
               canHost={canHost}
+              onToggle={onToggle}
               onSelect={onSelect}
               onRemove={onRemove}
               onDragStartId={onDragStartId}

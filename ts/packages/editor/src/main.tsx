@@ -11,6 +11,7 @@ import '@fontsource/ibm-plex-mono/500.css';
 import '@fontsource/ibm-plex-mono/600.css';
 import '@cuboidy/ui/chrome.css';
 import '@cuboidy/ui/dock.css';
+import '@cuboidy/ui/tree.css';
 import './styles.css';
 
 const rootEl = document.getElementById('root');

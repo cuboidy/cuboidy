@@ -239,81 +239,41 @@ code {
   cursor: grab;
 }
 
-.scene-tree,
-.scene-tree ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
+/* The rows come from @cuboidy/ui/tree.css — the same tree the editor's
+   Parts panel draws. Only what is particular to a SCENE row is here. */
 
-.scene-row {
-  display: flex;
-  align-items: center;
-  border: 1px solid transparent;
-  border-radius: var(--r-1);
-}
-
-.scene-row:hover {
-  background: var(--bg-2);
-}
-
-.scene-row.selected {
-  background: var(--accent-tint);
-  border-color: var(--accent);
-}
-
-.scene-row-main {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  flex: 1;
-  min-width: 0;
-  padding: 0.25rem 0.2rem;
-  background: none;
-  border: 0;
-  color: var(--txt-1);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.scene-row-icon {
-  color: var(--txt-3);
-  flex-shrink: 0;
-}
-
-.scene-row-icon.attached {
+/* The attachment marker, so an attached instance reads differently from
+   a free one at a glance. */
+.tree-icon .icon-attached {
   color: var(--accent-hi);
 }
 
-.scene-row-id {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.scene-row-socket {
-  margin-left: auto;
+.tree-note {
   color: var(--txt-3);
   font-size: 0.7rem;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
-.scene-row-warn {
+.tree-warn {
   color: var(--warn);
   flex-shrink: 0;
 }
 
-.scene-row-remove {
-  padding: 0.2rem 0.3rem;
-  background: none;
-  border: 0;
-  color: var(--txt-3);
-  cursor: pointer;
+/* Row actions stay out of the way until the row is under the pointer,
+   the way the part tree's visibility toggle does. */
+.tree-action {
   flex-shrink: 0;
+  opacity: 0;
 }
 
-.scene-row-remove:hover {
+.tree-row:hover .tree-action,
+.tree-row.selected .tree-action,
+.tree-action:focus-visible {
+  opacity: 1;
+}
+
+.tree-action:hover {
   color: var(--danger);
 }
 
@@ -421,7 +381,11 @@ code {
   font-family: var(--ui);
 }
 
-/* ── scene tree drag targets ─────────────────────────────────────── */
+/* ── scene tree ──────────────────────────────────────────────────
+   Rows, carets, icons and names are @cuboidy/ui/tree.css, including the
+   drag states — this app only adds the strip you drop onto to detach,
+   which has no counterpart in the editor's part tree because a part
+   always has somewhere to go and an instance can simply be free. */
 
 .scene-tree-panel {
   display: flex;
@@ -429,20 +393,8 @@ code {
   gap: 0.35rem;
 }
 
-.scene-row[draggable='true'] {
+.tree-row[draggable='true'] {
   cursor: grab;
-}
-
-/* Same signals the editor's part tree uses: a live target is outlined,
-   a target that would make a cycle is dimmed rather than merely inert,
-   so the refusal is visible before the drop rather than after. */
-.scene-row.drop-target {
-  background: var(--accent-tint);
-  outline: 1px solid var(--accent);
-}
-
-.scene-row.drop-forbidden {
-  opacity: 0.4;
 }
 
 .scene-detach-zone {
