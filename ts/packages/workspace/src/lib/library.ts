@@ -19,6 +19,8 @@ import {
 // Everything below goes through core's resolveProject, so a model means
 // here exactly what it means to the CLIs and to the editor.
 
+import { SCENE_EXT } from './scene-file.js';
+
 const MANIFEST_FILE = 'cuboidy.json';
 
 // One model the library offers. `dir` is the library key: the folder name,
@@ -45,17 +47,36 @@ export interface Library {
   // Directories that held no cuboidy.json. Not an error — a library may
   // hold anything — but worth reporting so a mistyped folder is visible.
   skipped: string[];
+  // `*.scene.json` files at the library root, by filename. Kept as TEXT:
+  // a scene is opened on demand, and one that does not parse should say
+  // so when opened rather than stop the library from loading.
+  scenes: Map<string, string>;
+  // Present when the folder was opened through the File System Access
+  // API, which is what lets a scene be saved back in place. Absent
+  // elsewhere (and in tests), where saving falls back to a download.
+  handle?: FileSystemDirectoryHandle;
 }
 
 // Group a flat path→text map by its first segment, then read each group
 // that has a manifest as a model. Paths are `/`-separated and relative to
 // the folder the user opened, so `knight/cuboidy.json` means the `knight`
 // model's manifest.
-export function buildLibrary(name: string, files: ReadonlyMap<string, string>): Library {
+export function buildLibrary(
+  name: string,
+  files: ReadonlyMap<string, string>,
+  handle?: FileSystemDirectoryHandle,
+): Library {
   const byDir = new Map<string, Map<string, string>>();
+  const scenes = new Map<string, string>();
   for (const [path, text] of files) {
     const i = path.indexOf('/');
-    if (i <= 0) continue; // a loose file at the library root is not a model
+    if (i <= 0) {
+      // A loose file at the root is not a model (§3 wants a folder), but
+      // it may be a scene BUILT from this library — which is where a
+      // scene belongs, beside the models it references.
+      if (path.endsWith(SCENE_EXT)) scenes.set(path, text);
+      continue;
+    }
     const dir = path.slice(0, i);
     const rel = path.slice(i + 1);
     let group = byDir.get(dir);
@@ -70,7 +91,7 @@ export function buildLibrary(name: string, files: ReadonlyMap<string, string>): 
     if (model === null) skipped.push(dir);
     else models.push(model);
   }
-  return { name, models, skipped };
+  return { name, models, skipped, scenes, ...(handle !== undefined && { handle }) };
 }
 
 function readModel(dir: string, files: Map<string, string>): LibraryModel | null {

@@ -24,7 +24,9 @@ export async function openLibraryWithPicker(): Promise<Library> {
   const handle = await picker();
   const files = new Map<string, string>();
   await collect(handle, '', files);
-  return buildLibrary(handle.name, files);
+  // The handle is kept: it is what lets a scene be saved back into the
+  // folder it was built from, rather than landing in Downloads.
+  return buildLibrary(handle.name, files, handle);
 }
 
 export async function openLibraryFromInput(list: FileList): Promise<Library> {

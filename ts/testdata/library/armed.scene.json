@@ -1,0 +1,9 @@
+{
+  "format": "cuboidy-scene",
+  "version": 1,
+  "name": "armed",
+  "instances": [
+    { "id": "knight", "model": "knight" },
+    { "id": "sword", "model": "sword", "attach": { "to": "knight", "socket": "weapon" } }
+  ]
+}

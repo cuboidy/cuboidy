@@ -17,7 +17,7 @@ import {
 import { ModelList, SocketList } from './components/ModelList.js';
 import { SceneView } from './components/SceneView.js';
 import { AnimationPanel } from './components/AnimationPanel.js';
-import { AttachProperties, SceneTree } from './components/SceneTree.js';
+import { AttachProperties, SceneBar, SceneTree } from './components/SceneTree.js';
 import {
   canUseDirectoryPicker,
   openLibraryFromInput,
@@ -41,6 +41,8 @@ import {
   setAttachment,
   type Scene,
 } from './lib/scene.js';
+import { parseScene } from './lib/scene-file.js';
+import { saveScene } from './lib/save-scene.js';
 import { useSceneClock } from './lib/useSceneClock.js';
 
 // Cuboidy Workspace — stage 1: open a folder of models, put them in a
@@ -58,12 +60,14 @@ export function App() {
   const [selected, setSelected] = useState<string | null>(null);
   const [browsing, setBrowsing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sceneStatus, setSceneStatus] = useState<string | null>(null);
   const [layout, setLayout] = useState<LayoutNode<PanelId> | null>(initialLayout);
 
   const adopt = useCallback((next: Library) => {
     setLibrary(next);
     setError(null);
     setScene(emptyScene(next.name));
+    setSceneStatus(null);
     setSelected(null);
     setBrowsing(next.models[0]?.dir ?? null);
   }, []);
@@ -96,6 +100,38 @@ export function App() {
     selectedPlaced?.model ??
     library?.models.find((m) => m.dir === browsing) ??
     null;
+
+  // Opening a scene replaces the current one. A scene that does not parse
+  // reports why and leaves what is on screen alone — losing an
+  // arrangement to a typo in a different file would be a poor trade.
+  const openSceneFile = useCallback(
+    (file: string) => {
+      const text = library?.scenes.get(file);
+      if (text === undefined) return;
+      const r = parseScene(text, file.replace(/\.scene\.json$/i, ''));
+      if (!r.ok) {
+        setSceneStatus(`${file}: ${r.error}`);
+        return;
+      }
+      setScene(r.scene);
+      setSelected(null);
+      setSceneStatus(`Opened ${file}.`);
+    },
+    [library],
+  );
+
+  const handleSaveScene = useCallback(() => {
+    if (library === null) return;
+    void saveScene(scene, library)
+      .then((out) => {
+        setSceneStatus(
+          out.kind === 'wrote'
+            ? `Saved ${out.file} into ${library.name}.`
+            : `Downloaded ${out.file} — move it into ${library.name} beside the models it references.`,
+        );
+      })
+      .catch((e: Error) => setSceneStatus(`Could not save: ${e.message}`));
+  }, [scene, library]);
 
   const place = useCallback((model: string) => {
     setScene((s) => {
@@ -134,6 +170,14 @@ export function App() {
             title,
             body: (
               <div className="panel-body">
+                <SceneBar
+                  name={scene.name}
+                  files={[...library.scenes.keys()]}
+                  onRename={(n) => setScene((s) => ({ ...s, name: n }))}
+                  onOpen={openSceneFile}
+                  onSave={handleSaveScene}
+                  status={sceneStatus}
+                />
                 <SceneTree
                 roots={roots}
                 selected={selected}
@@ -215,7 +259,20 @@ export function App() {
           };
       }
     },
-    [library, browsing, place, roots, selected, placed, selectedPlaced, detailModel],
+    [
+      library,
+      browsing,
+      place,
+      roots,
+      selected,
+      placed,
+      selectedPlaced,
+      detailModel,
+      scene.name,
+      sceneStatus,
+      openSceneFile,
+      handleSaveScene,
+    ],
   );
 
   const closed = useMemo(() => {

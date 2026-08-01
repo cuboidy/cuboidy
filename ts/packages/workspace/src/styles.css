@@ -411,3 +411,45 @@ code {
   padding: 0.2rem 0.5rem;
   font-size: 0.75rem;
 }
+
+/* ── scene bar ───────────────────────────────────────────────────── */
+
+.scene-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.scene-bar-row {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.scene-bar-row select {
+  flex: 1;
+  min-width: 0;
+}
+
+.text-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.15rem 0.3rem;
+  background: var(--bg-2);
+  color: var(--txt-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
+  font: inherit;
+  font-family: var(--ui);
+}
+
+.scene-bar-row select {
+  padding: 0.15rem 0.3rem;
+  background: var(--bg-2);
+  color: var(--txt-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
+  font: inherit;
+  font-family: var(--ui);
+}

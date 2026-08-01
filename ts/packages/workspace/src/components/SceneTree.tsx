@@ -1,4 +1,4 @@
-import { AlertTriangle, Box, Plug, X } from 'lucide-react';
+import { AlertTriangle, Box, FileDown, Plug, X } from 'lucide-react';
 import type { PlacedInstance, SceneNode } from '../lib/scene.js';
 
 interface Props {
@@ -6,6 +6,62 @@ interface Props {
   selected: string | null;
   onSelect: (id: string) => void;
   onRemove: (id: string) => void;
+}
+
+// The scene's name and the files it can be loaded from or saved to. A
+// scene lives in the library folder beside the models it references,
+// because the library is the namespace its `model` keys resolve in.
+export function SceneBar({
+  name,
+  files,
+  onRename,
+  onOpen,
+  onSave,
+  status,
+}: {
+  name: string;
+  files: readonly string[];
+  onRename: (name: string) => void;
+  onOpen: (file: string) => void;
+  onSave: () => void;
+  status: string | null;
+}) {
+  return (
+    <div className="scene-bar">
+      <label className="field">
+        <span className="field-label">scene</span>
+        <input
+          className="text-input"
+          value={name}
+          aria-label="Scene name"
+          onChange={(e) => onRename(e.target.value)}
+        />
+      </label>
+      <div className="scene-bar-row">
+        {files.length > 0 && (
+          <select
+            aria-label="Open a scene"
+            value=""
+            onChange={(e) => {
+              if (e.target.value !== '') onOpen(e.target.value);
+            }}
+          >
+            <option value="">Open…</option>
+            {files.map((f) => (
+              <option key={f} value={f}>
+                {f}
+              </option>
+            ))}
+          </select>
+        )}
+        <button type="button" className="btn btn-sm" onClick={onSave}>
+          <FileDown size={13} />
+          Save scene
+        </button>
+      </div>
+      {status !== null && <p className="hint">{status}</p>}
+    </div>
+  );
 }
 
 // The scene as a tree: free instances at the top, attached ones nested

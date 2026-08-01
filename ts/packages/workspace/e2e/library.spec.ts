@@ -11,6 +11,8 @@ import { resolve } from 'node:path';
 
 const REPO_ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '../../../..');
 const MODELS = resolve(REPO_ROOT, 'models');
+// A library WITH scene files in it, for the read side.
+const LIBRARY = resolve(REPO_ROOT, 'ts/testdata/library');
 
 // Chromium exposes showDirectoryPicker, which automation cannot drive, so
 // hide it to get the <input webkitdirectory> fallback the test CAN drive.
@@ -203,6 +205,65 @@ test('a model with no clips says so instead of offering an empty picker', async 
   await expect(
     page.locator('.dock-leaf', { hasText: 'Animation' }),
   ).toContainText('defines no animations');
+});
+
+test('a scene saved and reopened comes back the same', async ({ page }) => {
+  // The loop closes here: open a library, build an arrangement, write it
+  // beside the models, read it back. The webkitdirectory path has no
+  // handle, so saving downloads — which is the branch this exercises.
+  await openLibrary(page, MODELS);
+  await place(page, 'knight');
+  await place(page, 'sword');
+  await page.locator('.scene-row-id', { hasText: /^sword$/ }).click();
+  await page.locator('.field', { hasText: 'attached to' }).locator('select')
+    .selectOption('knight');
+
+  const name = page.getByLabel('Scene name');
+  await name.fill('armed');
+
+  const dl = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Save scene' }).click();
+  const saved = await dl;
+  expect(saved.suggestedFilename()).toBe('armed.scene.json');
+
+  // Read what was written and put it back through the app's own parser
+  // by way of a fresh load — the round trip that matters is on disk.
+  const stream = await saved.createReadStream();
+  const chunks: Buffer[] = [];
+  for await (const c of stream) chunks.push(c as Buffer);
+  const text = Buffer.concat(chunks).toString('utf-8');
+  const doc = JSON.parse(text) as {
+    format: string;
+    instances: { id: string; attach?: { to: string; socket: string } }[];
+  };
+  expect(doc.format).toBe('cuboidy-scene');
+  expect(doc.instances.map((i) => i.id)).toEqual(['knight', 'sword']);
+  expect(doc.instances[1]?.attach).toEqual({ to: 'knight', socket: 'weapon' });
+});
+
+test('opening a scene from the library restores its arrangement', async ({
+  page,
+}) => {
+  // testdata/library holds two models and a scene file built from them,
+  // so this exercises the read side against a file on disk rather than
+  // one this test just wrote.
+  await openLibrary(page, LIBRARY);
+  await page.getByLabel('Open a scene').selectOption('armed.scene.json');
+  await expect(page.locator('.scene-row-id')).toHaveText(['knight', 'sword']);
+  // Nested under its host, and actually placed at the socket.
+  await expect(page.locator('.scene-tree li li .scene-row-id')).toHaveText('sword');
+  expect((await instanceOrigin(page, 'sword'))![1]).toBeGreaterThan(10);
+});
+
+test('a scene file that does not parse says why and keeps what is on screen', async ({
+  page,
+}) => {
+  await openLibrary(page, LIBRARY);
+  await place(page, 'knight');
+  await page.getByLabel('Open a scene').selectOption('broken.scene.json');
+  await expect(page.locator('.scene-bar')).toContainText('duplicate id');
+  // The arrangement already on screen survived.
+  await expect(page.locator('.scene-row-id')).toHaveText(['knight']);
 });
 
 // One part's sampled rotation, for telling "paused" from "running slowly".

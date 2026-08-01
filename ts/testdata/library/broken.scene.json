@@ -1,0 +1,9 @@
+{
+  "format": "cuboidy-scene",
+  "version": 1,
+  "name": "broken",
+  "instances": [
+    { "id": "knight", "model": "knight" },
+    { "id": "knight", "model": "sword" }
+  ]
+}
