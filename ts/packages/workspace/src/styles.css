@@ -401,3 +401,13 @@ code {
   min-height: 0;
   display: flex;
 }
+
+.anim-controls {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.btn-sm {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+}

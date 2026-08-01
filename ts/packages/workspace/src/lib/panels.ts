@@ -15,8 +15,10 @@ export type PanelId =
   | 'scene'
   // The 3D view.
   | 'view'
-  // What the selection is attached to, and what it offers in return.
+  // What the selection is attached to, what it plays, and what it offers
+  // in return.
   | 'attachment'
+  | 'animation'
   | 'sockets'
   | 'problems';
 
@@ -25,6 +27,7 @@ export const ALL_PANELS: PanelId[] = [
   'scene',
   'view',
   'attachment',
+  'animation',
   'sockets',
   'problems',
 ];
@@ -34,6 +37,7 @@ export const PANEL_TITLES: Record<PanelId, string> = {
   scene: 'Scene',
   view: 'View',
   attachment: 'Attachment',
+  animation: 'Animation',
   sockets: 'Published sockets',
   problems: 'Problems',
 };
@@ -54,7 +58,7 @@ export const initialLayout: LayoutNode<PanelId> = split<PanelId>(
     leaf<PanelId>('view'),
     split<PanelId>(
       'col',
-      leaf<PanelId>('attachment'),
+      { kind: 'leaf', panels: ['attachment', 'animation'], active: 'attachment' },
       { kind: 'leaf', panels: ['sockets', 'problems'], active: 'sockets' },
       0.4,
     ),

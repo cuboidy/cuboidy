@@ -116,7 +116,12 @@ export {
   quatMultiply,
   quatRotateVec3,
 } from './rig-transform.js';
-export type { QuatTuple, Vec3Tuple, WorldTransform } from './rig-transform.js';
+export type {
+  AnimPose,
+  QuatTuple,
+  Vec3Tuple,
+  WorldTransform,
+} from './rig-transform.js';
 
 export { validateCrossFile, validateProject } from './lint/cross-file.js';
 export type { ProjectInput } from './lint/cross-file.js';

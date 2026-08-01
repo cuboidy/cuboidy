@@ -147,6 +147,77 @@ test('a model that publishes nothing says so, rather than showing an empty list'
   ).toContainText('publishes no sockets');
 });
 
+test('playing a clip moves the model, and carries what is attached to it', async ({
+  page,
+}) => {
+  // The proof that attaching to a SOCKET rather than to a position was
+  // worth it: knight's `weapon` is on hand-r, hand-r moves in `walk`, so
+  // the sword has to move with it.
+  await openLibrary(page, MODELS);
+  await place(page, 'knight');
+  await place(page, 'sword');
+  await page.locator('.scene-row-id', { hasText: /^sword$/ }).click();
+  await page.locator('.field', { hasText: 'attached to' }).locator('select')
+    .selectOption('knight');
+
+  const still = await instanceOrigin(page, 'sword');
+
+  // Play the knight's walk. Selecting a clip starts it.
+  await page.locator('.scene-row-id', { hasText: /^knight$/ }).click();
+  await page.locator('.dock-tab', { hasText: 'Animation' }).click();
+  await page.locator('.field', { hasText: 'clip' }).locator('select')
+    .selectOption('walk');
+
+  // The sword's world position changes as the hand swings.
+  await expect
+    .poll(async () => {
+      const now = await instanceOrigin(page, 'sword');
+      return now === null || still === null
+        ? 0
+        : Math.abs(now[0] - still[0]) +
+            Math.abs(now[1] - still[1]) +
+            Math.abs(now[2] - still[2]);
+    }, { timeout: 5000 })
+    .toBeGreaterThan(0.05);
+});
+
+test('pausing holds the model still', async ({ page }) => {
+  await openLibrary(page, MODELS);
+  await place(page, 'knight');
+  await page.locator('.dock-tab', { hasText: 'Animation' }).click();
+  await page.locator('.field', { hasText: 'clip' }).locator('select')
+    .selectOption('walk');
+  await page.getByRole('button', { name: 'Pause' }).click();
+
+  const a = await instancePose(page, 'knight');
+  await page.waitForTimeout(400);
+  expect(await instancePose(page, 'knight')).toEqual(a);
+});
+
+test('a model with no clips says so instead of offering an empty picker', async ({
+  page,
+}) => {
+  await openLibrary(page, MODELS);
+  await place(page, 'sword'); // sword defines no animations
+  await page.locator('.dock-tab', { hasText: 'Animation' }).click();
+  await expect(
+    page.locator('.dock-leaf', { hasText: 'Animation' }),
+  ).toContainText('defines no animations');
+});
+
+// One part's sampled rotation, for telling "paused" from "running slowly".
+async function instancePose(page: Page, id: string): Promise<unknown> {
+  return page.evaluate((wanted) => {
+    const w = window as unknown as {
+      __scene?: { instance: { id: string }; poses: Map<string, unknown> | null }[];
+    };
+    const hit = w.__scene?.find((p) => p.instance.id === wanted);
+    return hit?.poses === null || hit?.poses === undefined
+      ? null
+      : JSON.stringify([...hit.poses]);
+  }, id);
+}
+
 async function place(page: Page, model: string): Promise<void> {
   await page.locator('.model-row-name', { hasText: new RegExp(`^${model}$`) })
     .dblclick();

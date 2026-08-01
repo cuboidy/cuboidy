@@ -110,7 +110,7 @@ function InstanceMesh({
         roots={view.roots}
         palette={view.geometry.palette}
         partPalettes={view.partPalettes}
-        poses={null}
+        poses={placed.poses}
         hiddenParts={EMPTY}
         selectedPart={null}
         gizmos={NO_GIZMOS}

@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { buildLibrary } from '../src/lib/library.js';
 import {
   addInstance,
+  anyPlaying,
   emptyScene,
   freshId,
   placeScene,
   removeInstance,
   sceneTree,
+  setAnimation,
   setAttachment,
   type Scene,
 } from '../src/lib/scene.js';
@@ -142,5 +144,108 @@ describe('sceneTree', () => {
     const s = setAttachment(scene(), 'gem', { to: 'ghost', socket: 'peg' });
     const roots = sceneTree(placeScene(s, LIBRARY));
     expect(roots.map((n) => n.placed.instance.id).sort()).toEqual(['gem', 'tower']);
+  });
+});
+
+// ── playback ──────────────────────────────────────────────────────────
+
+// A model whose single part swings 90° about Z at the half-second, with
+// its socket 2 above the pivot — so the socket sweeps from (0,2,0) to
+// (−2,0,0) and back. Anything attached has to make the same trip.
+const SWINGER = JSON.stringify({
+  name: 'swinger',
+  palette: ['#FF0000'],
+  parts: [
+    {
+      name: 'arm',
+      geometry: {
+        size: [1, 2, 1],
+        pivot: { pos: [0, 0, 0] },
+        sockets: [{ name: 'tip', pos: [0, 2, 0] }],
+        voxels: [['0'], ['0']],
+      },
+    },
+  ],
+  sockets: { peg: { part: 'arm', socket: 'tip' } },
+  animations: {
+    swing: {
+      duration: 1,
+      loop: true,
+      parts: {
+        arm: {
+          '0.0': { rot: [0, 0, 0] },
+          '0.5': { rot: [0, 0, 90] },
+          '1.0': { rot: [0, 0, 0] },
+        },
+      },
+    },
+  },
+});
+
+const ANIM_LIB = buildLibrary(
+  'lib',
+  new Map([
+    ['swinger/cuboidy.json', SWINGER],
+    ['gem/cuboidy.json', guest],
+  ]),
+);
+
+const animScene = (): Scene =>
+  addInstance(addInstance(emptyScene('s'), 'swinger'), 'gem');
+
+describe('animation', () => {
+  it('anyPlaying is false until something plays, so the clock can idle', () => {
+    let s = animScene();
+    expect(anyPlaying(s)).toBe(false);
+    s = setAnimation(s, 'swinger', { clip: 'swing', playing: true });
+    expect(anyPlaying(s)).toBe(true);
+    s = setAnimation(s, 'swinger', { clip: 'swing', playing: false });
+    expect(anyPlaying(s)).toBe(false);
+  });
+
+  it('samples the selected clip at the scene time', () => {
+    const s = setAnimation(animScene(), 'swinger', { clip: 'swing', playing: true });
+    const at = (t: number) =>
+      placeScene(s, ANIM_LIB, t).find((p) => p.instance.id === 'swinger')?.poses;
+    expect(at(0)?.get('arm')?.rot).toEqual([0, 0, 0]);
+    expect(at(0.5)?.get('arm')?.rot).toEqual([0, 0, 90]);
+  });
+
+  it('CARRIES an attached guest as the socket moves', () => {
+    // The point of attaching to a socket rather than to a position. At
+    // rest the tip is 2 above the pivot; a quarter-turn later the arm has
+    // swung it round to −X.
+    let s = animScene();
+    s = setAttachment(s, 'gem', { to: 'swinger', socket: 'peg' });
+    s = setAnimation(s, 'swinger', { clip: 'swing', playing: true });
+    const gemAt = (t: number) =>
+      placeScene(s, ANIM_LIB, t).find((p) => p.instance.id === 'gem')!.frame.pos;
+    expect(gemAt(0)[1]).toBeCloseTo(2, 6);
+    const swung = gemAt(0.5);
+    expect(swung[0]).toBeCloseTo(-2, 6);
+    expect(swung[1]).toBeCloseTo(0, 6);
+  });
+
+  it('a paused instance holds its pose rather than snapping to rest', () => {
+    // Pausing should show the frame you were looking at.
+    const s = setAnimation(animScene(), 'swinger', { clip: 'swing', playing: false });
+    const poses = placeScene(s, ANIM_LIB, 0.5).find(
+      (p) => p.instance.id === 'swinger',
+    )?.poses;
+    expect(poses).not.toBeNull();
+    expect(poses?.get('arm')?.rot).toEqual([0, 0, 0]);
+  });
+
+  it('stopping returns the rest pose', () => {
+    let s = setAnimation(animScene(), 'swinger', { clip: 'swing', playing: true });
+    s = setAnimation(s, 'swinger', null);
+    const p = placeScene(s, ANIM_LIB, 0.5).find((x) => x.instance.id === 'swinger');
+    expect(p?.poses).toBeNull();
+  });
+
+  it('a clip the model no longer defines falls back to the rest pose', () => {
+    const s = setAnimation(animScene(), 'swinger', { clip: 'gone', playing: true });
+    const p = placeScene(s, ANIM_LIB, 0.5).find((x) => x.instance.id === 'swinger');
+    expect(p?.poses).toBeNull();
   });
 });

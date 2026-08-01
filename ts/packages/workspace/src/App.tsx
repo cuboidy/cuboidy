@@ -16,6 +16,7 @@ import {
 } from '@cuboidy/ui';
 import { ModelList, SocketList } from './components/ModelList.js';
 import { SceneView } from './components/SceneView.js';
+import { AnimationPanel } from './components/AnimationPanel.js';
 import { AttachProperties, SceneTree } from './components/SceneTree.js';
 import {
   canUseDirectoryPicker,
@@ -31,13 +32,16 @@ import {
 } from './lib/panels.js';
 import {
   addInstance,
+  anyPlaying,
   emptyScene,
   placeScene,
   removeInstance,
   sceneTree,
+  setAnimation,
   setAttachment,
   type Scene,
 } from './lib/scene.js';
+import { useSceneClock } from './lib/useSceneClock.js';
 
 // Cuboidy Workspace — stage 1: open a folder of models, put them in a
 // scene, attach them to each other's published sockets.
@@ -73,9 +77,11 @@ export function App() {
     }
   }, [adopt]);
 
+  // One clock for the scene, running only while something plays.
+  const time = useSceneClock(anyPlaying(scene));
   const placed = useMemo(
-    () => (library === null ? [] : placeScene(scene, library)),
-    [scene, library],
+    () => (library === null ? [] : placeScene(scene, library, time)),
+    [scene, library, time],
   );
   const roots = useMemo(() => sceneTree(placed), [placed]);
   // The resolved scene, for tests. Where an instance ENDED UP is the only
@@ -162,6 +168,20 @@ export function App() {
                 all={placed}
                 onAttach={(id2, target) =>
                   setScene((s) => setAttachment(s, id2, target))
+                  }
+                />
+              </div>
+            ),
+          };
+        case 'animation':
+          return {
+            title,
+            body: (
+              <div className="panel-body">
+                <AnimationPanel
+                  placed={selectedPlaced}
+                  onSet={(id2, anim) =>
+                    setScene((s) => setAnimation(s, id2, anim))
                   }
                 />
               </div>
