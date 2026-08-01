@@ -25,7 +25,9 @@ export type PanelId =
   | 'attachment'
   | 'animation'
   | 'sockets'
-  | 'problems';
+  | 'problems'
+  // The scene as it would be written to disk.
+  | 'source';
 
 export const ALL_PANELS: PanelId[] = [
   'models',
@@ -36,6 +38,7 @@ export const ALL_PANELS: PanelId[] = [
   'animation',
   'sockets',
   'problems',
+  'source',
 ];
 
 export const PANEL_TITLES: Record<PanelId, string> = {
@@ -47,6 +50,7 @@ export const PANEL_TITLES: Record<PanelId, string> = {
   animation: 'Animation',
   sockets: 'Published sockets',
   problems: 'Problems',
+  source: 'scene.json',
 };
 
 // The panel a reopened one appears beside: the 3D view is this app's
@@ -71,7 +75,11 @@ export const initialLayout: LayoutNode<PanelId> = split<PanelId>(
     split<PanelId>(
       'col',
       { kind: 'leaf', panels: ['attachment', 'animation'], active: 'attachment' },
-      { kind: 'leaf', panels: ['sockets', 'problems'], active: 'sockets' },
+      {
+        kind: 'leaf',
+        panels: ['sockets', 'problems', 'source'],
+        active: 'sockets',
+      },
       0.4,
     ),
     0.74,

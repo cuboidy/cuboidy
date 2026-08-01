@@ -229,6 +229,28 @@ test('pausing holds the model still', async ({ page }) => {
   expect(await instancePose(page, 'knight')).toEqual(a);
 });
 
+test('the seek bar scrubs a paused instance', async ({ page }) => {
+  await openLibrary(page, MODELS);
+  await place(page, 'knight');
+  await page.locator('.dock-tab', { hasText: 'Animation' }).click();
+  await page.locator('.field', { hasText: 'clip' }).locator('select')
+    .selectOption('walk');
+  await page.getByRole('button', { name: 'Pause' }).click();
+
+  const before = await instancePose(page, 'knight');
+  // Drag the range to the middle of the clip.
+  const bar = page.getByLabel('Seek');
+  const box = (await bar.boundingBox())!;
+  await page.mouse.click(box.x + box.width * 0.5, box.y + box.height / 2);
+
+  // The pose changed, and STAYS changed — a paused instance holds its
+  // own point rather than being carried by the shared clock.
+  const after = await instancePose(page, 'knight');
+  expect(after).not.toEqual(before);
+  await page.waitForTimeout(350);
+  expect(await instancePose(page, 'knight')).toEqual(after);
+});
+
 test('a model with no clips says so instead of offering an empty picker', async ({
   page,
 }) => {
@@ -286,6 +308,29 @@ test('opening a scene from the library restores its arrangement', async ({
   // Nested under its host, and actually placed at the socket.
   await expect(page.locator('.scene-tree-panel .tree-list .tree-list .tree-name')).toHaveText('sword');
   expect((await instanceOrigin(page, 'sword'))![1]).toBeGreaterThan(10);
+});
+
+test('the scene.json panel shows what Save would write', async ({ page }) => {
+  await openLibrary(page, MODELS);
+  await place(page, 'knight');
+  await place(page, 'sword');
+  await page.locator('.scene-tree-panel .tree-name', { hasText: /^sword$/ }).click();
+  await page.locator('.field', { hasText: 'attached to' }).locator('select')
+    .selectOption('knight');
+  await page.locator('.dock-tab', { hasText: 'scene.json' }).click();
+
+  const shown = await page.locator('.source-view').innerText();
+  const doc = JSON.parse(shown) as {
+    format: string;
+    instances: { id: string; attach?: { to: string; socket: string } }[];
+  };
+  expect(doc.format).toBe('cuboidy-scene');
+  expect(doc.instances[1]?.attach).toEqual({ to: 'knight', socket: 'weapon' });
+
+  // Live: detaching is reflected without any save step.
+  await page.locator('.field', { hasText: 'attached to' }).locator('select')
+    .selectOption('');
+  await expect(page.locator('.source-view')).not.toContainText('"attach"');
 });
 
 test('a scene file that does not parse says why and keeps what is on screen', async ({

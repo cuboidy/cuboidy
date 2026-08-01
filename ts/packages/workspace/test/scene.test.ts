@@ -226,8 +226,21 @@ describe('animation', () => {
     expect(swung[1]).toBeCloseTo(0, 6);
   });
 
-  it('a paused instance holds its pose rather than snapping to rest', () => {
-    // Pausing should show the frame you were looking at.
+  it('a paused instance reads its OWN frozen point, not the shared clock', () => {
+    // The clock keeps running while other actors play, so a paused one
+    // that read the shared time would keep animating. It holds `at`.
+    const s = setAnimation(animScene(), 'swinger', {
+      clip: 'swing',
+      playing: false,
+      at: 0.5,
+    });
+    const poses = placeScene(s, ANIM_LIB, 999).find(
+      (p) => p.instance.id === 'swinger',
+    )?.poses;
+    expect(poses?.get('arm')?.rot).toEqual([0, 0, 90]);
+  });
+
+  it('a paused instance with no frozen point holds frame zero', () => {
     const s = setAnimation(animScene(), 'swinger', { clip: 'swing', playing: false });
     const poses = placeScene(s, ANIM_LIB, 0.5).find(
       (p) => p.instance.id === 'swinger',

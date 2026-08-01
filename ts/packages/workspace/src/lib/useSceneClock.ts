@@ -1,4 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+export interface SceneClock {
+  time: number;
+  seek: (time: number) => void;
+}
 
 // One clock for the whole scene.
 //
@@ -10,31 +15,34 @@ import { useEffect, useRef, useState } from 'react';
 //
 // It only runs while something is playing: a still scene schedules no
 // frames at all.
-export function useSceneClock(running: boolean): number {
+export function useSceneClock(running: boolean): SceneClock {
   const [time, setTime] = useState(0);
-  // Wall-clock origin, adjusted on resume so pausing does not fast-forward
-  // by however long the pause lasted.
+  // The last value the loop produced, kept in a ref so resuming can pick
+  // up from it without the effect depending on the state it sets.
+  const latest = useRef(0);
+  // Wall-clock origin, re-anchored on resume and on seek, so a pause does
+  // not fast-forward by however long it lasted.
   const origin = useRef(0);
-  const held = useRef(0);
+
+  const seek = useCallback((t: number) => {
+    latest.current = t;
+    origin.current = performance.now() - t * 1000;
+    setTime(t);
+  }, []);
 
   useEffect(() => {
-    if (!running) {
-      held.current = time;
-      return;
-    }
+    if (!running) return;
     let raf = 0;
-    origin.current = performance.now() - held.current * 1000;
+    origin.current = performance.now() - latest.current * 1000;
     const tick = (now: number): void => {
-      setTime((now - origin.current) / 1000);
+      const t = (now - origin.current) / 1000;
+      latest.current = t;
+      setTime(t);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-    // `time` is deliberately not a dependency: reading it here is how the
-    // pause point is captured, and depending on it would restart the loop
-    // every frame.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [running]);
 
-  return time;
+  return { time, seek };
 }

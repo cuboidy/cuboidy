@@ -44,7 +44,7 @@ import {
   setAttachment,
   type Scene,
 } from './lib/scene.js';
-import { parseScene } from './lib/scene-file.js';
+import { parseScene, serializeScene } from './lib/scene-file.js';
 import { saveScene } from './lib/save-scene.js';
 import { useSceneClock } from './lib/useSceneClock.js';
 
@@ -85,7 +85,7 @@ export function App() {
   }, [adopt]);
 
   // One clock for the scene, running only while something plays.
-  const time = useSceneClock(anyPlaying(scene));
+  const { time, seek } = useSceneClock(anyPlaying(scene));
   const placed = useMemo(
     () => (library === null ? [] : placeScene(scene, library, time)),
     [scene, library, time],
@@ -251,12 +251,25 @@ export function App() {
               <div className="panel-body">
                 <AnimationPanel
                   placed={selectedPlaced}
+                  sceneTime={time}
+                  onSeek={seek}
                   onSet={(id2, anim) =>
                     setScene((s) => setAnimation(s, id2, anim))
                   }
                 />
               </div>
             ),
+          };
+        case 'source':
+          // What Save would write, live. Read-only: the scene is edited
+          // through the panels, and a second editable copy of the same
+          // state is a synchronisation problem with nothing to gain —
+          // the editor keeps source tabs writable because a MODEL has
+          // things (voxel rows) no form expresses, and a scene does not.
+          return {
+            title,
+            fill: true,
+            body: <pre className="source-view">{serializeScene(scene)}</pre>,
           };
         case 'sockets':
           return {
@@ -295,7 +308,9 @@ export function App() {
       placed,
       selectedPlaced,
       detailModel,
-      scene.name,
+      scene,
+      time,
+      seek,
       sceneStatus,
       openSceneFile,
       handleSaveScene,

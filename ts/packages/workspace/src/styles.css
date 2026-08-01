@@ -410,3 +410,41 @@ code {
   border-color: var(--accent);
   color: var(--txt-1);
 }
+
+/* ── seek bar ────────────────────────────────────────────────────── */
+
+.seek {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.seek-range {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+
+.seek-time {
+  color: var(--txt-3);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ── scene source view ───────────────────────────────────────────── */
+
+.source-view {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0.6rem 0.8rem;
+  overflow: auto;
+  background: var(--bg-0);
+  color: var(--txt-2);
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  tab-size: 2;
+  white-space: pre;
+}

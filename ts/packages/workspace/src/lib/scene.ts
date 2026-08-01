@@ -38,7 +38,11 @@ export interface Instance {
   // What this instance is playing (SPEC §6.11: at most one clip at a time,
   // per model). Per INSTANCE, not per model: two copies of one model in a
   // scene are two actors and need not be in step.
-  anim?: { clip: string; playing: boolean };
+  //
+  // `at` is where a PAUSED instance is frozen. It has to be per instance:
+  // the clock is shared, so a paused actor read from the shared time
+  // would keep animating whenever some other actor was playing.
+  anim?: { clip: string; playing: boolean; at?: number };
 }
 
 export interface Scene {
@@ -91,7 +95,7 @@ function detachOne(i: Instance): Instance {
 export function setAnimation(
   scene: Scene,
   id: string,
-  anim: { clip: string; playing: boolean } | null,
+  anim: { clip: string; playing: boolean; at?: number } | null,
 ): Scene {
   return {
     ...scene,
@@ -190,15 +194,18 @@ export function placeScene(
     };
     let problem: string | undefined;
 
-    // §6.11: one clip at a time. A paused instance holds its pose at t=0
-    // rather than snapping to rest, so pausing shows you the frame you
-    // were looking at.
+    // §6.11: one clip at a time. Playing reads the shared clock; paused
+    // reads the instance's own frozen point, so it shows the frame it was
+    // stopped at and stays there while other actors keep moving.
     const clip =
       inst.anim === undefined ? undefined : model.animations.get(inst.anim.clip);
     const poses =
       clip === undefined
         ? null
-        : sampleAnimation(clip, inst.anim?.playing === true ? time : 0);
+        : sampleAnimation(
+            clip,
+            inst.anim?.playing === true ? time : (inst.anim?.at ?? 0),
+          );
 
     if (inst.attach !== undefined && !seen.has(inst.id)) {
       const host = byId.get(inst.attach.to);

@@ -1,9 +1,17 @@
 import { Pause, Play, Square } from 'lucide-react';
 import type { PlacedInstance } from '../lib/scene.js';
+import { SeekBar } from './SeekBar.js';
 
 interface Props {
   placed: PlacedInstance | null;
-  onSet: (id: string, anim: { clip: string; playing: boolean } | null) => void;
+  // The shared scene clock's position, and where it is being read from
+  // for THIS instance (its own frozen point when paused).
+  sceneTime: number;
+  onSet: (
+    id: string,
+    anim: { clip: string; playing: boolean; at?: number } | null,
+  ) => void;
+  onSeek: (time: number) => void;
 }
 
 // Playback for the SELECTED instance.
@@ -15,7 +23,7 @@ interface Props {
 //
 // Anything attached to a playing instance follows it — the socket frame is
 // sampled from the host's pose, so a sword in a swinging hand swings.
-export function AnimationPanel({ placed, onSet }: Props) {
+export function AnimationPanel({ placed, sceneTime, onSet, onSeek }: Props) {
   if (placed === null) return <p className="empty">No instance selected.</p>;
   const { instance, model } = placed;
   const clips = [...model.animations.keys()];
@@ -30,6 +38,10 @@ export function AnimationPanel({ placed, onSet }: Props) {
 
   const current = instance.anim;
   const playing = current?.playing === true;
+  const clip = current === undefined ? undefined : model.animations.get(current.clip);
+  // Where this instance actually is: the shared clock while playing, its
+  // own frozen point while paused.
+  const at = playing ? sceneTime : (current?.at ?? 0);
 
   return (
     <div className="attach-props">
@@ -60,7 +72,17 @@ export function AnimationPanel({ placed, onSet }: Props) {
             className="btn btn-sm"
             title={playing ? 'Pause' : 'Play'}
             aria-label={playing ? 'Pause' : 'Play'}
-            onClick={() => onSet(instance.id, { ...current, playing: !playing })}
+            onClick={() => {
+              if (playing) {
+                // Freeze where it is, so it stays there while other
+                // actors keep moving on the shared clock.
+                onSet(instance.id, { ...current, playing: false, at });
+              } else {
+                // Resume from where it was frozen.
+                onSeek(at);
+                onSet(instance.id, { ...current, playing: true });
+              }
+            }}
           >
             {playing ? <Pause size={13} /> : <Play size={13} />}
             {playing ? 'Pause' : 'Play'}
@@ -76,6 +98,22 @@ export function AnimationPanel({ placed, onSet }: Props) {
             Stop
           </button>
         </div>
+      )}
+
+      {clip !== undefined && (
+        <SeekBar
+          time={at}
+          duration={clip.duration}
+          loop={clip.loop}
+          onSeek={(t) => {
+            // Playing: move the shared clock, so everything stays in
+            // step. Paused: move this instance's own frozen point.
+            if (playing) onSeek(t);
+            else if (current !== undefined) {
+              onSet(instance.id, { ...current, at: t });
+            }
+          }}
+        />
       )}
     </div>
   );

@@ -116,6 +116,12 @@ export function parseScene(text: string, fallbackName: string): ParseResult {
         return { ok: false, error: `${at}: \`anim\` needs a \`clip\`` };
       }
       inst.anim = { clip: anim['clip'], playing: anim['playing'] === true };
+      // The frozen point of a paused instance. Persisted because a
+      // paused pose IS part of what the scene looks like — reopening
+      // should give back the frame that was saved, not frame zero.
+      if (typeof anim['at'] === 'number' && isFinite(anim['at'])) {
+        inst.anim.at = anim['at'];
+      }
     }
     instances.push(inst);
   }

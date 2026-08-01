@@ -17,6 +17,7 @@
   "dependencies": {
     "@cuboidy/core": "*",
     "@cuboidy/ui": "*",
+    "@fontsource/ibm-plex-mono": "^5.2.7",
     "@fontsource/ibm-plex-sans": "^5.2.8",
     "@react-three/drei": "^10.0.6",
     "@react-three/fiber": "^9.0.0",
