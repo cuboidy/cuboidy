@@ -108,7 +108,7 @@ export function App() {
           return {
             title,
             body: (
-              <>
+              <div className="panel-body">
                 <ModelList
                   library={library}
                   selected={browsing}
@@ -120,22 +120,24 @@ export function App() {
                     Skipped (no cuboidy.json): {library.skipped.join(', ')}
                   </p>
                 )}
-              </>
+              </div>
             ),
           };
         case 'scene':
           return {
             title,
             body: (
-              <SceneTree
+              <div className="panel-body">
+                <SceneTree
                 roots={roots}
                 selected={selected}
                 onSelect={setSelected}
                 onRemove={(id2) => {
                   setScene((s) => removeInstance(s, id2));
                   setSelected((cur) => (cur === id2 ? null : cur));
-                }}
-              />
+                  }}
+                />
+              </div>
             ),
           };
         case 'view':
@@ -154,30 +156,42 @@ export function App() {
           return {
             title,
             body: (
-              <AttachProperties
+              <div className="panel-body">
+                <AttachProperties
                 placed={selectedPlaced}
                 all={placed}
                 onAttach={(id2, target) =>
                   setScene((s) => setAttachment(s, id2, target))
-                }
-              />
+                  }
+                />
+              </div>
             ),
           };
         case 'sockets':
-          return { title, body: <SocketList model={detailModel} /> };
+          return {
+            title,
+            body: (
+              <div className="panel-body">
+                <SocketList model={detailModel} />
+              </div>
+            ),
+          };
         case 'problems':
           return {
             title,
-            body:
-              detailModel === null || detailModel.problems.length === 0 ? (
-                <p className="empty">No problems.</p>
-              ) : (
-                <ul className="problem-list">
-                  {detailModel.problems.map((p) => (
-                    <li key={p}>{p}</li>
-                  ))}
-                </ul>
-              ),
+            body: (
+              <div className="panel-body">
+                {detailModel === null || detailModel.problems.length === 0 ? (
+                  <p className="empty">No problems.</p>
+                ) : (
+                  <ul className="problem-list">
+                    {detailModel.problems.map((p) => (
+                      <li key={p}>{p}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ),
           };
       }
     },
