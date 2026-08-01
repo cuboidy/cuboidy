@@ -50,33 +50,91 @@ test('opening models/ lists every model in it', async ({ page }) => {
   await expect(page.locator('.model-row-warn')).toHaveCount(0);
 });
 
-test('the first model is selected and drawn', async ({ page }) => {
+test('the scene starts empty and says how to fill it', async ({ page }) => {
   await openLibrary(page, MODELS);
-  await expect(page.locator('.model-row.selected .model-row-name')).toHaveText('fox');
-  const canvas = page.locator('.viewport canvas');
-  await expect(canvas).toBeVisible();
-  // Not blank: sample the centre of the canvas and require it to differ
-  // from the clear colour. An empty scene renders the background only.
+  await expect(page.locator('.scene-hint')).toBeVisible();
+  await expect(page.locator('.scene-row')).toHaveCount(0);
+  // No pixel assertion here: the ground grid is drawn either way, so the
+  // canvas is legitimately not blank with an empty scene.
+});
+
+test('selecting a model shows its published sockets', async ({ page }) => {
+  await openLibrary(page, MODELS);
+  await page.locator('.model-row-name', { hasText: /^knight$/ }).click();
+  // knight publishes `weapon` and `crest` (SPEC §6.12) — the attachment
+  // points a scene hooks onto.
+  await expect(page.locator('.socket-row-name')).toHaveText(['weapon', 'crest']);
+  await expect(page.locator('.socket-row-target').first()).toHaveText('hand-r:grip');
+});
+
+test('double-clicking a model puts it in the scene and draws it', async ({ page }) => {
+  await openLibrary(page, MODELS);
+  await place(page, 'knight');
+  await expect(page.locator('.scene-row-id')).toHaveText(['knight']);
   await expect
     .poll(async () => await centrePixelIsBackground(page), { timeout: 10_000 })
     .toBe(false);
 });
 
-test('selecting a model draws that one and shows its published sockets', async ({
+test('a second copy of one model gets its own id', async ({ page }) => {
+  await openLibrary(page, MODELS);
+  await place(page, 'knight');
+  await place(page, 'knight');
+  await expect(page.locator('.scene-row-id')).toHaveText(['knight', 'knight-2']);
+});
+
+test('attaching the sword to the knight nests it and moves it to the socket', async ({
+  page,
+}) => {
+  // The join the whole design was for: knight publishes `weapon`
+  // (hand-r:grip), sword was authored blind against that contract, and
+  // neither model knows about the other.
+  await openLibrary(page, MODELS);
+  await place(page, 'knight');
+  await place(page, 'sword');
+
+  const before = await instanceOrigin(page, 'sword');
+  await page.locator('.scene-row-id', { hasText: /^sword$/ }).click();
+  await page.locator('.field', { hasText: 'attached to' }).locator('select')
+    .selectOption('knight');
+
+  // It defaults to the host's first published socket…
+  await expect(
+    page.locator('.field', { hasText: /^socket/ }).locator('select'),
+  ).toHaveValue('weapon');
+  // …the tree nests it under its host…
+  await expect(page.locator('.scene-tree li li .scene-row-id')).toHaveText('sword');
+  // …and it is no longer at the origin: it is up in the knight's hand.
+  const after = await instanceOrigin(page, 'sword');
+  expect(after).not.toEqual(before);
+  expect(after![1]).toBeGreaterThan(10); // grip height, not the floor
+});
+
+test('detaching returns it to the scene root', async ({ page }) => {
+  await openLibrary(page, MODELS);
+  await place(page, 'knight');
+  await place(page, 'sword');
+  await page.locator('.scene-row-id', { hasText: /^sword$/ }).click();
+  const attachTo = page.locator('.field', { hasText: 'attached to' }).locator('select');
+  await attachTo.selectOption('knight');
+  await expect(page.locator('.scene-tree li li')).toHaveCount(1);
+  await attachTo.selectOption('');
+  await expect(page.locator('.scene-tree li li')).toHaveCount(0);
+  expect((await instanceOrigin(page, 'sword'))![1]).toBe(0);
+});
+
+test('removing a host detaches what it carried rather than deleting it', async ({
   page,
 }) => {
   await openLibrary(page, MODELS);
-  await page.locator('.model-row-name', { hasText: /^knight$/ }).click();
-  await expect(page.locator('.model-row.selected .model-row-name')).toHaveText(
-    'knight',
-  );
-  // knight publishes `weapon` and `crest` (SPEC §6.12) — the attachment
-  // points a scene will hook onto in the next chunk.
-  await expect(page.locator('.socket-row-name')).toHaveText(['weapon', 'crest']);
-  await expect(page.locator('.socket-row-target').first()).toHaveText('hand-r:grip');
-  await expect
-    .poll(async () => await centrePixelIsBackground(page), { timeout: 10_000 })
-    .toBe(false);
+  await place(page, 'knight');
+  await place(page, 'sword');
+  await page.locator('.scene-row-id', { hasText: /^sword$/ }).click();
+  await page.locator('.field', { hasText: 'attached to' }).locator('select')
+    .selectOption('knight');
+  await page.getByRole('button', { name: 'Remove knight' }).click();
+  // The sword survives, at the scene root.
+  await expect(page.locator('.scene-row-id')).toHaveText(['sword']);
 });
 
 test('a model that publishes nothing says so, rather than showing an empty list', async ({
@@ -86,6 +144,29 @@ test('a model that publishes nothing says so, rather than showing an empty list'
   await page.locator('.model-row-name', { hasText: /^sword$/ }).click();
   await expect(page.locator('.panel-detail')).toContainText('publishes no sockets');
 });
+
+async function place(page: Page, model: string): Promise<void> {
+  await page.locator('.model-row-name', { hasText: new RegExp(`^${model}$`) })
+    .dblclick();
+  await expect(
+    page.locator('.scene-row-id', { hasText: new RegExp(`^${model}`) }).first(),
+  ).toBeVisible();
+}
+
+// Where an instance's model origin ended up, read off the scene the app
+// resolved — the only way to tell "attached" from "drawn at the origin".
+async function instanceOrigin(
+  page: Page,
+  id: string,
+): Promise<[number, number, number] | null> {
+  return page.evaluate((wanted) => {
+    const w = window as unknown as {
+      __scene?: { instance: { id: string }; frame: { pos: [number, number, number] } }[];
+    };
+    const hit = w.__scene?.find((p) => p.instance.id === wanted);
+    return hit === undefined ? null : hit.frame.pos;
+  }, id);
+}
 
 // True when the canvas centre still holds the clear colour, i.e. nothing
 // was drawn there.

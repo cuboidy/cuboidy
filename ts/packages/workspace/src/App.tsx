@@ -1,46 +1,81 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { FolderOpen } from 'lucide-react';
 import { ModelList, SocketList } from './components/ModelList.js';
-import { ModelView } from './components/ModelView.js';
+import { SceneView } from './components/SceneView.js';
+import { AttachProperties, SceneTree } from './components/SceneTree.js';
 import {
   canUseDirectoryPicker,
   openLibraryFromInput,
   openLibraryWithPicker,
 } from './lib/open-folder.js';
 import type { Library } from './lib/library.js';
+import {
+  addInstance,
+  emptyScene,
+  placeScene,
+  removeInstance,
+  sceneTree,
+  setAttachment,
+  type Scene,
+} from './lib/scene.js';
 
-// Cuboidy Workspace — stage 1, first chunk: open a folder of models, list
-// them, draw the selected one.
+// Cuboidy Workspace — stage 1: open a folder of models, put them in a
+// scene, attach them to each other's published sockets.
 //
 // The editor and this are separate apps on purpose. The editor is closed
-// over ONE model; a workspace holds a scene of several. Trying to be both
-// was rejected during design because the panel set and the preview modes
-// fork at every level. What they share is @cuboidy/ui, which knows how to
-// draw a model and nothing about documents.
+// over ONE model; a workspace holds a scene of several. What they share is
+// @cuboidy/ui, which knows how to draw a model and nothing about
+// documents, and core, which owns every rule either of them applies.
 
 export function App() {
   const [library, setLibrary] = useState<Library | null>(null);
+  const [scene, setScene] = useState<Scene>(() => emptyScene());
   const [selected, setSelected] = useState<string | null>(null);
+  const [browsing, setBrowsing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const adopt = useCallback((next: Library) => {
     setLibrary(next);
     setError(null);
-    setSelected(next.models[0]?.dir ?? null);
+    setScene(emptyScene(next.name));
+    setSelected(null);
+    setBrowsing(next.models[0]?.dir ?? null);
   }, []);
 
   const handlePick = useCallback(async () => {
     try {
       adopt(await openLibraryWithPicker());
     } catch (e) {
-      // An aborted picker is the user changing their mind, not a failure.
-      if ((e as Error).name === 'AbortError') return;
+      if ((e as Error).name === 'AbortError') return; // user changed their mind
       setError((e as Error).message);
     }
   }, [adopt]);
 
-  const model =
-    library?.models.find((m) => m.dir === selected) ?? null;
+  const placed = useMemo(
+    () => (library === null ? [] : placeScene(scene, library)),
+    [scene, library],
+  );
+  const roots = useMemo(() => sceneTree(placed), [placed]);
+  // The resolved scene, for tests. Where an instance ENDED UP is the only
+  // way to tell an attachment that took effect from one that merely says
+  // it did, and a canvas cannot be asked. Read-only, and cheap.
+  (window as unknown as { __scene?: unknown }).__scene = placed;
+  const selectedPlaced = placed.find((p) => p.instance.id === selected) ?? null;
+  // The right panel follows the SCENE selection when there is one, and the
+  // library browse otherwise — so clicking a library row previews it and
+  // clicking an instance inspects that.
+  const detailModel =
+    selectedPlaced?.model ??
+    library?.models.find((m) => m.dir === browsing) ??
+    null;
+
+  const place = useCallback((model: string) => {
+    setScene((s) => {
+      const next = addInstance(s, model);
+      setSelected(next.instances[next.instances.length - 1]?.id ?? null);
+      return next;
+    });
+  }, []);
 
   return (
     <div className="app">
@@ -64,9 +99,9 @@ export function App() {
               onChange={(e) => {
                 const files = e.target.files;
                 if (files !== null && files.length > 0) {
-                  void openLibraryFromInput(files).then(adopt).catch((err: Error) => {
-                    setError(err.message);
-                  });
+                  void openLibraryFromInput(files)
+                    .then(adopt)
+                    .catch((err: Error) => setError(err.message));
                 }
               }}
             />
@@ -92,8 +127,19 @@ export function App() {
             <h2>Models</h2>
             <ModelList
               library={library}
+              selected={browsing}
+              onSelect={setBrowsing}
+              onPlace={place}
+            />
+            <h2>Scene</h2>
+            <SceneTree
+              roots={roots}
               selected={selected}
               onSelect={setSelected}
+              onRemove={(id) => {
+                setScene((s) => removeInstance(s, id));
+                setSelected((cur) => (cur === id ? null : cur));
+              }}
             />
             {library.skipped.length > 0 && (
               <p className="hint skipped">
@@ -103,17 +149,25 @@ export function App() {
           </aside>
 
           <section className="viewport">
-            <ModelView model={model} />
+            <SceneView placed={placed} onSelect={setSelected} onDropModel={place} />
           </section>
 
           <aside className="panel panel-detail">
+            <h2>Attachment</h2>
+            <AttachProperties
+              placed={selectedPlaced}
+              all={placed}
+              onAttach={(id, target) =>
+                setScene((s) => setAttachment(s, id, target))
+              }
+            />
             <h2>Published sockets</h2>
-            <SocketList model={model} />
-            {model !== null && model.problems.length > 0 && (
+            <SocketList model={detailModel} />
+            {detailModel !== null && detailModel.problems.length > 0 && (
               <>
                 <h2>Problems</h2>
                 <ul className="problem-list">
-                  {model.problems.map((p) => (
+                  {detailModel.problems.map((p) => (
                     <li key={p}>{p}</li>
                   ))}
                 </ul>

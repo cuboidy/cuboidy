@@ -98,6 +98,13 @@ export type {
   UnresolvedPart,
 } from './project.js';
 
+export {
+  publishedSocketFrame,
+  socketFrameOn,
+  worldTransformsFor,
+} from './socket-frame.js';
+export type { SocketFrame } from './socket-frame.js';
+
 export { buildMesh } from './mesh.js';
 export type { MeshData } from './mesh.js';
 

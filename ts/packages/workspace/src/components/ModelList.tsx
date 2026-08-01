@@ -5,13 +5,18 @@ interface Props {
   library: Library;
   selected: string | null;
   onSelect: (dir: string) => void;
+  // Put a copy in the scene. Reached by dragging a row onto the view, or
+  // by double-clicking it — the drag is the gesture, the double-click is
+  // there because a drag is hard to discover and impossible on a
+  // touchpad-averse day.
+  onPlace: (dir: string) => void;
 }
 
 // The library: every model the opened folder offers. In later stages a row
 // is what you drag into the scene, so it shows what matters when choosing
 // one — how many parts, how many clips, and how many attachment points it
 // PUBLISHES (SPEC §6.12), since that is what a scene can hook onto.
-export function ModelList({ library, selected, onSelect }: Props) {
+export function ModelList({ library, selected, onSelect, onPlace }: Props) {
   if (library.models.length === 0) {
     return (
       <div className="empty">
@@ -29,7 +34,14 @@ export function ModelList({ library, selected, onSelect }: Props) {
           <button
             type="button"
             className={`model-row${m.dir === selected ? ' selected' : ''}`}
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData('application/x-cuboidy-model', m.dir);
+              e.dataTransfer.effectAllowed = 'copy';
+            }}
             onClick={() => onSelect(m.dir)}
+            onDoubleClick={() => onPlace(m.dir)}
+            title={`${m.dir} — drag into the scene, or double-click`}
           >
             <Box size={14} className="model-row-icon" />
             <span className="model-row-name">{m.dir}</span>

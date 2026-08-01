@@ -279,3 +279,146 @@ code {
   border-bottom: 1px solid var(--danger);
   color: var(--txt-1);
 }
+
+/* ── scene ───────────────────────────────────────────────────────── */
+
+.scene-canvas {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.scene-hint {
+  position: absolute;
+  inset: auto 0 1.2rem;
+  margin: 0;
+  text-align: center;
+  color: var(--txt-3);
+  pointer-events: none;
+}
+
+.model-row[draggable='true'] {
+  cursor: grab;
+}
+
+.scene-tree,
+.scene-tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.scene-row {
+  display: flex;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--r-1);
+}
+
+.scene-row:hover {
+  background: var(--bg-2);
+}
+
+.scene-row.selected {
+  background: var(--accent-tint);
+  border-color: var(--accent);
+}
+
+.scene-row-main {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1;
+  min-width: 0;
+  padding: 0.25rem 0.2rem;
+  background: none;
+  border: 0;
+  color: var(--txt-1);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.scene-row-icon {
+  color: var(--txt-3);
+  flex-shrink: 0;
+}
+
+.scene-row-icon.attached {
+  color: var(--accent-hi);
+}
+
+.scene-row-id {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scene-row-socket {
+  margin-left: auto;
+  color: var(--txt-3);
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.scene-row-warn {
+  color: var(--warn);
+  flex-shrink: 0;
+}
+
+.scene-row-remove {
+  padding: 0.2rem 0.3rem;
+  background: none;
+  border: 0;
+  color: var(--txt-3);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.scene-row-remove:hover {
+  color: var(--danger);
+}
+
+/* ── attachment properties ───────────────────────────────────────── */
+
+.attach-props {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+}
+
+.field-label {
+  color: var(--txt-3);
+  width: 5.5rem;
+  flex-shrink: 0;
+}
+
+.field select {
+  flex: 1;
+  min-width: 0;
+  padding: 0.15rem 0.3rem;
+  background: var(--bg-2);
+  color: var(--txt-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
+  font: inherit;
+  font-family: var(--ui);
+}
+
+.attach-problem {
+  margin: 0;
+  padding: 0.3rem 0.4rem;
+  background: var(--accent-tint);
+  border-left: 2px solid var(--warn);
+  border-radius: var(--r-1);
+  color: var(--txt-2);
+  font-size: 0.72rem;
+}
