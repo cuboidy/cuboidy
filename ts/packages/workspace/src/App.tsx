@@ -1,7 +1,9 @@
 import { useCallback, useMemo, useState } from 'react';
 import { FolderOpen } from 'lucide-react';
 import {
+  AppHeader,
   Dock,
+  HeaderDivider,
   addPanelAt,
   closePanelAt,
   placePanelBeside,
@@ -17,7 +19,8 @@ import {
 import { ModelList, SocketList } from './components/ModelList.js';
 import { SceneView } from './components/SceneView.js';
 import { AnimationPanel } from './components/AnimationPanel.js';
-import { AttachProperties, SceneBar, SceneTree } from './components/SceneTree.js';
+import { AttachProperties, SceneBar } from './components/SceneTree.js';
+import { SceneTreePanel } from './components/SceneTreePanel.js';
 import {
   canUseDirectoryPicker,
   openLibraryFromInput,
@@ -178,13 +181,37 @@ export function App() {
                   onSave={handleSaveScene}
                   status={sceneStatus}
                 />
-                <SceneTree
-                roots={roots}
-                selected={selected}
-                onSelect={setSelected}
-                onRemove={(id2) => {
-                  setScene((s) => removeInstance(s, id2));
-                  setSelected((cur) => (cur === id2 ? null : cur));
+              </div>
+            ),
+          };
+        case 'tree':
+          return {
+            title,
+            body: (
+              <div className="panel-body">
+                <SceneTreePanel
+                  roots={roots}
+                  all={placed}
+                  selected={selected}
+                  onSelect={setSelected}
+                  onRemove={(id2) => {
+                    setScene((s) => removeInstance(s, id2));
+                    setSelected((cur) => (cur === id2 ? null : cur));
+                  }}
+                  onAttach={(id2, hostId) => {
+                    setScene((s) => {
+                      if (hostId === null) return setAttachment(s, id2, null);
+                      // A drop onto a host means "attach"; WHICH socket is
+                      // a second decision, so it takes the first published
+                      // one and the Attachment panel changes it.
+                      const host = placed.find((x) => x.instance.id === hostId);
+                      const first = Object.keys(
+                        host?.model.manifest.sockets ?? {},
+                      )[0];
+                      return first === undefined
+                        ? s
+                        : setAttachment(s, id2, { to: hostId, socket: first });
+                    });
                   }}
                 />
               </div>
@@ -285,36 +312,45 @@ export function App() {
 
   return (
     <div className="app">
-      <header className="topbar">
-        <span className="brand">Cuboidy Workspace</span>
-        {canUseDirectoryPicker() ? (
-          <button type="button" className="btn" onClick={() => void handlePick()}>
-            <FolderOpen size={14} />
-            Open folder
-          </button>
-        ) : (
-          <label className="btn">
-            <FolderOpen size={14} />
-            Open folder
-            <input
-              type="file"
-              /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-              {...({ webkitdirectory: '' } as any)}
-              multiple
-              hidden
-              onChange={(e) => {
-                const files = e.target.files;
-                if (files !== null && files.length > 0) {
-                  void openLibraryFromInput(files)
-                    .then(adopt)
-                    .catch((err: Error) => setError(err.message));
-                }
-              }}
-            />
-          </label>
-        )}
-        {library !== null && <span className="library-name">{library.name}</span>}
-      </header>
+      <AppHeader
+        product="Workspace"
+        right={
+          <>
+            {library !== null && (
+              <>
+                <span className="library-name">{library.name}</span>
+                <HeaderDivider />
+              </>
+            )}
+            {canUseDirectoryPicker() ? (
+              <button type="button" className="btn" onClick={() => void handlePick()}>
+                <FolderOpen size={14} />
+                Open folder
+              </button>
+            ) : (
+              <label className="btn">
+                <FolderOpen size={14} />
+                Open folder
+                <input
+                  type="file"
+                  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+                  {...({ webkitdirectory: '' } as any)}
+                  multiple
+                  hidden
+                  onChange={(e) => {
+                    const files = e.target.files;
+                    if (files !== null && files.length > 0) {
+                      void openLibraryFromInput(files)
+                        .then(adopt)
+                        .catch((err: Error) => setError(err.message));
+                    }
+                  }}
+                />
+              </label>
+            )}
+          </>
+        }
+      />
 
       {error !== null && <p className="error-banner">{error}</p>}
 

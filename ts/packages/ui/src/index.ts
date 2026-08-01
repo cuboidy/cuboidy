@@ -6,6 +6,9 @@
 // loading, no saving, no `LoadedSource`. That is what makes it usable by an
 // app whose unit is a scene of several models rather than a single package.
 
+export { AppHeader, HeaderDivider, HeaderGroup } from './AppHeader.js';
+export { Logo } from './Logo.js';
+
 export { Dock } from './Dock.js';
 export type { PanelContent } from './Dock.js';
 

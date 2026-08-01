@@ -1,12 +1,5 @@
-import { AlertTriangle, Box, FileDown, Plug, X } from 'lucide-react';
-import type { PlacedInstance, SceneNode } from '../lib/scene.js';
-
-interface Props {
-  roots: readonly SceneNode[];
-  selected: string | null;
-  onSelect: (id: string) => void;
-  onRemove: (id: string) => void;
-}
+import { FileDown } from 'lucide-react';
+import type { PlacedInstance } from '../lib/scene.js';
 
 // The scene's name and the files it can be loaded from or saved to. A
 // scene lives in the library folder beside the models it references,
@@ -61,96 +54,6 @@ export function SceneBar({
       </div>
       {status !== null && <p className="hint">{status}</p>}
     </div>
-  );
-}
-
-// The scene as a tree: free instances at the top, attached ones nested
-// under whatever carries them. The nesting IS the attachment — it is the
-// one place the arrangement is legible at a glance, which matters because
-// a socket join is otherwise only visible as two models touching.
-export function SceneTree({ roots, selected, onSelect, onRemove }: Props) {
-  if (roots.length === 0) {
-    return <p className="empty">Nothing in the scene yet.</p>;
-  }
-  return (
-    <ul className="scene-tree">
-      {roots.map((n) => (
-        <TreeRow
-          key={n.placed.instance.id}
-          node={n}
-          depth={0}
-          selected={selected}
-          onSelect={onSelect}
-          onRemove={onRemove}
-        />
-      ))}
-    </ul>
-  );
-}
-
-function TreeRow({
-  node,
-  depth,
-  selected,
-  onSelect,
-  onRemove,
-}: {
-  node: SceneNode;
-  depth: number;
-  selected: string | null;
-  onSelect: (id: string) => void;
-  onRemove: (id: string) => void;
-}) {
-  const { instance, problem } = node.placed;
-  return (
-    <li>
-      <div
-        className={`scene-row${instance.id === selected ? ' selected' : ''}`}
-        style={{ paddingLeft: `${0.35 + depth * 0.85}rem` }}
-      >
-        <button
-          type="button"
-          className="scene-row-main"
-          onClick={() => onSelect(instance.id)}
-        >
-          {instance.attach === undefined ? (
-            <Box size={13} className="scene-row-icon" />
-          ) : (
-            <Plug size={13} className="scene-row-icon attached" />
-          )}
-          <span className="scene-row-id">{instance.id}</span>
-          {instance.attach !== undefined && (
-            <span className="scene-row-socket">{instance.attach.socket}</span>
-          )}
-          {problem !== undefined && (
-            <AlertTriangle size={12} className="scene-row-warn" aria-label={problem} />
-          )}
-        </button>
-        <button
-          type="button"
-          className="scene-row-remove"
-          title={`Remove ${instance.id} from the scene`}
-          aria-label={`Remove ${instance.id}`}
-          onClick={() => onRemove(instance.id)}
-        >
-          <X size={12} />
-        </button>
-      </div>
-      {node.children.length > 0 && (
-        <ul>
-          {node.children.map((c) => (
-            <TreeRow
-              key={c.placed.instance.id}
-              node={c}
-              depth={depth + 1}
-              selected={selected}
-              onSelect={onSelect}
-              onRemove={onRemove}
-            />
-          ))}
-        </ul>
-      )}
-    </li>
   );
 }
 

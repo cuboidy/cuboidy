@@ -1,0 +1,130 @@
+/* App chrome: the header, and the button primitives every app's controls
+ * are built from.
+ *
+ * Here rather than in an app's stylesheet for the reason the dock's CSS
+ * is: a shared component that expects the host to have declared a class
+ * has a requirement nothing states and nothing checks, and it fails
+ * silently — as an unstyled control rather than a missing one. Tokens
+ * (--bg-*, --line*, --txt-*, --accent, --r-*) are a fair thing to expect;
+ * class names are not. */
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 1rem;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.app-header-side {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.app-header-group {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.app-header-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--line-2);
+  flex-shrink: 0;
+}
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.brand-mark {
+  display: block;
+  flex-shrink: 0;
+}
+
+.app-brand h1 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--txt-1);
+  white-space: nowrap;
+}
+
+/* The half that differs between apps, set back so the shared half reads
+   as the product and this as the edition. */
+.app-brand-product {
+  color: var(--txt-2);
+  font-weight: 600;
+}
+
+/* ── button primitives ───────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.8rem;
+  background: var(--bg-3);
+  color: var(--txt-1);
+  border: 1px solid transparent;
+  border-radius: var(--r-2);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--line-2);
+}
+
+.btn-sm {
+  padding: 0.2rem 0.55rem;
+  font-size: 0.78rem;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  background: none;
+  border: none;
+  color: var(--txt-2);
+  cursor: pointer;
+}
+
+.icon-btn:hover:not(:disabled) {
+  color: var(--txt-1);
+}
+
+.btn:disabled,
+.icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn:focus-visible,
+.icon-btn:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: var(--r-1);
+}
+
+/* Lucide icons: one stroke weight everywhere; colour follows
+   currentColor. Global because both apps draw the same icon set and a
+   mismatch in weight is the kind of difference you feel without being
+   able to name. */
+svg.lucide {
+  stroke-width: 1.75;
+  flex-shrink: 0;
+}

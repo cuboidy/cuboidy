@@ -298,7 +298,13 @@ describe('the corpus', () => {
   const modelsDir = join(repo, 'models');
 
   const files: Array<{ label: string; text: string }> = [];
-  for (const dir of readdirSync(modelsDir)) {
+  // Directories only: a model is a FOLDER (SPEC §3), and the gallery may
+  // sit beside loose files that are not models — a workspace scene saved
+  // into it, for one. Assuming every entry was a directory made an
+  // unrelated file crash the whole suite.
+  for (const entry of readdirSync(modelsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const dir = entry.name;
     for (const f of readdirSync(join(modelsDir, dir))) {
       if (!f.endsWith('.json') || f === 'cuboidy.json' || f === 'palette.json') continue;
       files.push({

@@ -112,6 +112,39 @@ test('attaching the sword to the knight nests it and moves it to the socket', as
   expect(after![1]).toBeGreaterThan(10); // grip height, not the floor
 });
 
+test('dragging one instance onto another attaches it', async ({ page }) => {
+  // The gesture the Parts panel uses for re-parenting, doing the
+  // equivalent job here. A drop means "attach"; which socket is a second
+  // decision the Attachment panel owns, so it takes the first published.
+  await openLibrary(page, MODELS);
+  await place(page, 'knight');
+  await place(page, 'sword');
+  await page
+    .locator('.scene-row', { hasText: 'sword' })
+    .dragTo(page.locator('.scene-row', { hasText: 'knight' }));
+  await expect(page.locator('.scene-tree li li .scene-row-id')).toHaveText('sword');
+  expect((await instanceOrigin(page, 'sword'))![1]).toBeGreaterThan(10);
+});
+
+test('dragging onto the detach strip frees it again', async ({ page }) => {
+  await openLibrary(page, MODELS);
+  await place(page, 'knight');
+  await place(page, 'sword');
+  const sword = page.locator('.scene-row', { hasText: 'sword' });
+  await sword.dragTo(page.locator('.scene-row', { hasText: 'knight' }));
+  await expect(page.locator('.scene-tree li li')).toHaveCount(1);
+  // The strip only exists while a drag is in flight, so the drop has to
+  // happen in one gesture.
+  await sword.hover();
+  await page.mouse.down();
+  await page.mouse.move(120, 400, { steps: 8 });
+  const strip = page.locator('.scene-detach-zone');
+  await expect(strip).toBeVisible();
+  await strip.hover();
+  await page.mouse.up();
+  await expect(page.locator('.scene-tree li li')).toHaveCount(0);
+});
+
 test('detaching returns it to the scene root', async ({ page }) => {
   await openLibrary(page, MODELS);
   await place(page, 'knight');

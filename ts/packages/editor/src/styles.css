@@ -127,27 +127,6 @@ pre {
    Segmented controls (.view-toggle), dock tabs and tree rows keep their
    own patterns. The transparent border keeps bordered intents (danger/
    warning/create) the same size as borderless ones. */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  padding: 0.3rem 0.8rem;
-  background: var(--bg-3);
-  color: var(--txt-1);
-  border: 1px solid transparent;
-  border-radius: var(--r-2);
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.85rem;
-}
-
-/* Lucide icons: one stroke weight everywhere; colour follows currentColor. */
-svg.lucide {
-  stroke-width: 1.75;
-  flex-shrink: 0;
-}
-
 .btn:hover:not(:disabled) {
   background: var(--bg-4);
 }
@@ -201,32 +180,6 @@ svg.lucide {
 
 /* Chrome-less icon button (header undo/redo, transport play/pause): just
    the glyph, brightening on hover — no background or border. */
-.icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.25rem;
-  background: none;
-  border: none;
-  color: var(--txt-2);
-  cursor: pointer;
-}
-
-.icon-btn:hover:not(:disabled) {
-  color: var(--txt-1);
-}
-
-.icon-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.icon-btn:focus-visible {
-  outline: 1px solid var(--accent);
-  outline-offset: 1px;
-  border-radius: var(--r-1);
-}
-
 /* Compact glyph-only button; width/height/glyph-size come from the
    context class. */
 .btn-icon {
@@ -300,61 +253,11 @@ svg.lucide {
 
 /* ─── Header ──────────────────────────────────────────────────────── */
 
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.6rem 1rem;
-  background: var(--bg-2);
-  border-bottom: 1px solid var(--line);
-  flex-shrink: 0;
-  gap: 1rem;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-}
-
-.brand-mark {
-  display: block;
-  flex-shrink: 0;
-}
-
-.header h1 {
-  font-size: 0.95rem;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-}
-
-/* A cluster of same-meaning controls (history, document I/O), tightly
-   spaced; the .header-divider hairlines separate one cluster from the next. */
-.header-group {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.header-divider {
-  width: 1px;
-  height: 20px;
-  background: var(--line-2);
-  flex-shrink: 0;
-}
+/* ─── App chrome ───────────────────────────────────────────────────
+   The header shell, the brand mark and the .btn / .icon-btn primitives
+   moved to @cuboidy/ui (src/chrome.css) with the AppHeader component, so
+   both apps get the same wordmark and the same buttons. Imported by
+   main.tsx. */
 
 /* Save-in-flight: the disabled cursor signals "wait", not "unavailable". */
 .save-btn:disabled {

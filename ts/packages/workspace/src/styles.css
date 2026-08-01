@@ -52,43 +52,13 @@ body {
   height: 100%;
 }
 
-/* ── top bar ─────────────────────────────────────────────────────── */
-
-.topbar {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.45rem 0.7rem;
-  background: var(--bg-2);
-  border-bottom: 1px solid var(--line);
-  flex-shrink: 0;
-}
-
-.brand {
-  font-weight: 600;
-  letter-spacing: 0.01em;
-}
+/* The header, the brand and the button primitives come from
+   @cuboidy/ui/chrome.css, so both apps share one wordmark and one set of
+   buttons. Only what is specific to this app stays here. */
 
 .library-name {
   color: var(--txt-2);
-  margin-left: auto;
-}
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.25rem 0.55rem;
-  background: var(--bg-3);
-  color: var(--txt-1);
-  border: 1px solid var(--line-2);
-  border-radius: var(--r-1);
-  font: inherit;
-  cursor: pointer;
-}
-
-.btn:hover {
-  border-color: var(--accent);
+  white-space: nowrap;
 }
 
 /* ── landing ─────────────────────────────────────────────────────── */
@@ -407,10 +377,7 @@ code {
   gap: 0.35rem;
 }
 
-.btn-sm {
-  padding: 0.2rem 0.5rem;
-  font-size: 0.75rem;
-}
+
 
 /* ── scene bar ───────────────────────────────────────────────────── */
 
@@ -452,4 +419,42 @@ code {
   border-radius: var(--r-1);
   font: inherit;
   font-family: var(--ui);
+}
+
+/* ── scene tree drag targets ─────────────────────────────────────── */
+
+.scene-tree-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.scene-row[draggable='true'] {
+  cursor: grab;
+}
+
+/* Same signals the editor's part tree uses: a live target is outlined,
+   a target that would make a cycle is dimmed rather than merely inert,
+   so the refusal is visible before the drop rather than after. */
+.scene-row.drop-target {
+  background: var(--accent-tint);
+  outline: 1px solid var(--accent);
+}
+
+.scene-row.drop-forbidden {
+  opacity: 0.4;
+}
+
+.scene-detach-zone {
+  padding: 0.35rem;
+  border: 1px dashed var(--line-2);
+  border-radius: var(--r-1);
+  color: var(--txt-3);
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+.scene-detach-zone.active {
+  border-color: var(--accent);
+  color: var(--txt-1);
 }

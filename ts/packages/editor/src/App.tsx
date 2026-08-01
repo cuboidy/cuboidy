@@ -8,7 +8,6 @@ import { ConsolePanel, type ConsoleEntry } from './components/panels/ConsolePane
 import { lintSource } from './lib/lint.js';
 
 import { ExportMenu } from './components/ui/ExportMenu.js';
-import { Logo } from './components/ui/Logo.js';
 import {
   FolderOpen,
   Plus,
@@ -37,7 +36,7 @@ import { usePartEdits } from './lib/usePartEdits.js';
 import { useProjectDocument } from './lib/useProjectDocument.js';
 import { useAnimationSession } from './lib/useAnimationSession.js';
 import type { LoadResult } from './lib/types.js';
-import { Dock, addPanelAt, closePanelAt, isPanelVisible, openPanelById, placePanelBeside, placedPanels, splitLeafWith, withActiveAt, withRatioAt } from '@cuboidy/ui';
+import { AppHeader, Dock, HeaderDivider, HeaderGroup, addPanelAt, closePanelAt, isPanelVisible, openPanelById, placePanelBeside, placedPanels, splitLeafWith, withActiveAt, withRatioAt } from '@cuboidy/ui';
 import {
   ALL_PANELS,
   MAIN_PANEL,
@@ -968,69 +967,59 @@ export function App() {
 
   return (
     <div className="app">
-      <header className="header">
-        <div className="header-left">
-          <div className="brand">
-            <Logo />
-            <h1>Cuboidy</h1>
-          </div>
-          {/* ⚙ view/workspace settings (Reset layout) — a separate concern
-              from the right-side document/session controls, so it lives by
-              the brand, not next to Save/Export. A hairline sets it off from
-              the wordmark. */}
-          {source !== undefined && (
-            <>
-              <span className="header-divider" aria-hidden="true" />
-              <SettingsMenu onResetLayout={handleResetLayout} />
-            </>
-          )}
-        </div>
-        <div className="header-right">
-          {source !== undefined && (
-            <>
-              <div className="header-group">
-                <button
-                  type="button"
-                  className="icon-btn"
-                  disabled={!canUndo}
-                  title="Undo (Ctrl+Z)"
-                  aria-label="Undo"
-                  onClick={performUndo}
-                >
-                  <Undo2 size={16} />
-                </button>
-                <button
-                  type="button"
-                  className="icon-btn"
-                  disabled={!canRedo}
-                  title="Redo (Ctrl+Shift+Z)"
-                  aria-label="Redo"
-                  onClick={performRedo}
-                >
-                  <Redo2 size={16} />
-                </button>
-              </div>
-              <span className="header-divider" aria-hidden="true" />
-              <div className="header-group">
-                <SaveButton source={source} />
-                <ExportMenu source={source} />
-              </div>
-              <span className="header-divider" aria-hidden="true" />
-            </>
-          )}
-          {loaded !== null && (
-            <button
-              type="button"
-              className="btn"
-              title="Load a different model"
-              onClick={handleReset}
-            >
-              <FolderOpen size={14} />
-              Load another
-            </button>
-          )}
-        </div>
-      </header>
+      <AppHeader
+        product="Editor"
+        left={source !== undefined ? (
+            <SettingsMenu onResetLayout={handleResetLayout} />
+          ) : undefined}
+        right={
+          <>
+            {source !== undefined && (
+              <>
+                <HeaderGroup>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    disabled={!canUndo}
+                    title="Undo (Ctrl+Z)"
+                    aria-label="Undo"
+                    onClick={performUndo}
+                  >
+                    <Undo2 size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    disabled={!canRedo}
+                    title="Redo (Ctrl+Shift+Z)"
+                    aria-label="Redo"
+                    onClick={performRedo}
+                  >
+                    <Redo2 size={16} />
+                  </button>
+                </HeaderGroup>
+                <HeaderDivider />
+                <HeaderGroup>
+                  <SaveButton source={source} />
+                  <ExportMenu source={source} />
+                </HeaderGroup>
+                <HeaderDivider />
+              </>
+            )}
+            {loaded !== null && (
+              <button
+                type="button"
+                className="btn"
+                title="Load a different model"
+                onClick={handleReset}
+              >
+                <FolderOpen size={14} />
+                Load another
+              </button>
+            )}
+          </>
+        }
+      />
       <main className="main">
         {source === undefined ? (
           <FileDropZone onLoad={handleLoad} />

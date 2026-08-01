@@ -10,9 +10,14 @@ import { leaf, split, type LayoutNode } from '@cuboidy/ui';
 // decision holding.
 
 export type PanelId =
-  // The library the folder offers, and the scene built from it.
+  // The library the folder offers, the scene FILE, and the tree of what
+  // is in it. The file bar and the tree are separate panels for the same
+  // reason the editor keeps Files and Parts apart: one is about the
+  // document, the other about what is inside it, and they are consulted
+  // at different moments.
   | 'models'
   | 'scene'
+  | 'tree'
   // The 3D view.
   | 'view'
   // What the selection is attached to, what it plays, and what it offers
@@ -25,6 +30,7 @@ export type PanelId =
 export const ALL_PANELS: PanelId[] = [
   'models',
   'scene',
+  'tree',
   'view',
   'attachment',
   'animation',
@@ -35,6 +41,7 @@ export const ALL_PANELS: PanelId[] = [
 export const PANEL_TITLES: Record<PanelId, string> = {
   models: 'Models',
   scene: 'Scene',
+  tree: 'Instances',
   view: 'View',
   attachment: 'Attachment',
   animation: 'Animation',
@@ -52,7 +59,12 @@ export const MAIN_PANEL: PanelId = 'view';
 // read together when hooking one model onto another.
 export const initialLayout: LayoutNode<PanelId> = split<PanelId>(
   'row',
-  split<PanelId>('col', leaf<PanelId>('models'), leaf<PanelId>('scene'), 0.5),
+  split<PanelId>(
+    'col',
+    leaf<PanelId>('models'),
+    split<PanelId>('col', leaf<PanelId>('tree'), leaf<PanelId>('scene'), 0.62),
+    0.42,
+  ),
   split<PanelId>(
     'row',
     leaf<PanelId>('view'),
