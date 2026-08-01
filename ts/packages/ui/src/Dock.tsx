@@ -11,7 +11,6 @@ import { Plus, X } from 'lucide-react';
 import type {
   Edge,
   LayoutNode,
-  LeafId,
   LeafNode,
   Side,
   SplitNode,
@@ -26,27 +25,27 @@ export interface PanelContent {
   fill?: boolean;
 }
 
-interface Props {
-  node: LayoutNode;
+interface Props<Id extends string> {
+  node: LayoutNode<Id>;
   path?: Side[];
   // Content for the panel at `id` (title + body). Null only defensively
   // (e.g. nothing loaded); a placed panel always has content.
-  getPanel: (id: LeafId) => PanelContent | null;
+  getPanel: (id: Id) => PanelContent | null;
   // Closed (not-placed) panels, for the leaf "+" add menu.
-  closedPanels: { id: LeafId; title: string }[];
+  closedPanels: { id: Id; title: string }[];
   onResize: (path: Side[], ratio: number) => void;
-  onActivate: (path: Side[], id: LeafId) => void;
-  onClose: (path: Side[], id: LeafId) => void;
-  onAdd: (path: Side[], id: LeafId) => void;
+  onActivate: (path: Side[], id: Id) => void;
+  onClose: (path: Side[], id: Id) => void;
+  onAdd: (path: Side[], id: Id) => void;
   // Drop on the BODY edge → split the leaf at `toPath` that direction.
-  onSplit: (toPath: Side[], edge: Edge, id: LeafId, fromPath: Side[]) => void;
+  onSplit: (toPath: Side[], edge: Edge, id: Id, fromPath: Side[]) => void;
   // Drop on the HEADER → place the dragged panel before/after a tab (reorder
   // within the leaf, or move in / append at that position).
   onReorder: (
     toPath: Side[],
-    targetId: LeafId,
+    targetId: Id,
     before: boolean,
-    id: LeafId,
+    id: Id,
     fromPath: Side[],
   ) => void;
 }
@@ -76,7 +75,7 @@ function nearestEdge(rect: DOMRect, x: number, y: number): Edge {
 //   - drop on a leaf's HEADER (tab row) → tab into that leaf (reorder on a
 //     tab, append on the empty space);
 //   - drop on a leaf's BODY → split that leaf in the nearest-edge direction.
-export function Dock(props: Props) {
+export function Dock<Id extends string>(props: Props<Id>) {
   const { node, path = [] } = props;
   if (node.kind === 'leaf') {
     return <DockLeaf {...props} leaf={node} path={path} />;
@@ -84,7 +83,7 @@ export function Dock(props: Props) {
   return <DockSplit {...props} node={node} path={path} />;
 }
 
-function DockLeaf({
+function DockLeaf<Id extends string>({
   leaf,
   path,
   getPanel,
@@ -94,7 +93,7 @@ function DockLeaf({
   onAdd,
   onSplit,
   onReorder,
-}: Props & { leaf: LeafNode; path: Side[] }) {
+}: Props<Id> & { leaf: LeafNode<Id>; path: Side[] }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [splitEdge, setSplitEdge] = useState<Edge | null>(null);
   // x of the insertion line within .dock-tabs (offset coords), or null.
@@ -116,15 +115,15 @@ function DockLeaf({
     return () => window.removeEventListener('pointerdown', onDown);
   }, [menuOpen]);
 
-  const dragData = (e: DragEvent): { path: Side[]; id: LeafId } | null => {
+  const dragData = (e: DragEvent): { path: Side[]; id: Id } | null => {
     const raw = e.dataTransfer.getData(DRAG_MIME);
-    return raw === '' ? null : (JSON.parse(raw) as { path: Side[]; id: LeafId });
+    return raw === '' ? null : (JSON.parse(raw) as { path: Side[]; id: Id });
   };
   const hasDrag = (e: DragEvent): boolean =>
     e.dataTransfer.types.includes(DRAG_MIME);
 
   const onTabDragStart =
-    (id: LeafId) => (e: DragEvent<HTMLDivElement>) => {
+    (id: Id) => (e: DragEvent<HTMLDivElement>) => {
       e.dataTransfer.setData(DRAG_MIME, JSON.stringify({ path, id }));
       e.dataTransfer.effectAllowed = 'move';
     };
@@ -142,7 +141,7 @@ function DockLeaf({
     setInsertX(before ? el.offsetLeft : el.offsetLeft + el.offsetWidth);
   };
   const onTabDrop =
-    (targetId: LeafId) => (e: DragEvent<HTMLDivElement>) => {
+    (targetId: Id) => (e: DragEvent<HTMLDivElement>) => {
       e.preventDefault();
       e.stopPropagation();
       const r = e.currentTarget.getBoundingClientRect();
@@ -291,12 +290,12 @@ function DockLeaf({
   );
 }
 
-function DockSplit({
+function DockSplit<Id extends string>({
   node,
   path,
   onResize,
   ...rest
-}: Props & { node: SplitNode; path: Side[] }) {
+}: Props<Id> & { node: SplitNode<Id>; path: Side[] }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const drag = useRef<{
     startPos: number;

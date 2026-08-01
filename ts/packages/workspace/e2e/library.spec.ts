@@ -142,7 +142,9 @@ test('a model that publishes nothing says so, rather than showing an empty list'
 }) => {
   await openLibrary(page, MODELS);
   await page.locator('.model-row-name', { hasText: /^sword$/ }).click();
-  await expect(page.locator('.panel-detail')).toContainText('publishes no sockets');
+  await expect(
+    page.locator('.dock-leaf', { hasText: 'Published sockets' }),
+  ).toContainText('publishes no sockets');
 });
 
 async function place(page: Page, model: string): Promise<void> {
@@ -172,7 +174,7 @@ async function instanceOrigin(
 // was drawn there.
 async function centrePixelIsBackground(page: Page): Promise<boolean> {
   return page.evaluate(() => {
-    const canvas = document.querySelector('.viewport canvas');
+    const canvas = document.querySelector('.scene-canvas canvas');
     if (!(canvas instanceof HTMLCanvasElement)) return true;
     const gl =
       canvas.getContext('webgl2', { preserveDrawingBuffer: true }) ??

@@ -37,8 +37,24 @@ import { usePartEdits } from './lib/usePartEdits.js';
 import { useProjectDocument } from './lib/useProjectDocument.js';
 import { useAnimationSession } from './lib/useAnimationSession.js';
 import type { LoadResult } from './lib/types.js';
-import { ALL_PANELS, Dock, addPanelAt, closePanelAt, filePanel, filePanelPath, initialLayout, isPanelVisible, openPanelById, placePanelBeside, placedPanels, splitLeafWith, withActiveAt, withRatioAt } from '@cuboidy/ui';
-import type { Edge, GizmoVisibility, LayoutNode, LeafId, PanelContent, PreviewTool, Side, ViewMode } from '@cuboidy/ui';
+import { Dock, addPanelAt, closePanelAt, isPanelVisible, openPanelById, placePanelBeside, placedPanels, splitLeafWith, withActiveAt, withRatioAt } from '@cuboidy/ui';
+import {
+  ALL_PANELS,
+  MAIN_PANEL,
+  filePanel,
+  filePanelPath,
+  initialLayout,
+} from './lib/panels.js';
+import type {
+  Edge,
+  GizmoVisibility,
+  LayoutNode,
+  PanelContent,
+  PreviewTool,
+  Side,
+  ViewMode,
+} from '@cuboidy/ui';
+import type { PanelId } from './lib/panels.js';
 
 // What the Palette panel is pointed at: one geometry file, its resolved
 // colors, and — when those colors live in a shared palette file — the path
@@ -155,7 +171,7 @@ export function App() {
         result.source !== undefined &&
         result.source.manifest !== undefined;
       setViewMode(hasManifest ? 'rig' : 'geometry');
-      setLayout((l) => openPanelById(l, 'preview'));
+      setLayout((l) => openPanelById(l, 'preview', MAIN_PANEL));
       // A load that carries problems (a manifest that didn't parse, an
       // unresolved reference) foregrounds the Console so the notice isn't
       // silently hidden behind the Timeline tab.
@@ -164,7 +180,7 @@ export function App() {
         (result.source.manifestError !== undefined ||
           (result.source.projectErrors?.length ?? 0) > 0)
       ) {
-        setLayout((l) => openPanelById(l, 'console'));
+        setLayout((l) => openPanelById(l, 'console', MAIN_PANEL));
       }
     },
     [replaceDocument, resetPartState],
@@ -199,7 +215,7 @@ export function App() {
   // here, so the hook calls back rather than reaching for it.
   const onClipCreated = useCallback(() => {
     setViewMode('anim');
-    setLayout((l) => openPanelById(l, 'preview'));
+    setLayout((l) => openPanelById(l, 'preview', MAIN_PANEL));
   }, []);
   // Every keyframe-editor edit (lib/useAnimationEdits).
   const {
@@ -443,13 +459,13 @@ export function App() {
   // Dock layout tree (resizable, rearrangeable). In-memory only — layout is
   // session-scoped by design (no persistence); "Reset layout" restores it.
   // Null = every panel closed (empty dock); App renders an add-panel state.
-  const [layout, setLayout] = useState<LayoutNode | null>(initialLayout);
+  const [layout, setLayout] = useState<LayoutNode<PanelId> | null>(initialLayout);
 
   // Display title for any panel. Static for tool panels; the source files take
   // their actual file name so the dock tab reads "voxels.json" / "cuboidy.json"
   // (matching the file tree). Used for both tab labels and the + menu.
   const panelTitle = useCallback(
-    (id: LeafId): string => {
+    (id: PanelId): string => {
       const fpath = filePanelPath(id);
       if (fpath !== null) return pathBasename(fpath);
       switch (id) {
@@ -486,17 +502,17 @@ export function App() {
   const handleResize = useCallback((path: Side[], ratio: number) => {
     setLayout((current) => (current === null ? null : withRatioAt(current, path, ratio)));
   }, []);
-  const handleActivatePanel = useCallback((path: Side[], id: LeafId) => {
+  const handleActivatePanel = useCallback((path: Side[], id: PanelId) => {
     setLayout((current) => (current === null ? null : withActiveAt(current, path, id)));
   }, []);
-  const handleClosePanel = useCallback((path: Side[], id: LeafId) => {
+  const handleClosePanel = useCallback((path: Side[], id: PanelId) => {
     setLayout((current) => (current === null ? null : closePanelAt(current, path, id)));
   }, []);
-  const handleAddPanel = useCallback((path: Side[], id: LeafId) => {
+  const handleAddPanel = useCallback((path: Side[], id: PanelId) => {
     setLayout((current) => (current === null ? null : addPanelAt(current, path, id)));
   }, []);
   const handleSplitLeaf = useCallback(
-    (toPath: Side[], edge: Edge, id: LeafId, fromPath: Side[]) => {
+    (toPath: Side[], edge: Edge, id: PanelId, fromPath: Side[]) => {
       setLayout((current) =>
         current === null ? null : splitLeafWith(current, toPath, edge, id, fromPath),
       );
@@ -506,9 +522,9 @@ export function App() {
   const handleReorderPanel = useCallback(
     (
       toPath: Side[],
-      targetId: LeafId,
+      targetId: PanelId,
       before: boolean,
-      id: LeafId,
+      id: PanelId,
       fromPath: Side[],
     ) => {
       setLayout((current) =>
@@ -523,8 +539,8 @@ export function App() {
   // Re-open a panel by id — brings it forward if placed, else re-adds it (and
   // seeds a fresh leaf from an empty dock). Drives both the tree-file clicks
   // and the empty-dock add buttons.
-  const handleReopenPanel = useCallback((id: LeafId) => {
-    setLayout((l) => openPanelById(l, id));
+  const handleReopenPanel = useCallback((id: PanelId) => {
+    setLayout((l) => openPanelById(l, id, MAIN_PANEL));
   }, []);
   // Click a file in the tree → bring its panel forward (re-opening it if
   // it was closed). The primary geometry maps to the classic geometry panel,
@@ -534,13 +550,13 @@ export function App() {
     (path: string) => {
       const src = loaded?.source;
       if (src === undefined) return;
-      const id: LeafId =
+      const id: PanelId =
         path === src.primaryPath
           ? 'geometry'
           : src.manifestPath === path
             ? 'manifest'
             : filePanel(path);
-      setLayout((l) => openPanelById(l, id));
+      setLayout((l) => openPanelById(l, id, MAIN_PANEL));
     },
     [loaded],
   );
@@ -647,7 +663,7 @@ export function App() {
   // a closed panel can be reopened (and by the empty-dock state, where the set
   // is everything).
   const closedPanels = useMemo(() => {
-    const placed = layout === null ? new Set<LeafId>() : placedPanels(layout);
+    const placed = layout === null ? new Set<PanelId>() : placedPanels(layout);
     return ALL_PANELS.filter((id) => !placed.has(id)).map((id) => ({
       id,
       title: panelTitle(id),
@@ -658,7 +674,7 @@ export function App() {
   // so each panel supplies just { title, fill?, body }. The source panels
   // (preview / geometry / manifest) were the in-center TabBar's tabs; they now
   // `fill` their leaf and manage their own scrolling (3D canvas, textareas).
-  const getPanel = (id: LeafId): PanelContent | null => {
+  const getPanel = (id: PanelId): PanelContent | null => {
     if (source === undefined) return null;
     const manifest = source.manifest;
     const title = panelTitle(id);
@@ -946,7 +962,7 @@ export function App() {
         return { title, body: <ConsolePanel entries={consoleEntries} /> };
     }
     // Unreachable for static ids (the switch is exhaustive over them);
-    // satisfies TS now that LeafId also includes dynamic file ids.
+    // satisfies TS now that PanelId also includes dynamic file ids.
     return null;
   };
 

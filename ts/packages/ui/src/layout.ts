@@ -8,108 +8,47 @@ export type SplitDir = 'row' | 'col';
 // Path into the tree: a sequence of sides from the root ([] = the root node).
 export type Side = 'a' | 'b';
 
-// Every leaf hosts dockable panels (tabs). Tool panels sit on the sides; the
-// source panels (preview / geometry / manifest) are the model-viewing surfaces —
-// formerly the bespoke in-center TabBar, now first-class dock tabs you can
-// move, split and reorder like any other. (The timeline becomes its own
-// panel in a later Phase D step.)
-export type ToolPanelId =
-  | 'files'
-  | 'model'
-  | 'parts'
-  | 'properties'
-  | 'palette'
-  | 'inspector'
-  | 'console';
-export type SourcePanelId = 'preview' | 'geometry' | 'manifest' | 'timeline';
-// Dynamic per-file editor tabs (v0.7 multi-file packages): one panel per
-// package file, keyed by its /-relative path. Opened from the Files tree;
-// not in ALL_PANELS (closing one just removes it — reopen via the tree).
-export type FilePanelId = `file:${string}`;
-export type LeafId = ToolPanelId | SourcePanelId | FilePanelId;
+// A panel is identified by whatever string the APP calls it. The tree
+// mechanics below never inspect an id — they move it, group it and drop
+// it — so the id type is the app's business: the editor has one panel
+// set (and dynamic per-file tabs), a workspace has another.
+//
+// This used to hard-code the editor's ids and its initial arrangement.
+// Sharing the mechanism is right; shipping one app's panel list to every
+// consumer of it was not, and it only became visible when there WAS a
+// second consumer.
 
-export const filePanel = (path: string): FilePanelId => `file:${path}`;
-export function filePanelPath(id: LeafId): string | null {
-  return id.startsWith('file:') ? id.slice('file:'.length) : null;
-}
-
-export interface SplitNode {
+export interface SplitNode<Id extends string> {
   kind: 'split';
   dir: SplitDir;
-  a: LayoutNode;
-  b: LayoutNode;
+  a: LayoutNode<Id>;
+  b: LayoutNode<Id>;
   ratio: number; // a's fraction of the split (0..1); b gets 1 - ratio
 }
 
-export interface LeafNode {
+export interface LeafNode<Id extends string> {
   kind: 'leaf';
-  panels: LeafId[]; // tabs (length ≥ 1)
-  active: LeafId; // shown tab
+  panels: Id[]; // tabs (length ≥ 1)
+  active: Id; // shown tab
 }
 
-export type LayoutNode = SplitNode | LeafNode;
+export type LayoutNode<Id extends string = string> =
+  | SplitNode<Id>
+  | LeafNode<Id>;
 
-const leaf = (id: LeafId): LeafNode => ({ kind: 'leaf', panels: [id], active: id });
-const split = (
+export const leaf = <Id extends string>(id: Id): LeafNode<Id> => ({ kind: 'leaf', panels: [id], active: id });
+export const split = <Id extends string>(
   dir: SplitDir,
-  a: LayoutNode,
-  b: LayoutNode,
+  a: LayoutNode<Id>,
+  b: LayoutNode<Id>,
   ratio: number,
-): SplitNode => ({ kind: 'split', dir, a, b, ratio });
-
-// Every dockable panel. The leaf "+" menu offers any of these not currently
-// placed anywhere (so a closed panel can always be reopened). Titles for the
-// dynamic ones (geometry/manifest take their file name) live in App.panelTitle.
-export const ALL_PANELS: LeafId[] = [
-  'files',
-  'model',
-  'parts',
-  'properties',
-  'palette',
-  'inspector',
-  'preview',
-  'geometry',
-  'manifest',
-  'timeline',
-  'console',
-];
-
-// Default layout (nested binary): left column = (Files with Model tabbed
-// behind it — both project-wide) over (Parts over Properties); center column
-// = the source panels (Preview/geometry/manifest as tabs) over the bottom leaf
-// (Timeline with the Console tabbed behind it, VS Code style); right column =
-// Palette over the Key Inspector (the keyframe editor's selection detail,
-// kept near the timeline's right end — where it used to live as a fixed
-// sidebar). Realizes the IA: Parts/Properties adjacent (#5), Palette
-// separated from the rig (#6), and the timeline docked under the viewport
-// like a Premiere-style editor.
-export const initialLayout: LayoutNode = split(
-  'row',
-  split(
-    'col',
-    { kind: 'leaf', panels: ['files', 'model'], active: 'files' },
-    split('col', leaf('parts'), leaf('properties'), 0.4),
-    0.25,
-  ),
-  split(
-    'row',
-    split(
-      'col',
-      { kind: 'leaf', panels: ['preview', 'geometry', 'manifest'], active: 'preview' },
-      { kind: 'leaf', panels: ['timeline', 'console'], active: 'timeline' },
-      0.68,
-    ),
-    split('col', leaf('palette'), leaf('inspector'), 0.55),
-    0.78,
-  ),
-  0.2,
-);
+): SplitNode<Id> => ({ kind: 'split', dir, a, b, ratio });
 
 // All panel ids currently placed somewhere in the tree.
-export function placedPanels(
-  node: LayoutNode,
-  acc: Set<LeafId> = new Set(),
-): Set<LeafId> {
+export function placedPanels<Id extends string>(
+  node: LayoutNode<Id>,
+  acc: Set<Id> = new Set(),
+): Set<Id> {
   if (node.kind === 'leaf') {
     for (const p of node.panels) acc.add(p);
   } else {
@@ -120,11 +59,11 @@ export function placedPanels(
 }
 
 // Apply `fn` to the leaf at `path`, returning a new tree (off-path shared).
-function updateLeaf(
-  node: LayoutNode,
+function updateLeaf<Id extends string>(
+  node: LayoutNode<Id>,
   path: readonly Side[],
-  fn: (leaf: LeafNode) => LeafNode,
-): LayoutNode {
+  fn: (leaf: LeafNode<Id>) => LeafNode<Id>,
+): LayoutNode<Id> {
   if (path.length === 0) return node.kind === 'leaf' ? fn(node) : node;
   if (node.kind !== 'split') return node;
   const [side, ...rest] = path;
@@ -134,33 +73,33 @@ function updateLeaf(
 }
 
 // Set the active tab of the leaf at `path`.
-export function withActiveAt(
-  root: LayoutNode,
+export function withActiveAt<Id extends string>(
+  root: LayoutNode<Id>,
   path: readonly Side[],
-  active: LeafId,
-): LayoutNode {
+  active: Id,
+): LayoutNode<Id> {
   return updateLeaf(root, path, (l) =>
     l.panels.includes(active) ? { ...l, active } : l,
   );
 }
 
 // Append a panel as a tab to the leaf at `path` and make it active.
-export function addPanelAt(
-  root: LayoutNode,
+export function addPanelAt<Id extends string>(
+  root: LayoutNode<Id>,
   path: readonly Side[],
-  id: LeafId,
-): LayoutNode {
+  id: Id,
+): LayoutNode<Id> {
   return updateLeaf(root, path, (l) =>
     l.panels.includes(id) ? l : { ...l, panels: [...l.panels, id], active: id },
   );
 }
 
 // Set the ratio of the split at `path`.
-export function withRatioAt(
-  root: LayoutNode,
+export function withRatioAt<Id extends string>(
+  root: LayoutNode<Id>,
   path: readonly Side[],
   ratio: number,
-): LayoutNode {
+): LayoutNode<Id> {
   if (path.length === 0) {
     return root.kind === 'split' ? { ...root, ratio } : root;
   }
@@ -175,12 +114,12 @@ function samePath(a: readonly Side[], b: readonly Side[]): boolean {
   return a.length === b.length && a.every((s, i) => s === b[i]);
 }
 
-function insertBeside(
-  panels: LeafId[],
-  id: LeafId,
-  targetId: LeafId,
+function insertBeside<Id extends string>(
+  panels: Id[],
+  id: Id,
+  targetId: Id,
   before: boolean,
-): LeafId[] {
+): Id[] {
   const ti = panels.indexOf(targetId);
   if (ti < 0) return [...panels, id];
   const at = before ? ti : ti + 1;
@@ -190,14 +129,14 @@ function insertBeside(
 // Place `id` immediately before/after `targetId` in the leaf at `toPath`.
 // Same leaf → reorder its tabs; other leaf → insert there at that position
 // and remove from the source.
-export function placePanelBeside(
-  root: LayoutNode,
+export function placePanelBeside<Id extends string>(
+  root: LayoutNode<Id>,
   toPath: readonly Side[],
-  targetId: LeafId,
+  targetId: Id,
   before: boolean,
-  id: LeafId,
+  id: Id,
   fromPath: readonly Side[],
-): LayoutNode {
+): LayoutNode<Id> {
   if (id === targetId) return root;
   if (samePath(fromPath, toPath)) {
     return updateLeaf(root, toPath, (l) => ({
@@ -236,13 +175,13 @@ function edgeToSplit(edge: Edge): { dir: SplitDir; firstIsNew: boolean } {
   }
 }
 
-function splitLeafAt(
-  node: LayoutNode,
+function splitLeafAt<Id extends string>(
+  node: LayoutNode<Id>,
   path: readonly Side[],
   dir: SplitDir,
-  newLeaf: LeafNode,
+  newLeaf: LeafNode<Id>,
   firstIsNew: boolean,
-): LayoutNode {
+): LayoutNode<Id> {
   if (path.length === 0) {
     if (node.kind !== 'leaf') return node;
     return firstIsNew
@@ -261,15 +200,15 @@ function splitLeafAt(
 // side. Split the target FIRST, then remove the panel from its source — and
 // if source === target, the original leaf has moved into the new split, so
 // fix up the source path accordingly.
-export function splitLeafWith(
-  root: LayoutNode,
+export function splitLeafWith<Id extends string>(
+  root: LayoutNode<Id>,
   toPath: readonly Side[],
   edge: Edge,
-  id: LeafId,
+  id: Id,
   fromPath: readonly Side[],
-): LayoutNode {
+): LayoutNode<Id> {
   const { dir, firstIsNew } = edgeToSplit(edge);
-  const newLeaf: LeafNode = { kind: 'leaf', panels: [id], active: id };
+  const newLeaf: LeafNode<Id> = { kind: 'leaf', panels: [id], active: id };
   const splitTree = splitLeafAt(root, toPath, dir, newLeaf, firstIsNew);
   const origSide: Side = firstIsNew ? 'b' : 'a';
   const newFromPath = samePath(fromPath, toPath)
@@ -283,19 +222,19 @@ export function splitLeafWith(
 // split collapses into its surviving side (which then fills the space).
 // Closing the very last panel empties the whole dock → returns null (App
 // renders an empty-dock state you can add panels back from).
-export function closePanelAt(
-  root: LayoutNode,
+export function closePanelAt<Id extends string>(
+  root: LayoutNode<Id>,
   path: readonly Side[],
-  id: LeafId,
-): LayoutNode | null {
+  id: Id,
+): LayoutNode<Id> | null {
   return closeRec(root, path, id);
 }
 
-function closeRec(
-  node: LayoutNode,
+function closeRec<Id extends string>(
+  node: LayoutNode<Id>,
   path: readonly Side[],
-  id: LeafId,
-): LayoutNode | null {
+  id: Id,
+): LayoutNode<Id> | null {
   if (path.length === 0) {
     if (node.kind !== 'leaf') return node;
     const panels = node.panels.filter((p) => p !== id);
@@ -317,11 +256,11 @@ function closeRec(
 }
 
 // Locate the leaf hosting `id` (DFS, left-first): its path + the leaf node.
-function locate(
-  node: LayoutNode,
-  id: LeafId,
+function locate<Id extends string>(
+  node: LayoutNode<Id>,
+  id: Id,
   path: Side[] = [],
-): { path: Side[]; leaf: LeafNode } | null {
+): { path: Side[]; leaf: LeafNode<Id> } | null {
   if (node.kind === 'leaf') {
     return node.panels.includes(id) ? { path, leaf: node } : null;
   }
@@ -329,30 +268,39 @@ function locate(
 }
 
 // Path to the leaf currently hosting `id`, or null if not placed anywhere.
-export function findLeafPath(root: LayoutNode, id: LeafId): Side[] | null {
+export function findLeafPath<Id extends string>(root: LayoutNode<Id>, id: Id): Side[] | null {
   return locate(root, id)?.path ?? null;
 }
 
 // True when `id` is the *visible* (active) tab of its leaf — i.e. on screen,
 // not just placed-but-behind-another-tab.
-export function isPanelVisible(root: LayoutNode, id: LeafId): boolean {
+export function isPanelVisible<Id extends string>(root: LayoutNode<Id>, id: Id): boolean {
   const found = locate(root, id);
   return found !== null && found.leaf.active === id;
 }
 
 // Path to the left-most leaf — a guaranteed-existing fallback host.
-function firstLeafPath(node: LayoutNode, path: Side[] = []): Side[] {
+function firstLeafPath<Id extends string>(node: LayoutNode<Id>, path: Side[] = []): Side[] {
   return node.kind === 'leaf' ? [...path] : firstLeafPath(node.a, [...path, 'a']);
 }
 
 // Bring `id` to the foreground: if already placed, make it its leaf's active
-// tab; otherwise re-open it as a tab on the center (preview's leaf), falling
-// back to the left-most leaf. From an empty dock (null) it seeds a fresh
+// tab; otherwise re-open it as a tab beside `preferHost`, falling back to
+// the left-most leaf. From an empty dock (null) it seeds a fresh
 // single-panel leaf.
-export function openPanelById(root: LayoutNode | null, id: LeafId): LayoutNode {
+//
+// `preferHost` is the app's main surface — the panel a reopened one should
+// appear next to. It is a parameter because it used to be the string
+// 'preview', which is the editor's viewport and meant nothing to any other
+// app: a panel set is the app's, and so is which of them is the middle.
+export function openPanelById<Id extends string>(
+  root: LayoutNode<Id> | null,
+  id: Id,
+  preferHost?: Id,
+): LayoutNode<Id> {
   if (root === null) return { kind: 'leaf', panels: [id], active: id };
   const here = findLeafPath(root, id);
   if (here !== null) return withActiveAt(root, here, id);
-  const host = findLeafPath(root, 'preview') ?? firstLeafPath(root);
-  return addPanelAt(root, host, id);
+  const preferred = preferHost === undefined ? null : findLeafPath(root, preferHost);
+  return addPanelAt(root, preferred ?? firstLeafPath(root), id);
 }

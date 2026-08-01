@@ -4,6 +4,7 @@ import { App } from './App.js';
 import '@fontsource/ibm-plex-sans/400.css';
 import '@fontsource/ibm-plex-sans/500.css';
 import '@fontsource/ibm-plex-sans/600.css';
+import '@cuboidy/ui/dock.css';
 import './styles.css';
 
 const rootEl = document.getElementById('root');

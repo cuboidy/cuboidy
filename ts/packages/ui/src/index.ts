@@ -12,19 +12,25 @@ export type { PanelContent } from './Dock.js';
 export {
   addPanelAt,
   closePanelAt,
-  filePanel,
-  filePanelPath,
-  initialLayout,
+  findLeafPath,
   isPanelVisible,
+  leaf,
   openPanelById,
   placePanelBeside,
   placedPanels,
+  split,
   splitLeafWith,
   withActiveAt,
   withRatioAt,
-  ALL_PANELS,
 } from './layout.js';
-export type { Edge, LayoutNode, LeafId, Side } from './layout.js';
+export type {
+  Edge,
+  LayoutNode,
+  LeafNode,
+  Side,
+  SplitDir,
+  SplitNode,
+} from './layout.js';
 
 export { historyReducer, makeHistory, COALESCE_MS, HISTORY_CAP } from './history.js';
 export type { HistoryAction, HistoryState } from './history.js';
