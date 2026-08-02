@@ -36,17 +36,22 @@ export function Transport({
 }: Props) {
   const live = disabled === undefined && duration > 0;
   const at = live ? Math.min(time, duration) : 0;
+  // An inert control must not claim to be playing. The clock behind it
+  // may well still be running — the editor's session does not stop for a
+  // view switch — but nothing is moving where you are looking, and a
+  // pause glyph on a dead button says the opposite.
+  const shown = live && playing;
   return (
     <div className="transport" role="group" aria-label="Playback">
       <button
         type="button"
         className="transport-play icon-btn"
-        aria-label={playing ? 'Pause' : 'Play'}
-        title={disabled ?? (playing ? 'Pause' : 'Play')}
+        aria-label={shown ? 'Pause' : 'Play'}
+        title={disabled ?? (shown ? 'Pause' : 'Play')}
         disabled={!live}
         onClick={onToggle}
       >
-        {playing ? (
+        {shown ? (
           <Pause size={15} fill="currentColor" strokeWidth={0} />
         ) : (
           <Play size={15} fill="currentColor" strokeWidth={0} />
@@ -70,8 +75,11 @@ export function Transport({
         aria-label="Scrub timeline"
         onChange={(e) => onScrub(Number(e.target.value))}
       />
+      {/* The duration is a fact about the clip, true whether or not the
+          transport can be driven — zeroing it made an inert strip look
+          like a broken one. */}
       <span className="transport-time">
-        {at.toFixed(2)} / {(live ? duration : 0).toFixed(2)}s
+        {at.toFixed(2)} / {duration.toFixed(2)}s
       </span>
       {children}
     </div>

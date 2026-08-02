@@ -119,7 +119,7 @@ test('A-8: rig view renders a pivot.rot model through the rig transform tree', a
 
   // The Anim view at rest must show the same pose (same transform tree).
   await page.getByRole('tab', { name: 'Anim view' }).click();
-  const animCanvas = page.locator('.anim-canvas canvas');
+  const animCanvas = page.locator('.preview-stage canvas');
   await expect(animCanvas).toBeVisible();
   await page.waitForTimeout(500);
   await animCanvas.screenshot({ path: testInfo.outputPath('anim-view.png') });

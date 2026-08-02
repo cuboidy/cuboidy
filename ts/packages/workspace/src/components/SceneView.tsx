@@ -491,7 +491,13 @@ export function SceneView({
           );
         }}
       >
-        <option value="">— rest pose —</option>
+        {/* An instance may play NOTHING — a static prop in a scene — which
+            the editor has no equivalent of: its picker chooses among the
+            clips a model has, and one of them is always active. Called
+            "none" rather than "rest pose" because Rig view already owns
+            that phrase for the whole scene, and two controls meaning
+            almost the same thing should not share a word. */}
+        <option value="">— none —</option>
         {clips.map((c) => (
           <option key={c} value={c}>
             {c}

@@ -3,7 +3,7 @@ import { Plus } from 'lucide-react';
 import { OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import type { Geometry, Manifest, Palette } from '@cuboidy/core';
-import { RiggedParts, Transport, buildRigTree, computeSceneCenter, computeSceneSpan } from '@cuboidy/ui';
+import { RiggedParts, buildRigTree, computeSceneCenter, computeSceneSpan } from '@cuboidy/ui';
 import type { GizmoVisibility } from '@cuboidy/ui';
 import type { AnimationSession } from '../../lib/useAnimationSession.js';
 
@@ -80,86 +80,44 @@ export function AnimationViewport({
 
   if (inline === undefined) {
     return (
-      <div className="anim-view">
-        <div className="anim-empty">
-          <p>This model has no animations yet.</p>
-          <button
-            type="button"
-            className="btn btn-create"
-            disabled={manifestEditsDisabled}
-            onClick={onCreateClip}
-          >
-            <Plus size={13} />
-            Create animation
-          </button>
-        </div>
+      <div className="anim-empty">
+        <p>This model has no animations yet.</p>
+        <button
+          type="button"
+          className="btn btn-create"
+          disabled={manifestEditsDisabled}
+          onClick={onCreateClip}
+        >
+          <Plus size={13} />
+          Create animation
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="anim-view">
-      <div className="anim-canvas">
-        <Canvas
-          camera={{ position: [radius, radius, radius], fov: 50 }}
-          shadows={false}
-          onPointerMissed={() => onSelectPart(null)}
-        >
-          <ambientLight intensity={0.8} />
-          <directionalLight position={[10, 20, 10]} intensity={1.0} />
-          <gridHelper
-            args={[gridSize, gridSize]}
-            position={[gridSize / 2, 0, gridSize / 2]}
-          />
-          <RiggedParts
-            roots={roots}
-            palette={geometry.palette}
-            poses={poses}
-            hiddenParts={hiddenParts}
-            partPalettes={partPalettes}
-            selectedPart={selectedPart}
-            gizmos={gizmos}
-            onSelectPart={onSelectPart}
-          />
-          <OrbitControls target={center} makeDefault />
-        </Canvas>
-      </div>
-
-      <Transport
-        playing={playing}
-        time={time}
-        duration={duration}
-        {...(hasTimeline ? {} : { disabled: 'This model has no timeline yet' })}
-        onToggle={() => setPlaying((p) => !p)}
-        onScrub={scrub}
-      >
-        {inlineNames.length > 1 ? (
-          <select
-            className="anim-select"
-            value={activeName}
-            aria-label="Animation"
-            onChange={(e) => setSelectedClip(e.target.value)}
-          >
-            {inlineNames.map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <span className="anim-name">{activeName}</span>
-        )}
-        <button
-          type="button"
-          className="btn btn-create btn-sm anim-create-inline"
-          disabled={manifestEditsDisabled}
-          title="Create a new clip"
-          onClick={onCreateClip}
-        >
-          <Plus size={13} />
-          New clip
-        </button>
-      </Transport>
-    </div>
+    <Canvas
+      camera={{ position: [radius, radius, radius], fov: 50 }}
+      shadows={false}
+      onPointerMissed={() => onSelectPart(null)}
+    >
+      <ambientLight intensity={0.8} />
+      <directionalLight position={[10, 20, 10]} intensity={1.0} />
+      <gridHelper
+        args={[gridSize, gridSize]}
+        position={[gridSize / 2, 0, gridSize / 2]}
+      />
+      <RiggedParts
+        roots={roots}
+        palette={geometry.palette}
+        poses={poses}
+        hiddenParts={hiddenParts}
+        partPalettes={partPalettes}
+        selectedPart={selectedPart}
+        gizmos={gizmos}
+        onSelectPart={onSelectPart}
+      />
+      <OrbitControls target={center} makeDefault />
+    </Canvas>
   );
 }

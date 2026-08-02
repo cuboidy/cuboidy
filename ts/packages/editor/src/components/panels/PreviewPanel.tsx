@@ -1,4 +1,4 @@
-import { Box, Crosshair, Plug } from 'lucide-react';
+import { Box, Crosshair, Plug, Plus } from 'lucide-react';
 import type { Geometry, Manifest, Palette } from '@cuboidy/core';
 import { AnimationViewport } from '../scene/AnimationViewport.js';
 import { PaletteStrip } from '../ui/PaletteStrip.js';
@@ -6,7 +6,7 @@ import { PreviewToolbar } from '../ui/PreviewToolbar.js';
 import { ViewModeToggle } from '../ui/ViewModeToggle.js';
 import { VoxelScene } from '../scene/VoxelScene.js';
 import type { AnimationSession } from '../../lib/useAnimationSession.js';
-import { ToggleGroup, ToolOverlay, ViewOverlay } from '@cuboidy/ui';
+import { ToggleGroup, ToolOverlay, Transport, ViewOverlay } from '@cuboidy/ui';
 import type { GizmoVisibility, PreviewTool, ViewMode, VoxelEdit } from '@cuboidy/ui';
 
 interface Props {
@@ -101,8 +101,28 @@ export function PreviewPanel({
       ? -1
       : Math.min(activeColorIndex, stripPalette.length - 1);
 
+  // The transport lives here rather than inside the anim viewport, so it
+  // is present in every view. It used to appear and disappear with the
+  // view mode, which jumped the layout and made the preview the one place
+  // in either app where an unavailable control is HIDDEN instead of
+  // disabled with its reason on it.
+  //
+  // Cause before consequence: a model with no animations says so, rather
+  // than telling you to switch to a view that would then say the same.
+  const transportDisabled =
+    session.inline === undefined
+      ? 'This model has no animations yet'
+      : viewMode !== 'anim'
+        ? 'Switch to Anim view to play'
+        : !session.hasTimeline
+          ? 'This clip has no keyframes yet'
+          : undefined;
+
   return (
     <>
+      {/* The stage is what the overlays anchor to, so the tool bar sits
+          over the 3D and not over the transport below it. */}
+      <div className="preview-stage">
       <ToolOverlay>
         <PreviewToolbar tool={tool} disabled={toolDisabled} onSetTool={onSetTool} />
       </ToolOverlay>
@@ -183,6 +203,45 @@ export function PreviewPanel({
           />
         </div>
       )}
+      </div>
+
+      <Transport
+        playing={session.playing}
+        time={session.time}
+        duration={session.duration}
+        {...(transportDisabled !== undefined && { disabled: transportDisabled })}
+        onToggle={() => session.setPlaying((p) => !p)}
+        onScrub={session.scrub}
+      >
+        {session.inlineNames.length > 1 ? (
+          <select
+            className="anim-select"
+            value={session.activeName}
+            aria-label="Animation"
+            onChange={(e) => session.setSelectedClip(e.target.value)}
+          >
+            {session.inlineNames.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        ) : (
+          session.inline !== undefined && (
+            <span className="anim-name">{session.activeName}</span>
+          )
+        )}
+        <button
+          type="button"
+          className="btn btn-create btn-sm anim-create-inline"
+          disabled={manifestEditsDisabled}
+          title="Create a new clip"
+          onClick={onCreateClip}
+        >
+          <Plus size={13} />
+          New clip
+        </button>
+      </Transport>
     </>
   );
 }

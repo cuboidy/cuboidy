@@ -1309,17 +1309,16 @@ pre {
 
 /* ─── Animation view ──────────────────────────────────────────────── */
 
-.anim-view {
+/* The 3D stage: whichever viewport the view mode selects, filling the
+   panel above the transport. position:relative so the tool and view
+   overlays anchor to the 3D rather than to the whole panel — otherwise
+   the palette strip, which sits at the bottom, lands on the transport. */
+.preview-stage {
   flex: 1;
+  min-height: 0;
+  position: relative;
   display: flex;
   flex-direction: column;
-  min-height: 0;
-}
-
-.anim-canvas {
-  flex: 1;
-  position: relative;
-  min-height: 0;
 }
 
 .anim-select {
