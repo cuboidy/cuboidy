@@ -7,6 +7,7 @@ import '@fontsource/ibm-plex-sans/600.css';
 import '@fontsource/ibm-plex-mono/400.css';
 // Tokens first: everything below resolves var()s against them.
 import '@cuboidy/ui/tokens.css';
+import '@cuboidy/ui/base.css';
 import '@cuboidy/ui/chrome.css';
 import '@cuboidy/ui/dock.css';
 import '@cuboidy/ui/tree.css';

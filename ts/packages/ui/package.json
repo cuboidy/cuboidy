@@ -9,6 +9,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./tokens.css": "./src/tokens.css",
+    "./base.css": "./src/base.css",
     "./dock.css": "./src/dock.css",
     "./chrome.css": "./src/chrome.css",
     "./tree.css": "./src/tree.css",

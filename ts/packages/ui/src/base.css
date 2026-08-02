@@ -1,0 +1,50 @@
+/* Document-level look: what a Cuboidy window is, before any component.
+ *
+ * Scrollbars and text selection. Both were in the editor's stylesheet, so
+ * the workspace had the operating system's — which is the sixth time a
+ * shared piece of the look has turned out to live in one app and be
+ * quietly missing from the other. Anything that styles a bare element or
+ * a pseudo-element belongs here rather than in an app.
+ *
+ * Each app keeps its own element reset and base type: those are about the
+ * document it renders, not about the product's look. */
+
+/* On-brand text selection everywhere (the source editor already did this
+   locally; this covers the rest of the UI so dragging to select never
+   shows the default OS blue). Note: this does NOT touch a native <select>
+   popup's highlight — that one is OS-drawn and unstyleable. */
+::selection {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* ─── Scrollbars ──────────────────────────────────────────────────────
+   Thin, graphite, translucent thumb (the padding-box + transparent border
+   trick insets the thumb so it reads as a slim pill). Panels that hide
+   their own bar — e.g. .dock-tabs — still override this locally. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-2) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--line-2);
+  border: 3px solid transparent;
+  border-radius: var(--r-3);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4a5563;
+  background-clip: padding-box;
+}
