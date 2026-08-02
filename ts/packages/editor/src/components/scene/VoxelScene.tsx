@@ -1,17 +1,10 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useReducer,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { OrbitControls } from '@react-three/drei';
 import { Canvas, type ThreeEvent } from '@react-three/fiber';
 import type { Object3D } from 'three';
-import { AIR, type Geometry, type Manifest, type Palette, type Part } from '@cuboidy/core';
+import { AIR, quatFromEulerZXYDeg, type Geometry, type Manifest, type Palette, type Part, type QuatTuple } from '@cuboidy/core';
 
-import { PartGizmos, PartMesh, RiggedParts, TransformGizmo, buildRigTree, computeSceneCenter, computeSceneSpan } from '@cuboidy/ui';
+import { PartGizmos, PartMesh, RiggedParts, TransformGizmoHost, buildRigTree, computeSceneCenter, computeSceneSpan } from '@cuboidy/ui';
 import type { GizmoPicking, GizmoVisibility, PreviewTool, TransformSubTarget, ViewMode, VoxelEdit, VoxelStrokeHandlers } from '@cuboidy/ui';
 
 interface Props {
@@ -341,16 +334,21 @@ export function VoxelScene({
     tool === 'move' ? 'translate' : tool === 'rotate' ? 'rotate' : null;
   // The selected part's geometry pivot rotation and manifest rest
   // rotation — the rotate commits factor one of them back out of the
-  // composed group quaternion (§7.7), depending on which is edited.
-  const selectedPivotRot = useMemo<[number, number, number] | undefined>(() => {
+  // composed group quaternion (§7.7), depending on which is edited. The
+  // gizmo takes quaternions; euler → quat is the exact direction.
+  const selectedPivotRot = useMemo<QuatTuple | undefined>(() => {
     if (selectedPart === null) return undefined;
     const rot = geometry.parts.find((p) => p.name === selectedPart)?.pivot.rot;
-    return rot === undefined ? undefined : [rot.x, rot.y, rot.z];
+    return rot === undefined
+      ? undefined
+      : quatFromEulerZXYDeg([rot.x, rot.y, rot.z]);
   }, [geometry, selectedPart]);
-  const selectedRestRot = useMemo<[number, number, number] | undefined>(() => {
+  const selectedRestRot = useMemo<QuatTuple | undefined>(() => {
     if (selectedPart === null || manifest === undefined) return undefined;
     const rot = manifest.parts.find((p) => p.name === selectedPart)?.rotation;
-    return rot === undefined ? undefined : [rot[0], rot[1], rot[2]];
+    return rot === undefined
+      ? undefined
+      : quatFromEulerZXYDeg([rot[0], rot[1], rot[2]]);
   }, [manifest, selectedPart]);
 
   // ── Transform sub-target: what the tools grip. ──
@@ -640,52 +638,5 @@ export function VoxelScene({
         enableRotate={!voxelActive || altHeld}
       />
     </Canvas>
-  );
-}
-
-// Resolves the gizmo's target Object3D (a rig group or a pivot/socket
-// marker) from a registry INSIDE the canvas: <Canvas> children commit
-// in r3f's own React root, so only an effect in here is guaranteed to
-// run AFTER the registering callback refs of the same pass. (A
-// DOM-side effect in VoxelScene runs before the r3f subtree commits —
-// it would read a still-empty registry when the rig remounts, e.g.
-// returning from geometry view with a transform tool active, and the gizmo
-// would never appear.) When the first render of a pass misses, the
-// effect bumps and the second render resolves.
-function TransformGizmoHost({
-  registry,
-  objectKey,
-  mode,
-  snapCoarse,
-  factorOutLeft,
-  factorOutRight,
-  onCommitPosition,
-  onCommitRotation,
-}: {
-  registry: { current: Map<string, Object3D> };
-  objectKey: string;
-  mode: 'translate' | 'rotate';
-  snapCoarse: number;
-  factorOutLeft: [number, number, number] | undefined;
-  factorOutRight: [number, number, number] | undefined;
-  onCommitPosition: (position: [number, number, number]) => void;
-  onCommitRotation: (rotation: [number, number, number]) => void;
-}) {
-  const [, bump] = useReducer((c: number) => c + 1, 0);
-  const target = registry.current.get(objectKey) ?? null;
-  useEffect(() => {
-    if (target === null && registry.current.has(objectKey)) bump();
-  });
-  if (target === null) return null;
-  return (
-    <TransformGizmo
-      target={target}
-      mode={mode}
-      snapCoarse={snapCoarse}
-      factorOutLeft={factorOutLeft}
-      factorOutRight={factorOutRight}
-      onCommitPosition={onCommitPosition}
-      onCommitRotation={onCommitRotation}
-    />
   );
 }

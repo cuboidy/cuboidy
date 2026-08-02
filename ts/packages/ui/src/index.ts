@@ -9,6 +9,19 @@
 export { AppHeader, HeaderDivider, HeaderGroup } from './AppHeader.js';
 export { Logo } from './Logo.js';
 
+export {
+  ToggleGroup,
+  ToolBar,
+  ToolOverlay,
+  ViewOverlay,
+  ViewToggle,
+} from './ViewportChrome.js';
+export type {
+  ToggleGroupItem,
+  ToolBarItem,
+  ViewToggleItem,
+} from './ViewportChrome.js';
+
 export { Dock } from './Dock.js';
 export type { PanelContent } from './Dock.js';
 
@@ -47,6 +60,7 @@ export { PartMesh } from './scene/PartMesh.js';
 export { PartGizmos } from './scene/PartGizmos.js';
 export type { GizmoPicking } from './scene/PartGizmos.js';
 export { TransformGizmo } from './scene/TransformGizmo.js';
+export { TransformGizmoHost } from './scene/TransformGizmoHost.js';
 
 export type {
   GizmoVisibility,

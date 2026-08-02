@@ -112,6 +112,7 @@ export {
   QUAT_IDENTITY,
   composePartRotation,
   computeRestWorldTransforms,
+  quatConjugate,
   quatFromEulerZXYDeg,
   quatMultiply,
   quatRotateVec3,

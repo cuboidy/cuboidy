@@ -51,6 +51,28 @@ describe('round trip', () => {
     const back = parseScene(serializeScene(s), 'x');
     expect(back.ok && back.scene.instances[0]?.placement.pos).toEqual([1, 2, 3]);
   });
+
+  it('keeps a rotation, and omits one that is all zero', () => {
+    // A tweak rotation on a guest is the difference between a sword held
+    // and a sword floating, so it is part of what the scene IS.
+    const s = emptyScene('s');
+    s.instances.push({
+      id: 'a',
+      model: 'sword',
+      placement: { pos: [0, 0, 0], rot: [-90, 90, 0] },
+    });
+    s.instances.push({
+      id: 'b',
+      model: 'sword',
+      placement: { pos: [0, 0, 0], rot: [0, 0, 0] },
+    });
+    const text = serializeScene(s);
+    const back = parseScene(text, 'x');
+    expect(back.ok && back.scene.instances[0]?.placement.rot).toEqual([
+      -90, 90, 0,
+    ]);
+    expect(JSON.parse(text).instances[1]).toEqual({ id: 'b', model: 'sword' });
+  });
 });
 
 describe('rejection', () => {

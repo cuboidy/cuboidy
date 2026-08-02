@@ -7,6 +7,10 @@ interface Props {
   // The shared scene clock's position, and where it is being read from
   // for THIS instance (its own frozen point when paused).
   sceneTime: number;
+  // Rig view is on, so nothing here will be visible in the 3D pane. Said
+  // rather than hidden: the controls still work, and silently doing
+  // nothing is the worse of the two.
+  atRest: boolean;
   onSet: (
     id: string,
     anim: { clip: string; playing: boolean; at?: number } | null,
@@ -23,7 +27,13 @@ interface Props {
 //
 // Anything attached to a playing instance follows it — the socket frame is
 // sampled from the host's pose, so a sword in a swinging hand swings.
-export function AnimationPanel({ placed, sceneTime, onSet, onSeek }: Props) {
+export function AnimationPanel({
+  placed,
+  sceneTime,
+  atRest,
+  onSet,
+  onSeek,
+}: Props) {
   if (placed === null) return <p className="empty">No instance selected.</p>;
   const { instance, model } = placed;
   const clips = [...model.animations.keys()];
@@ -45,6 +55,12 @@ export function AnimationPanel({ placed, sceneTime, onSet, onSeek }: Props) {
 
   return (
     <div className="attach-props">
+      {atRest && (
+        <p className="notice">
+          Rig view is showing the scene at rest. Switch to Anim view to watch
+          this play.
+        </p>
+      )}
       <label className="field">
         <span className="field-label">clip</span>
         <select

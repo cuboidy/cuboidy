@@ -42,11 +42,20 @@ import {
   sceneTree,
   setAnimation,
   setAttachment,
+  setPlacement,
   type Scene,
 } from './lib/scene.js';
 import { parseScene, serializeScene } from './lib/scene-file.js';
 import { saveScene } from './lib/save-scene.js';
 import { useSceneClock } from './lib/useSceneClock.js';
+import {
+  DEFAULT_GIZMOS,
+  type SceneGizmos,
+  type SceneTool,
+  type SceneViewMode,
+} from './lib/view.js';
+
+const PAUSE_FIRST = 'Pause playback before moving things';
 
 // Cuboidy Workspace — stage 1: open a folder of models, put them in a
 // scene, attach them to each other's published sockets.
@@ -65,6 +74,11 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [sceneStatus, setSceneStatus] = useState<string | null>(null);
   const [layout, setLayout] = useState<LayoutNode<PanelId> | null>(initialLayout);
+  // Anim view by default: choosing a clip starts it, and a default that
+  // showed the rest pose would make that look like nothing happened.
+  const [viewMode, setViewMode] = useState<SceneViewMode>('anim');
+  const [tool, setTool] = useState<SceneTool>('select');
+  const [gizmos, setGizmos] = useState<SceneGizmos>(DEFAULT_GIZMOS);
 
   const adopt = useCallback((next: Library) => {
     setLibrary(next);
@@ -84,11 +98,36 @@ export function App() {
     }
   }, [adopt]);
 
-  // One clock for the scene, running only while something plays.
-  const { time, seek } = useSceneClock(anyPlaying(scene));
+  // Anim view needs something in the scene that can animate — otherwise
+  // it is rig view with a different name on it. Derived from the scene
+  // rather than from the placed result, so it can gate the placement.
+  const animUnavailable = useMemo(() => {
+    if (library === null || scene.instances.length === 0) {
+      return 'Nothing in the scene yet';
+    }
+    const animated = new Set(
+      library.models.filter((m) => m.animations.size > 0).map((m) => m.dir),
+    );
+    return scene.instances.some((i) => animated.has(i.model))
+      ? undefined
+      : 'No model in the scene defines an animation';
+  }, [library, scene]);
+  // A mode nothing can render is a blank pane with no explanation, so the
+  // view falls back while the user's choice is kept.
+  const effectiveView: SceneViewMode =
+    viewMode === 'anim' && animUnavailable !== undefined ? 'rig' : viewMode;
+
+  // One clock for the scene, running only while something plays — and
+  // only while a view is watching. Rig view stops it rather than merely
+  // ignoring it: a clock nobody reads is frames nobody sees.
+  const playing = anyPlaying(scene) && effectiveView === 'anim';
+  const { time, seek } = useSceneClock(playing);
   const placed = useMemo(
-    () => (library === null ? [] : placeScene(scene, library, time)),
-    [scene, library, time],
+    () =>
+      library === null
+        ? []
+        : placeScene(scene, library, time, { rest: effectiveView === 'rig' }),
+    [scene, library, time, effectiveView],
   );
   const roots = useMemo(() => sceneTree(placed), [placed]);
   // The resolved scene, for tests. Where an instance ENDED UP is the only
@@ -143,6 +182,19 @@ export function App() {
       return next;
     });
   }, []);
+
+  // A transform drag mutates the group's matrix imperatively — that IS the
+  // live preview — but a running clock re-renders every instance's frame
+  // 60 times a second and would overwrite it mid-drag. Rather than fight
+  // that, the tools say to pause.
+  const toolDisabled = useMemo<Partial<Record<SceneTool, string>>>(
+    () => (playing ? { move: PAUSE_FIRST, rotate: PAUSE_FIRST } : {}),
+    [playing],
+  );
+  // The chosen tool survives being unavailable; only its EFFECT falls back
+  // to select, so pausing restores what was picked.
+  const effectiveTool: SceneTool =
+    toolDisabled[tool] === undefined ? tool : 'select';
 
   const renderPanel = useCallback(
     (id: PanelId): PanelContent | null => {
@@ -224,8 +276,25 @@ export function App() {
             body: (
               <SceneView
                 placed={placed}
+                selected={selected}
+                viewMode={effectiveView}
+                animUnavailable={animUnavailable}
+                tool={effectiveTool}
+                toolDisabled={toolDisabled}
+                gizmos={gizmos}
                 onSelect={setSelected}
                 onDropModel={place}
+                onSetTool={setTool}
+                onToggleGizmo={(kind) =>
+                  setGizmos((g) => ({ ...g, [kind]: !g[kind] }))
+                }
+                onChangeViewMode={setViewMode}
+                onMove={(id2, pos) =>
+                  setScene((s) => setPlacement(s, id2, { pos }))
+                }
+                onRotate={(id2, rot) =>
+                  setScene((s) => setPlacement(s, id2, { rot }))
+                }
               />
             ),
           };
@@ -252,6 +321,7 @@ export function App() {
                 <AnimationPanel
                   placed={selectedPlaced}
                   sceneTime={time}
+                  atRest={effectiveView === 'rig'}
                   onSeek={seek}
                   onSet={(id2, anim) =>
                     setScene((s) => setAnimation(s, id2, anim))
@@ -314,6 +384,11 @@ export function App() {
       sceneStatus,
       openSceneFile,
       handleSaveScene,
+      effectiveView,
+      effectiveTool,
+      animUnavailable,
+      toolDisabled,
+      gizmos,
     ],
   );
 

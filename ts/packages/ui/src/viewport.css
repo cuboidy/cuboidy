@@ -1,0 +1,176 @@
+/* The controls that float over a 3D viewport.
+ *
+ * Tools top-left, view mode and gizmo toggles top-right — the same
+ * arrangement in the editor's preview and the workspace's scene, because
+ * they are the same controls doing the same job on the same kind of
+ * surface. Moved out of the editor's stylesheet when the workspace grew
+ * a viewport of its own: the alternative was two copies of a segmented
+ * pill that would drift the first time either was touched.
+ *
+ * Tokens (--bg-*, --line, --txt-*, --accent, --r-*) are expected from
+ * tokens.css; class names are not expected from anywhere. */
+
+/* ── overlays ─────────────────────────────────────────────────────── */
+
+.tool-overlay {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 5;
+}
+
+.view-overlay {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 5;
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+/* A solid backdrop keeps the controls readable against whatever the
+   scene happens to be. */
+.view-overlay .view-toggle,
+.view-overlay .toggle-group {
+  background: rgba(14, 17, 22, 0.78);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+/* ── segmented view switch ────────────────────────────────────────── */
+
+/* A graphite track holding rounded chips; the active view is a filled
+   violet chip. */
+.view-toggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+}
+
+.view-toggle button {
+  padding: 0.28rem 0.9rem;
+  background: transparent;
+  color: var(--txt-2);
+  border: none;
+  border-radius: var(--r-2);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+
+.view-toggle button:hover:not(:disabled):not(.active) {
+  background: var(--bg-3);
+  color: var(--txt-1);
+}
+
+.view-toggle button.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.view-toggle button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── independent icon toggles ─────────────────────────────────────── */
+
+/* Same chrome as the segmented switch beside it, but independent on/off
+   buttons rather than mutually exclusive tabs. */
+.toggle-group {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+}
+
+.toggle-group button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  background: transparent;
+  color: var(--txt-2);
+  border: none;
+  border-radius: var(--r-2);
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+
+.toggle-group button:hover:not(:disabled):not(.active) {
+  background: var(--bg-3);
+  color: var(--txt-1);
+}
+
+.toggle-group button.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.toggle-group button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── tool switch ──────────────────────────────────────────────────── */
+
+/* Exactly one tool active, mirroring the view overlay's chrome. */
+.tool-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: rgba(14, 17, 22, 0.78);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+}
+
+.tool-bar button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  background: transparent;
+  color: var(--txt-2);
+  border: none;
+  border-radius: var(--r-2);
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+
+.tool-bar button:hover:not(:disabled):not(.active) {
+  background: var(--bg-3);
+  color: var(--txt-1);
+}
+
+.tool-bar button.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.tool-bar button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.tool-bar .tool-divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 3px;
+  background: var(--line);
+}

@@ -36,7 +36,10 @@ export function serializeScene(scene: Scene): string {
           id: i.id,
           model: i.model,
           ...(i.attach !== undefined && { attach: i.attach }),
-          ...(isOrigin(i.placement.pos) ? {} : { pos: i.placement.pos }),
+          ...(isZero(i.placement.pos) ? {} : { pos: i.placement.pos }),
+          ...(i.placement.rot === undefined || isZero(i.placement.rot)
+            ? {}
+            : { rot: i.placement.rot }),
           ...(i.anim !== undefined && { anim: i.anim }),
         })),
       },
@@ -97,6 +100,10 @@ export function parseScene(text: string, fallbackName: string): ParseResult {
     seen.add(id);
 
     const inst: Instance = { id, model, placement: { pos: readVec(raw['pos']) } };
+    // ZXY euler degrees (§4's convention, borrowed). Omitted when the
+    // instance is not turned, so a `rot` in a file is always a real one.
+    const rot = raw['rot'];
+    if (rot !== undefined) inst.placement.rot = readVec(rot);
 
     const attach = raw['attach'];
     if (attach !== undefined) {
@@ -134,7 +141,7 @@ export function parseScene(text: string, fallbackName: string): ParseResult {
   return { ok: true, scene: { name, instances } };
 }
 
-function isOrigin(v: readonly number[]): boolean {
+function isZero(v: readonly number[]): boolean {
   return v[0] === 0 && v[1] === 0 && v[2] === 0;
 }
 

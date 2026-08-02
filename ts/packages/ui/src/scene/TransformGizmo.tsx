@@ -9,7 +9,7 @@ import {
   type Object3D,
   type Vector3,
 } from 'three';
-import { quatFromEulerZXYDeg } from '@cuboidy/core';
+import type { QuatTuple } from '@cuboidy/core';
 
 interface Props {
   target: Object3D;
@@ -24,8 +24,14 @@ interface Props {
   // pivot.rot (keeps q_rotation). Pivot rotate: factorOutLeft = the
   // manifest rest rotation (keeps q_pivot). Sockets: neither (their
   // quaternion is stored as-is).
-  factorOutLeft: [number, number, number] | undefined;
-  factorOutRight: [number, number, number] | undefined;
+  //
+  // QUATERNIONS, not the euler degrees the callers mostly hold: a
+  // workspace instance's factor is a composed attachment frame that was
+  // never euler in the first place, and euler → quat → euler is
+  // ill-conditioned near gimbal lock. Callers holding degrees convert
+  // with quatFromEulerZXYDeg, which is exact in that direction.
+  factorOutLeft: QuatTuple | undefined;
+  factorOutRight: QuatTuple | undefined;
   onCommitPosition: (position: [number, number, number]) => void;
   // Euler degrees, ZXY intrinsic (§4). [0,0,0] = identity; the App
   // drops the field for it (inspector convention).
@@ -318,11 +324,11 @@ export function TransformGizmo({
   const extractRestEuler = (q: Quaternion): [number, number, number] => {
     const rest = q.clone();
     if (factorOutRight !== undefined) {
-      const [px, py, pz, pw] = quatFromEulerZXYDeg(factorOutRight);
+      const [px, py, pz, pw] = factorOutRight;
       rest.multiply(new Quaternion(px, py, pz, pw).invert());
     }
     if (factorOutLeft !== undefined) {
-      const [px, py, pz, pw] = quatFromEulerZXYDeg(factorOutLeft);
+      const [px, py, pz, pw] = factorOutLeft;
       rest.premultiply(new Quaternion(px, py, pz, pw).invert());
     }
     const e = new Euler().setFromQuaternion(rest, 'ZXY');

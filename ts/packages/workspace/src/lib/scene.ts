@@ -1,5 +1,10 @@
 import {
+  QUAT_IDENTITY,
   publishedSocketFrame,
+  quatConjugate,
+  quatFromEulerZXYDeg,
+  quatMultiply,
+  quatRotateVec3,
   sampleAnimation,
   type AnimPose,
   type Pose,
@@ -25,6 +30,17 @@ export interface Placement {
   // belongs to: the scene for a free instance, the socket for an attached
   // one — where it is an additional offset on top of the socket frame.
   pos: [number, number, number];
+  // How it is turned within that same frame, in ZXY euler degrees.
+  //
+  // Degrees in the SPEC's convention (§4) even though a scene file is not
+  // a Cuboidy file: using a second convention for angles, in a folder full
+  // of files that use the first, would be a trap for whoever reads both.
+  //
+  // Applied about the model origin AFTER the offset, so turning something
+  // never moves it. That order is what makes a sword in a hand adjustable
+  // — the alternative is hand-editing the host model's socket, which is
+  // what this replaces.
+  rot?: [number, number, number];
 }
 
 export interface Instance {
@@ -90,6 +106,32 @@ function detachOne(i: Instance): Instance {
   return rest;
 }
 
+// Move or turn an instance within the frame it belongs to. A patch, so a
+// move gizmo does not have to restate the rotation it is not editing.
+//
+// An all-zero rotation is DROPPED rather than stored: it is the default,
+// and the serialized scene is meant to be read by hand — a file that
+// spells out every identity is a file whose real values are hidden among
+// them.
+export function setPlacement(
+  scene: Scene,
+  id: string,
+  patch: { pos?: [number, number, number]; rot?: [number, number, number] },
+): Scene {
+  return {
+    ...scene,
+    instances: scene.instances.map((i) => {
+      if (i.id !== id) return i;
+      const next: Placement = { pos: patch.pos ?? i.placement.pos };
+      const rot = patch.rot ?? i.placement.rot;
+      if (rot !== undefined && (rot[0] !== 0 || rot[1] !== 0 || rot[2] !== 0)) {
+        next.rot = rot;
+      }
+      return { ...i, placement: next };
+    }),
+  };
+}
+
 // Set (or clear) what an instance plays. §6.11 allows one clip at a time,
 // which is why this replaces rather than adds.
 export function setAnimation(
@@ -153,8 +195,14 @@ export interface PlacedInstance {
   instance: Instance;
   model: LibraryModel;
   // World position of the model's ORIGIN (§6.12) and the orientation its
-  // axes take.
+  // axes take — `placement` already applied.
   frame: SocketFrame;
+  // The frame `placement` is measured in: the world for a free instance,
+  // the host's socket for an attached one. Carried because the 3D view
+  // edits WORLD transforms and has to get back to a placement — see
+  // localPosFrom. Also the frame an attached instance falls back to when
+  // its offset is zero, which is what a socket join looks like.
+  base: SocketFrame;
   // This instance's sampled pose, or null for the rest pose. Passed
   // straight to the renderer, AND used to place anything attached to it —
   // a socket on a swinging arm moves, so its guest moves.
@@ -177,6 +225,11 @@ export function placeScene(
   // instances playing the same clip stay in step rather than drifting
   // apart by however long apart they were started.
   time = 0,
+  // `rest: true` ignores every clip and shows the scene at rest. What the
+  // rig view is: not "playback paused" (which is per instance and keeps
+  // whatever frame each was stopped at) but the arrangement itself, with
+  // no animation in the way of reading it.
+  opts: { rest?: boolean } = {},
 ): PlacedInstance[] {
   const models = new Map(library.models.map((m) => [m.dir, m]));
   const byId = new Map(scene.instances.map((i) => [i.id, i]));
@@ -188,17 +241,18 @@ export function placeScene(
     const model = models.get(inst.model);
     if (model === undefined) return null; // library no longer offers it
 
-    let frame: SocketFrame = {
-      pos: [...inst.placement.pos],
-      quat: [0, 0, 0, 1],
-    };
+    // The frame the instance's placement is measured in. The world, until
+    // an attachment says otherwise.
+    let base: SocketFrame = { pos: [0, 0, 0], quat: QUAT_IDENTITY };
     let problem: string | undefined;
 
     // §6.11: one clip at a time. Playing reads the shared clock; paused
     // reads the instance's own frozen point, so it shows the frame it was
     // stopped at and stays there while other actors keep moving.
     const clip =
-      inst.anim === undefined ? undefined : model.animations.get(inst.anim.clip);
+      inst.anim === undefined || opts.rest === true
+        ? undefined
+        : model.animations.get(inst.anim.clip);
     const poses =
       clip === undefined
         ? null
@@ -225,7 +279,7 @@ export function placeScene(
         if (socket === null) {
           problem = `'${hostPlaced.model.dir}' does not publish a socket called '${inst.attach.socket}'`;
         } else {
-          frame = composeOnto(hostPlaced.frame, socket, inst.placement.pos);
+          base = carryOnto(hostPlaced.frame, socket);
         }
       }
     }
@@ -233,7 +287,8 @@ export function placeScene(
     const placed: PlacedInstance = {
       instance: inst,
       model,
-      frame,
+      base,
+      frame: applyPlacement(base, inst.placement),
       poses,
       ...(problem !== undefined && { problem }),
     };
@@ -258,47 +313,59 @@ function toAnimPoses(poses: ReadonlyMap<string, Pose>): Map<string, AnimPose> {
 }
 
 // The socket frame is computed in the HOST MODEL's own space, so it has to
-// be carried into the host's world frame before a guest sits on it.
-function composeOnto(
-  hostFrame: SocketFrame,
-  socket: SocketFrame,
-  offset: readonly [number, number, number],
-): SocketFrame {
-  const quat = quatMul(hostFrame.quat, socket.quat);
-  const rotated = rotate(hostFrame.quat, socket.pos);
-  const local = rotate(quat, offset);
+// be carried into the host's world frame before a guest sits on it. The
+// result is the guest's BASE — where its placement is measured from.
+function carryOnto(hostFrame: SocketFrame, socket: SocketFrame): SocketFrame {
+  const off = quatRotateVec3(hostFrame.quat, socket.pos);
   return {
     pos: [
-      hostFrame.pos[0] + rotated[0] + local[0],
-      hostFrame.pos[1] + rotated[1] + local[1],
-      hostFrame.pos[2] + rotated[2] + local[2],
+      hostFrame.pos[0] + off[0],
+      hostFrame.pos[1] + off[1],
+      hostFrame.pos[2] + off[2],
     ],
-    quat,
+    quat: quatMultiply(hostFrame.quat, socket.quat),
   };
 }
 
-type Q = readonly [number, number, number, number];
-
-function quatMul(a: Q, b: Q): [number, number, number, number] {
-  return [
-    a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
-    a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
-    a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
-    a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
-  ];
+// base ∘ placement. Offset first, in the base's axes; the placement's own
+// rotation composes on the right, so it turns the model about its origin
+// without moving it.
+function applyPlacement(base: SocketFrame, placement: Placement): SocketFrame {
+  const off = quatRotateVec3(base.quat, placement.pos);
+  return {
+    pos: [base.pos[0] + off[0], base.pos[1] + off[1], base.pos[2] + off[2]],
+    quat:
+      placement.rot === undefined
+        ? base.quat
+        : quatMultiply(base.quat, quatFromEulerZXYDeg(placement.rot)),
+  };
 }
 
-function rotate(q: Q, v: readonly [number, number, number]): [number, number, number] {
-  const [x, y, z, w] = q;
-  const ix = w * v[0] + y * v[2] - z * v[1];
-  const iy = w * v[1] + z * v[0] - x * v[2];
-  const iz = w * v[2] + x * v[1] - y * v[0];
-  const iw = -x * v[0] - y * v[1] - z * v[2];
-  return [
-    ix * w + iw * -x + iy * -z - iz * -y,
-    iy * w + iw * -y + iz * -x - ix * -z,
-    iz * w + iw * -z + ix * -y - iy * -x,
+// The inverse of the offset half: a world position back to the placement
+// that would put the origin there.
+//
+// The 3D view's move gizmo edits a WORLD transform — an attached instance
+// is drawn at its resolved frame, not nested under its host — so getting
+// back to the stored value is a real step, and the one place a sign error
+// would silently misplace everything hanging off a rotated socket. Hence
+// here, next to its forward direction, and tested against it.
+export function localPosFrom(
+  base: SocketFrame,
+  world: readonly [number, number, number],
+): [number, number, number] {
+  const d: [number, number, number] = [
+    world[0] - base.pos[0],
+    world[1] - base.pos[1],
+    world[2] - base.pos[2],
   ];
+  const local = quatRotateVec3(quatConjugate(base.quat), d);
+  // Back onto the 0.1 authoring grid: the gizmo snapped in world space,
+  // and un-rotating that lands just off it.
+  return [round1(local[0]), round1(local[1]), round1(local[2])];
+}
+
+function round1(v: number): number {
+  return Math.round(v * 10) / 10;
 }
 
 // The tree the model panel shows: free instances at the top, each with

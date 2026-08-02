@@ -1,0 +1,66 @@
+/* The design tokens — one set, for every app in this repo.
+ *
+ * Here because they were duplicated, and a duplicated token set does not
+ * stay a copy: the workspace had --r-1 at 4px where the editor has 3px,
+ * and had never declared --r-2 / --r-3 at all — so the shared .btn's
+ * `border-radius: var(--r-2)` silently resolved to nothing and every
+ * button in that app was square while the editor's were rounded. That is
+ * the failure mode of a token set kept in two places: not a visible
+ * conflict, just one app quietly missing a value.
+ *
+ * Only the tokens live here. Each app keeps its own element reset and
+ * base type, because those are about the document, not the palette. */
+
+:root {
+  /* Cool graphite ramp */
+  --bg-0: #0e1116; /* deepest: app ground / 3D canvas / inputs' backdrop */
+  --bg-1: #151a21; /* panel body */
+  --bg-2: #1b222b; /* header / toolbars / menus / inputs (raised) */
+  --bg-3: #232b35; /* hover / pressed */
+  --bg-4: #2b333e; /* extra step for control hovers */
+  --line: #2c333d; /* hairline / dividers */
+  --line-2: #38414d; /* stronger divider */
+
+  /* Text */
+  --txt-1: #e7ebf0;
+  --txt-2: #9aa3af;
+  --txt-3: #626b77;
+
+  /* Accent (violet) — lit on STATE only */
+  --accent: #8338ec;
+  --accent-hi: #9a5cf0;
+  --accent-lo: #6f2ed6;
+  --accent-tint: #241c3b;
+
+  /* Semantic (kept distinct from the accent) */
+  --danger: #e5484d;
+  --warn: #f5a623;
+  --playhead: #f04a4a;
+
+  /* Semantic surfaces — tinted bg + on-surface fg/border/hover, so the
+     danger/warn families are the single source of truth (not ad-hoc hex). */
+  --danger-bg: #2a1a1d;
+  --danger-border: #5a2a2e;
+  --danger-fg: #f0b3b5;
+  --danger-hover: #3a2024;
+  --warn-bg: #2a2015;
+  --warn-border: #6a5a2a;
+  --warn-hover: #5a4a2a;
+
+  /* Accent-tinted "create / add" surface (violet). */
+  --create-bg: #1e1730;
+  --create-border: #3a2d55;
+  --create-fg: #c9b3f0;
+  --create-hover: #251c3c;
+
+  /* Radius / elevation */
+  --r-1: 3px;
+  --r-2: 4px;
+  --r-3: 8px;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-2: 0 10px 30px rgba(0, 0, 0, 0.55);
+
+  /* Type: one UI font (Sans); Mono only inside code/source views */
+  --ui: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}

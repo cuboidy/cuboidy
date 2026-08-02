@@ -6,6 +6,7 @@ import { PreviewToolbar } from '../ui/PreviewToolbar.js';
 import { ViewModeToggle } from '../ui/ViewModeToggle.js';
 import { VoxelScene } from '../scene/VoxelScene.js';
 import type { AnimationSession } from '../../lib/useAnimationSession.js';
+import { ToggleGroup, ToolOverlay, ViewOverlay } from '@cuboidy/ui';
 import type { GizmoVisibility, PreviewTool, ViewMode, VoxelEdit } from '@cuboidy/ui';
 
 interface Props {
@@ -102,40 +103,41 @@ export function PreviewPanel({
 
   return (
     <>
-      <div className="preview-toolbar-overlay">
+      <ToolOverlay>
         <PreviewToolbar tool={tool} disabled={toolDisabled} onSetTool={onSetTool} />
-      </div>
-      <div className="view-mode-overlay">
-        <div className="gizmo-toggles" role="group" aria-label="Selected-part gizmos">
-          <GizmoToggle
-            on={gizmos.pivot}
-            title="Show the selected part's pivot"
-            onClick={() => onToggleGizmo('pivot')}
-          >
-            <Crosshair size={14} />
-          </GizmoToggle>
-          <GizmoToggle
-            on={gizmos.sockets}
-            title="Show the selected part's sockets"
-            onClick={() => onToggleGizmo('sockets')}
-          >
-            <Plug size={14} />
-          </GizmoToggle>
-          <GizmoToggle
-            on={gizmos.frame}
-            title="Show the selected part's bounding frame"
-            onClick={() => onToggleGizmo('frame')}
-          >
-            <Box size={14} />
-          </GizmoToggle>
-        </div>
+      </ToolOverlay>
+      <ViewOverlay>
+        <ToggleGroup
+          label="Selected-part gizmos"
+          items={[
+            {
+              id: 'pivot',
+              icon: Crosshair,
+              label: "Show the selected part's pivot",
+              on: gizmos.pivot,
+            },
+            {
+              id: 'sockets',
+              icon: Plug,
+              label: "Show the selected part's sockets",
+              on: gizmos.sockets,
+            },
+            {
+              id: 'frame',
+              icon: Box,
+              label: "Show the selected part's bounding frame",
+              on: gizmos.frame,
+            },
+          ]}
+          onToggle={onToggleGizmo}
+        />
         <ViewModeToggle
           mode={viewMode}
           rigAvailable={rigAvailable}
           animAvailable={animAvailable}
           onChange={onChangeViewMode}
         />
-      </div>
+      </ViewOverlay>
       {viewMode === 'anim' && animManifest !== undefined ? (
         <AnimationViewport
           geometry={geometry}
@@ -182,29 +184,5 @@ export function PreviewPanel({
         </div>
       )}
     </>
-  );
-}
-
-function GizmoToggle({
-  on,
-  title,
-  onClick,
-  children,
-}: {
-  on: boolean;
-  title: string;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      className={on ? 'active' : ''}
-      aria-pressed={on}
-      title={title}
-      onClick={onClick}
-    >
-      {children}
-    </button>
   );
 }

@@ -314,7 +314,8 @@ code {
   font-family: var(--ui);
 }
 
-.attach-problem {
+.attach-problem,
+.notice {
   margin: 0;
   padding: 0.3rem 0.4rem;
   background: var(--accent-tint);
@@ -322,6 +323,13 @@ code {
   border-radius: var(--r-1);
   color: var(--txt-2);
   font-size: 0.72rem;
+}
+
+/* Same strip, told apart by its edge: a notice explains why a control is
+   not having the effect you expect, which is not the same as something
+   being wrong with the scene. */
+.notice {
+  border-left-color: var(--accent-hi);
 }
 
 /* ── dock host ───────────────────────────────────────────────────── */

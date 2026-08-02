@@ -261,4 +261,33 @@ describe('animation', () => {
     const p = placeScene(s, ANIM_LIB, 0.5).find((x) => x.instance.id === 'swinger');
     expect(p?.poses).toBeNull();
   });
+
+  it('rest mode ignores every clip, playing or paused', () => {
+    // Rig view is not "playback paused" — that is per instance and holds
+    // whatever frame each was stopped at. It is the arrangement itself,
+    // with animation out of the way of reading it.
+    let s = setAnimation(animScene(), 'swinger', { clip: 'swing', playing: true });
+    s = setAttachment(s, 'gem', { to: 'swinger', socket: 'peg' });
+    const placed = placeScene(s, ANIM_LIB, 0.5, { rest: true });
+    expect(placed.find((p) => p.instance.id === 'swinger')?.poses).toBeNull();
+    // And the guest goes back to the socket's rest position with it.
+    expect(placed.find((p) => p.instance.id === 'gem')?.frame.pos[1]).toBeCloseTo(
+      2,
+      6,
+    );
+  });
+
+  it('rest mode keeps the frozen point of a paused instance for later', () => {
+    // Switching views must not lose where playback was stopped.
+    const s = setAnimation(animScene(), 'swinger', {
+      clip: 'swing',
+      playing: false,
+      at: 0.5,
+    });
+    expect(placeScene(s, ANIM_LIB, 0, { rest: true })[0]?.poses).toBeNull();
+    expect(
+      placeScene(s, ANIM_LIB, 0).find((p) => p.instance.id === 'swinger')?.poses
+        ?.get('arm')?.rot,
+    ).toEqual([0, 0, 90]);
+  });
 });
