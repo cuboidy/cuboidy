@@ -98,6 +98,31 @@ export function addInstance(
   return { ...scene, instances: [...scene.instances, inst] };
 }
 
+// Rename an instance, and everything that points at it.
+//
+// An id is not just a label: an attachment names its host by one. A
+// rename that only touched the instance itself would silently detach
+// whatever it was carrying — the guests would keep naming a host that no
+// longer exists and quietly fall back to the scene root.
+//
+// Refuses a name another instance already has. parseScene rejects
+// duplicate ids on the way in, so producing one here would write a file
+// this app cannot read back.
+export function renameInstance(scene: Scene, from: string, to: string): Scene {
+  const next = to.trim();
+  if (next === '' || next === from) return scene;
+  if (scene.instances.some((i) => i.id === next)) return scene;
+  if (!scene.instances.some((i) => i.id === from)) return scene;
+  return {
+    ...scene,
+    instances: scene.instances.map((i) => ({
+      ...i,
+      ...(i.id === from && { id: next }),
+      ...(i.attach?.to === from && { attach: { ...i.attach, to: next } }),
+    })),
+  };
+}
+
 export function removeInstance(scene: Scene, id: string): Scene {
   // Anything hanging off it is detached rather than deleted: removing one
   // model should not silently take others with it.
@@ -361,12 +386,84 @@ export interface SceneNode {
   children: SceneNode[];
 }
 
-// The tree the Instances panel shows: nested by what the scene CLAIMS, so
-// a row sits under the host it names even when that attachment did not
-// resolve — the reason is reported on the row, and hiding the claim would
-// make the report unattributable.
-export function sceneTree(placed: readonly PlacedInstance[]): SceneNode[] {
-  return buildTree(placed, (p) => p.instance.attach?.to);
+// ── the panel's tree ──────────────────────────────────────────────────
+
+// A row in the Instances panel. Sockets are rows of their own, between a
+// host and whatever hangs off it:
+//
+//   knight            instance
+//     weapon          socket
+//       sword         instance
+//     crest           socket, empty
+//
+// Three things fall out of that. An empty socket becomes visible, so what
+// a model OFFERS (§6.12) can be read without opening another panel.
+// Changing which socket something hangs from becomes a drag onto the
+// socket row, instead of a dropdown in a different panel. And every
+// instance can carry the same icon — before, a model got a different
+// glyph depending on whether it happened to be attached, which made the
+// icon say where a row SAT rather than what it WAS.
+export type PanelRow =
+  | {
+      kind: 'instance';
+      // Stable React key. Instance ids and socket names live in different
+      // namespaces and could collide.
+      key: string;
+      placed: PlacedInstance;
+      children: PanelRow[];
+    }
+  | {
+      kind: 'socket';
+      key: string;
+      host: string;
+      socket: string;
+      // False when the host does not (or no longer) publishes it, but
+      // something in the scene is attached to that name anyway. The row
+      // exists so the guest under it has somewhere to be.
+      published: boolean;
+      children: PanelRow[];
+    };
+
+export function panelTree(placed: readonly PlacedInstance[]): PanelRow[] {
+  // Nested by what the scene CLAIMS, not by what resolved: a guest whose
+  // socket has gone missing still belongs under the host it names, or the
+  // problem has nothing to sit against.
+  const instances = buildTree(placed, (p) => p.instance.attach?.to);
+  return instances.map(toPanelRow);
+}
+
+function toPanelRow(node: SceneNode): PanelRow {
+  const host = node.placed.instance.id;
+  const published = Object.keys(node.placed.model.manifest.sockets ?? {});
+  // Every published socket gets a row, plus any name a guest claims that
+  // the host does not publish — appended, so the model's own order (which
+  // the author chose) is not disturbed by a broken reference.
+  const claimed = node.children.map((c) => c.placed.instance.attach?.socket);
+  const extra = [
+    ...new Set(
+      claimed.filter(
+        (s): s is string => s !== undefined && !published.includes(s),
+      ),
+    ),
+  ];
+
+  const rows: PanelRow[] = [...published, ...extra].map((socket) => ({
+    kind: 'socket',
+    key: `sock:${host}/${socket}`,
+    host,
+    socket,
+    published: published.includes(socket),
+    children: node.children
+      .filter((c) => c.placed.instance.attach?.socket === socket)
+      .map(toPanelRow),
+  }));
+
+  return {
+    kind: 'instance',
+    key: `inst:${host}`,
+    placed: node.placed,
+    children: rows,
+  };
 }
 
 // The tree the 3D view draws, nested by what actually RESOLVED.

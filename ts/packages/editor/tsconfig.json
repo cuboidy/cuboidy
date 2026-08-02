@@ -2,8 +2,9 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    // `.` rather than `src` so test/ typechecks too. The package never
-    // emits (noEmit below), so rootDir only scopes what tsc will accept.
+    // `.` rather than `src` so test/ and e2e/ typecheck too. The package
+    // never emits (noEmit below), so rootDir only scopes what tsc will
+    // accept.
     "rootDir": ".",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
@@ -13,5 +14,7 @@
     "noEmit": true,
     "allowImportingTsExtensions": false
   },
-  "include": ["src/**/*", "test/**/*"]
+  // e2e/ included for the same reason the workspace's is: an unresolved
+  // name in a spec should cost two seconds of tsc, not a browser run.
+  "include": ["src/**/*", "test/**/*", "e2e/**/*"]
 }

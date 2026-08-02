@@ -28,7 +28,7 @@ async function armedKnight(page: import('@playwright/test').Page): Promise<void>
   await openLibrary(page, MODELS);
   await place(page, 'knight');
   await place(page, 'sword');
-  await page.locator('.scene-tree-panel .tree-name', { hasText: /^sword$/ }).click();
+  await page.locator('.scene-tree-panel .tree-row[draggable] .tree-name', { hasText: /^sword$/ }).click();
   await page.locator('.field', { hasText: 'attached to' }).locator('select')
     .selectOption('knight');
 }
@@ -94,7 +94,7 @@ test('the guest tracks the host through an animation, in the graph', async ({
   // The socket moves as the arm swings; the guest's own transform never
   // changes, so if it follows, it is the parenting that moved it.
   await armedKnight(page);
-  await page.locator('.scene-tree-panel .tree-name', { hasText: /^knight$/ }).click();
+  await page.locator('.scene-tree-panel .tree-row[draggable] .tree-name', { hasText: /^knight$/ }).click();
   await page.locator('.dock-tab', { hasText: 'Animation' }).click();
   await page.locator('.field', { hasText: 'clip' }).locator('select')
     .selectOption('walk');

@@ -1,7 +1,7 @@
 import { useMemo, type DragEvent } from 'react';
 import { geometryPaths } from '@cuboidy/core';
 import { ChevronDown, ChevronRight, Plus, X } from 'lucide-react';
-import { InlineNameInput } from '../ui/InlineNameInput.js';
+import { InlineNameInput } from '@cuboidy/ui';
 import { fileIcon } from '../ui/fileIcon.js';
 import type { DirNode } from '../../lib/fs-tree.js';
 import { useFileTreeState } from '../../lib/useFileTreeState.js';

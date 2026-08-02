@@ -4,8 +4,8 @@ import {
   addInstance,
   drawTree,
   emptyScene,
+  panelTree,
   placeScene,
-  sceneTree,
   setAttachment,
   setPlacement,
   type Scene,
@@ -168,8 +168,11 @@ describe('drawTree', () => {
       'tower',
       'gem',
     ]);
-    // The panel still shows the claim, so the problem has a row to sit on.
-    expect(sceneTree(placed)[0]?.children).toHaveLength(1);
+    // The panel still shows the claim, under a socket row it invented for
+    // the name — so the problem has a row to sit on.
+    const tower = panelTree(placed)[0]!;
+    expect(tower.children).toHaveLength(2); // 'peg', then the phantom
+    expect(tower.children[1]!.children).toHaveLength(1);
   });
 
   it('survives a cycle rather than dropping both instances', () => {
@@ -198,6 +201,11 @@ describe('drawTree', () => {
     const ids = (ns: ReturnType<typeof drawTree>): string[] =>
       ns.flatMap((n) => [n.placed.instance.id, ...ids(n.children)]);
     expect(ids(drawTree(placed)).sort()).toEqual(['a', 'b']);
-    expect(ids(sceneTree(placed)).sort()).toEqual(['a', 'b']);
+    // Both reach the panel too, each at the top rather than inside the
+    // other.
+    expect(panelTree(placed).map((r) => r.key).sort()).toEqual([
+      'inst:a',
+      'inst:b',
+    ]);
   });
 });

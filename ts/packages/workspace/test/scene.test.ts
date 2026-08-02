@@ -5,11 +5,13 @@ import {
   anyPlaying,
   emptyScene,
   freshId,
+  panelTree,
   placeScene,
   removeInstance,
-  sceneTree,
+  renameInstance,
   setAnimation,
   setAttachment,
+  type PanelRow,
   type Scene,
 } from '../src/lib/scene.js';
 
@@ -122,6 +124,39 @@ describe('attachment', () => {
   });
 });
 
+describe('renameInstance', () => {
+  it('carries the attachments that point at it', () => {
+    // An id is a reference, not a label. Renaming only the instance would
+    // leave its guests naming a host that no longer exists — and they
+    // would quietly fall back to the scene root rather than complain.
+    let s = setAttachment(scene(), 'gem', { to: 'tower', socket: 'peg' });
+    s = renameInstance(s, 'tower', 'plinth');
+    expect(s.instances.map((i) => i.id)).toEqual(['plinth', 'gem']);
+    expect(s.instances[1]?.attach).toEqual({ to: 'plinth', socket: 'peg' });
+    // And it still resolves to the same place.
+    const gem = placeScene(s, LIBRARY).find((p) => p.instance.id === 'gem');
+    expect(gem?.frame.pos).toEqual([0, 2, 0]);
+    expect(gem?.problem).toBeUndefined();
+  });
+
+  it('refuses a name another instance already has', () => {
+    // parseScene rejects duplicate ids, so allowing one here would write a
+    // file this app cannot read back.
+    const s = renameInstance(scene(), 'gem', 'tower');
+    expect(s.instances.map((i) => i.id)).toEqual(['tower', 'gem']);
+  });
+
+  it('leaves an empty or unchanged name alone', () => {
+    expect(renameInstance(scene(), 'gem', '   ').instances[1]?.id).toBe('gem');
+    expect(renameInstance(scene(), 'gem', 'gem').instances[1]?.id).toBe('gem');
+  });
+
+  it('ignores an id that is not in the scene', () => {
+    const s = scene();
+    expect(renameInstance(s, 'ghost', 'x')).toBe(s);
+  });
+});
+
 describe('removal', () => {
   it('detaches what a removed host carried instead of deleting it', () => {
     // Removing one model should not silently take others with it.
@@ -132,18 +167,52 @@ describe('removal', () => {
   });
 });
 
-describe('sceneTree', () => {
-  it('nests a guest under its host', () => {
+// The panel's tree puts a SOCKET row between a host and its guests, so
+// what a guest hangs from is a thing on screen rather than a note beside
+// a name.
+describe('panelTree', () => {
+  const idsOf = (rows: readonly PanelRow[]): string[] =>
+    rows.map((r) => (r.kind === 'instance' ? r.placed.instance.id : r.socket));
+
+  it('nests a guest under the SOCKET it names, under its host', () => {
     const s = setAttachment(scene(), 'gem', { to: 'tower', socket: 'peg' });
-    const roots = sceneTree(placeScene(s, LIBRARY));
-    expect(roots.map((n) => n.placed.instance.id)).toEqual(['tower']);
-    expect(roots[0]?.children.map((n) => n.placed.instance.id)).toEqual(['gem']);
+    const rows = panelTree(placeScene(s, LIBRARY));
+    expect(idsOf(rows)).toEqual(['tower']);
+    const tower = rows[0]!;
+    expect(idsOf(tower.children)).toEqual(['peg']);
+    expect(idsOf(tower.children[0]!.children)).toEqual(['gem']);
+  });
+
+  it('shows a published socket that is empty', () => {
+    // What a model OFFERS (§6.12) is worth seeing before anything is on
+    // it — that is the row you are about to drag onto.
+    const rows = panelTree(placeScene(scene(), LIBRARY));
+    const tower = rows.find((r) => r.kind === 'instance' && r.key === 'inst:tower')!;
+    expect(idsOf(tower.children)).toEqual(['peg']);
+    expect(tower.children[0]!.children).toEqual([]);
+  });
+
+  it('gives a model that publishes nothing no socket rows', () => {
+    const rows = panelTree(placeScene(scene(), LIBRARY));
+    const gem = rows.find((r) => r.kind === 'instance' && r.key === 'inst:gem')!;
+    expect(gem.children).toEqual([]);
+  });
+
+  it('invents a row for a socket the host has stopped publishing', () => {
+    // The guest has to be SOMEWHERE, and hanging it directly off the host
+    // would quietly imply the attachment was fine.
+    const s = setAttachment(scene(), 'gem', { to: 'tower', socket: 'gone' });
+    const tower = panelTree(placeScene(s, LIBRARY))[0]!;
+    expect(idsOf(tower.children)).toEqual(['peg', 'gone']);
+    const gone = tower.children[1]!;
+    expect(gone.kind === 'socket' && gone.published).toBe(false);
+    expect(idsOf(gone.children)).toEqual(['gem']);
   });
 
   it('shows an instance whose host is missing at the top, not nowhere', () => {
     const s = setAttachment(scene(), 'gem', { to: 'ghost', socket: 'peg' });
-    const roots = sceneTree(placeScene(s, LIBRARY));
-    expect(roots.map((n) => n.placed.instance.id).sort()).toEqual(['gem', 'tower']);
+    const rows = panelTree(placeScene(s, LIBRARY));
+    expect(idsOf(rows).sort()).toEqual(['gem', 'tower']);
   });
 });
 

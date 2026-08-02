@@ -38,9 +38,10 @@ import {
   addInstance,
   anyPlaying,
   emptyScene,
+  panelTree,
   placeScene,
   removeInstance,
-  sceneTree,
+  renameInstance,
   setAnimation,
   setAttachment,
   setPlacement,
@@ -142,7 +143,7 @@ export function App() {
         : placeScene(scene, library, time, { rest: effectiveView === 'rig' }),
     [scene, library, time, effectiveView],
   );
-  const roots = useMemo(() => sceneTree(placed), [placed]);
+  const rows = useMemo(() => panelTree(placed), [placed]);
   // The resolved scene, for tests. Where an instance ENDED UP is the only
   // way to tell an attachment that took effect from one that merely says
   // it did, and a canvas cannot be asked. Read-only, and cheap.
@@ -267,7 +268,7 @@ export function App() {
             body: (
               <div className="panel-body">
                 <SceneTreePanel
-                  roots={roots}
+                  rows={rows}
                   all={placed}
                   selected={selected}
                   onSelect={setSelected}
@@ -275,20 +276,20 @@ export function App() {
                     setScene((s) => removeInstance(s, id2));
                     setSelected((cur) => (cur === id2 ? null : cur));
                   }}
-                  onAttach={(id2, hostId) => {
-                    setScene((s) => {
-                      if (hostId === null) return setAttachment(s, id2, null);
-                      // A drop onto a host means "attach"; WHICH socket is
-                      // a second decision, so it takes the first published
-                      // one and the Attachment panel changes it.
-                      const host = placed.find((x) => x.instance.id === hostId);
-                      const first = Object.keys(
-                        host?.model.manifest.sockets ?? {},
-                      )[0];
-                      return first === undefined
-                        ? s
-                        : setAttachment(s, id2, { to: hostId, socket: first });
-                    });
+                  onRename={(from, to) => {
+                    setScene((s) => renameInstance(s, from, to));
+                    setSelected((cur) => (cur === from ? to : cur));
+                  }}
+                  onAttach={(id2, target) => {
+                    setScene((s) =>
+                      setAttachment(
+                        s,
+                        id2,
+                        target === null
+                          ? null
+                          : { to: target.host, socket: target.socket },
+                      ),
+                    );
                   }}
                 />
               </div>
@@ -401,7 +402,7 @@ export function App() {
       thumbnails,
       browsing,
       place,
-      roots,
+      rows,
       selected,
       placed,
       selectedPlaced,

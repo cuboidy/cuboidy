@@ -2,8 +2,9 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    // `.` rather than `src` so test/ typechecks too. The package never
-    // emits (noEmit below), so rootDir only scopes what tsc will accept.
+    // `.` rather than `src` so test/ and e2e/ typecheck too. The package
+    // never emits (noEmit below), so rootDir only scopes what tsc will
+    // accept.
     "rootDir": ".",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
@@ -13,5 +14,8 @@
     "noEmit": true,
     "allowImportingTsExtensions": false
   },
-  "include": ["src/**/*", "test/**/*"]
+  // e2e/ included: a spec that referenced an undeleted helper typechecked
+  // and linted clean, then failed 80 seconds into a browser run. Two
+  // seconds of tsc is the right place to find that.
+  "include": ["src/**/*", "test/**/*", "e2e/**/*"]
 }

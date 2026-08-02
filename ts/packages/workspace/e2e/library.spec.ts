@@ -2,11 +2,14 @@ import { expect, test } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import {
+  attachedNames,
   centrePixelIsBackground,
+  instanceNames,
   instanceOrigin,
   instancePose,
   openLibrary,
   place,
+  socketRow,
 } from './helpers.js';
 
 // Stage 1, first chunk: open a folder of models, list them, draw one.
@@ -67,7 +70,7 @@ test('selecting a model shows its published sockets', async ({ page }) => {
 test('double-clicking a model puts it in the scene and draws it', async ({ page }) => {
   await openLibrary(page, MODELS);
   await place(page, 'knight');
-  await expect(page.locator('.scene-tree-panel .tree-name')).toHaveText(['knight']);
+  await expect(instanceNames(page)).toHaveText(['knight']);
   await expect
     .poll(async () => await centrePixelIsBackground(page), { timeout: 10_000 })
     .toBe(false);
@@ -77,7 +80,7 @@ test('a second copy of one model gets its own id', async ({ page }) => {
   await openLibrary(page, MODELS);
   await place(page, 'knight');
   await place(page, 'knight');
-  await expect(page.locator('.scene-tree-panel .tree-name')).toHaveText(['knight', 'knight-2']);
+  await expect(instanceNames(page)).toHaveText(['knight', 'knight-2']);
 });
 
 test('attaching the sword to the knight nests it and moves it to the socket', async ({
@@ -91,7 +94,7 @@ test('attaching the sword to the knight nests it and moves it to the socket', as
   await place(page, 'sword');
 
   const before = await instanceOrigin(page, 'sword');
-  await page.locator('.scene-tree-panel .tree-name', { hasText: /^sword$/ }).click();
+  await page.locator('.scene-tree-panel .tree-row[draggable] .tree-name', { hasText: /^sword$/ }).click();
   await page.locator('.field', { hasText: 'attached to' }).locator('select')
     .selectOption('knight');
 
@@ -99,26 +102,43 @@ test('attaching the sword to the knight nests it and moves it to the socket', as
   await expect(
     page.locator('.field', { hasText: /^socket/ }).locator('select'),
   ).toHaveValue('weapon');
-  // …the tree nests it under its host…
-  await expect(page.locator('.scene-tree-panel .tree-list .tree-list .tree-name')).toHaveText('sword');
+  // …the tree nests it under the SOCKET, under its host…
+  await expect(attachedNames(page)).toHaveText(['sword']);
   // …and it is no longer at the origin: it is up in the knight's hand.
   const after = await instanceOrigin(page, 'sword');
   expect(after).not.toEqual(before);
   expect(after![1]).toBeGreaterThan(10); // grip height, not the floor
 });
 
-test('dragging one instance onto another attaches it', async ({ page }) => {
-  // The gesture the Parts panel uses for re-parenting, doing the
-  // equivalent job here. A drop means "attach"; which socket is a second
-  // decision the Attachment panel owns, so it takes the first published.
+test('dragging an instance onto a socket attaches it there', async ({ page }) => {
+  // Sockets are rows, so the drop target is the socket itself rather than
+  // the host — no guessing which of `weapon` and `crest` was meant.
   await openLibrary(page, MODELS);
   await place(page, 'knight');
   await place(page, 'sword');
   await page
     .locator('.scene-tree-panel .tree-row', { hasText: 'sword' })
-    .dragTo(page.locator('.scene-tree-panel .tree-row', { hasText: 'knight' }));
-  await expect(page.locator('.scene-tree-panel .tree-list .tree-list .tree-name')).toHaveText('sword');
+    .dragTo(socketRow(page, 'weapon'));
+  await expect(attachedNames(page)).toHaveText(['sword']);
   expect((await instanceOrigin(page, 'sword'))![1]).toBeGreaterThan(10);
+});
+
+test('dragging to the other socket moves it there', async ({ page }) => {
+  // What used to need the Attachment panel's dropdown.
+  await openLibrary(page, MODELS);
+  await place(page, 'knight');
+  await place(page, 'sword');
+  const sword = page.locator('.scene-tree-panel .tree-row', { hasText: 'sword' });
+  await sword.dragTo(socketRow(page, 'weapon'));
+  const onWeapon = await instanceOrigin(page, 'sword');
+
+  await page
+    .locator('.scene-tree-panel .tree-row[draggable]', { hasText: 'sword' })
+    .dragTo(socketRow(page, 'crest'));
+  await expect(
+    page.locator('.field', { hasText: /^socket/ }).locator('select'),
+  ).toHaveValue('crest');
+  expect(await instanceOrigin(page, 'sword')).not.toEqual(onWeapon);
 });
 
 test('dragging onto the detach strip frees it again', async ({ page }) => {
@@ -126,8 +146,8 @@ test('dragging onto the detach strip frees it again', async ({ page }) => {
   await place(page, 'knight');
   await place(page, 'sword');
   const sword = page.locator('.scene-tree-panel .tree-row', { hasText: 'sword' });
-  await sword.dragTo(page.locator('.scene-tree-panel .tree-row', { hasText: 'knight' }));
-  await expect(page.locator('.scene-tree-panel .tree-list .tree-list .tree-row')).toHaveCount(1);
+  await sword.dragTo(socketRow(page, 'weapon'));
+  await expect(attachedNames(page)).toHaveCount(1);
   // The strip only exists while a drag is in flight, so the drop has to
   // happen in one gesture.
   await sword.hover();
@@ -137,19 +157,19 @@ test('dragging onto the detach strip frees it again', async ({ page }) => {
   await expect(strip).toBeVisible();
   await strip.hover();
   await page.mouse.up();
-  await expect(page.locator('.scene-tree-panel .tree-list .tree-list .tree-row')).toHaveCount(0);
+  await expect(attachedNames(page)).toHaveCount(0);
 });
 
 test('detaching returns it to the scene root', async ({ page }) => {
   await openLibrary(page, MODELS);
   await place(page, 'knight');
   await place(page, 'sword');
-  await page.locator('.scene-tree-panel .tree-name', { hasText: /^sword$/ }).click();
+  await page.locator('.scene-tree-panel .tree-row[draggable] .tree-name', { hasText: /^sword$/ }).click();
   const attachTo = page.locator('.field', { hasText: 'attached to' }).locator('select');
   await attachTo.selectOption('knight');
-  await expect(page.locator('.scene-tree-panel .tree-list .tree-list .tree-row')).toHaveCount(1);
+  await expect(attachedNames(page)).toHaveCount(1);
   await attachTo.selectOption('');
-  await expect(page.locator('.scene-tree-panel .tree-list .tree-list .tree-row')).toHaveCount(0);
+  await expect(attachedNames(page)).toHaveCount(0);
   expect((await instanceOrigin(page, 'sword'))![1]).toBe(0);
 });
 
@@ -159,12 +179,12 @@ test('removing a host detaches what it carried rather than deleting it', async (
   await openLibrary(page, MODELS);
   await place(page, 'knight');
   await place(page, 'sword');
-  await page.locator('.scene-tree-panel .tree-name', { hasText: /^sword$/ }).click();
+  await page.locator('.scene-tree-panel .tree-row[draggable] .tree-name', { hasText: /^sword$/ }).click();
   await page.locator('.field', { hasText: 'attached to' }).locator('select')
     .selectOption('knight');
   await page.getByRole('button', { name: 'Remove knight' }).click();
   // The sword survives, at the scene root.
-  await expect(page.locator('.scene-tree-panel .tree-name')).toHaveText(['sword']);
+  await expect(instanceNames(page)).toHaveText(['sword']);
 });
 
 test('a model that publishes nothing says so, rather than showing an empty list', async ({
@@ -186,14 +206,14 @@ test('playing a clip moves the model, and carries what is attached to it', async
   await openLibrary(page, MODELS);
   await place(page, 'knight');
   await place(page, 'sword');
-  await page.locator('.scene-tree-panel .tree-name', { hasText: /^sword$/ }).click();
+  await page.locator('.scene-tree-panel .tree-row[draggable] .tree-name', { hasText: /^sword$/ }).click();
   await page.locator('.field', { hasText: 'attached to' }).locator('select')
     .selectOption('knight');
 
   const still = await instanceOrigin(page, 'sword');
 
   // Play the knight's walk. Selecting a clip starts it.
-  await page.locator('.scene-tree-panel .tree-name', { hasText: /^knight$/ }).click();
+  await page.locator('.scene-tree-panel .tree-row[draggable] .tree-name', { hasText: /^knight$/ }).click();
   await page.locator('.dock-tab', { hasText: 'Animation' }).click();
   await page.locator('.field', { hasText: 'clip' }).locator('select')
     .selectOption('walk');
@@ -273,7 +293,7 @@ test('a scene saved and reopened comes back the same', async ({ page }) => {
   await openLibrary(page, MODELS);
   await place(page, 'knight');
   await place(page, 'sword');
-  await page.locator('.scene-tree-panel .tree-name', { hasText: /^sword$/ }).click();
+  await page.locator('.scene-tree-panel .tree-row[draggable] .tree-name', { hasText: /^sword$/ }).click();
   await page.locator('.field', { hasText: 'attached to' }).locator('select')
     .selectOption('knight');
 
@@ -308,9 +328,9 @@ test('opening a scene from the library restores its arrangement', async ({
   // one this test just wrote.
   await openLibrary(page, LIBRARY);
   await page.getByLabel('Open a scene').selectOption('armed.scene.json');
-  await expect(page.locator('.scene-tree-panel .tree-name')).toHaveText(['knight', 'sword']);
+  await expect(instanceNames(page)).toHaveText(['knight', 'sword']);
   // Nested under its host, and actually placed at the socket.
-  await expect(page.locator('.scene-tree-panel .tree-list .tree-list .tree-name')).toHaveText('sword');
+  await expect(attachedNames(page)).toHaveText(['sword']);
   expect((await instanceOrigin(page, 'sword'))![1]).toBeGreaterThan(10);
 });
 
@@ -318,7 +338,7 @@ test('the scene.json panel shows what Save would write', async ({ page }) => {
   await openLibrary(page, MODELS);
   await place(page, 'knight');
   await place(page, 'sword');
-  await page.locator('.scene-tree-panel .tree-name', { hasText: /^sword$/ }).click();
+  await page.locator('.scene-tree-panel .tree-row[draggable] .tree-name', { hasText: /^sword$/ }).click();
   await page.locator('.field', { hasText: 'attached to' }).locator('select')
     .selectOption('knight');
   await page.locator('.dock-tab', { hasText: 'scene.json' }).click();
@@ -345,6 +365,6 @@ test('a scene file that does not parse says why and keeps what is on screen', as
   await page.getByLabel('Open a scene').selectOption('broken.scene.json');
   await expect(page.locator('.scene-bar')).toContainText('duplicate id');
   // The arrangement already on screen survived.
-  await expect(page.locator('.scene-tree-panel .tree-name')).toHaveText(['knight']);
+  await expect(instanceNames(page)).toHaveText(['knight']);
 });
 

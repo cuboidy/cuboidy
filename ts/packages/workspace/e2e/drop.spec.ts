@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
-import { instanceOrigin, openLibrary, place } from './helpers.js';
+import { attachedNames, instanceNames, instanceOrigin, openLibrary, place } from './helpers.js';
 
 // Dragging a model out of the library and onto the scene.
 //
@@ -48,7 +48,7 @@ test('a model dropped on the ground lands where it was dropped', async ({
     y: box.y + box.height * 0.72,
   });
 
-  await expect(page.locator('.scene-tree-panel .tree-name')).toHaveText([
+  await expect(instanceNames(page)).toHaveText([
     'sword',
   ]);
   const at = await instanceOrigin(page, 'sword');
@@ -75,9 +75,7 @@ test('dropping onto a published socket attaches in one motion', async ({
   expect(at).not.toBeNull();
   await dragCardTo(page, 'sword', { x: at![0], y: at![1] });
 
-  await expect(
-    page.locator('.scene-tree-panel .tree-list .tree-list .tree-name'),
-  ).toHaveText('sword');
+  await expect(attachedNames(page)).toHaveText(['sword']);
   // And it is up in the hand, not on the floor.
   expect((await instanceOrigin(page, 'sword'))![1]).toBeGreaterThan(10);
 });

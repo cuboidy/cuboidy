@@ -6,8 +6,13 @@ import {
   type ReactNode,
 } from 'react';
 
-// Shared inline text field for naming things in tree rows — part
-// create/rename and file create/rename all use it. Auto-focuses and
+// Shared inline text field for naming things in tree rows — the editor's
+// part and file create/rename, the workspace's instance rename. Here
+// rather than in either app because its styling already was: `tree.css`
+// owns the shape a tree row takes in this product, and the field you type
+// a name into is part of that shape.
+//
+// Auto-focuses and
 // selects its text; Enter commits a valid, non-empty name; Escape or
 // blurring away (clicking elsewhere) cancels — so an accidental click
 // never commits. Invalid names flash red and keep the field open. A

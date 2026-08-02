@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
-import { openLibrary, place, thumbnailCoverage } from './helpers.js';
+import { instanceNames, openLibrary, place, thumbnailCoverage } from './helpers.js';
 
 // The library as cards, each with a picture of its model.
 //
@@ -73,7 +73,7 @@ test('the card is still what places a model in the scene', async ({ page }) => {
     page.locator('.model-card', { hasText: 'knight' }).first(),
   ).toHaveClass(/selected/);
   await place(page, 'knight');
-  await expect(page.locator('.scene-tree-panel .tree-name')).toHaveText([
+  await expect(instanceNames(page)).toHaveText([
     'knight',
   ]);
 });
@@ -89,7 +89,7 @@ test('a card offers a visible way in, not just gestures', async ({ page }) => {
   await cell.hover();
   await expect(add).toHaveCSS('opacity', '1');
   await add.click();
-  await expect(page.locator('.scene-tree-panel .tree-name')).toHaveText([
+  await expect(instanceNames(page)).toHaveText([
     'knight',
   ]);
 });
@@ -107,7 +107,7 @@ test('the library can be used without a pointer', async ({ page }) => {
   // Focus reveals it: hidden from sight is fine, hidden from Tab is not.
   await expect(add).toHaveCSS('opacity', '1');
   await page.keyboard.press('Enter');
-  await expect(page.locator('.scene-tree-panel .tree-name')).toHaveText([
+  await expect(instanceNames(page)).toHaveText([
     'knight',
   ]);
 });

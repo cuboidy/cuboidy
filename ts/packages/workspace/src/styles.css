@@ -331,17 +331,22 @@ code {
 /* The rows come from @cuboidy/ui/tree.css — the same tree the editor's
    Parts panel draws. Only what is particular to a SCENE row is here. */
 
-/* The attachment marker, so an attached instance reads differently from
-   a free one at a glance. */
-.tree-icon .icon-attached {
+/* A socket is its own row, between a host and whatever hangs off it. It
+   is not a thing in the scene — it is a place on one — so it is set back
+   from the instances either side of it. */
+.tree-icon .icon-socket {
   color: var(--accent-hi);
 }
 
-.tree-note {
-  color: var(--txt-3);
-  font-size: 0.7rem;
-  white-space: nowrap;
-  flex-shrink: 0;
+.socket-name {
+  color: var(--txt-2);
+  font-size: 0.72rem;
+}
+
+/* Nothing to select and nothing to drag: the only thing you do to a
+   socket row is drop on it. */
+.tree-row.socket-target {
+  cursor: default;
 }
 
 .tree-warn {

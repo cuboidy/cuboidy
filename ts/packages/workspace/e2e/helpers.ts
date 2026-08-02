@@ -62,6 +62,24 @@ export async function thumbnailCoverage(
   }, model);
 }
 
+// Socket rows carry `.tree-name` too — they are names in a tree. Only
+// instance rows are draggable, which is what tells the two apart.
+export const instanceNames = (page: Page) =>
+  page.locator('.scene-tree-panel .tree-row[draggable] .tree-name');
+
+// The Instances panel nests instance > socket > instance, so an ATTACHED
+// instance's row is three lists deep. Free ones are at the top level.
+export const attachedNames = (page: Page) =>
+  page.locator(
+    '.scene-tree-panel .tree-list .tree-list .tree-list .tree-row[draggable] .tree-name',
+  );
+
+// A socket row — the thing you drop onto to attach.
+export const socketRow = (page: Page, socket: string) =>
+  page.locator('.scene-tree-panel .tree-row.socket-target', {
+    hasText: new RegExp(`^${socket}$`),
+  });
+
 // The instance whose GROUP actually contains this one, read off the
 // three.js object graph. Distinct from what the scene resolved to: a flat
 // graph can report the right world frame and still leave a guest behind
@@ -96,7 +114,7 @@ export async function place(page: Page, model: string): Promise<void> {
   await page.locator('.model-card-name', { hasText: new RegExp(`^${model}$`) })
     .dblclick();
   await expect(
-    page.locator('.scene-tree-panel .tree-name', { hasText: new RegExp(`^${model}`) }).first(),
+    page.locator('.scene-tree-panel .tree-row[draggable] .tree-name', { hasText: new RegExp(`^${model}`) }).first(),
   ).toBeVisible();
 }
 
