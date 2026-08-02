@@ -397,10 +397,13 @@ export function App() {
             body: (
               <div className="panel-body">
                 <AttachProperties
-                placed={selectedPlaced}
-                all={placed}
-                onAttach={(id2, target) =>
-                  setScene((s) => setAttachment(s, id2, target))
+                  placed={selectedPlaced}
+                  all={placed}
+                  onAttach={(id2, target) =>
+                    setScene((s) => setAttachment(s, id2, target))
+                  }
+                  onPlace={(id2, patch) =>
+                    setScene((s) => setPlacement(s, id2, patch))
                   }
                 />
               </div>

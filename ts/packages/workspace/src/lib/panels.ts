@@ -20,9 +20,15 @@ export type PanelId =
   | 'tree'
   // The 3D view.
   | 'view'
-  // What the selection is attached to and what it plays.
+  // The selected instance: what carries it, where it sits, what it plays.
   //
-  // There was a Published sockets panel here. The Instances tree grew
+  // `attachment` is the id this panel was born with, kept because a saved
+  // layout stores panel ids and renaming one would silently drop it from
+  // anyone's arrangement. What it SHOWS grew: it is the Properties panel
+  // now, with the placement editable as numbers rather than only by
+  // dragging a gizmo.
+  //
+  // There was a Published sockets panel here too. The Instances tree grew
   // socket rows, which say the same thing in the place you are already
   // looking — and a second view of one fact is a question about which of
   // them is right. The one thing it knew that the tree did not, the
@@ -49,7 +55,7 @@ export const PANEL_TITLES: Record<PanelId, string> = {
   scene: 'Scene',
   tree: 'Instances',
   view: 'View',
-  attachment: 'Attachment',
+  attachment: 'Properties',
   animation: 'Animation',
   problems: 'Problems',
   source: 'scene.json',

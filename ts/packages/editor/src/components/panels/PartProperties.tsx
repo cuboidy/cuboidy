@@ -2,7 +2,7 @@ import { useState, type ChangeEvent } from 'react';
 import { Copy, FlipHorizontal2, Plus, X } from 'lucide-react';
 import { AIR, isIdentifier, type Geometry, type Manifest, type ManifestPart, type Part, type Size } from '@cuboidy/core';
 import { findManifestPart } from '../../lib/part-tree.js';
-import { NumberInput } from '../ui/NumberInput.js';
+import { NumberInput } from '@cuboidy/ui';
 import { TextInput } from '../ui/TextInput.js';
 
 type Axis = 'x' | 'y' | 'z';

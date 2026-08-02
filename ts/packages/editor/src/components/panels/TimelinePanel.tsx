@@ -1,7 +1,7 @@
 import { isIdentifier, type Manifest } from '@cuboidy/core';
 import { Plus } from 'lucide-react';
 import type { AnimationSession } from '../../lib/useAnimationSession.js';
-import { NumberInput } from '../ui/NumberInput.js';
+import { NumberInput } from '@cuboidy/ui';
 import { TextInput } from '../ui/TextInput.js';
 import { Timeline } from './Timeline.js';
 

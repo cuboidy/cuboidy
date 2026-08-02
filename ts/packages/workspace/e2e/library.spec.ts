@@ -206,7 +206,7 @@ test('a scene with nothing to attach to says so', async ({ page }) => {
   await openLibrary(page, MODELS);
   await place(page, 'sword'); // publishes nothing
   await expect(
-    page.locator('.dock-leaf', { hasText: 'Attachment' }),
+    page.locator('.dock-leaf', { hasText: 'Properties' }),
   ).toContainText('nowhere to attach');
 });
 

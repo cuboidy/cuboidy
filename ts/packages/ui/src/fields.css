@@ -1,0 +1,65 @@
+/* Numeric fields.
+ *
+ * The stylesheet for NumberInput, which both apps now use — the editor for
+ * part positions, pivots, sockets and keyframe values, the workspace for
+ * an instance's placement. Here for the reason .btn is here: a shared
+ * component whose CSS lives in one app looks right there and is silently
+ * unstyled in the other.
+ *
+ * Named `num-field` rather than the editor's old `property-position-*`.
+ * The class was only ever emitted by NumberInput itself, so renaming it
+ * cost nothing, and a shared primitive should not be called "position"
+ * when it is just as often a rotation or a duration. */
+
+/* A row of them — x / y / z, usually. */
+.num-row {
+  display: flex;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.num-field {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.75rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.num-field-axis {
+  color: var(--txt-3);
+  font-family: var(--ui);
+  flex-shrink: 0;
+}
+
+.num-field input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-2);
+  color: var(--txt-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
+  padding: 0.15rem 0.3rem;
+  font: inherit;
+  font-family: var(--ui);
+  font-variant-numeric: tabular-nums;
+  /* Hide native spinner buttons — they steal width and look bad in a
+     dense panel. Typing and the scroll wheel still work. */
+  -moz-appearance: textfield;
+}
+
+.num-field input::-webkit-outer-spin-button,
+.num-field input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.num-field input:disabled {
+  cursor: not-allowed;
+}
+
+.num-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+}

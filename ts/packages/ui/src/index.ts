@@ -9,6 +9,7 @@
 export { AppHeader, HeaderDivider, HeaderGroup } from './AppHeader.js';
 export { Logo } from './Logo.js';
 export { InlineNameInput } from './InlineNameInput.js';
+export { NumberInput } from './NumberInput.js';
 
 export {
   ToggleGroup,

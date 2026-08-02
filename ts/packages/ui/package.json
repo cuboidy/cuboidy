@@ -12,6 +12,7 @@
     "./dock.css": "./src/dock.css",
     "./chrome.css": "./src/chrome.css",
     "./tree.css": "./src/tree.css",
+    "./fields.css": "./src/fields.css",
     "./viewport.css": "./src/viewport.css"
   },
   "scripts": {

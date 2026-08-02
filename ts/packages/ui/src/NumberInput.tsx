@@ -28,7 +28,9 @@ interface Props {
 // old string — eating the `-`.
 //
 // Extracted from PartProperties' PositionInput so the keyframe inspector and
-// the rig inspector share one implementation of this subtle behavior.
+// the rig inspector share one implementation of this subtle behavior — and
+// later moved here, with its stylesheet, when the workspace grew numeric
+// position and rotation fields of its own.
 export function NumberInput({
   label,
   value,
@@ -80,8 +82,8 @@ export function NumberInput({
   };
 
   return (
-    <label className="property-position-input">
-      {label !== undefined && <span className="property-position-axis">{label}</span>}
+    <label className="num-field">
+      {label !== undefined && <span className="num-field-axis">{label}</span>}
       <input
         type="number"
         value={text}

@@ -406,6 +406,49 @@ code {
   gap: 0.4rem;
 }
 
+/* Who this instance is: its id, and the model it is a copy of. Two
+   different facts that a tree row can only show one of. */
+.prop-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.prop-identity-icon {
+  color: var(--txt-3);
+  flex-shrink: 0;
+}
+
+.prop-identity-id {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.prop-identity-model {
+  margin-left: auto;
+  color: var(--txt-3);
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+/* A labelled group whose control is a row of number fields — the label
+   goes above rather than beside, because three inputs and a word do not
+   fit on one line in a docked sidebar. */
+.prop-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.prop-group-label {
+  width: auto;
+}
+
 /* Mirrors the editor's .property-field: label column, then the control
    filling the rest of the row. */
 .field {

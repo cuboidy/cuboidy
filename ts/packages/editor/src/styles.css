@@ -548,46 +548,8 @@ pre {
   min-width: 0;
 }
 
-.property-position-input {
-  display: flex;
-  align-items: center;
-  gap: 0.2rem;
-  font-size: 0.75rem;
-  flex: 1;
-  min-width: 0;
-}
-
-.property-position-axis {
-  color: var(--txt-3);
-  font-family: var(--ui);
-  flex-shrink: 0;
-}
-
-.property-position-input input {
-  flex: 1;
-  min-width: 0;
-  background: var(--bg-2);
-  color: var(--txt-1);
-  border: 1px solid var(--line);
-  border-radius: var(--r-1);
-  padding: 0.15rem 0.3rem;
-  font: inherit;
-  font-family: var(--ui);
-  font-variant-numeric: tabular-nums;
-  /* Hide native spinner buttons — they steal width and look bad in
-     a dense panel. Users can still type or scroll-wheel-adjust. */
-  -moz-appearance: textfield;
-}
-
-.property-position-input input::-webkit-outer-spin-button,
-.property-position-input input::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-.property-position-input input:disabled {
-  cursor: not-allowed;
-}
+/* The number field itself is @cuboidy/ui/fields.css (.num-field).
+   What stays here is how THIS app arranges them. */
 
 /* Model panel (cuboidy.json name/version). Matches the part inspector's
    padding so the two panels read as siblings. */
@@ -1532,7 +1494,7 @@ pre {
   color: var(--txt-2);
 }
 
-.anim-edit-field .property-position-input {
+.anim-edit-field .num-field {
   width: 5rem;
   flex: none;
 }
@@ -1972,7 +1934,7 @@ pre {
   color: var(--txt-3);
 }
 
-.anim-inspector-time-field .property-position-input {
+.anim-inspector-time-field .num-field {
   flex: 1;
   min-width: 0;
 }
@@ -2043,7 +2005,6 @@ pre {
 .anim-select:focus,
 .anim-inspector-ease select:focus,
 .part-tree-draft-file:focus,
-.property-position-input input:focus,
 .text-input:focus {
   outline: none;
   border-color: var(--accent);
