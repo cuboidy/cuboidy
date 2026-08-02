@@ -317,7 +317,7 @@ export function App() {
           return {
             title,
             body: (
-              <div className="panel-body">
+              <div className="panel-list">
                 <SceneList
                   files={[...library.scenes.keys()].sort()}
                   current={sceneFile}
@@ -330,7 +330,7 @@ export function App() {
           return {
             title,
             body: (
-              <div className="panel-body">
+              <div className="panel-list">
                 <SceneTreePanel
                   rows={rows}
                   all={placed}

@@ -251,7 +251,7 @@ function InstanceRow({
   return (
     <div
       className={cls}
-      style={{ paddingLeft: `${0.35 + depth * 0.85}rem` }}
+      style={{ paddingLeft: `${0.5 + depth * 0.9}rem` }}
       draggable={!isRenaming}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
@@ -349,7 +349,7 @@ function SocketRow({
   return (
     <div
       className={cls}
-      style={{ paddingLeft: `${0.35 + depth * 0.85}rem` }}
+      style={{ paddingLeft: `${0.5 + depth * 0.9}rem` }}
       onDragOver={onDragOver}
       onDrop={onDrop}
     >

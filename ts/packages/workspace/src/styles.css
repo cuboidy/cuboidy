@@ -136,6 +136,31 @@ code {
   gap: 0.75rem;
 }
 
+/* A panel that is a LIST gets no horizontal padding, because its rows
+   carry their own. Inset the container instead and the hover and
+   selection bands stop at 1rem from each edge — a column of floating
+   pills rather than a list you run your eye down. The editor's Parts and
+   Files trees have always been edge to edge; this is the same tree.
+
+   The generous bottom space is the editor's too: Windows 11 overlay
+   scrollbars float OVER content and steal clicks from a row flush with
+   the bottom, and the detach strip needs somewhere to appear that does
+   not shift the rows above it. */
+.panel-list {
+  padding: 0.25rem 0 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+/* An empty state is prose, not a row, so it keeps the inset the rows
+   would otherwise have supplied. */
+.panel-list .empty {
+  margin: 0;
+  padding: 0.5rem 1rem;
+  text-align: left;
+}
+
 /* ── model cards ─────────────────────────────────────────────────────
    The picture is the identity: `koi` and `owl` are two words until you
    have seen them. The grid reflows with the panel — docked narrow it
@@ -541,7 +566,8 @@ code {
   align-items: center;
   gap: 0.35rem;
   width: 100%;
-  padding: 0.25rem 0.4rem;
+  /* Matches the tree rows' own inset, so the two list panels line up. */
+  padding: 0.25rem 0.5rem;
   background: none;
   border: 1px solid transparent;
   border-radius: var(--r-1);
@@ -591,7 +617,10 @@ code {
   cursor: grab;
 }
 
+/* Not a row — a strip. It keeps the side inset the container no longer
+   supplies, so it does not run to the panel edges. */
 .scene-detach-zone {
+  margin: 0 0.5rem;
   padding: 0.35rem;
   border: 1px dashed var(--line-2);
   border-radius: var(--r-1);
