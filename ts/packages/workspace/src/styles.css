@@ -40,6 +40,64 @@ body {
   white-space: nowrap;
 }
 
+/* The open scene, in the header beside the controls that act on it — the
+   editor keeps Save there too, and two windows of one product should not
+   disagree about where it lives. */
+
+.header-doc {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  max-width: 22rem;
+  /* Set off from the buttons: the name is what they act ON, and with them
+     tight against it the New icon reads as part of the filename. */
+  margin-right: 0.55rem;
+}
+
+.header-doc-icon {
+  color: var(--txt-3);
+  flex-shrink: 0;
+}
+
+.header-doc-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--txt-2);
+}
+
+.header-doc-dirty {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-hi);
+  flex-shrink: 0;
+}
+
+/* Something that needs doing about it: a downloaded file to move, or a
+   scene that would not open. A save that simply worked says so on the
+   button instead — a banner for good news is a banner you stop reading,
+   which is how the next one gets missed. */
+.notice-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.4rem 0.7rem;
+  background: var(--warn-bg);
+  border-bottom: 1px solid var(--warn-border);
+  color: var(--txt-1);
+  font-size: 0.78rem;
+}
+
+.notice-banner .icon-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 /* ── landing ─────────────────────────────────────────────────────── */
 
 .landing {
@@ -410,58 +468,9 @@ code {
 
 
 
-/* ── scene document bar ──────────────────────────────────────────────
-   Which scene you are editing, and the ones you could edit instead. The
-   FILE is the identity: there is no name field, because a name field and
-   a file name are two identities for one document and nothing obliges
-   them to agree. */
-
-.scene-doc {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-
-.scene-doc-file {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  min-width: 0;
-}
-
-.scene-doc-icon {
-  color: var(--txt-3);
-  flex-shrink: 0;
-}
-
-.scene-doc-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  /* The path reads as a path. */
-  font-family: var(--mono);
-  font-size: 0.75rem;
-}
-
-/* Unsaved changes. A dot rather than a word: it sits beside the name it
-   is about, and there is nothing to read when everything is saved. */
-.scene-doc-dirty {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent-hi);
-  flex-shrink: 0;
-}
-
-.scene-doc-heading {
-  margin: 0.2rem 0 0;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--line);
-  color: var(--txt-3);
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
+/* ── scene list ─────────────────────────────────────
+   The scenes this library holds, and nothing else. Which one is open
+   and what you can do to it live in the header — see .header-doc. */
 
 .scene-file-list {
   list-style: none;
@@ -506,11 +515,6 @@ code {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: var(--mono);
-}
-
-.scene-bar-row {
-  display: flex;
-  gap: 0.35rem;
 }
 
 /* ── scene tree ──────────────────────────────────────────────────

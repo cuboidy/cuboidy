@@ -377,8 +377,11 @@ test('a scene file that does not parse says why and keeps what is on screen', as
 }) => {
   await openLibrary(page, LIBRARY);
   await place(page, 'knight');
+  // Placing made it dirty, so the discard guard asks first — say yes,
+  // because what this is about is what happens AFTER that.
+  page.on('dialog', (d) => void d.accept());
   await page.locator('.scene-file', { hasText: 'broken.scene.json' }).click();
-  await expect(page.locator('.scene-doc')).toContainText('duplicate id');
+  await expect(page.locator('.notice-banner')).toContainText('duplicate id');
   // The arrangement already on screen survived.
   await expect(instanceNames(page)).toHaveText(['knight']);
 });

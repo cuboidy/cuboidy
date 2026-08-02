@@ -1,9 +1,10 @@
 import { useCallback, useMemo, useState } from 'react';
-import { FolderOpen } from 'lucide-react';
+import { FolderOpen, X } from 'lucide-react';
 import {
   AppHeader,
   Dock,
   HeaderDivider,
+  HeaderGroup,
   addPanelAt,
   closePanelAt,
   placePanelBeside,
@@ -21,7 +22,8 @@ import { SceneView } from './components/SceneView.js';
 import { DragLayer } from './components/DragLayer.js';
 import { AnimationPanel } from './components/AnimationPanel.js';
 import { AttachProperties } from './components/AttachmentPanel.js';
-import { SceneDoc } from './components/SceneDoc.js';
+import { SceneActions } from './components/SceneActions.js';
+import { SceneList } from './components/SceneList.js';
 import { SceneTreePanel } from './components/SceneTreePanel.js';
 import {
   canUseDirectoryPicker,
@@ -77,7 +79,13 @@ export function App() {
   const [selected, setSelected] = useState<string | null>(null);
   const [browsing, setBrowsing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [sceneStatus, setSceneStatus] = useState<string | null>(null);
+  // Something that needs reading: a save that could only download, a file
+  // that would not parse. NOT "Saved x." — a write that worked says so on
+  // the button and then gets out of the way.
+  const [notice, setNotice] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>(
+    'idle',
+  );
   // Which file the scene came from, and what was in it. Both are the
   // APP's state rather than the document's: a scene does not know its own
   // name, and "has it changed" is a question about the pair.
@@ -102,7 +110,7 @@ export function App() {
     setScene(emptyScene());
     setSceneFile(null);
     setSavedText(null);
-    setSceneStatus(null);
+    setNotice(null);
     setSelected(null);
     setBrowsing(next.models[0]?.dir ?? null);
   }, []);
@@ -165,6 +173,23 @@ export function App() {
     library?.models.find((m) => m.dir === browsing) ??
     null;
 
+  // Would saving change the file? Comparing serializations rather than
+  // tracking edits: every mutation would otherwise have to remember to
+  // set a flag, and the one that forgets is invisible.
+  const dirty = savedText === null
+    ? scene.instances.length > 0
+    : serializeScene(scene) !== savedText;
+
+  // Now that the app knows whether there is unsaved work, it can stop
+  // throwing it away silently. Both routes out of a scene ask.
+  const mayDiscard = useCallback(
+    (what: string): boolean =>
+      !dirty ||
+      // eslint-disable-next-line no-alert
+      window.confirm(`${what} without saving the current scene?`),
+    [dirty],
+  );
+
   // Opening a scene replaces the current one. A scene that does not parse
   // reports why and leaves what is on screen alone — losing an
   // arrangement to a typo in a different file would be a poor trade.
@@ -172,9 +197,10 @@ export function App() {
     (file: string) => {
       const text = library?.scenes.get(file);
       if (text === undefined) return;
+      if (!mayDiscard(`Open ${file}`)) return;
       const r = parseScene(text);
       if (!r.ok) {
-        setSceneStatus(`${file}: ${r.error}`);
+        setNotice(`${file}: ${r.error}`);
         return;
       }
       setScene(r.scene);
@@ -184,36 +210,52 @@ export function App() {
       // otherwise read as modified the moment it opened.
       setSavedText(serializeScene(r.scene));
       setSelected(null);
-      setSceneStatus(`Opened ${file}.`);
+      setNotice(null);
     },
-    [library],
+    [library, mayDiscard],
   );
+
+  const newScene = useCallback(() => {
+    if (!mayDiscard('Start a new scene')) return;
+    setScene(emptyScene());
+    setSceneFile(null);
+    setSavedText(null);
+    setSelected(null);
+    setNotice(null);
+  }, [mayDiscard]);
 
   const handleSaveScene = useCallback(
     (file: string) => {
       if (library === null) return;
       const written = serializeScene(scene);
+      setSaveState('saving');
       void saveScene(scene, library, file)
         .then((out) => {
           setSceneFile(out.file);
           setSavedText(written);
-          setSceneStatus(
-            out.kind === 'wrote'
-              ? `Saved ${out.file} into ${library.name}.`
-              : `Downloaded ${out.downloadedAs ?? out.file} — move it to ${library.name}/${out.file}, beside the models it references.`,
-          );
+          if (out.kind === 'wrote') {
+            // The button says it and then stops saying it. A banner for
+            // something that simply worked is a banner you learn to
+            // ignore, which is how the next one gets missed too.
+            setSaveState('saved');
+            setNotice(null);
+            window.setTimeout(() => setSaveState('idle'), 2000);
+          } else {
+            // This one needs doing something about: the browser can only
+            // drop a file in Downloads, flat, and it has to be moved.
+            setSaveState('idle');
+            setNotice(
+              `Downloaded ${out.downloadedAs ?? out.file} — move it to ${library.name}/${out.file}, beside the models it references.`,
+            );
+          }
         })
-        .catch((e: Error) => setSceneStatus(`Could not save: ${e.message}`));
+        .catch((e: Error) => {
+          setSaveState('idle');
+          setNotice(`Could not save: ${e.message}`);
+        });
     },
     [scene, library],
   );
-
-  // Would saving change the file? Comparing serializations rather than
-  // tracking edits: every mutation would otherwise have to remember to
-  // set a flag, and the one that forgets is invisible.
-  const dirty = savedText === null
-    ? scene.instances.length > 0
-    : serializeScene(scene) !== savedText;
 
   // Put a model in the scene, at wherever the drag resolved to (or the
   // origin, for a double-click that expressed no place).
@@ -277,13 +319,10 @@ export function App() {
             title,
             body: (
               <div className="panel-body">
-                <SceneDoc
-                  file={sceneFile}
-                  dirty={dirty}
+                <SceneList
                   files={[...library.scenes.keys()].sort()}
+                  current={sceneFile}
                   onOpen={openSceneFile}
-                  onSave={handleSaveScene}
-                  status={sceneStatus}
                 />
               </div>
             ),
@@ -427,7 +466,6 @@ export function App() {
       scene,
       time,
       seek,
-      sceneStatus,
       openSceneFile,
       handleSaveScene,
       effectiveView,
@@ -455,6 +493,16 @@ export function App() {
           <>
             {library !== null && (
               <>
+                <HeaderGroup>
+                  <SceneActions
+                    file={sceneFile}
+                    dirty={dirty}
+                    state={saveState}
+                    onNew={newScene}
+                    onSave={handleSaveScene}
+                  />
+                </HeaderGroup>
+                <HeaderDivider />
                 <span className="library-name">{library.name}</span>
                 <HeaderDivider />
               </>
@@ -490,6 +538,23 @@ export function App() {
       />
 
       {error !== null && <p className="error-banner">{error}</p>}
+      {/* Under the header, full width, because both things that land here
+          need doing something about — a file to move, or a scene that
+          would not open. */}
+      {notice !== null && (
+        <p className="notice-banner">
+          {notice}
+          <button
+            type="button"
+            className="icon-btn"
+            title="Dismiss"
+            aria-label="Dismiss"
+            onClick={() => setNotice(null)}
+          >
+            <X size={13} />
+          </button>
+        </p>
+      )}
 
       {library === null ? (
         <div className="landing">

@@ -81,15 +81,6 @@ pre {
   background: var(--bg-4);
 }
 
-.btn-primary {
-  background: var(--accent);
-  color: #fff;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: var(--accent-hi);
-}
-
 .btn-danger {
   background: var(--danger-bg);
   color: var(--danger-fg);

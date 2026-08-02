@@ -92,6 +92,19 @@
   font-size: 0.78rem;
 }
 
+/* The one action a screen is FOR. Here rather than in an app because both
+   apps put Save in the header and both reach for it — the workspace's was
+   rendering as a plain button for exactly as long as this lived only in
+   the editor's stylesheet. */
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hi);
+}
+
 .icon-btn {
   display: inline-flex;
   align-items: center;
