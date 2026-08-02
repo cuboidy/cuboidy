@@ -98,7 +98,9 @@ test('the drag layer names the target while over the view', async ({ page }) => 
   await page.mouse.up();
 });
 
-test('the drag layer carries the model outside the view', async ({ page }) => {
+test('the drag layer carries the model, centred on the cursor', async ({
+  page,
+}) => {
   await openLibrary(page, MODELS);
   const card = page.locator('.model-card', { hasText: 'knight' }).first();
   await card.hover();
@@ -106,11 +108,40 @@ test('the drag layer carries the model outside the view', async ({ page }) => {
   // Over the Instances panel, which is not a scene drop target.
   const tree = await page.locator('.dock-leaf', { hasText: 'Instances' })
     .first().boundingBox();
-  await page.mouse.move(tree!.x + 60, tree!.y + 80, { steps: 10 });
-  await page.mouse.move(tree!.x + 60, tree!.y + 80);
+  const x = tree!.x + 60;
+  const y = tree!.y + 80;
+  await page.mouse.move(x, y, { steps: 10 });
+  await page.mouse.move(x, y);
 
   // The picture follows the cursor here, rather than a caption.
-  await expect(page.locator('.drag-layer img')).toBeVisible();
+  const img = page.locator('.drag-layer img');
+  await expect(img).toBeVisible();
+
+  // Held, not towed by a corner. Asserted as geometry rather than as a
+  // CSS declaration: a transform is only a claim about where something
+  // will be, and this is the where.
+  const box = (await img.boundingBox())!;
+  expect(box.x + box.width / 2).toBeCloseTo(x, 0);
+  expect(box.y + box.height / 2).toBeCloseTo(y, 0);
+  await page.mouse.up();
+});
+
+test('the caption stays off the point it is naming', async ({ page }) => {
+  // The opposite rule from the image: this one describes what is under
+  // the pointer, so centring it would hide that.
+  await openLibrary(page, MODELS);
+  await place(page, 'knight');
+  const at = await socketPixel(page, 'knight', 'weapon');
+
+  const card = page.locator('.model-card', { hasText: 'sword' }).first();
+  await card.hover();
+  await page.mouse.down();
+  await page.mouse.move(at![0], at![1], { steps: 10 });
+  await page.mouse.move(at![0], at![1]);
+
+  const box = (await page.locator('.drag-caption').boundingBox())!;
+  expect(box.x).toBeGreaterThan(at![0]);
+  expect(box.y).toBeGreaterThan(at![1]);
   await page.mouse.up();
 });
 

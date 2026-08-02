@@ -536,26 +536,34 @@ code {
    the model's outline where it will land — a floating copy there would be
    clutter rather than information. */
 
+/* Pinned exactly at the pointer; each kind of content then places itself
+   against it, because the two want opposite things. */
 .drag-layer {
   position: fixed;
   z-index: 100;
-  /* Just off the cursor's hotspot, so it never covers the point being
-     aimed with. */
-  transform: translate(14px, 10px);
   pointer-events: none;
 }
 
+/* Centred on the cursor: you are carrying the model, so the cursor should
+   be holding it rather than towing it by a corner. (This is what the
+   native drag image did before the custom layer replaced it.) */
 .drag-layer img {
   display: block;
+  transform: translate(-50%, -50%);
   image-rendering: pixelated;
   filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.6));
 }
 
 /* Over the view the layer becomes a caption: the socket it would hang
    from, or the ground cell it would stand on. Naming the target is the
-   one thing the 3D outline cannot do for itself. */
+   one thing the 3D outline cannot do for itself.
+
+   NOT centred, unlike the image. This one is aimed with — it names what
+   is under the pointer, so sitting on top of that would hide the thing it
+   is describing. */
 .drag-caption {
   display: inline-flex;
+  transform: translate(14px, 10px);
   align-items: center;
   gap: 0.25rem;
   padding: 0.15rem 0.4rem;
