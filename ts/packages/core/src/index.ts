@@ -108,6 +108,14 @@ export type { SocketFrame } from './socket-frame.js';
 export { buildMesh } from './mesh.js';
 export type { MeshData } from './mesh.js';
 
+// The named viewpoints. Exported so a browser app can render a model from
+// the SAME angle cuboidy-snap does rather than inventing its own — a
+// library thumbnail and a contact sheet showing the model differently
+// would be two products. Pure math (camera.ts depends only on vec.ts), so
+// this pulls no CLI or Node code into a bundle.
+export { ANGLES, CARDINAL_IDS, CORNER_IDS, STANDARD_IDS, cameraDir } from './render/camera.js';
+export type { Angle } from './render/camera.js';
+
 export {
   QUAT_IDENTITY,
   composePartRotation,

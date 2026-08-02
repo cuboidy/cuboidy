@@ -38,13 +38,13 @@ test('opening models/ lists every model in it', async ({ page }) => {
     'windmill',
   ]) {
     await expect(
-      page.locator('.model-row-name', { hasText: new RegExp(`^${name}$`) }),
+      page.locator('.model-card-name', { hasText: new RegExp(`^${name}$`) }),
     ).toBeVisible();
   }
   // Every shipped model lints clean, so none should be flagged here — the
   // workspace agreeing with cuboidy-lint about what is wrong with a model
   // is the point of routing through core's resolveProject.
-  await expect(page.locator('.model-row-warn')).toHaveCount(0);
+  await expect(page.locator('.model-card-warn')).toHaveCount(0);
 });
 
 test('the scene starts empty and says how to fill it', async ({ page }) => {
@@ -57,7 +57,7 @@ test('the scene starts empty and says how to fill it', async ({ page }) => {
 
 test('selecting a model shows its published sockets', async ({ page }) => {
   await openLibrary(page, MODELS);
-  await page.locator('.model-row-name', { hasText: /^knight$/ }).click();
+  await page.locator('.model-card-name', { hasText: /^knight$/ }).click();
   // knight publishes `weapon` and `crest` (SPEC §6.12) — the attachment
   // points a scene hooks onto.
   await expect(page.locator('.socket-row-name')).toHaveText(['weapon', 'crest']);
@@ -171,7 +171,7 @@ test('a model that publishes nothing says so, rather than showing an empty list'
   page,
 }) => {
   await openLibrary(page, MODELS);
-  await page.locator('.model-row-name', { hasText: /^sword$/ }).click();
+  await page.locator('.model-card-name', { hasText: /^sword$/ }).click();
   await expect(
     page.locator('.dock-leaf', { hasText: 'Published sockets' }),
   ).toContainText('publishes no sockets');

@@ -48,6 +48,7 @@ import {
 import { parseScene, serializeScene } from './lib/scene-file.js';
 import { saveScene } from './lib/save-scene.js';
 import { useSceneClock } from './lib/useSceneClock.js';
+import { useThumbnails } from './lib/useThumbnails.js';
 import {
   DEFAULT_GIZMOS,
   type SceneGizmos,
@@ -97,6 +98,10 @@ export function App() {
       setError((e as Error).message);
     }
   }, [adopt]);
+
+  // One picture per model, rendered once when the library opens. Also
+  // what follows the cursor while a card is dragged.
+  const thumbnails = useThumbnails(library);
 
   // Anim view needs something in the scene that can animate — otherwise
   // it is rig view with a different name on it. Derived from the scene
@@ -208,6 +213,7 @@ export function App() {
               <div className="panel-body">
                 <ModelList
                   library={library}
+                  thumbnails={thumbnails}
                   selected={browsing}
                   onSelect={setBrowsing}
                   onPlace={place}
@@ -371,6 +377,7 @@ export function App() {
     },
     [
       library,
+      thumbnails,
       browsing,
       place,
       roots,

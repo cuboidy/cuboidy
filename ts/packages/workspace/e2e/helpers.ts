@@ -17,7 +17,7 @@ export async function openLibrary(page: Page, dir: string): Promise<void> {
   });
   await page.goto('/');
   await page.setInputFiles('input[type=file]', dir);
-  await expect(page.locator('.model-row').first()).toBeVisible();
+  await expect(page.locator('.model-card').first()).toBeVisible();
 }
 
 // One part's sampled rotation, for telling "paused" from "running slowly".
@@ -33,8 +33,37 @@ export async function instancePose(page: Page, id: string): Promise<unknown> {
   }, id);
 }
 
+// How much of a card's thumbnail is actually painted, 0..1. A render that
+// silently produced nothing comes back fully transparent, which no other
+// check would catch — the <img> is present and its src is a valid data
+// URL either way.
+export async function thumbnailCoverage(
+  page: Page,
+  model: string,
+): Promise<number> {
+  return page.evaluate(async (wanted) => {
+    const cards = [...document.querySelectorAll('.model-card')];
+    const card = cards.find(
+      (c) => c.querySelector('.model-card-name')?.textContent === wanted,
+    );
+    const img = card?.querySelector('img');
+    if (!(img instanceof HTMLImageElement)) return 0;
+    if (!img.complete) await img.decode();
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    const ctx = c.getContext('2d');
+    if (ctx === null) return 0;
+    ctx.drawImage(img, 0, 0);
+    const { data } = ctx.getImageData(0, 0, c.width, c.height);
+    let lit = 0;
+    for (let i = 3; i < data.length; i += 4) if (data[i]! > 8) lit++;
+    return lit / (c.width * c.height);
+  }, model);
+}
+
 export async function place(page: Page, model: string): Promise<void> {
-  await page.locator('.model-row-name', { hasText: new RegExp(`^${model}$`) })
+  await page.locator('.model-card-name', { hasText: new RegExp(`^${model}$`) })
     .dblclick();
   await expect(
     page.locator('.scene-tree-panel .tree-name', { hasText: new RegExp(`^${model}`) }).first(),

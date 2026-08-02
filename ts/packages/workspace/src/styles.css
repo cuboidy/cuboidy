@@ -99,9 +99,12 @@ code {
   gap: 0.75rem;
 }
 
-/* ── model list ──────────────────────────────────────────────────── */
+/* ── model cards ─────────────────────────────────────────────────────
+   The picture is the identity: `koi` and `owl` are two words until you
+   have seen them. The grid reflows with the panel — docked narrow it
+   gives two columns, widened it gives as many as fit — so the same
+   component serves a sidebar and a full pane. */
 
-.model-list,
 .socket-list,
 .problem-list {
   list-style: none;
@@ -109,49 +112,97 @@ code {
   padding: 0;
 }
 
-.model-row {
-  display: flex;
-  align-items: center;
+.model-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
   gap: 0.4rem;
+}
+
+.model-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
   width: 100%;
-  padding: 0.3rem 0.4rem;
-  background: none;
-  border: 1px solid transparent;
-  border-radius: var(--r-1);
+  padding: 0.35rem 0.3rem 0.3rem;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
   color: var(--txt-1);
   font: inherit;
-  text-align: left;
   cursor: pointer;
+  /* The card IS the drag handle. */
+  cursor: grab;
 }
 
-.model-row:hover {
-  background: var(--bg-2);
+.model-card:hover {
+  border-color: var(--line-2);
 }
 
-.model-row.selected {
+.model-card.selected {
   background: var(--accent-tint);
   border-color: var(--accent);
 }
 
-.model-row-icon {
-  color: var(--txt-3);
-  flex-shrink: 0;
+.model-card:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
 }
 
-.model-row-name {
-  flex-shrink: 0;
+/* A fixed square so the grid does not reflow as thumbnails land one by
+   one after the library opens. */
+.model-card-art {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
 }
 
-.model-row-meta {
-  margin-left: auto;
+.model-card-art img {
+  max-width: 100%;
+  max-height: 100%;
+  /* Voxel art: keep the edges hard when the card is smaller than the
+     rendered image. */
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+
+.model-card-pending {
   color: var(--txt-3);
-  font-size: 0.7rem;
+  opacity: 0.5;
+}
+
+.model-card-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 0.74rem;
 }
 
-.model-row-warn {
+.model-card-badges {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 0.85rem;
+}
+
+.model-card-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+  color: var(--accent-hi);
+  font-size: 0.65rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.model-card-warn {
   color: var(--warn);
-  flex-shrink: 0;
 }
 
 /* ── sockets + problems ──────────────────────────────────────────── */
@@ -233,10 +284,6 @@ code {
   text-align: center;
   color: var(--txt-3);
   pointer-events: none;
-}
-
-.model-row[draggable='true'] {
-  cursor: grab;
 }
 
 /* The rows come from @cuboidy/ui/tree.css — the same tree the editor's
