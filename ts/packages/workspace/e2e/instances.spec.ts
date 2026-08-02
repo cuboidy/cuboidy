@@ -84,6 +84,30 @@ test('an instance can be hidden from the row, as a part can', async ({ page }) =
   await expect(instanceNames(page)).toHaveText(['knight']);
 });
 
+test('show all and hide all act on every instance', async ({ page }) => {
+  // Peeling a scene down to one model and back is why per-instance
+  // visibility exists; a row at a time is the slow way there.
+  await openLibrary(page, MODELS);
+  await place(page, 'knight');
+  await place(page, 'sword');
+  const showAll = page.getByRole('button', { name: 'Show all' });
+  const hideAll = page.getByRole('button', { name: 'Hide all' });
+
+  // Nothing hidden yet, so only one of them is live.
+  await expect(showAll).toBeDisabled();
+  await expect(hideAll).toBeEnabled();
+
+  await hideAll.click();
+  expect(await renderMeshes(page, 'knight')).toBe(0);
+  expect(await renderMeshes(page, 'sword')).toBe(0);
+  await expect(hideAll).toBeDisabled();
+
+  await showAll.click();
+  expect(await renderMeshes(page, 'knight')).toBeGreaterThan(0);
+  expect(await renderMeshes(page, 'sword')).toBeGreaterThan(0);
+  await expect(showAll).toBeDisabled();
+});
+
 test('a hidden row keeps its eye showing, so it can be found again', async ({
   page,
 }) => {

@@ -18,6 +18,11 @@ interface Props {
   hidden: ReadonlySet<string>;
   onSelect: (id: string) => void;
   onToggleVisible: (id: string) => void;
+  // All at once, as the editor's Parts toolbar does. Peeling a scene down
+  // to one model and back is the reason per-instance visibility exists,
+  // and doing it a row at a time is the slow way to reach the same state.
+  onShowAll: () => void;
+  onHideAll: () => void;
   onRename: (from: string, to: string) => void;
   // Drop `id` onto a specific socket, or detach it (`target` null).
   onAttach: (
@@ -46,6 +51,8 @@ export function SceneTreePanel({
   hidden,
   onSelect,
   onToggleVisible,
+  onShowAll,
+  onHideAll,
   onRename,
   onAttach,
 }: Props) {
@@ -89,11 +96,36 @@ export function SceneTreePanel({
   const nameFree = (from: string) => (name: string) =>
     !all.some((p) => p.instance.id !== from && p.instance.id === name);
 
-  if (rows.length === 0) {
-    return <p className="empty">Nothing in the scene yet.</p>;
-  }
+  // Every instance in the scene, flattened past the socket rows.
+  const ids = all.map((p) => p.instance.id);
+  const anyHidden = ids.some((id) => hidden.has(id));
+  const anyShown = ids.some((id) => !hidden.has(id));
 
   return (
+    <>
+      <div className="panel-toolbar">
+        <button
+          type="button"
+          className="btn btn-sm"
+          disabled={!anyHidden}
+          onClick={onShowAll}
+        >
+          <Eye size={13} />
+          Show all
+        </button>
+        <button
+          type="button"
+          className="btn btn-sm"
+          disabled={!anyShown}
+          onClick={onHideAll}
+        >
+          <EyeOff size={13} />
+          Hide all
+        </button>
+      </div>
+      {rows.length === 0 ? (
+        <p className="empty">Nothing in the scene yet.</p>
+      ) : (
     <div className="scene-tree-panel">
       <ul className="tree-list" role="tree">
         {rows.map((r) => (
@@ -148,6 +180,8 @@ export function SceneTreePanel({
         </div>
       )}
     </div>
+      )}
+    </>
   );
 }
 

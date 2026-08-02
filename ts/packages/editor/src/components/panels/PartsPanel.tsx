@@ -61,7 +61,7 @@ export function PartsPanel({
 
   return (
     <>
-      <div className="parts-toolbar">
+      <div className="panel-toolbar">
         <button
           type="button"
           className="btn btn-sm"

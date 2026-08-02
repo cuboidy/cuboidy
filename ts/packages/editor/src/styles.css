@@ -934,16 +934,6 @@ pre {
    outside the scroller (fill panel + .parts-scroll below), so sticky is
    inert there; the FILES tree still scrolls as one unit and relies on
    it. (TODO: swap these for VS Code-style icons.) */
-.parts-toolbar {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  display: flex;
-  gap: 0.5rem;
-  padding: 0.4rem 0.75rem;
-  background: var(--bg-1);
-  border-bottom: 1px solid var(--line);
-}
 
 /* The Parts panel's own scroller, below its pinned toolbar. With the
    toolbar inside the scroll container, the drag auto-scroll zone at the
@@ -955,10 +945,6 @@ pre {
   overflow: auto;
 }
 
-.parts-toolbar button {
-  flex: 1;
-  white-space: nowrap;
-}
 
 .part-tree {
   /* Generous end-of-list space (VS Code-style): keeps the last row off

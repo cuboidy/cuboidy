@@ -352,6 +352,12 @@ export function App() {
                       return next;
                     })
                   }
+                  onShowAll={() => setHiddenInstances(new Set())}
+                  onHideAll={() =>
+                    setHiddenInstances(
+                      new Set(scene.instances.map((i) => i.id)),
+                    )
+                  }
                   onRename={(from, to) => {
                     setScene((s) => renameInstance(s, from, to));
                     setSelected((cur) => (cur === from ? to : cur));

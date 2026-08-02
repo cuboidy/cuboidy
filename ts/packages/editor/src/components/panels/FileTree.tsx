@@ -420,7 +420,7 @@ export function FileTree({
   return (
     <div className="file-tree">
       {canEdit && (
-        <div className="parts-toolbar">
+        <div className="panel-toolbar">
           <button
             type="button"
             className="btn btn-sm"

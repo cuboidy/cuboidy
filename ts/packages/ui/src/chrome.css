@@ -179,3 +179,26 @@ svg.lucide {
   stroke-width: 1.75;
   flex-shrink: 0;
 }
+
+/* A strip of buttons pinned to the top of a panel, above whatever it
+   scrolls — the editor's Parts panel and the workspace's Instances
+   panel both want one, and both want it OUTSIDE the scroller: with the
+   toolbar inside, the drag auto-scroll zone at the scroller's top edge
+   sits behind it, so an upward drag only scrolls once the pointer has
+   cleared the buttons. */
+.panel-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.panel-toolbar button {
+  flex: 1;
+  white-space: nowrap;
+}
