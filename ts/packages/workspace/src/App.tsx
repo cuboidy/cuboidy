@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from 'react';
-import { FolderOpen, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { FolderOpen, Redo2, Undo2, X } from 'lucide-react';
 import {
   AppHeader,
   Dock,
@@ -40,6 +40,7 @@ import {
   addInstance,
   anyPlaying,
   emptyScene,
+  freshId,
   panelTree,
   placeScene,
   removeInstance,
@@ -52,6 +53,7 @@ import {
 import { parseScene, serializeScene } from './lib/scene-file.js';
 import { saveScene } from './lib/save-scene.js';
 import { useSceneClock } from './lib/useSceneClock.js';
+import { useSceneHistory } from './lib/useSceneHistory.js';
 import { useThumbnails } from './lib/useThumbnails.js';
 import {
   DEFAULT_GIZMOS,
@@ -74,7 +76,11 @@ const PAUSE_FIRST = 'Pause playback before moving things';
 
 export function App() {
   const [library, setLibrary] = useState<Library | null>(null);
-  const [scene, setScene] = useState<Scene>(() => emptyScene());
+  // The document, with undo/redo. Every mutation goes through `edit`;
+  // `amend` is for playback, which lives on the scene object but is not
+  // part of it (see Instance.anim) and must not fill the undo stack.
+  const { scene, canUndo, canRedo, edit, amend, replace, undo, redo } =
+    useSceneHistory();
   const [selected, setSelected] = useState<string | null>(null);
   const [browsing, setBrowsing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -112,14 +118,14 @@ export function App() {
   const adopt = useCallback((next: Library) => {
     setLibrary(next);
     setError(null);
-    setScene(emptyScene());
+    replace(emptyScene());
     setSceneFile(null);
     setSavedText(null);
     setNotice(null);
     setSelected(null);
     setHiddenInstances(new Set());
     setBrowsing(next.models[0]?.dir ?? null);
-  }, []);
+  }, [replace]);
 
   const handlePick = useCallback(async () => {
     try {
@@ -133,6 +139,46 @@ export function App() {
   // One picture per model, rendered once when the library opens. Also
   // what follows the cursor while a card is dragged.
   const thumbnails = useThumbnails(library);
+
+  // Read `selected` from the closure rather than from a setState updater.
+  // Dispatching an edit inside an updater means dispatching it TWICE under
+  // StrictMode's double invocation, and the second removal of an
+  // already-removed id still returns a fresh object — so one Delete
+  // pushed two history entries and the first Ctrl+Z appeared to do
+  // nothing.
+  const removeSelected = useCallback(() => {
+    if (selected === null) return;
+    edit(null, (s) => removeInstance(s, selected));
+    setSelected(null);
+  }, [edit, selected]);
+
+  // Delete / Backspace removes the selected instance.
+  //
+  // Held back until there was an undo stack to take it back: without one,
+  // a keypress losing an instance's placement, rotation and attachment
+  // would have been the only irreversible single-key action in either
+  // app — worse than the row × it replaces, which is why that moved to
+  // Properties in the first place.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      // In a text field these keys are text editing, not scene editing.
+      const t = e.target;
+      if (
+        t instanceof Element &&
+        t.closest(
+          'textarea, input, select, [contenteditable=""], [contenteditable="true"]',
+        ) !== null
+      ) {
+        return;
+      }
+      e.preventDefault();
+      removeSelected();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [removeSelected]);
 
   // Anim view needs something in the scene that can animate — otherwise
   // it is rig view with a different name on it. Derived from the scene
@@ -209,7 +255,7 @@ export function App() {
         setNotice(`${file}: ${r.error}`);
         return;
       }
-      setScene(r.scene);
+      replace(r.scene);
       setSceneFile(file);
       // The SERIALIZATION of what was parsed, not the bytes on disk. A
       // hand-formatted file, or one still carrying the old `name`, would
@@ -218,17 +264,17 @@ export function App() {
       setSelected(null);
       setNotice(null);
     },
-    [library, mayDiscard],
+    [library, mayDiscard, replace],
   );
 
   const newScene = useCallback(() => {
     if (!mayDiscard('Start a new scene')) return;
-    setScene(emptyScene());
+    replace(emptyScene());
     setSceneFile(null);
     setSavedText(null);
     setSelected(null);
     setNotice(null);
-  }, [mayDiscard]);
+  }, [mayDiscard, replace]);
 
   const handleSaveScene = useCallback(
     (file: string) => {
@@ -265,13 +311,19 @@ export function App() {
 
   // Put a model in the scene, at wherever the drag resolved to (or the
   // origin, for a double-click that expressed no place).
-  const place = useCallback((model: string, at?: DropTarget | null) => {
-    setScene((s) => {
-      const next = addInstance(s, model, at ?? undefined);
-      setSelected(next.instances[next.instances.length - 1]?.id ?? null);
-      return next;
-    });
-  }, []);
+  const place = useCallback(
+    (model: string, at?: DropTarget | null) => {
+      // The id is worked out HERE, not from inside the reducer's updater:
+      // `apply` must be a pure function of the scene, and setSelected in
+      // there would be a side effect React runs twice. freshId is
+      // deterministic given the same scene, so it agrees with the one
+      // addInstance picks.
+      const id = freshId(scene, model);
+      edit(null, (s) => addInstance(s, model, at ?? undefined));
+      setSelected(id);
+    },
+    [edit, scene],
+  );
 
   const draggedModel = useMemo(
     () =>
@@ -359,11 +411,11 @@ export function App() {
                     )
                   }
                   onRename={(from, to) => {
-                    setScene((s) => renameInstance(s, from, to));
+                    edit(null, (s) => renameInstance(s, from, to));
                     setSelected((cur) => (cur === from ? to : cur));
                   }}
                   onAttach={(id2, target) => {
-                    setScene((s) =>
+                    edit(null, (s) =>
                       setAttachment(
                         s,
                         id2,
@@ -401,15 +453,15 @@ export function App() {
                 }
                 onChangeViewMode={setViewMode}
                 onMove={(id2, pos) =>
-                  setScene((s) => setPlacement(s, id2, { pos }))
+                  edit(`pos:${id2}`, (s) => setPlacement(s, id2, { pos }))
                 }
                 onRotate={(id2, rot) =>
-                  setScene((s) => setPlacement(s, id2, { rot }))
+                  edit(`rot:${id2}`, (s) => setPlacement(s, id2, { rot }))
                 }
                 sceneTime={time}
                 onSeek={seek}
                 onSetAnim={(id2, a) =>
-                  setScene((s) => setAnimation(s, id2, a))
+                  amend((s) => setAnimation(s, id2, a))
                 }
               />
             ),
@@ -423,19 +475,19 @@ export function App() {
                   placed={selectedPlaced}
                   all={placed}
                   onAttach={(id2, target) =>
-                    setScene((s) => setAttachment(s, id2, target))
+                    edit(null, (s) => setAttachment(s, id2, target))
                   }
                   onRename={(from, to) => {
-                    setScene((s) => renameInstance(s, from, to));
+                    edit(null, (s) => renameInstance(s, from, to));
                     setSelected((cur) => (cur === from ? to : cur));
                   }}
                   onPlace={(id2, patch) =>
-                    setScene((s) => setPlacement(s, id2, patch))
+                    edit(
+                      `${Object.keys(patch)[0] ?? 'place'}:${id2}`,
+                      (s) => setPlacement(s, id2, patch),
+                    )
                   }
-                  onRemove={(id2) => {
-                    setScene((s) => removeInstance(s, id2));
-                    setSelected((cur) => (cur === id2 ? null : cur));
-                  }}
+                  onRemove={removeSelected}
                 />
               </div>
             ),
@@ -492,6 +544,8 @@ export function App() {
       gizmos,
       hiddenInstances,
       draggedModel,
+      edit,
+      amend,
     ],
   );
 
@@ -511,6 +565,30 @@ export function App() {
           <>
             {library !== null && (
               <>
+                {/* Same pair, same place, same shortcuts as the editor's. */}
+                <HeaderGroup>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    disabled={!canUndo}
+                    title="Undo (Ctrl+Z)"
+                    aria-label="Undo"
+                    onClick={undo}
+                  >
+                    <Undo2 size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    disabled={!canRedo}
+                    title="Redo (Ctrl+Shift+Z)"
+                    aria-label="Redo"
+                    onClick={redo}
+                  >
+                    <Redo2 size={16} />
+                  </button>
+                </HeaderGroup>
+                <HeaderDivider />
                 <HeaderGroup>
                   <SceneActions
                     file={sceneFile}
