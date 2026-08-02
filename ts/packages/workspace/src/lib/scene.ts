@@ -80,14 +80,23 @@ export function freshId(scene: Scene, model: string): string {
   }
 }
 
-export function addInstance(scene: Scene, model: string): Scene {
-  return {
-    ...scene,
-    instances: [
-      ...scene.instances,
-      { id: freshId(scene, model), model, placement: { pos: [0, 0, 0] } },
-    ],
+// Put a model in the scene. `at` is where the drop resolved to — a
+// published socket, or a point on the ground. Omitted (double-click, or
+// any caller with no opinion) it goes to the origin.
+export function addInstance(
+  scene: Scene,
+  model: string,
+  at?:
+    | { kind: 'socket'; host: string; socket: string }
+    | { kind: 'ground'; pos: [number, number, number] },
+): Scene {
+  const inst: Instance = {
+    id: freshId(scene, model),
+    model,
+    placement: { pos: at?.kind === 'ground' ? at.pos : [0, 0, 0] },
   };
+  if (at?.kind === 'socket') inst.attach = { to: at.host, socket: at.socket };
+  return { ...scene, instances: [...scene.instances, inst] };
 }
 
 export function removeInstance(scene: Scene, id: string): Scene {

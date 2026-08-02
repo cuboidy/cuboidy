@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { Box, Crosshair, MousePointer2, Move, Plug, Rotate3d } from 'lucide-react';
-import type { Object3D } from 'three';
+import { Vector3, type Camera, type Object3D } from 'three';
 import type { Geometry, Palette } from '@cuboidy/core';
 import {
   RiggedParts,
@@ -18,7 +18,14 @@ import {
 import type { LibraryModel } from '../lib/library.js';
 import { localPosFrom, type PlacedInstance } from '../lib/scene.js';
 import type { SceneGizmos, SceneTool, SceneViewMode } from '../lib/view.js';
+import {
+  dropKey,
+  resolveDrop,
+  socketCandidates,
+  type DropTarget,
+} from '../lib/drop.js';
 import { InstanceGizmos } from './InstanceGizmos.js';
+import { DropPreview } from './DropPreview.js';
 
 interface Props {
   placed: readonly PlacedInstance[];
@@ -30,8 +37,13 @@ interface Props {
   toolDisabled: Partial<Record<SceneTool, string>>;
   gizmos: SceneGizmos;
   onSelect: (id: string | null) => void;
-  // Dropping a library row onto the canvas adds it to the scene.
-  onDropModel: (model: string) => void;
+  // The model being dragged out of the library, and its outline drawn
+  // where it would land. Resolved here because the camera is here.
+  dragModel: LibraryModel | null;
+  onDropTarget: (target: DropTarget | null) => void;
+  // Dropping a library card onto the canvas adds it to the scene, at
+  // whatever the drag resolved to.
+  onDropModel: (model: string, at: DropTarget | null) => void;
   onSetTool: (tool: SceneTool) => void;
   onToggleGizmo: (kind: keyof SceneGizmos) => void;
   onChangeViewMode: (mode: SceneViewMode) => void;
@@ -62,6 +74,8 @@ export function SceneView({
   toolDisabled,
   gizmos,
   onSelect,
+  dragModel,
+  onDropTarget,
   onDropModel,
   onSetTool,
   onToggleGizmo,
@@ -94,17 +108,125 @@ export function SceneView({
   const transformMode =
     tool === 'move' ? 'translate' : tool === 'rotate' ? 'rotate' : null;
 
+  // The camera, captured from inside the Canvas so the DOM-side drag
+  // handlers can project with it. A ref rather than state: it is read
+  // during an event, never rendered from.
+  const view = useRef<Camera | null>(null);
+  const canvasEl = useRef<HTMLDivElement>(null);
+  const [target, setTarget] = useState<DropTarget | null>(null);
+  const targetKey = useRef('');
+
+  // Every published socket in the scene, in world space. Recomputed when
+  // the arrangement changes, not per pointer move.
+  const candidates = useMemo(
+    () => (dragModel === null ? [] : socketCandidates(placed)),
+    [dragModel, placed],
+  );
+
+  const setTargetIfChanged = useCallback(
+    (next: DropTarget | null) => {
+      const key = dropKey(next);
+      if (key === targetKey.current) return;
+      targetKey.current = key;
+      setTarget(next);
+      onDropTarget(next);
+    },
+    [onDropTarget],
+  );
+
+  // Where a published socket is on screen, for the tests. A drop onto a
+  // socket is aimed with the pointer, so a test that wants to prove the
+  // aiming works has to know where to aim — and a canvas cannot be
+  // queried for it. Read-only, and the same projection the drag uses.
+  useEffect(() => {
+    const w = window as unknown as {
+      __socketPixel?: (host: string, socket: string) => [number, number] | null;
+    };
+    w.__socketPixel = (host, socket) => {
+      const camera = view.current;
+      const el = canvasEl.current;
+      if (camera === null || el === null) return null;
+      const hit = socketCandidates(placed).find(
+        (c) => c.host === host && c.socket === socket,
+      );
+      if (hit === undefined) return null;
+      const rect = el.getBoundingClientRect();
+      const v = new Vector3(...hit.frame.pos).project(camera);
+      if (v.z > 1) return null;
+      return [((v.x + 1) / 2) * rect.width, ((-v.y + 1) / 2) * rect.height];
+    };
+    return () => {
+      delete w.__socketPixel;
+    };
+  }, [placed]);
+
+  // Pointer → where the model would land. Called on every dragover, but
+  // it only re-renders when the ANSWER changes: the ground point is
+  // snapped to whole units, so moving within one cell is not an event.
+  const resolveAt = useCallback(
+    (clientX: number, clientY: number, rect: DOMRect) => {
+      const camera = view.current;
+      if (camera === null) {
+        setTargetIfChanged(null);
+        return;
+      }
+      const px: [number, number] = [clientX - rect.left, clientY - rect.top];
+      const ndc = new Vector3(
+        (px[0] / rect.width) * 2 - 1,
+        -(px[1] / rect.height) * 2 + 1,
+        0.5,
+      ).unproject(camera);
+      const origin = camera.position;
+      const dir = ndc.sub(origin).normalize();
+      setTargetIfChanged(
+        resolveDrop(
+          {
+            origin: [origin.x, origin.y, origin.z],
+            dir: [dir.x, dir.y, dir.z],
+          },
+          px,
+          candidates,
+          (p) => {
+            const v = new Vector3(p[0], p[1], p[2]).project(camera);
+            // Behind the camera: `project` still returns a point, mirrored
+            // through the origin, which would make a socket at your back
+            // the nearest thing on screen.
+            if (v.z > 1) return null;
+            return [
+              ((v.x + 1) / 2) * rect.width,
+              ((-v.y + 1) / 2) * rect.height,
+            ];
+          },
+        ),
+      );
+    },
+    [candidates, setTargetIfChanged],
+  );
+
   return (
     <div
+      ref={canvasEl}
       className="scene-canvas"
       onDragOver={(e) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'copy';
+        resolveAt(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect());
+      }}
+      onDragLeave={(e) => {
+        // Moving between the wrapper and the canvas inside it fires
+        // dragleave too; only a departure to something OUTSIDE counts.
+        const to = e.relatedTarget;
+        if (to instanceof Node && e.currentTarget.contains(to)) return;
+        setTargetIfChanged(null);
       }}
       onDrop={(e) => {
         e.preventDefault();
         const model = e.dataTransfer.getData('application/x-cuboidy-model');
-        if (model !== '') onDropModel(model);
+        // Read before clearing: the preview and the commit must agree,
+        // and the drop is the one moment they could disagree.
+        const at = target;
+        setTargetIfChanged(null);
+        if (model !== '') onDropModel(model, at);
       }}
     >
       <ToolOverlay>
@@ -190,6 +312,10 @@ export function SceneView({
         <directionalLight position={[-8, 4, -6]} intensity={0.4} />
         <gridHelper args={[reach * 4, 16, '#2a2f38', '#20242b']} />
         <FrameCamera reach={reach} />
+        <CaptureCamera into={view} />
+        {dragModel !== null && target !== null && (
+          <DropPreview model={dragModel} target={target} />
+        )}
         {placed.map((p) => (
           <InstanceMesh
             key={p.instance.id}
@@ -311,6 +437,20 @@ function viewGeometry(model: LibraryModel): Geometry | null {
     palette: parts[0]?.palette ?? [],
     parts: parts.map((r) => r.part),
   };
+}
+
+// Hands the camera out to the DOM side, which needs it to turn a
+// dragover's client coordinates into a point in the scene. Inside the
+// Canvas because that is the only place r3f's context exists.
+function CaptureCamera({ into }: { into: { current: Camera | null } }) {
+  const camera = useThree((s) => s.camera);
+  useEffect(() => {
+    into.current = camera;
+    return () => {
+      into.current = null;
+    };
+  }, [camera, into]);
+  return null;
 }
 
 // `<Canvas camera={...}>` is read once, at mount — and at mount the scene

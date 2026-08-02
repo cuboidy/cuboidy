@@ -1,4 +1,3 @@
-import { useRef } from 'react';
 import { AlertTriangle, Box, Plug } from 'lucide-react';
 import type { Library, LibraryModel } from '../lib/library.js';
 import type { Thumbnail } from '../lib/thumbnail.js';
@@ -8,11 +7,13 @@ interface Props {
   thumbnails: ReadonlyMap<string, Thumbnail>;
   selected: string | null;
   onSelect: (dir: string) => void;
-  // Put a copy in the scene. Reached by dragging a card onto the view, or
-  // by double-clicking it — the drag is the gesture, the double-click is
-  // there because a drag is hard to discover and impossible on a
-  // touchpad-averse day.
+  // Put a copy in the scene at the origin. The drag is the gesture that
+  // says WHERE; the double-click is here because a drag is hard to
+  // discover and impossible on a touchpad-averse day.
   onPlace: (dir: string) => void;
+  // Which card is in flight, so the drag layer can draw it and the 3D
+  // view can resolve where it would land. Null on drag end.
+  onDrag: (dir: string | null) => void;
 }
 
 // The library: every model the opened folder offers, as cards.
@@ -33,6 +34,7 @@ export function ModelList({
   selected,
   onSelect,
   onPlace,
+  onDrag,
 }: Props) {
   if (library.models.length === 0) {
     return (
@@ -54,6 +56,8 @@ export function ModelList({
           selected={m.dir === selected}
           onSelect={() => onSelect(m.dir)}
           onPlace={() => onPlace(m.dir)}
+          onDragStart={() => onDrag(m.dir)}
+          onDragEnd={() => onDrag(null)}
         />
       ))}
     </ul>
@@ -66,14 +70,17 @@ function ModelCard({
   selected,
   onSelect,
   onPlace,
+  onDragStart,
+  onDragEnd,
 }: {
   model: LibraryModel;
   thumb: Thumbnail | undefined;
   selected: boolean;
   onSelect: () => void;
   onPlace: () => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
 }) {
-  const img = useRef<HTMLImageElement>(null);
   const published = Object.keys(model.manifest.sockets ?? {}).length;
 
   return (
@@ -85,19 +92,16 @@ function ModelCard({
         onDragStart={(e) => {
           e.dataTransfer.setData('application/x-cuboidy-model', model.dir);
           e.dataTransfer.effectAllowed = 'copy';
-          // The model itself follows the cursor. The card's own rendered
-          // image is reused rather than drawn again: it is already
-          // decoded and on screen, which is exactly what setDragImage
-          // needs, and a second copy could drift from the first.
-          //
-          // Fixed at dragstart — the drag image cannot be changed or
-          // hidden later. Handing the 3D view its own landing marker is
-          // therefore a separate job, not a variation on this one.
-          const el = img.current;
-          if (el !== null && el.complete) {
-            e.dataTransfer.setDragImage(el, el.width / 2, el.height / 2);
-          }
+          // The native drag image is suppressed with a transparent pixel
+          // so DragLayer can draw one we control. It has to be: the
+          // native image is fixed at dragstart and can never be hidden
+          // afterwards, and over the 3D view the scene itself shows where
+          // the model will land — a second floating copy there is
+          // clutter, not information.
+          e.dataTransfer.setDragImage(blankImage(), 0, 0);
+          onDragStart();
         }}
+        onDragEnd={onDragEnd}
         onClick={onSelect}
         onDoubleClick={onPlace}
         title={`${model.dir} — ${summary(model)}. Drag into the scene, or double-click.`}
@@ -111,7 +115,6 @@ function ModelCard({
             <Box size={22} className="model-card-pending" aria-hidden="true" />
           ) : (
             <img
-              ref={img}
               src={thumb.url}
               width={thumb.px}
               height={thumb.px}
@@ -142,6 +145,21 @@ function ModelCard({
       </button>
     </li>
   );
+}
+
+// A 1x1 transparent GIF, made once and kept. setDragImage needs a
+// decoded image, and creating one per dragstart would sometimes hand the
+// browser an element it has not finished loading — which it answers by
+// falling back to the default drag image, i.e. by intermittently not
+// working.
+let blank: HTMLImageElement | null = null;
+function blankImage(): HTMLImageElement {
+  if (blank === null) {
+    blank = new Image();
+    blank.src =
+      'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+  }
+  return blank;
 }
 
 function summary(m: LibraryModel): string {

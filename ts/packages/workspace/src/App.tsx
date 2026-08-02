@@ -18,6 +18,7 @@ import {
 } from '@cuboidy/ui';
 import { ModelList, SocketList } from './components/ModelList.js';
 import { SceneView } from './components/SceneView.js';
+import { DragLayer } from './components/DragLayer.js';
 import { AnimationPanel } from './components/AnimationPanel.js';
 import { AttachProperties, SceneBar } from './components/SceneTree.js';
 import { SceneTreePanel } from './components/SceneTreePanel.js';
@@ -55,6 +56,7 @@ import {
   type SceneTool,
   type SceneViewMode,
 } from './lib/view.js';
+import type { DropTarget } from './lib/drop.js';
 
 const PAUSE_FIRST = 'Pause playback before moving things';
 
@@ -80,6 +82,12 @@ export function App() {
   const [viewMode, setViewMode] = useState<SceneViewMode>('anim');
   const [tool, setTool] = useState<SceneTool>('select');
   const [gizmos, setGizmos] = useState<SceneGizmos>(DEFAULT_GIZMOS);
+  // A library card in flight: which model, and where it would land. Held
+  // here because three separate places need it — the layer that follows
+  // the cursor, the 3D view that resolves the landing point, and the drop
+  // that commits it.
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
 
   const adopt = useCallback((next: Library) => {
     setLibrary(next);
@@ -180,13 +188,23 @@ export function App() {
       .catch((e: Error) => setSceneStatus(`Could not save: ${e.message}`));
   }, [scene, library]);
 
-  const place = useCallback((model: string) => {
+  // Put a model in the scene, at wherever the drag resolved to (or the
+  // origin, for a double-click that expressed no place).
+  const place = useCallback((model: string, at?: DropTarget | null) => {
     setScene((s) => {
-      const next = addInstance(s, model);
+      const next = addInstance(s, model, at ?? undefined);
       setSelected(next.instances[next.instances.length - 1]?.id ?? null);
       return next;
     });
   }, []);
+
+  const draggedModel = useMemo(
+    () =>
+      dragging === null
+        ? null
+        : (library?.models.find((m) => m.dir === dragging) ?? null),
+    [dragging, library],
+  );
 
   // A transform drag mutates the group's matrix imperatively — that IS the
   // live preview — but a running clock re-renders every instance's frame
@@ -217,6 +235,7 @@ export function App() {
                   selected={browsing}
                   onSelect={setBrowsing}
                   onPlace={place}
+                  onDrag={setDragging}
                 />
                 {library.skipped.length > 0 && (
                   <p className="hint skipped">
@@ -289,6 +308,8 @@ export function App() {
                 toolDisabled={toolDisabled}
                 gizmos={gizmos}
                 onSelect={setSelected}
+                dragModel={draggedModel}
+                onDropTarget={setDropTarget}
                 onDropModel={place}
                 onSetTool={setTool}
                 onToggleGizmo={(kind) =>
@@ -396,6 +417,7 @@ export function App() {
       animUnavailable,
       toolDisabled,
       gizmos,
+      draggedModel,
     ],
   );
 
@@ -497,6 +519,14 @@ export function App() {
           />
         </main>
       )}
+
+      {/* Outside the dock, so it is not clipped by whichever panel the
+          drag started in. */}
+      <DragLayer
+        model={dragging}
+        thumb={dragging === null ? undefined : thumbnails.get(dragging)}
+        target={dropTarget}
+      />
     </div>
   );
 }

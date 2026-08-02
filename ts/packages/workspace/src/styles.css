@@ -487,6 +487,45 @@ code {
   white-space: nowrap;
 }
 
+/* ── drag layer ──────────────────────────────────────────────────────
+   What follows the cursor while a library card is dragged. The browser's
+   own drag image is suppressed (a transparent pixel) because it cannot be
+   hidden once the drag has started, and over the 3D view the scene draws
+   the model's outline where it will land — a floating copy there would be
+   clutter rather than information. */
+
+.drag-layer {
+  position: fixed;
+  z-index: 100;
+  /* Just off the cursor's hotspot, so it never covers the point being
+     aimed with. */
+  transform: translate(14px, 10px);
+  pointer-events: none;
+}
+
+.drag-layer img {
+  display: block;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.6));
+}
+
+/* Over the view the layer becomes a caption: the socket it would hang
+   from, or the ground cell it would stand on. Naming the target is the
+   one thing the 3D outline cannot do for itself. */
+.drag-caption {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.4rem;
+  background: rgba(14, 17, 22, 0.9);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-1);
+  color: var(--txt-1);
+  font-size: 0.72rem;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── scene source view ───────────────────────────────────────────── */
 
 .source-view {
