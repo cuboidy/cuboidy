@@ -23,9 +23,7 @@ const gizmos = (page: Page) =>
   page.getByRole('group', { name: 'Selected-instance gizmos' });
 
 async function playWalk(page: Page): Promise<void> {
-  await page.locator('.dock-tab', { hasText: 'Animation' }).click();
-  await page.locator('.field', { hasText: 'clip' }).locator('select')
-    .selectOption('walk');
+  await page.getByLabel('Clip').selectOption('walk');
 }
 
 test('the viewport carries a tool switch and a view switch', async ({ page }) => {
@@ -53,16 +51,18 @@ test('rig view stops sampling, and anim view resumes it', async ({ page }) => {
   await expect.poll(() => instancePose(page, 'knight')).not.toBeNull();
 });
 
-test('the animation panel says why nothing is moving in rig view', async ({
+test('the transport says why nothing is moving in rig view', async ({
   page,
 }) => {
+  // It used to be a paragraph in the Animation panel. Now the control
+  // that would do nothing is the one that explains itself.
   await openLibrary(page, MODELS);
   await place(page, 'knight');
   await playWalk(page);
   await page.getByRole('tab', { name: 'Rig view' }).click();
-  await expect(page.locator('.notice')).toContainText(
-    'Rig view is showing the scene at rest',
-  );
+  const play = page.getByRole('button', { name: /Play|Pause/ });
+  await expect(play).toBeDisabled();
+  await expect(play).toHaveAttribute('title', /Rig view/);
 });
 
 test('anim view is offered only when something in the scene can animate', async ({

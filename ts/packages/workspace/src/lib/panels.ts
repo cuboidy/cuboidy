@@ -20,7 +20,7 @@ export type PanelId =
   | 'tree'
   // The 3D view.
   | 'view'
-  // The selected instance: what carries it, where it sits, what it plays.
+  // The selected instance: what carries it and where it sits.
   //
   // `attachment` is the id this panel was born with, kept because a saved
   // layout stores panel ids and renaming one would silently drop it from
@@ -34,7 +34,6 @@ export type PanelId =
   // them is right. The one thing it knew that the tree did not, the
   // part:socket a published name resolves to, moved onto the row.
   | 'attachment'
-  | 'animation'
   | 'problems'
   // The scene as it would be written to disk.
   | 'source';
@@ -45,7 +44,6 @@ export const ALL_PANELS: PanelId[] = [
   'tree',
   'view',
   'attachment',
-  'animation',
   'problems',
   'source',
 ];
@@ -56,7 +54,6 @@ export const PANEL_TITLES: Record<PanelId, string> = {
   tree: 'Instances',
   view: 'View',
   attachment: 'Properties',
-  animation: 'Animation',
   problems: 'Problems',
   source: 'scene.json',
 };
@@ -82,7 +79,7 @@ export const initialLayout: LayoutNode<PanelId> = split<PanelId>(
     leaf<PanelId>('view'),
     split<PanelId>(
       'col',
-      { kind: 'leaf', panels: ['attachment', 'animation'], active: 'attachment' },
+      leaf<PanelId>('attachment'),
       { kind: 'leaf', panels: ['source', 'problems'], active: 'source' },
       0.4,
     ),

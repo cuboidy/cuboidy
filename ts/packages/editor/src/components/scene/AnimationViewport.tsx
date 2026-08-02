@@ -1,9 +1,9 @@
-import { useMemo, type CSSProperties } from 'react';
-import { Pause, Play, Plus } from 'lucide-react';
+import { useMemo } from 'react';
+import { Plus } from 'lucide-react';
 import { OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import type { Geometry, Manifest, Palette } from '@cuboidy/core';
-import { RiggedParts, buildRigTree, computeSceneCenter, computeSceneSpan } from '@cuboidy/ui';
+import { RiggedParts, Transport, buildRigTree, computeSceneCenter, computeSceneSpan } from '@cuboidy/ui';
 import type { GizmoVisibility } from '@cuboidy/ui';
 import type { AnimationSession } from '../../lib/useAnimationSession.js';
 
@@ -125,43 +125,14 @@ export function AnimationViewport({
         </Canvas>
       </div>
 
-      <div className="anim-controls">
-        <button
-          type="button"
-          className="anim-play icon-btn"
-          aria-label={playing ? 'Pause' : 'Play'}
-          disabled={!hasTimeline}
-          onClick={() => setPlaying((p) => !p)}
-        >
-          {playing ? (
-            <Pause size={15} fill="currentColor" strokeWidth={0} />
-          ) : (
-            <Play size={15} fill="currentColor" strokeWidth={0} />
-          )}
-        </button>
-        <input
-          type="range"
-          className="anim-scrub"
-          min={0}
-          max={hasTimeline ? duration : 1}
-          step={hasTimeline ? Math.max(duration / 200, 0.001) : 0.001}
-          value={hasTimeline ? Math.min(time, duration) : 0}
-          style={
-            {
-              '--fill': `${
-                hasTimeline && duration > 0
-                  ? (Math.min(time, duration) / duration) * 100
-                  : 0
-              }%`,
-            } as CSSProperties
-          }
-          disabled={!hasTimeline}
-          aria-label="Scrub timeline"
-          onChange={(e) => scrub(Number(e.target.value))}
-        />
-        <span className="anim-time">
-          {(hasTimeline ? time : 0).toFixed(2)} / {duration.toFixed(2)}s
-        </span>
+      <Transport
+        playing={playing}
+        time={time}
+        duration={duration}
+        {...(hasTimeline ? {} : { disabled: 'This model has no timeline yet' })}
+        onToggle={() => setPlaying((p) => !p)}
+        onScrub={scrub}
+      >
         {inlineNames.length > 1 ? (
           <select
             className="anim-select"
@@ -188,7 +159,7 @@ export function AnimationViewport({
           <Plus size={13} />
           New clip
         </button>
-      </div>
+      </Transport>
     </div>
   );
 }

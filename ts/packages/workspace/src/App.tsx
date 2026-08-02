@@ -20,7 +20,6 @@ import {
 import { ModelList } from './components/ModelList.js';
 import { SceneView } from './components/SceneView.js';
 import { DragLayer } from './components/DragLayer.js';
-import { AnimationPanel } from './components/AnimationPanel.js';
 import { AttachProperties } from './components/AttachmentPanel.js';
 import { SceneActions } from './components/SceneActions.js';
 import { SceneList } from './components/SceneList.js';
@@ -388,6 +387,11 @@ export function App() {
                 onRotate={(id2, rot) =>
                   setScene((s) => setPlacement(s, id2, { rot }))
                 }
+                sceneTime={time}
+                onSeek={seek}
+                onSetAnim={(id2, a) =>
+                  setScene((s) => setAnimation(s, id2, a))
+                }
               />
             ),
           };
@@ -408,23 +412,6 @@ export function App() {
                   }}
                   onPlace={(id2, patch) =>
                     setScene((s) => setPlacement(s, id2, patch))
-                  }
-                />
-              </div>
-            ),
-          };
-        case 'animation':
-          return {
-            title,
-            body: (
-              <div className="panel-body">
-                <AnimationPanel
-                  placed={selectedPlaced}
-                  sceneTime={time}
-                  atRest={effectiveView === 'rig'}
-                  onSeek={seek}
-                  onSet={(id2, anim) =>
-                    setScene((s) => setAnimation(s, id2, anim))
                   }
                 />
               </div>

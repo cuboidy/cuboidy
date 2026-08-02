@@ -13,6 +13,7 @@
     "./chrome.css": "./src/chrome.css",
     "./tree.css": "./src/tree.css",
     "./fields.css": "./src/fields.css",
+    "./transport.css": "./src/transport.css",
     "./viewport.css": "./src/viewport.css"
   },
   "scripts": {

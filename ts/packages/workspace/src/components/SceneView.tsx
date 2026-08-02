@@ -10,6 +10,7 @@ import {
   ToolBar,
   ToolOverlay,
   TransformGizmoHost,
+  Transport,
   ViewOverlay,
   ViewToggle,
   buildRigTree,
@@ -17,6 +18,7 @@ import {
 } from '@cuboidy/ui';
 import type { LibraryModel } from '../lib/library.js';
 import { drawTree, type PlacedInstance, type SceneNode } from '../lib/scene.js';
+import { clampToClip } from '../lib/clip.js';
 import type { SceneGizmos, SceneTool, SceneViewMode } from '../lib/view.js';
 import {
   dropKey,
@@ -51,6 +53,15 @@ interface Props {
   // space into the frame the instance's placement is measured in.
   onMove: (id: string, pos: [number, number, number]) => void;
   onRotate: (id: string, rot: [number, number, number]) => void;
+  // Playback for the SELECTED instance, in the strip under the canvas.
+  // Runtime state, not part of the scene: what is playing belongs with
+  // the view, the same as the camera and the view mode.
+  sceneTime: number;
+  onSetAnim: (
+    id: string,
+    anim: { clip: string; playing: boolean; at?: number } | null,
+  ) => void;
+  onSeek: (time: number) => void;
 }
 
 // The scene: every placed instance, each at the world frame the scene
@@ -82,6 +93,9 @@ export function SceneView({
   onChangeViewMode,
   onMove,
   onRotate,
+  sceneTime,
+  onSetAnim,
+  onSeek,
 }: Props) {
   const reach = useMemo(() => {
     let max = 8;
@@ -244,7 +258,39 @@ export function SceneView({
     [candidates, setTargetIfChanged],
   );
 
+  // What the transport acts on: the selected instance's clip, if it has
+  // one. The clip list comes from its model, so an instance of a model
+  // with no animations gets an inert strip with the reason on it.
+  const clips = selectedPlaced === null ? [] : [...selectedPlaced.model.animations.keys()];
+  const anim = selectedPlaced?.instance.anim;
+  const clip =
+    anim === undefined ? undefined : selectedPlaced?.model.animations.get(anim.clip);
+  const clipPlaying = anim?.playing === true;
+  // Where this instance actually is: the shared clock while playing, its
+  // own frozen point while paused.
+  // Wrapped into the clip: the shared clock is monotonic, so a looping
+  // clip would otherwise peg the scrubber at the end while the model
+  // carried on going round.
+  const raw = clipPlaying ? sceneTime : (anim?.at ?? 0);
+  const at =
+    clip === undefined ? 0 : clampToClip(raw, clip.duration, clip.loop);
+  // Cause before consequence. Rig view is checked LAST because the view
+  // itself falls back to rig when nothing in the scene can animate —
+  // leading with it would answer "why can I not play this sword?" with
+  // "because you are in rig view", which is the same fact wearing a hat.
+  const transportDisabled =
+    selectedPlaced === null
+      ? 'Select an instance to play its animation'
+      : clips.length === 0
+        ? `${selectedPlaced.model.dir} defines no animations`
+        : clip === undefined
+          ? 'Choose a clip'
+          : viewMode === 'rig'
+            ? 'Rig view is showing the scene at rest'
+            : undefined;
+
   return (
+    <div className="scene-pane">
     <div
       ref={canvasEl}
       className="scene-canvas"
@@ -397,6 +443,62 @@ export function SceneView({
           scene.
         </p>
       )}
+    </div>
+
+    {/* Under the canvas, where the editor's has always been. A transport
+        is not a tool overlay — it is a fixture of a view that can move. */}
+    <Transport
+      playing={clipPlaying}
+      time={at}
+      duration={clip?.duration ?? 0}
+      {...(transportDisabled !== undefined && { disabled: transportDisabled })}
+      onToggle={() => {
+        if (selectedPlaced === null || anim === undefined) return;
+        if (clipPlaying) {
+          // Freeze where it is, so it stays there while other actors keep
+          // moving on the shared clock.
+          onSetAnim(selectedPlaced.instance.id, {
+            ...anim,
+            playing: false,
+            at,
+          });
+        } else {
+          onSeek(at);
+          onSetAnim(selectedPlaced.instance.id, { ...anim, playing: true });
+        }
+      }}
+      onScrub={(t) => {
+        if (selectedPlaced === null || anim === undefined) return;
+        // Playing: move the shared clock, so everything stays in step.
+        // Paused: move this instance's own frozen point.
+        if (clipPlaying) onSeek(t);
+        else onSetAnim(selectedPlaced.instance.id, { ...anim, at: t });
+      }}
+    >
+      <select
+        className="anim-select"
+        aria-label="Clip"
+        value={anim?.clip ?? ''}
+        disabled={selectedPlaced === null || clips.length === 0}
+        onChange={(e) => {
+          if (selectedPlaced === null) return;
+          const next = e.target.value;
+          // Choosing a clip starts it: picking one and then having to
+          // press play is a step with no decision in it.
+          onSetAnim(
+            selectedPlaced.instance.id,
+            next === '' ? null : { clip: next, playing: true },
+          );
+        }}
+      >
+        <option value="">— rest pose —</option>
+        {clips.map((c) => (
+          <option key={c} value={c}>
+            {c}
+          </option>
+        ))}
+      </select>
+    </Transport>
     </div>
   );
 }

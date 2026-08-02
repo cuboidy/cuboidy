@@ -57,6 +57,14 @@ export interface Instance {
   // `at` is where a PAUSED instance is frozen. It has to be per instance:
   // the clock is shared, so a paused actor read from the shared time
   // would keep animating whenever some other actor was playing.
+  //
+  // NEVER WRITTEN TO THE FILE. A scene records an arrangement — where
+  // things are and what they are hooked to. What is playing is a viewing
+  // state, the same kind of thing as the camera angle, the view mode and
+  // the selection, none of which are saved either. `playing: true` on
+  // disk would also mean a file that starts something moving when it is
+  // opened, and `at` is a scrubber position: both churn the diff every
+  // time the transport is touched, in a format meant to be read by hand.
   anim?: { clip: string; playing: boolean; at?: number };
 }
 

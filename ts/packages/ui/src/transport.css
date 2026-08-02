@@ -1,0 +1,108 @@
+/* The playback strip under a 3D view — see Transport.tsx.
+ *
+ * Shared because the scrubber is four vendor-prefixed pseudo-elements and
+ * a gradient driven by a custom property, and a second copy of that is a
+ * second copy to keep matching. Renamed from the editor's .anim-* while
+ * moving: the workspace scrubs a scene, not an animation document. */
+
+.transport {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.9rem;
+  background: var(--bg-1);
+  border-top: 1px solid var(--line);
+}
+
+.transport-play {
+  width: 2.2rem;
+  height: 1.8rem;
+  padding: 0;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Playback scrubber: a slim track with the played portion filled violet
+   (--fill % is set on the element from time/duration) and a small round
+   thumb that grows on hover. */
+.transport-scrub {
+  flex: 1;
+  min-width: 0;
+  height: 14px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.transport-scrub:focus {
+  outline: none;
+}
+
+.transport-scrub::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    var(--accent) var(--fill, 0%),
+    var(--bg-3) var(--fill, 0%)
+  );
+}
+
+.transport-scrub::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-3);
+}
+
+.transport-scrub::-moz-range-progress {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.transport-scrub::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 11px;
+  height: 11px;
+  margin-top: -3.5px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-2);
+  transition: transform 0.1s;
+}
+
+.transport-scrub::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--bg-2);
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.transport-scrub:hover:not(:disabled)::-webkit-slider-thumb {
+  transform: scale(1.25);
+}
+
+.transport-scrub:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgba(131, 56, 236, 0.35);
+}
+
+.transport-scrub:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.transport-time {
+  flex-shrink: 0;
+  font-family: var(--ui);
+  font-size: 0.8rem;
+  color: var(--txt-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

@@ -39,7 +39,8 @@ export function serializeScene(scene: Scene): string {
           ...(i.placement.rot === undefined || isZero(i.placement.rot)
             ? {}
             : { rot: i.placement.rot }),
-          ...(i.anim !== undefined && { anim: i.anim }),
+          // `anim` is deliberately absent — see Instance.anim. Playback is
+          // a viewing state, and a scene records an arrangement.
         })),
       },
       null,
@@ -116,19 +117,10 @@ export function parseScene(text: string): ParseResult {
       inst.attach = { to: attach['to'], socket: attach['socket'] };
     }
 
-    const anim = raw['anim'];
-    if (anim !== undefined) {
-      if (!isObject(anim) || typeof anim['clip'] !== 'string') {
-        return { ok: false, error: `${at}: \`anim\` needs a \`clip\`` };
-      }
-      inst.anim = { clip: anim['clip'], playing: anim['playing'] === true };
-      // The frozen point of a paused instance. Persisted because a
-      // paused pose IS part of what the scene looks like — reopening
-      // should give back the frame that was saved, not frame zero.
-      if (typeof anim['at'] === 'number' && isFinite(anim['at'])) {
-        inst.anim.at = anim['at'];
-      }
-    }
+    // An `anim` in the file is READ AND IGNORED. Scenes written while it
+    // was persisted still open; they simply open still. Honouring it
+    // would mean a file that starts something moving the moment you open
+    // it, which is the behaviour that got it dropped.
     instances.push(inst);
   }
 

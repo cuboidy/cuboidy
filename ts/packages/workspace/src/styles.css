@@ -329,10 +329,19 @@ code {
 
 /* ── scene ───────────────────────────────────────────────────────── */
 
+/* The view panel: canvas, then the transport strip under it — the same
+   arrangement the editor's animation viewport has. */
+.scene-pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .scene-canvas {
   position: relative;
   flex: 1;
-  min-width: 0;
+  min-height: 0;
   display: flex;
 }
 
@@ -515,11 +524,6 @@ code {
   display: flex;
 }
 
-.anim-controls {
-  display: flex;
-  gap: 0.35rem;
-}
-
 
 
 /* ── scene list ─────────────────────────────────────
@@ -601,25 +605,21 @@ code {
   color: var(--txt-1);
 }
 
-/* ── seek bar ────────────────────────────────────────────────────── */
-
-.seek {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
+/* The clip picker sitting in the shared transport strip. */
+.anim-select {
+  flex-shrink: 0;
+  background: var(--bg-2);
+  color: var(--txt-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
+  padding: 0.2rem 0.3rem;
+  font: inherit;
+  font-size: 0.8rem;
 }
 
-.seek-range {
-  flex: 1;
-  min-width: 0;
-  accent-color: var(--accent);
-}
-
-.seek-time {
-  color: var(--txt-3);
-  font-size: 0.7rem;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+.anim-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ── drag layer ──────────────────────────────────────────────────────

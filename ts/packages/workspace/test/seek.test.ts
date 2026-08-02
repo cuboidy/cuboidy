@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { clampToClip } from '../src/components/SeekBar.js';
+import { clampToClip } from '../src/lib/clip.js';
 
 // SPEC §6.7: a looping clip wraps, a non-looping one holds its last
-// frame. The bar has to show where the model actually is, so it applies
-// the same rule the sampler does rather than running off the end.
+// frame. The scene clock is monotonic — one clock for every actor — so
+// whatever shows a position in a clip applies the rule itself.
 describe('clampToClip', () => {
   it('wraps a looping clip', () => {
     expect(clampToClip(2.5, 2, true)).toBeCloseTo(0.5, 6);

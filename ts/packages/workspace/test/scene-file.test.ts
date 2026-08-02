@@ -15,7 +15,6 @@ import {
 const built = (): Scene => {
   let s = addInstance(addInstance(emptyScene(), 'knight'), 'sword');
   s = setAttachment(s, 'sword', { to: 'knight', socket: 'weapon' });
-  s = setAnimation(s, 'knight', { clip: 'walk', playing: true });
   return s;
 };
 
@@ -25,6 +24,31 @@ describe('round trip', () => {
     const after = parseScene(serializeScene(before));
     expect(after.ok).toBe(true);
     if (after.ok) expect(after.scene).toEqual(before);
+  });
+
+  it('does NOT carry playback across', () => {
+    // A scene records an arrangement. What is playing is a viewing state,
+    // like the camera and the view mode — and a file that started
+    // something moving when opened would be a surprising file.
+    const s = setAnimation(built(), 'knight', { clip: 'walk', playing: true });
+    const text = serializeScene(s);
+    expect(text).not.toContain('"anim"');
+    const back = parseScene(text);
+    expect(back.ok && back.scene.instances[0]?.anim).toBeUndefined();
+  });
+
+  it('opens a file that still has `anim`, without starting it', () => {
+    const back = parseScene(
+      JSON.stringify({
+        format: SCENE_FORMAT,
+        version: 1,
+        instances: [
+          { id: 'a', model: 'knight', anim: { clip: 'walk', playing: true } },
+        ],
+      }),
+    );
+    expect(back.ok).toBe(true);
+    if (back.ok) expect(back.scene.instances[0]?.anim).toBeUndefined();
   });
 
   it('omits defaults, so a file shows only what was decided', () => {

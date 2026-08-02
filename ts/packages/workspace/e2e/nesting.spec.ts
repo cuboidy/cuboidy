@@ -95,9 +95,7 @@ test('the guest tracks the host through an animation, in the graph', async ({
   // changes, so if it follows, it is the parenting that moved it.
   await armedKnight(page);
   await page.locator('.scene-tree-panel .tree-row[draggable] .tree-name', { hasText: /^knight$/ }).click();
-  await page.locator('.dock-tab', { hasText: 'Animation' }).click();
-  await page.locator('.field', { hasText: 'clip' }).locator('select')
-    .selectOption('walk');
+  await page.getByLabel('Clip').selectOption('walk');
 
   const first = await renderWorld(page, 'sword');
   await expect

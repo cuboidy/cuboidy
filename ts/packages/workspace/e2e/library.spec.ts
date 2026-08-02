@@ -226,9 +226,7 @@ test('playing a clip moves the model, and carries what is attached to it', async
 
   // Play the knight's walk. Selecting a clip starts it.
   await page.locator('.scene-tree-panel .tree-row[draggable] .tree-name', { hasText: /^knight$/ }).click();
-  await page.locator('.dock-tab', { hasText: 'Animation' }).click();
-  await page.locator('.field', { hasText: 'clip' }).locator('select')
-    .selectOption('walk');
+  await page.getByLabel('Clip').selectOption('walk');
 
   // The sword's world position changes as the hand swings.
   await expect
@@ -246,9 +244,7 @@ test('playing a clip moves the model, and carries what is attached to it', async
 test('pausing holds the model still', async ({ page }) => {
   await openLibrary(page, MODELS);
   await place(page, 'knight');
-  await page.locator('.dock-tab', { hasText: 'Animation' }).click();
-  await page.locator('.field', { hasText: 'clip' }).locator('select')
-    .selectOption('walk');
+  await page.getByLabel('Clip').selectOption('walk');
   await page.getByRole('button', { name: 'Pause' }).click();
 
   const a = await instancePose(page, 'knight');
@@ -259,9 +255,7 @@ test('pausing holds the model still', async ({ page }) => {
 test('the seek bar scrubs a paused instance', async ({ page }) => {
   await openLibrary(page, MODELS);
   await place(page, 'knight');
-  await page.locator('.dock-tab', { hasText: 'Animation' }).click();
-  await page.locator('.field', { hasText: 'clip' }).locator('select')
-    .selectOption('walk');
+  await page.getByLabel('Clip').selectOption('walk');
   await page.getByRole('button', { name: 'Pause' }).click();
 
   // BOTH ends of the comparison are seeked to. Reading the pose straight
@@ -269,7 +263,7 @@ test('the seek bar scrubs a paused instance', async ({ page }) => {
   // reach between selecting the clip and the click landing — which on a
   // loaded machine can be the very point the seek then moves to, and the
   // test fails for a reason that has nothing to do with seeking.
-  const bar = page.getByLabel('Seek');
+  const bar = page.getByLabel('Scrub timeline');
   const box = (await bar.boundingBox())!;
   const seekTo = async (frac: number): Promise<void> => {
     await page.mouse.click(box.x + box.width * frac, box.y + box.height / 2);
@@ -290,12 +284,13 @@ test('the seek bar scrubs a paused instance', async ({ page }) => {
 test('a model with no clips says so instead of offering an empty picker', async ({
   page,
 }) => {
+  // Said by the transport, which is inert and carries the reason — the
+  // same convention as an unavailable tool or view.
   await openLibrary(page, MODELS);
   await place(page, 'sword'); // sword defines no animations
-  await page.locator('.dock-tab', { hasText: 'Animation' }).click();
-  await expect(
-    page.locator('.dock-leaf', { hasText: 'Animation' }),
-  ).toContainText('defines no animations');
+  const play = page.getByRole('button', { name: 'Play' });
+  await expect(play).toBeDisabled();
+  await expect(play).toHaveAttribute('title', /defines no animations/);
 });
 
 test('a scene saved and reopened comes back the same', async ({ page }) => {

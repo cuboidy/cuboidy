@@ -15,6 +15,7 @@ import '@cuboidy/ui/chrome.css';
 import '@cuboidy/ui/dock.css';
 import '@cuboidy/ui/tree.css';
 import '@cuboidy/ui/fields.css';
+import '@cuboidy/ui/transport.css';
 import '@cuboidy/ui/viewport.css';
 import './styles.css';
 
