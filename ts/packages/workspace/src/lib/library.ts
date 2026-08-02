@@ -47,9 +47,10 @@ export interface Library {
   // Directories that held no cuboidy.json. Not an error — a library may
   // hold anything — but worth reporting so a mistyped folder is visible.
   skipped: string[];
-  // `*.scene.json` files at the library root, by filename. Kept as TEXT:
-  // a scene is opened on demand, and one that does not parse should say
-  // so when opened rather than stop the library from loading.
+  // `*.scene.json` files anywhere under the library, by their path from
+  // its root. Kept as TEXT: a scene is opened on demand, and one that
+  // does not parse should say so when opened rather than stop the library
+  // from loading.
   scenes: Map<string, string>;
   // Present when the folder was opened through the File System Access
   // API, which is what lets a scene be saved back in place. Absent
@@ -69,14 +70,21 @@ export function buildLibrary(
   const byDir = new Map<string, Map<string, string>>();
   const scenes = new Map<string, string>();
   for (const [path, text] of files) {
-    const i = path.indexOf('/');
-    if (i <= 0) {
-      // A loose file at the root is not a model (§3 wants a folder), but
-      // it may be a scene BUILT from this library — which is where a
-      // scene belongs, beside the models it references.
-      if (path.endsWith(SCENE_EXT)) scenes.set(path, text);
+    // A scene anywhere under the library, keyed by its path.
+    //
+    // ANYWHERE, not just at the root. A scene names its models by folder
+    // name, so it needs a root to resolve them against — and that root is
+    // the folder the user OPENED, which has nothing to do with where the
+    // scene file itself sits. Requiring the root was a second rule that
+    // bought nothing and turned a gallery of models into a folder with
+    // scene files scattered through it.
+    if (path.endsWith(SCENE_EXT)) {
+      scenes.set(path, text);
       continue;
     }
+    const i = path.indexOf('/');
+    // A loose file at the root is not a model: §3 wants a folder.
+    if (i <= 0) continue;
     const dir = path.slice(0, i);
     const rel = path.slice(i + 1);
     let group = byDir.get(dir);

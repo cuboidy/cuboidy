@@ -13,7 +13,7 @@ import {
 // on its own.
 
 const built = (): Scene => {
-  let s = addInstance(addInstance(emptyScene('armed'), 'knight'), 'sword');
+  let s = addInstance(addInstance(emptyScene(), 'knight'), 'sword');
   s = setAttachment(s, 'sword', { to: 'knight', socket: 'weapon' });
   s = setAnimation(s, 'knight', { clip: 'walk', playing: true });
   return s;
@@ -22,7 +22,7 @@ const built = (): Scene => {
 describe('round trip', () => {
   it('survives save → load unchanged', () => {
     const before = built();
-    const after = parseScene(serializeScene(before), 'x');
+    const after = parseScene(serializeScene(before));
     expect(after.ok).toBe(true);
     if (after.ok) expect(after.scene).toEqual(before);
   });
@@ -30,7 +30,7 @@ describe('round trip', () => {
   it('omits defaults, so a file shows only what was decided', () => {
     // Scenes are read and diffed by hand; a file full of zeroes buries
     // the parts that matter.
-    const text = serializeScene(addInstance(emptyScene('s'), 'knight'));
+    const text = serializeScene(addInstance(emptyScene(), 'knight'));
     expect(text).not.toContain('"pos"');
     expect(text).not.toContain('"attach"');
     expect(text).not.toContain('"anim"');
@@ -41,21 +41,21 @@ describe('round trip', () => {
   });
 
   it('keeps a placement that is not the origin', () => {
-    const s = emptyScene('s');
+    const s = emptyScene();
     s.instances.push({
       id: 'a',
       model: 'knight',
       placement: { pos: [1, 2, 3] },
     });
     expect(serializeScene(s)).toContain('"pos"');
-    const back = parseScene(serializeScene(s), 'x');
+    const back = parseScene(serializeScene(s));
     expect(back.ok && back.scene.instances[0]?.placement.pos).toEqual([1, 2, 3]);
   });
 
   it('keeps a rotation, and omits one that is all zero', () => {
     // A tweak rotation on a guest is the difference between a sword held
     // and a sword floating, so it is part of what the scene IS.
-    const s = emptyScene('s');
+    const s = emptyScene();
     s.instances.push({
       id: 'a',
       model: 'sword',
@@ -67,7 +67,7 @@ describe('round trip', () => {
       placement: { pos: [0, 0, 0], rot: [0, 0, 0] },
     });
     const text = serializeScene(s);
-    const back = parseScene(text, 'x');
+    const back = parseScene(text);
     expect(back.ok && back.scene.instances[0]?.placement.rot).toEqual([
       -90, 90, 0,
     ]);
@@ -81,7 +81,6 @@ describe('rejection', () => {
     // the packages they reference.
     const r = parseScene(
       JSON.stringify({ name: 'knight', parts: [{ name: 'body' }] }),
-      'x',
     );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/looks like a Cuboidy model/);
@@ -90,7 +89,6 @@ describe('rejection', () => {
   it('rejects a future version rather than guessing at it', () => {
     const r = parseScene(
       JSON.stringify({ format: SCENE_FORMAT, version: 99, instances: [] }),
-      'x',
     );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/version 99/);
@@ -106,7 +104,6 @@ describe('rejection', () => {
           { id: 'a', model: 'sword' },
         ],
       }),
-      'x',
     );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/duplicate id 'a'/);
@@ -119,14 +116,13 @@ describe('rejection', () => {
         version: 1,
         instances: [{ id: 'a', model: 'knight' }, { id: 'b' }],
       }),
-      'x',
     );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/instances\[1\]/);
   });
 
   it('reports bad JSON as bad JSON', () => {
-    const r = parseScene('{ not json', 'x');
+    const r = parseScene('{ not json');
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/not JSON/);
   });
@@ -146,18 +142,30 @@ describe('tolerance', () => {
           { id: 'sword', model: 'sword', attach: { to: 'ghost', socket: 'weapon' } },
         ],
       }),
-      'x',
     );
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.scene.instances[0]?.attach?.to).toBe('ghost');
   });
 
-  it('takes its name from the filename when the file omits one', () => {
+  it('opens a file still carrying the old `name`, and ignores it', () => {
+    // Every scene written before the filename became the identity has
+    // one. They keep opening; there is simply nothing left for the field
+    // to disagree with, and the next save drops it.
     const r = parseScene(
-      JSON.stringify({ format: SCENE_FORMAT, version: 1, instances: [] }),
-      'parade',
+      JSON.stringify({
+        format: SCENE_FORMAT,
+        version: 1,
+        name: 'something else entirely',
+        instances: [{ id: 'a', model: 'knight' }],
+      }),
     );
-    expect(r.ok && r.scene.name).toBe('parade');
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.scene).toEqual({
+        instances: [{ id: 'a', model: 'knight', placement: { pos: [0, 0, 0] } }],
+      });
+      expect(serializeScene(r.scene)).not.toContain('"name"');
+    }
   });
 
   it('defaults a malformed pos to the origin rather than failing', () => {
@@ -167,7 +175,6 @@ describe('tolerance', () => {
         version: 1,
         instances: [{ id: 'a', model: 'knight', pos: [1, 'x'] }],
       }),
-      'x',
     );
     expect(r.ok && r.scene.instances[0]?.placement.pos).toEqual([0, 0, 0]);
   });

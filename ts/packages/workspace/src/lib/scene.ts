@@ -60,12 +60,19 @@ export interface Instance {
   anim?: { clip: string; playing: boolean; at?: number };
 }
 
+// A scene has no name of its own: its FILE is its name.
+//
+// It used to carry one, and the file was named after it — two identities
+// for one document, with nothing obliging them to agree. Opening
+// `sword-knight.scene.json`, editing the name field and saving wrote a
+// different file and left the original untouched, which looks exactly
+// like saving right up until you look in the folder. Which file is open
+// is the app's state, not the document's content.
 export interface Scene {
-  name: string;
   instances: Instance[];
 }
 
-export const emptyScene = (name = 'untitled'): Scene => ({ name, instances: [] });
+export const emptyScene = (): Scene => ({ instances: [] });
 
 // Ids are per-scene and human-legible (`knight`, `knight-2`), because they
 // show up in the tree and in the saved file, and a uuid would make both

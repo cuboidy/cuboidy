@@ -31,7 +31,6 @@ export function serializeScene(scene: Scene): string {
       {
         format: SCENE_FORMAT,
         version: SCENE_VERSION,
-        name: scene.name,
         instances: scene.instances.map((i) => ({
           id: i.id,
           model: i.model,
@@ -49,7 +48,7 @@ export function serializeScene(scene: Scene): string {
   );
 }
 
-export function parseScene(text: string, fallbackName: string): ParseResult {
+export function parseScene(text: string): ParseResult {
   let json: unknown;
   try {
     json = JSON.parse(text);
@@ -133,12 +132,16 @@ export function parseScene(text: string, fallbackName: string): ParseResult {
     instances.push(inst);
   }
 
-  const name = typeof json['name'] === 'string' ? json['name'] : fallbackName;
+  // Any `name` in the file is READ AND IGNORED. Files written before the
+  // filename became the scene's identity still carry one, and they still
+  // open — there is simply nothing left for it to disagree with. Nothing
+  // writes it any more, so those copies age out on the next save.
+  //
   // A host that is not in the file, or a socket a model has stopped
   // publishing, is NOT rejected here: placeScene reports both against the
   // instance and still draws it. A scene must survive its models changing
   // under it, which is the normal case for a file that outlives an edit.
-  return { ok: true, scene: { name, instances } };
+  return { ok: true, scene: { instances } };
 }
 
 function isZero(v: readonly number[]): boolean {

@@ -88,7 +88,7 @@ describe('groundPoint', () => {
 });
 
 describe('socketCandidates', () => {
-  const scene = (): Scene => addInstance(emptyScene('s'), 'tower');
+  const scene = (): Scene => addInstance(emptyScene(), 'tower');
 
   it('carries a socket into the world, not the host model space', () => {
     // The tower is moved; its socket has to move with it, or every drop
@@ -107,12 +107,12 @@ describe('socketCandidates', () => {
   });
 
   it('offers nothing for a model that publishes nothing', () => {
-    const s = addInstance(emptyScene('s'), 'gem');
+    const s = addInstance(emptyScene(), 'gem');
     expect(socketCandidates(placeScene(s, LIBRARY))).toEqual([]);
   });
 
   it('can leave one instance out, for re-targeting an existing one', () => {
-    let s = addInstance(emptyScene('s'), 'tower');
+    let s = addInstance(emptyScene(), 'tower');
     s = addInstance(s, 'tower');
     const placed = placeScene(s, LIBRARY);
     expect(socketCandidates(placed)).toHaveLength(2);
@@ -121,7 +121,7 @@ describe('socketCandidates', () => {
 });
 
 describe('resolveDrop', () => {
-  const scene = (): Scene => addInstance(emptyScene('s'), 'tower');
+  const scene = (): Scene => addInstance(emptyScene(), 'tower');
   const candidates = () => socketCandidates(placeScene(scene(), LIBRARY));
 
   it('takes a socket when the pointer is near one on screen', () => {
@@ -143,7 +143,7 @@ describe('resolveDrop', () => {
   });
 
   it('prefers the NEARER socket when two are in reach', () => {
-    let s = addInstance(emptyScene('s'), 'tower');
+    let s = addInstance(emptyScene(), 'tower');
     s = addInstance(s, 'tower');
     s = setPlacement(s, 'tower-2', { pos: [20, 0, 0] });
     const cs = socketCandidates(placeScene(s, LIBRARY));
@@ -190,7 +190,7 @@ describe('dropKey', () => {
 
 describe('addInstance placement', () => {
   it('lands on the ground point it was dropped at', () => {
-    const s = addInstance(emptyScene('s'), 'gem', {
+    const s = addInstance(emptyScene(), 'gem', {
       kind: 'ground',
       pos: [4, 0, -3],
     });
@@ -201,7 +201,7 @@ describe('addInstance placement', () => {
   it('arrives already attached when dropped on a socket', () => {
     // The whole point of the gesture: one motion, not "place, then find
     // it in the tree, then pick a socket".
-    let s = addInstance(emptyScene('s'), 'tower');
+    let s = addInstance(emptyScene(), 'tower');
     s = addInstance(s, 'gem', { kind: 'socket', host: 'tower', socket: 'peg' });
     expect(s.instances[1]?.attach).toEqual({ to: 'tower', socket: 'peg' });
     const gem = placeScene(s, LIBRARY).find((p) => p.instance.id === 'gem');
@@ -209,7 +209,7 @@ describe('addInstance placement', () => {
   });
 
   it('still goes to the origin when nothing said where', () => {
-    const s = addInstance(emptyScene('s'), 'gem');
+    const s = addInstance(emptyScene(), 'gem');
     expect(s.instances[0]?.placement.pos).toEqual([0, 0, 0]);
   });
 });

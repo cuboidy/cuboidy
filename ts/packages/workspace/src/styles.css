@@ -410,46 +410,107 @@ code {
 
 
 
-/* ── scene bar ───────────────────────────────────────────────────── */
+/* ── scene document bar ──────────────────────────────────────────────
+   Which scene you are editing, and the ones you could edit instead. The
+   FILE is the identity: there is no name field, because a name field and
+   a file name are two identities for one document and nothing obliges
+   them to agree. */
 
-.scene-bar {
+.scene-doc {
   display: flex;
   flex-direction: column;
+  gap: 0.4rem;
+}
+
+.scene-doc-file {
+  display: flex;
+  align-items: center;
   gap: 0.35rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+
+.scene-doc-icon {
+  color: var(--txt-3);
+  flex-shrink: 0;
+}
+
+.scene-doc-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* The path reads as a path. */
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+
+/* Unsaved changes. A dot rather than a word: it sits beside the name it
+   is about, and there is nothing to read when everything is saved. */
+.scene-doc-dirty {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-hi);
+  flex-shrink: 0;
+}
+
+.scene-doc-heading {
+  margin: 0.2rem 0 0;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--line);
+  color: var(--txt-3);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.scene-file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.scene-file {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  padding: 0.25rem 0.4rem;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--r-1);
+  color: var(--txt-2);
+  font: inherit;
+  font-size: 0.75rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.scene-file:hover {
+  background: var(--bg-2);
+  color: var(--txt-1);
+}
+
+.scene-file.current {
+  background: var(--accent-tint);
+  border-color: var(--accent);
+  color: var(--txt-1);
+}
+
+.scene-file-icon {
+  color: var(--txt-3);
+  flex-shrink: 0;
+}
+
+.scene-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
 }
 
 .scene-bar-row {
   display: flex;
   gap: 0.35rem;
-}
-
-.scene-bar-row select {
-  flex: 1;
-  min-width: 0;
-}
-
-.text-input {
-  flex: 1;
-  min-width: 0;
-  padding: 0.15rem 0.3rem;
-  background: var(--bg-2);
-  color: var(--txt-1);
-  border: 1px solid var(--line);
-  border-radius: var(--r-1);
-  font: inherit;
-  font-family: var(--ui);
-}
-
-.scene-bar-row select {
-  padding: 0.15rem 0.3rem;
-  background: var(--bg-2);
-  color: var(--txt-1);
-  border: 1px solid var(--line);
-  border-radius: var(--r-1);
-  font: inherit;
-  font-family: var(--ui);
 }
 
 /* ── scene tree ──────────────────────────────────────────────────

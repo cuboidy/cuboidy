@@ -20,7 +20,8 @@ import { ModelList } from './components/ModelList.js';
 import { SceneView } from './components/SceneView.js';
 import { DragLayer } from './components/DragLayer.js';
 import { AnimationPanel } from './components/AnimationPanel.js';
-import { AttachProperties, SceneBar } from './components/SceneTree.js';
+import { AttachProperties } from './components/AttachmentPanel.js';
+import { SceneDoc } from './components/SceneDoc.js';
 import { SceneTreePanel } from './components/SceneTreePanel.js';
 import {
   canUseDirectoryPicker,
@@ -77,6 +78,11 @@ export function App() {
   const [browsing, setBrowsing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sceneStatus, setSceneStatus] = useState<string | null>(null);
+  // Which file the scene came from, and what was in it. Both are the
+  // APP's state rather than the document's: a scene does not know its own
+  // name, and "has it changed" is a question about the pair.
+  const [sceneFile, setSceneFile] = useState<string | null>(null);
+  const [savedText, setSavedText] = useState<string | null>(null);
   const [layout, setLayout] = useState<LayoutNode<PanelId> | null>(initialLayout);
   // Anim view by default: choosing a clip starts it, and a default that
   // showed the rest pose would make that look like nothing happened.
@@ -93,7 +99,9 @@ export function App() {
   const adopt = useCallback((next: Library) => {
     setLibrary(next);
     setError(null);
-    setScene(emptyScene(next.name));
+    setScene(emptyScene());
+    setSceneFile(null);
+    setSavedText(null);
     setSceneStatus(null);
     setSelected(null);
     setBrowsing(next.models[0]?.dir ?? null);
@@ -164,30 +172,48 @@ export function App() {
     (file: string) => {
       const text = library?.scenes.get(file);
       if (text === undefined) return;
-      const r = parseScene(text, file.replace(/\.scene\.json$/i, ''));
+      const r = parseScene(text);
       if (!r.ok) {
         setSceneStatus(`${file}: ${r.error}`);
         return;
       }
       setScene(r.scene);
+      setSceneFile(file);
+      // The SERIALIZATION of what was parsed, not the bytes on disk. A
+      // hand-formatted file, or one still carrying the old `name`, would
+      // otherwise read as modified the moment it opened.
+      setSavedText(serializeScene(r.scene));
       setSelected(null);
       setSceneStatus(`Opened ${file}.`);
     },
     [library],
   );
 
-  const handleSaveScene = useCallback(() => {
-    if (library === null) return;
-    void saveScene(scene, library)
-      .then((out) => {
-        setSceneStatus(
-          out.kind === 'wrote'
-            ? `Saved ${out.file} into ${library.name}.`
-            : `Downloaded ${out.file} — move it into ${library.name} beside the models it references.`,
-        );
-      })
-      .catch((e: Error) => setSceneStatus(`Could not save: ${e.message}`));
-  }, [scene, library]);
+  const handleSaveScene = useCallback(
+    (file: string) => {
+      if (library === null) return;
+      const written = serializeScene(scene);
+      void saveScene(scene, library, file)
+        .then((out) => {
+          setSceneFile(out.file);
+          setSavedText(written);
+          setSceneStatus(
+            out.kind === 'wrote'
+              ? `Saved ${out.file} into ${library.name}.`
+              : `Downloaded ${out.downloadedAs ?? out.file} — move it to ${library.name}/${out.file}, beside the models it references.`,
+          );
+        })
+        .catch((e: Error) => setSceneStatus(`Could not save: ${e.message}`));
+    },
+    [scene, library],
+  );
+
+  // Would saving change the file? Comparing serializations rather than
+  // tracking edits: every mutation would otherwise have to remember to
+  // set a flag, and the one that forgets is invisible.
+  const dirty = savedText === null
+    ? scene.instances.length > 0
+    : serializeScene(scene) !== savedText;
 
   // Put a model in the scene, at wherever the drag resolved to (or the
   // origin, for a double-click that expressed no place).
@@ -251,10 +277,10 @@ export function App() {
             title,
             body: (
               <div className="panel-body">
-                <SceneBar
-                  name={scene.name}
-                  files={[...library.scenes.keys()]}
-                  onRename={(n) => setScene((s) => ({ ...s, name: n }))}
+                <SceneDoc
+                  file={sceneFile}
+                  dirty={dirty}
+                  files={[...library.scenes.keys()].sort()}
                   onOpen={openSceneFile}
                   onSave={handleSaveScene}
                   status={sceneStatus}

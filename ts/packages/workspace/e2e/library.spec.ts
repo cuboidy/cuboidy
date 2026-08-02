@@ -310,11 +310,13 @@ test('a scene saved and reopened comes back the same', async ({ page }) => {
   await page.locator('.field', { hasText: 'attached to' }).locator('select')
     .selectOption('knight');
 
-  const name = page.getByLabel('Scene name');
-  await name.fill('armed');
-
+  // A scene with no file yet has nothing to write back to, so Save asks
+  // where — which is Save as.
   const dl = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Save scene' }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  const field = page.getByLabel('Save scene as');
+  await field.fill('armed');
+  await field.press('Enter');
   const saved = await dl;
   expect(saved.suggestedFilename()).toBe('armed.scene.json');
 
@@ -340,7 +342,7 @@ test('opening a scene from the library restores its arrangement', async ({
   // so this exercises the read side against a file on disk rather than
   // one this test just wrote.
   await openLibrary(page, LIBRARY);
-  await page.getByLabel('Open a scene').selectOption('armed.scene.json');
+  await page.locator('.scene-file', { hasText: 'armed.scene.json' }).click();
   await expect(instanceNames(page)).toHaveText(['knight', 'sword']);
   // Nested under its host, and actually placed at the socket.
   await expect(attachedNames(page)).toHaveText(['sword']);
@@ -375,8 +377,8 @@ test('a scene file that does not parse says why and keeps what is on screen', as
 }) => {
   await openLibrary(page, LIBRARY);
   await place(page, 'knight');
-  await page.getByLabel('Open a scene').selectOption('broken.scene.json');
-  await expect(page.locator('.scene-bar')).toContainText('duplicate id');
+  await page.locator('.scene-file', { hasText: 'broken.scene.json' }).click();
+  await expect(page.locator('.scene-doc')).toContainText('duplicate id');
   // The arrangement already on screen survived.
   await expect(instanceNames(page)).toHaveText(['knight']);
 });

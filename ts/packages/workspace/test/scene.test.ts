@@ -52,7 +52,7 @@ const LIBRARY = buildLibrary(
 );
 
 const scene = (): Scene =>
-  addInstance(addInstance(emptyScene('s'), 'tower'), 'gem');
+  addInstance(addInstance(emptyScene(), 'tower'), 'gem');
 
 describe('instance ids', () => {
   it('names the first copy after the model and numbers the rest', () => {
@@ -260,7 +260,7 @@ const ANIM_LIB = buildLibrary(
 );
 
 const animScene = (): Scene =>
-  addInstance(addInstance(emptyScene('s'), 'swinger'), 'gem');
+  addInstance(addInstance(emptyScene(), 'swinger'), 'gem');
 
 describe('animation', () => {
   it('anyPlaying is false until something plays, so the clock can idle', () => {

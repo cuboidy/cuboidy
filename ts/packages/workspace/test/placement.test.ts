@@ -54,7 +54,7 @@ const LIBRARY = buildLibrary(
 );
 
 const scene = (): Scene =>
-  addInstance(addInstance(emptyScene('s'), 'tower'), 'gem');
+  addInstance(addInstance(emptyScene(), 'tower'), 'gem');
 
 const find = (s: Scene, id: string) =>
   placeScene(s, LIBRARY).find((p) => p.instance.id === id)!;
@@ -181,7 +181,6 @@ describe('drawTree', () => {
     // neither in the roots — absent from the panel and, once the 3D view
     // nested too, from the screen.
     const s: Scene = {
-      name: 's',
       instances: [
         {
           id: 'a',

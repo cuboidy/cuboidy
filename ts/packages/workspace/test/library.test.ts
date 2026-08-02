@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { sceneFileName } from '../src/lib/save-scene.js';
 import { buildLibrary } from '../src/lib/library.js';
 
 // The workspace's unit is a FOLDER OF MODELS. Grouping a flat path map by
@@ -131,5 +132,84 @@ describe('buildLibrary', () => {
     );
     expect(lib.models[0]?.problems).toEqual([]);
     expect(lib.models[0]?.parts.size).toBe(1);
+  });
+});
+
+// Where a scene FILE may sit inside the library it was built from.
+//
+// A scene names its models by folder name, so it needs a root to resolve
+// them against — and that root is the folder the user opened, which has
+// nothing to do with where the scene file itself is. Requiring the root
+// was a second rule that bought nothing and littered a gallery of models
+// with scene files.
+describe('scene files', () => {
+  const MODEL = JSON.stringify({
+    name: 'tiny',
+    palette: ['#FF0000'],
+    parts: [{ name: 'body', geometry: { size: [1, 1, 1], voxels: [['0']] } }],
+  });
+  const SCENE = JSON.stringify({
+    format: 'cuboidy-scene',
+    version: 1,
+    instances: [],
+  });
+
+  it('finds one at any depth, keyed by its path', () => {
+    const lib = buildLibrary(
+      'models',
+      new Map([
+        ['tiny/cuboidy.json', MODEL],
+        ['at-root.scene.json', SCENE],
+        ['scenes/nested.scene.json', SCENE],
+        ['scenes/deep/deeper.scene.json', SCENE],
+      ]),
+    );
+    expect([...lib.scenes.keys()].sort()).toEqual([
+      'at-root.scene.json',
+      'scenes/deep/deeper.scene.json',
+      'scenes/nested.scene.json',
+    ]);
+  });
+
+  it('does not report a folder of scenes as a skipped model', () => {
+    // It has no cuboidy.json, but it was never claiming to be a model —
+    // saying so would be noise on every library that tidies its scenes
+    // away.
+    const lib = buildLibrary(
+      'models',
+      new Map([
+        ['tiny/cuboidy.json', MODEL],
+        ['scenes/a.scene.json', SCENE],
+      ]),
+    );
+    expect(lib.skipped).toEqual([]);
+    expect(lib.models.map((m) => m.dir)).toEqual(['tiny']);
+  });
+
+  it('leaves a scene sitting inside a model folder out of that model', () => {
+    const lib = buildLibrary(
+      'models',
+      new Map([
+        ['tiny/cuboidy.json', MODEL],
+        ['tiny/demo.scene.json', SCENE],
+      ]),
+    );
+    expect(lib.models[0]?.problems).toEqual([]);
+    expect([...lib.scenes.keys()]).toEqual(['tiny/demo.scene.json']);
+  });
+});
+
+describe('sceneFileName', () => {
+  it('adds the extension once', () => {
+    expect(sceneFileName('armed')).toBe('armed.scene.json');
+    expect(sceneFileName('armed.scene.json')).toBe('armed.scene.json');
+  });
+
+  it('keeps a path into a subfolder', () => {
+    expect(sceneFileName('scenes/armed')).toBe('scenes/armed.scene.json');
+  });
+
+  it('falls back rather than writing a file with no name', () => {
+    expect(sceneFileName('   ')).toBe('untitled.scene.json');
   });
 });
