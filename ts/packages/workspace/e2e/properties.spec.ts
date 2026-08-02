@@ -1,7 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
-import { instanceOrigin, openLibrary, place, socketRow } from './helpers.js';
+import {
+  attachedNames,
+  instanceNames,
+  instanceOrigin,
+  openLibrary,
+  place,
+  socketRow,
+} from './helpers.js';
 
 // The Properties panel: what an instance is, what carries it, and where it
 // sits — the last of which used to be reachable only by dragging a gizmo.
@@ -40,8 +47,53 @@ test('the panel says who it is about', async ({ page }) => {
   await place(page, 'knight');
   await place(page, 'knight');
   await selectRow(page, 'knight-2');
-  await expect(page.locator('.prop-identity-id')).toHaveText('knight-2');
+  await expect(page.getByLabel('Instance name')).toHaveValue('knight-2');
   await expect(page.locator('.prop-identity-model')).toHaveText('knight');
+});
+
+test('the name is editable in place, as the editor’s is', async ({ page }) => {
+  await openLibrary(page, MODELS);
+  await place(page, 'knight');
+  await place(page, 'sword');
+  await selectRow(page, 'sword');
+  await page
+    .locator('.field', { hasText: 'attached to' })
+    .locator('select')
+    .selectOption('knight');
+
+  const name = page.getByLabel('Instance name');
+  await name.fill('blade');
+  await name.press('Enter');
+  await expect(instanceNames(page)).toHaveText(['knight', 'blade']);
+  // Still attached: an id is a reference, and renameInstance carries what
+  // points at it.
+  await expect(attachedNames(page)).toHaveText(['blade']);
+});
+
+test('a name another instance has is refused', async ({ page }) => {
+  await openLibrary(page, MODELS);
+  await place(page, 'knight');
+  await place(page, 'sword');
+  await selectRow(page, 'sword');
+  const name = page.getByLabel('Instance name');
+  await name.fill('knight');
+  await name.press('Enter');
+  // TextInput reverts an invalid commit rather than applying it.
+  await expect(name).toHaveValue('sword');
+  await expect(instanceNames(page)).toHaveText(['knight', 'sword']);
+});
+
+test('the panel is fields, not a lecture', async ({ page }) => {
+  // The format notes that used to sit under the inputs are gone: the
+  // labels carry the distinction that matters ("position" versus "socket
+  // offset"), and a panel that also explains itself is one you read once
+  // and then look past.
+  await openLibrary(page, MODELS);
+  await place(page, 'knight');
+  await selectRow(page, 'knight');
+  const panel = page.locator('.attach-props');
+  await expect(panel).not.toContainText('SPEC');
+  await expect(panel).not.toContainText('degrees');
 });
 
 test('rotation is editable, and turning does not move it', async ({ page }) => {

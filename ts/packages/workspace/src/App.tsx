@@ -402,6 +402,10 @@ export function App() {
                   onAttach={(id2, target) =>
                     setScene((s) => setAttachment(s, id2, target))
                   }
+                  onRename={(from, to) => {
+                    setScene((s) => renameInstance(s, from, to));
+                    setSelected((cur) => (cur === from ? to : cur));
+                  }}
                   onPlace={(id2, patch) =>
                     setScene((s) => setPlacement(s, id2, patch))
                   }

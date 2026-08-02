@@ -63,3 +63,46 @@
   outline: none;
   border-color: var(--accent);
 }
+
+/* ─── Text input (clip rename) ────────────────────────────────────── */
+
+.text-input {
+  width: 9rem;
+  background: var(--bg-2);
+  color: var(--txt-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
+  padding: 0.15rem 0.3rem;
+  font: inherit;
+  font-family: var(--ui);
+  font-size: 0.8rem;
+}
+
+.text-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Rejected commit (invalid identifier / duplicate name): brief red flash,
+   cleared by onAnimationEnd. */
+.text-input.invalid {
+  animation: text-input-invalid 0.45s ease-out;
+}
+
+@keyframes text-input-invalid {
+  0%,
+  70% {
+    border-color: var(--danger);
+    box-shadow: 0 0 0 1px var(--danger);
+  }
+  100% {
+    border-color: var(--line);
+    box-shadow: none;
+  }
+}
+
+
+.text-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}

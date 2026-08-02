@@ -1,11 +1,11 @@
-import { Box } from 'lucide-react';
-import { NumberInput } from '@cuboidy/ui';
+import { NumberInput, TextInput } from '@cuboidy/ui';
 import type { PlacedInstance } from '../lib/scene.js';
 
 interface Props {
   placed: PlacedInstance | null;
   all: readonly PlacedInstance[];
   onAttach: (id: string, target: { to: string; socket: string } | null) => void;
+  onRename: (from: string, to: string) => void;
   onPlace: (
     id: string,
     patch: { pos?: [number, number, number]; rot?: [number, number, number] },
@@ -20,11 +20,18 @@ interface Props {
 // 3D view. That is fine for arranging by eye and useless for "two units
 // up, exactly", which is most of what a numeric field is for.
 //
-// The one thing worth saying out loud is the SPACE. A placement is
-// measured in the frame the instance belongs to: the scene for a free
-// one, the socket for an attached one. Same three numbers, different
-// meaning, so the label says which.
-export function AttachProperties({ placed, all, onAttach, onPlace }: Props) {
+// A placement is measured in the frame the instance belongs to: the scene
+// for a free one, the socket for an attached one. Same three numbers,
+// different space — said by the LABEL ("position" / "socket offset")
+// rather than by a paragraph underneath. A panel of fields that also
+// explains the format is a panel you read once and then look past.
+export function AttachProperties({
+  placed,
+  all,
+  onAttach,
+  onRename,
+  onPlace,
+}: Props) {
   if (placed === null) return <p className="empty">No instance selected.</p>;
   const { instance } = placed;
   const attached = instance.attach !== undefined;
@@ -55,9 +62,22 @@ export function AttachProperties({ placed, all, onAttach, onPlace }: Props) {
         <p className="attach-problem">{placed.problem}</p>
       )}
 
+      {/* Click the name to rename, as the editor's part inspector does.
+          The tree can rename too — same as the editor, where a part can be
+          renamed from either — because whichever one you happen to be
+          looking at should be the one that works. */}
       <div className="prop-identity">
-        <Box size={13} className="prop-identity-icon" />
-        <span className="prop-identity-id">{instance.id}</span>
+        <div className="prop-identity-name">
+          <TextInput
+            value={instance.id}
+            ariaLabel="Instance name"
+            validate={(name) =>
+              name === instance.id ||
+              !all.some((p) => p.instance.id === name)
+            }
+            onCommit={(name) => onRename(instance.id, name)}
+          />
+        </div>
         <span className="prop-identity-model">{instance.model}</span>
       </div>
 
@@ -65,6 +85,16 @@ export function AttachProperties({ placed, all, onAttach, onPlace }: Props) {
         <span className="field-label">attached to</span>
         <select
           value={instance.attach?.to ?? ''}
+          // Nothing to attach to reads as a disabled control with the
+          // reason on it, the same way an unavailable tool does. A picker
+          // with one dead option and a paragraph under it said the same
+          // thing at more length.
+          disabled={hosts.length === 0 && instance.attach === undefined}
+          title={
+            hosts.length === 0 && instance.attach === undefined
+              ? 'Nothing else in the scene publishes a socket'
+              : undefined
+          }
           onChange={(e) => {
             const to = e.target.value;
             if (to === '') {
@@ -113,13 +143,6 @@ export function AttachProperties({ placed, all, onAttach, onPlace }: Props) {
         </label>
       )}
 
-      {hosts.length === 0 && instance.attach === undefined && (
-        <p className="hint">
-          Nothing else in the scene publishes a socket, so there is nowhere to
-          attach this yet (SPEC §6.12).
-        </p>
-      )}
-
       <div className="prop-group">
         <span className="field-label prop-group-label">
           {attached ? 'socket offset' : 'position'}
@@ -151,12 +174,6 @@ export function AttachProperties({ placed, all, onAttach, onPlace }: Props) {
           ))}
         </div>
       </div>
-
-      <p className="hint">
-        {attached
-          ? 'Offset in the SOCKET’s axes, so it holds as the host turns. Rotation in degrees, ZXY (SPEC §4), about the model origin.'
-          : 'Position in the scene. Rotation in degrees, ZXY (SPEC §4), about the model origin.'}
-      </p>
     </div>
   );
 }

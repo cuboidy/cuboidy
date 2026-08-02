@@ -199,15 +199,14 @@ test('removing a host detaches what it carried rather than deleting it', async (
 });
 
 test('a scene with nothing to attach to says so', async ({ page }) => {
-  // The teaching moment the removed panel used to carry: a model that
-  // publishes nothing cannot host anything, and being told beats an empty
-  // list. The Attachment panel is where you find out, because that is
-  // where you go to try.
+  // Not with a paragraph — with the control. Nothing publishes a socket,
+  // so the picker is disabled and carries the reason, the same way an
+  // unavailable tool in the viewport does.
   await openLibrary(page, MODELS);
   await place(page, 'sword'); // publishes nothing
-  await expect(
-    page.locator('.dock-leaf', { hasText: 'Properties' }),
-  ).toContainText('nowhere to attach');
+  const picker = page.locator('.field', { hasText: 'attached to' }).locator('select');
+  await expect(picker).toBeDisabled();
+  await expect(picker).toHaveAttribute('title', /publishes a socket/);
 });
 
 test('playing a clip moves the model, and carries what is attached to it', async ({

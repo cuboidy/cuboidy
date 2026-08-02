@@ -417,16 +417,27 @@ code {
   border-bottom: 1px solid var(--line);
 }
 
-.prop-identity-icon {
-  color: var(--txt-3);
-  flex-shrink: 0;
+/* The name reads as a heading until you click it, then it is a field —
+   the editor's part inspector does the same, and a name you can only
+   change somewhere else is a name that looks read-only. */
+.prop-identity-name {
+  flex: 1;
+  min-width: 0;
 }
 
-.prop-identity-id {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.prop-identity-name .text-input {
+  width: 100%;
+  font-size: 0.95rem;
   font-weight: 600;
+  color: var(--txt-1);
+  background: transparent;
+  border-color: transparent;
+}
+
+.prop-identity-name .text-input:hover,
+.prop-identity-name .text-input:focus {
+  background: var(--bg-0);
+  border-color: var(--line);
 }
 
 .prop-identity-model {
