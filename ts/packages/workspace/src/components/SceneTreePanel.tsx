@@ -339,7 +339,7 @@ function SocketRow({
 
   const cls = [
     'tree-row',
-    'socket-target',
+    'socket-slot',
     dropTarget === row.key ? 'drop-target' : '',
     blocked ? 'drop-forbidden' : '',
   ]
@@ -358,6 +358,14 @@ function SocketRow({
         <Plug size={13} className="icon-socket" />
       </span>
       <span className="tree-name socket-name">{row.socket}</span>
+      {/* Which part actually carries it. The published name is the
+          contract a scene uses; this is what you need when the socket is
+          in the wrong PLACE and something has to be fixed in the model. */}
+      {row.target !== undefined && (
+        <span className="socket-target" title={`Resolves to ${row.target}`}>
+          {row.target}
+        </span>
+      )}
       {!row.published && (
         <AlertTriangle
           size={12}

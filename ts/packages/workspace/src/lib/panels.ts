@@ -20,11 +20,15 @@ export type PanelId =
   | 'tree'
   // The 3D view.
   | 'view'
-  // What the selection is attached to, what it plays, and what it offers
-  // in return.
+  // What the selection is attached to and what it plays.
+  //
+  // There was a Published sockets panel here. The Instances tree grew
+  // socket rows, which say the same thing in the place you are already
+  // looking — and a second view of one fact is a question about which of
+  // them is right. The one thing it knew that the tree did not, the
+  // part:socket a published name resolves to, moved onto the row.
   | 'attachment'
   | 'animation'
-  | 'sockets'
   | 'problems'
   // The scene as it would be written to disk.
   | 'source';
@@ -36,7 +40,6 @@ export const ALL_PANELS: PanelId[] = [
   'view',
   'attachment',
   'animation',
-  'sockets',
   'problems',
   'source',
 ];
@@ -48,7 +51,6 @@ export const PANEL_TITLES: Record<PanelId, string> = {
   view: 'View',
   attachment: 'Attachment',
   animation: 'Animation',
-  sockets: 'Published sockets',
   problems: 'Problems',
   source: 'scene.json',
 };
@@ -58,9 +60,9 @@ export const PANEL_TITLES: Record<PanelId, string> = {
 export const MAIN_PANEL: PanelId = 'view';
 
 // Left column = the library over the scene built from it, so what you
-// drag and where it lands are adjacent. Centre = the view. Right =
-// attachment over what the selection publishes, which is the pair you
-// read together when hooking one model onto another.
+// drag and where it lands are adjacent. Centre = the view. Right = what
+// the selection is attached to and what it plays, over the scene as it
+// would be written and anything wrong with the model behind it.
 export const initialLayout: LayoutNode<PanelId> = split<PanelId>(
   'row',
   split<PanelId>(
@@ -75,11 +77,7 @@ export const initialLayout: LayoutNode<PanelId> = split<PanelId>(
     split<PanelId>(
       'col',
       { kind: 'leaf', panels: ['attachment', 'animation'], active: 'attachment' },
-      {
-        kind: 'leaf',
-        panels: ['sockets', 'problems', 'source'],
-        active: 'sockets',
-      },
+      { kind: 'leaf', panels: ['source', 'problems'], active: 'source' },
       0.4,
     ),
     0.74,

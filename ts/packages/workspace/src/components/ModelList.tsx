@@ -196,33 +196,8 @@ function plural(n: number, noun: string): string {
   return `${n} ${noun}${n === 1 ? '' : 's'}`;
 }
 
-// The published sockets of one model, listed.
-export function SocketList({ model }: { model: LibraryModel | null }) {
-  if (model === null) return <p className="empty">No model selected.</p>;
-  const sockets = Object.entries(model.manifest.sockets ?? {});
-  if (sockets.length === 0) {
-    return (
-      <div className="empty">
-        <p>{model.dir} publishes no sockets.</p>
-        <p className="hint">
-          A model offers attachment points through the manifest&apos;s
-          <code> sockets </code> map (SPEC §6.12). Without one, nothing can
-          be attached to it.
-        </p>
-      </div>
-    );
-  }
-  return (
-    <ul className="socket-list">
-      {sockets.map(([name, target]) => (
-        <li key={name} className="socket-row">
-          <Plug size={13} className="socket-row-icon" />
-          <span className="socket-row-name">{name}</span>
-          <span className="socket-row-target">
-            {target.part}:{target.socket}
-          </span>
-        </li>
-      ))}
-    </ul>
-  );
-}
+// There was a SocketList here, feeding a Published sockets panel. The
+// Instances tree grew socket rows — the same names, in the place you are
+// already working — and the part:socket each resolves to moved onto the
+// row with them. Keeping a second view of one fact only raises the
+// question of which one to believe.

@@ -74,10 +74,12 @@ export const attachedNames = (page: Page) =>
     '.scene-tree-panel .tree-list .tree-list .tree-list .tree-row[draggable] .tree-name',
   );
 
-// A socket row — the thing you drop onto to attach.
+// A socket row — the thing you drop onto to attach. Matched on the NAME
+// child rather than the row's text: the row also carries the part:socket
+// it resolves to, so its text content is not just the socket's name.
 export const socketRow = (page: Page, socket: string) =>
-  page.locator('.scene-tree-panel .tree-row.socket-target', {
-    hasText: new RegExp(`^${socket}$`),
+  page.locator('.scene-tree-panel .tree-row.socket-slot', {
+    has: page.locator('.socket-name', { hasText: new RegExp(`^${socket}$`) }),
   });
 
 // The instance whose GROUP actually contains this one, read off the

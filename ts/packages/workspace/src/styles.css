@@ -1,32 +1,11 @@
 /* Cuboidy Workspace.
  *
- * The same graphite + violet tokens the editor's restyle locked in, so the
- * two apps read as one product. Only the tokens are duplicated (a handful
- * of custom properties); the components that use them live in @cuboidy/ui.
- * When the token set next changes, move this block there rather than
- * editing it twice. */
-:root {
-  --bg-0: #0e1116;
-  --bg-1: #151a21;
-  --bg-2: #1b222b;
-  --bg-3: #232b35;
-  --line: #2c333d;
-  --line-2: #38414d;
-
-  --txt-1: #e7ebf0;
-  --txt-2: #9aa3af;
-  --txt-3: #626b77;
-
-  --accent: #8338ec;
-  --accent-hi: #9a5cf0;
-  --accent-tint: #241c3b;
-
-  --warn: #f5a623;
-  --danger: #e5484d;
-
-  --r-1: 4px;
-  --ui: 'IBM Plex Sans', system-ui, sans-serif;
-}
+ * The design tokens live in @cuboidy/ui/tokens.css — one set for every
+ * app in this repo, imported before this file. This app kept a copy of
+ * them for a while after that move, and because it was imported second it
+ * quietly won: --r-1 stayed at 4px here against the editor's 3px, which
+ * is exactly the drift extracting them was supposed to end. Everything
+ * here is the workspace itself. */
 
 * {
   box-sizing: border-box;
@@ -104,13 +83,6 @@ code {
    have seen them. The grid reflows with the panel — docked narrow it
    gives two columns, widened it gives as many as fit — so the same
    component serves a sidebar and a full pane. */
-
-.socket-list,
-.problem-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
 
 .model-grid {
   list-style: none;
@@ -247,25 +219,12 @@ code {
   color: var(--warn);
 }
 
-/* ── sockets + problems ──────────────────────────────────────────── */
+/* ── problems ────────────────────────────────────────────────────── */
 
-.socket-row {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.25rem 0.4rem;
-  border-radius: var(--r-1);
-}
-
-.socket-row-icon {
-  color: var(--accent-hi);
-  flex-shrink: 0;
-}
-
-.socket-row-target {
-  margin-left: auto;
-  color: var(--txt-3);
-  font-size: 0.7rem;
+.problem-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
 .problem-list li {
@@ -345,8 +304,18 @@ code {
 
 /* Nothing to select and nothing to drag: the only thing you do to a
    socket row is drop on it. */
-.tree-row.socket-target {
+.tree-row.socket-slot {
   cursor: default;
+}
+
+/* What the published name resolves to, `part:socket`. Right-aligned and
+   set back — it is reference material, not the name you attach by. */
+.socket-target {
+  margin-left: auto;
+  color: var(--txt-3);
+  font-size: 0.68rem;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .tree-warn {

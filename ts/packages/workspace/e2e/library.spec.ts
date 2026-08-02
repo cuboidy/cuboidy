@@ -58,13 +58,24 @@ test('the scene starts empty and says how to fill it', async ({ page }) => {
   // canvas is legitimately not blank with an empty scene.
 });
 
-test('selecting a model shows its published sockets', async ({ page }) => {
-  await openLibrary(page, MODELS);
-  await page.locator('.model-card-name', { hasText: /^knight$/ }).click();
+test('a placed model shows what it publishes, and what each resolves to', async ({
+  page,
+}) => {
   // knight publishes `weapon` and `crest` (SPEC §6.12) — the attachment
-  // points a scene hooks onto.
-  await expect(page.locator('.socket-row-name')).toHaveText(['weapon', 'crest']);
-  await expect(page.locator('.socket-row-target').first()).toHaveText('hand-r:grip');
+  // points a scene hooks onto. Both live in the Instances tree now; the
+  // Published sockets panel that used to hold them was a second view of
+  // the same fact.
+  await openLibrary(page, MODELS);
+  await place(page, 'knight');
+  await expect(page.locator('.scene-tree-panel .socket-name')).toHaveText([
+    'weapon',
+    'crest',
+  ]);
+  // The part:socket a published name resolves to — what you need when the
+  // socket is in the wrong place and a model has to be fixed.
+  await expect(
+    page.locator('.scene-tree-panel .socket-target').first(),
+  ).toHaveText('hand-r:grip');
 });
 
 test('double-clicking a model puts it in the scene and draws it', async ({ page }) => {
@@ -187,14 +198,16 @@ test('removing a host detaches what it carried rather than deleting it', async (
   await expect(instanceNames(page)).toHaveText(['sword']);
 });
 
-test('a model that publishes nothing says so, rather than showing an empty list', async ({
-  page,
-}) => {
+test('a scene with nothing to attach to says so', async ({ page }) => {
+  // The teaching moment the removed panel used to carry: a model that
+  // publishes nothing cannot host anything, and being told beats an empty
+  // list. The Attachment panel is where you find out, because that is
+  // where you go to try.
   await openLibrary(page, MODELS);
-  await page.locator('.model-card-name', { hasText: /^sword$/ }).click();
+  await place(page, 'sword'); // publishes nothing
   await expect(
-    page.locator('.dock-leaf', { hasText: 'Published sockets' }),
-  ).toContainText('publishes no sockets');
+    page.locator('.dock-leaf', { hasText: 'Attachment' }),
+  ).toContainText('nowhere to attach');
 });
 
 test('playing a clip moves the model, and carries what is attached to it', async ({

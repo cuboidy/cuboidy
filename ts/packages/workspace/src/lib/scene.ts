@@ -421,6 +421,12 @@ export type PanelRow =
       // something in the scene is attached to that name anyway. The row
       // exists so the guest under it has somewhere to be.
       published: boolean;
+      // What the published name resolves to, `part:socket` (§6.12).
+      // Undefined for an unpublished one. This is the fact the tree could
+      // not otherwise carry — the published name is the contract, but
+      // when a socket is in the wrong PLACE this is what says which part
+      // to go and fix.
+      target?: string;
       children: PanelRow[];
     };
 
@@ -434,7 +440,8 @@ export function panelTree(placed: readonly PlacedInstance[]): PanelRow[] {
 
 function toPanelRow(node: SceneNode): PanelRow {
   const host = node.placed.instance.id;
-  const published = Object.keys(node.placed.model.manifest.sockets ?? {});
+  const map = node.placed.model.manifest.sockets ?? {};
+  const published = Object.keys(map);
   // Every published socket gets a row, plus any name a guest claims that
   // the host does not publish — appended, so the model's own order (which
   // the author chose) is not disturbed by a broken reference.
@@ -447,16 +454,20 @@ function toPanelRow(node: SceneNode): PanelRow {
     ),
   ];
 
-  const rows: PanelRow[] = [...published, ...extra].map((socket) => ({
-    kind: 'socket',
-    key: `sock:${host}/${socket}`,
-    host,
-    socket,
-    published: published.includes(socket),
-    children: node.children
-      .filter((c) => c.placed.instance.attach?.socket === socket)
-      .map(toPanelRow),
-  }));
+  const rows: PanelRow[] = [...published, ...extra].map((socket) => {
+    const to = map[socket];
+    return {
+      kind: 'socket',
+      key: `sock:${host}/${socket}`,
+      host,
+      socket,
+      published: published.includes(socket),
+      ...(to !== undefined && { target: `${to.part}:${to.socket}` }),
+      children: node.children
+        .filter((c) => c.placed.instance.attach?.socket === socket)
+        .map(toPanelRow),
+    };
+  });
 
   return {
     kind: 'instance',

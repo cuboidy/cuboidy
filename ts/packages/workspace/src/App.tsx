@@ -16,7 +16,7 @@ import {
   type PanelContent,
   type Side,
 } from '@cuboidy/ui';
-import { ModelList, SocketList } from './components/ModelList.js';
+import { ModelList } from './components/ModelList.js';
 import { SceneView } from './components/SceneView.js';
 import { DragLayer } from './components/DragLayer.js';
 import { AnimationPanel } from './components/AnimationPanel.js';
@@ -368,15 +368,6 @@ export function App() {
             title,
             fill: true,
             body: <pre className="source-view">{serializeScene(scene)}</pre>,
-          };
-        case 'sockets':
-          return {
-            title,
-            body: (
-              <div className="panel-body">
-                <SocketList model={detailModel} />
-              </div>
-            ),
           };
         case 'problems':
           return {
