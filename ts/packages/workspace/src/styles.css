@@ -415,23 +415,6 @@ code {
   flex-shrink: 0;
 }
 
-/* Row actions stay out of the way until the row is under the pointer,
-   the way the part tree's visibility toggle does. */
-.tree-action {
-  flex-shrink: 0;
-  opacity: 0;
-}
-
-.tree-row:hover .tree-action,
-.tree-row.selected .tree-action,
-.tree-action:focus-visible {
-  opacity: 1;
-}
-
-.tree-action:hover {
-  color: var(--danger);
-}
-
 /* ── attachment properties ───────────────────────────────────────── */
 
 .attach-props {
@@ -479,6 +462,19 @@ code {
   color: var(--txt-3);
   font-size: 0.7rem;
   white-space: nowrap;
+}
+
+/* Destructive actions, set off below everything else — the editor's part
+   inspector ends the same way. */
+.prop-footer {
+  margin-top: 0.25rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+  display: flex;
+}
+
+.prop-footer .btn {
+  flex: 1;
 }
 
 /* A labelled group whose control is a row of number fields — the label

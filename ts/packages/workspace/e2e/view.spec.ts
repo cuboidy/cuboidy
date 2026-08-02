@@ -15,9 +15,9 @@ import { instancePose, openLibrary, place } from './helpers.js';
 const REPO_ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '../../../..');
 const MODELS = resolve(REPO_ROOT, 'models');
 
-// Scoped, because accessible-name matching is by substring and the tree
-// rows carry a "Remove <id>" button on every instance — which matches
-// "Move".
+// Scoped, because accessible-name matching is by substring and other
+// controls carry names that contain these — "Remove from scene" matches
+// "Move", and every tree row has a "Hide <id>".
 const tools = (page: Page) => page.getByRole('toolbar', { name: 'Scene tools' });
 const gizmos = (page: Page) =>
   page.getByRole('group', { name: 'Selected-instance gizmos' });

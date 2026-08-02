@@ -84,9 +84,47 @@
 }
 
 .btn:hover:not(:disabled) {
+  background: var(--bg-4);
   border-color: var(--line-2);
 }
 
+/* Intent modifiers change only the palette; the skeleton above is the
+   same for all of them, and .btn's transparent border keeps the bordered
+   intents the same size as the borderless ones. */
+
+.btn-danger {
+  background: var(--danger-bg);
+  color: var(--danger-fg);
+  border-color: var(--danger-border);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--danger-hover);
+}
+
+.btn-warning {
+  background: var(--warn-bg);
+  color: var(--warn);
+  border-color: var(--warn-border);
+}
+
+.btn-warning:hover:not(:disabled) {
+  background: var(--warn-hover);
+}
+
+/* Dashed = creates something that doesn't exist yet. */
+.btn-create {
+  background: var(--create-bg);
+  color: var(--create-fg);
+  border: 1px solid var(--create-border);
+}
+
+.btn-create:hover:not(:disabled) {
+  background: var(--create-hover);
+  border-color: var(--accent-lo);
+}
+
+/* Dense contexts: panel toolbars, inline actions. */
 .btn-sm {
   padding: 0.2rem 0.55rem;
   font-size: 0.78rem;

@@ -139,3 +139,47 @@ svg.ficon-json {
   animation: text-input-invalid 0.45s ease-out;
 }
 
+
+/* A row's trailing control: the visibility toggle.
+ *
+ * Like VS Code — hidden until the row is hovered, selected or focused, so
+ * a settled tree is names and nothing else, but ALWAYS shown when the
+ * thing is hidden, or there would be no way to find it and bring it back.
+ *
+ * The row's only trailing control on purpose. Destructive actions live in
+ * the panel that describes the thing, where you can see what you are
+ * about to lose; a delete button revealed on hover, one pixel from a
+ * toggle, is a delete button you hit by accident. The workspace's
+ * Instances tree carried an × here until the editor's arrangement won. */
+.tree-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: 0.4rem;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--txt-3);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.tree-row:hover .tree-action,
+.tree-row.selected .tree-action,
+.tree-row.hidden .tree-action,
+.tree-action:focus-visible {
+  opacity: 1;
+}
+
+.tree-action:hover,
+.tree-row.selected .tree-action {
+  color: var(--txt-1);
+}
+
+/* A hidden row still reads as a row, set back. Dimming the NAME only
+   keeps the icon and the eye-off legible — the two things you need to
+   find it again. */
+.tree-row.hidden .tree-name {
+  opacity: 0.4;
+}

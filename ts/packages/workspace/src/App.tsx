@@ -96,6 +96,12 @@ export function App() {
   const [viewMode, setViewMode] = useState<SceneViewMode>('anim');
   const [tool, setTool] = useState<SceneTool>('select');
   const [gizmos, setGizmos] = useState<SceneGizmos>(DEFAULT_GIZMOS);
+  // Instances the view skips drawing. A viewer preference, not scene
+  // content: it outlives a selection and is never written to the file,
+  // the same as the editor treats a hidden part.
+  const [hiddenInstances, setHiddenInstances] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   // A library card in flight: which model, and where it would land. Held
   // here because three separate places need it — the layer that follows
   // the cursor, the 3D view that resolves the landing point, and the drop
@@ -111,6 +117,7 @@ export function App() {
     setSavedText(null);
     setNotice(null);
     setSelected(null);
+    setHiddenInstances(new Set());
     setBrowsing(next.models[0]?.dir ?? null);
   }, []);
 
@@ -335,11 +342,16 @@ export function App() {
                   rows={rows}
                   all={placed}
                   selected={selected}
+                  hidden={hiddenInstances}
                   onSelect={setSelected}
-                  onRemove={(id2) => {
-                    setScene((s) => removeInstance(s, id2));
-                    setSelected((cur) => (cur === id2 ? null : cur));
-                  }}
+                  onToggleVisible={(id2) =>
+                    setHiddenInstances((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(id2)) next.delete(id2);
+                      else next.add(id2);
+                      return next;
+                    })
+                  }
                   onRename={(from, to) => {
                     setScene((s) => renameInstance(s, from, to));
                     setSelected((cur) => (cur === from ? to : cur));
@@ -372,6 +384,7 @@ export function App() {
                 tool={effectiveTool}
                 toolDisabled={toolDisabled}
                 gizmos={gizmos}
+                hidden={hiddenInstances}
                 onSelect={setSelected}
                 dragModel={draggedModel}
                 onDropTarget={setDropTarget}
@@ -413,6 +426,10 @@ export function App() {
                   onPlace={(id2, patch) =>
                     setScene((s) => setPlacement(s, id2, patch))
                   }
+                  onRemove={(id2) => {
+                    setScene((s) => removeInstance(s, id2));
+                    setSelected((cur) => (cur === id2 ? null : cur));
+                  }}
                 />
               </div>
             ),
@@ -467,6 +484,7 @@ export function App() {
       animUnavailable,
       toolDisabled,
       gizmos,
+      hiddenInstances,
       draggedModel,
     ],
   );

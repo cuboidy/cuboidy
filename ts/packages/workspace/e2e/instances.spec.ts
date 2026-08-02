@@ -7,6 +7,8 @@ import {
   instanceOrigin,
   openLibrary,
   place,
+  renderHost,
+  renderMeshes,
   socketRow,
 } from './helpers.js';
 
@@ -14,6 +16,13 @@ import {
 
 const REPO_ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '../../../..');
 const MODELS = resolve(REPO_ROOT, 'models');
+
+const selectRow = async (
+  page: import('@playwright/test').Page,
+  id: string,
+): Promise<void> => {
+  await row(page, id).locator('.tree-name').click();
+};
 
 const row = (page: import('@playwright/test').Page, id: string) =>
   page.locator('.scene-tree-panel .tree-row[draggable]', {
@@ -58,6 +67,67 @@ test('an attached instance keeps the same icon as a free one', async ({
     .locator('.tree-icon svg')
     .getAttribute('class');
   expect(attached).toBe(free);
+});
+
+test('an instance can be hidden from the row, as a part can', async ({ page }) => {
+  // The row's one trailing control, matching the editor's Parts tree.
+  await openLibrary(page, MODELS);
+  await place(page, 'knight');
+  const eye = page.getByRole('button', { name: 'Hide knight' });
+  await expect(eye).toHaveAttribute('aria-pressed', 'false');
+  expect(await renderMeshes(page, 'knight')).toBeGreaterThan(0);
+
+  await eye.click();
+  await expect(page.getByRole('button', { name: 'Show knight' })).toBeVisible();
+  // Gone from the 3D, still in the scene.
+  expect(await renderMeshes(page, 'knight')).toBe(0);
+  await expect(instanceNames(page)).toHaveText(['knight']);
+});
+
+test('a hidden row keeps its eye showing, so it can be found again', async ({
+  page,
+}) => {
+  // Revealed on hover would mean hunting for the row you cannot see.
+  await openLibrary(page, MODELS);
+  await place(page, 'knight');
+  await page.getByRole('button', { name: 'Hide knight' }).click();
+  await expect(page.getByRole('button', { name: 'Show knight' })).toHaveCSS(
+    'opacity',
+    '1',
+  );
+  await page.getByRole('button', { name: 'Show knight' }).click();
+  expect(await renderMeshes(page, 'knight')).toBeGreaterThan(0);
+});
+
+test('hiding a host leaves what it carries on screen', async ({ page }) => {
+  // Two instances, not one thing: the guest's group still hangs off the
+  // host's, so the host's transform still carries it — only its own
+  // meshes go.
+  await openLibrary(page, MODELS);
+  await place(page, 'knight');
+  await place(page, 'sword');
+  await row(page, 'sword').dragTo(socketRow(page, 'weapon'));
+  await page.getByRole('button', { name: 'Hide knight' }).click();
+  expect(await renderMeshes(page, 'knight')).toBe(0);
+  expect(await renderMeshes(page, 'sword')).toBeGreaterThan(0);
+  // Still hanging off the host, still up in the hand.
+  expect(await renderHost(page, 'sword')).toBe('knight');
+  expect((await instanceOrigin(page, 'sword'))![1]).toBeGreaterThan(10);
+});
+
+test('removing is a Properties action, not a row one', async ({ page }) => {
+  // A delete revealed on hover, a pixel from a toggle, is a delete you
+  // hit by accident. The editor keeps Delete part in the inspector and
+  // this now matches.
+  await openLibrary(page, MODELS);
+  await place(page, 'knight');
+  await expect(
+    page.getByRole('button', { name: /^Remove knight$/ }),
+  ).toHaveCount(0);
+
+  await selectRow(page, 'knight');
+  await page.getByRole('button', { name: 'Remove from scene' }).click();
+  await expect(instanceNames(page)).toHaveCount(0);
 });
 
 test('renaming an instance carries what is attached to it', async ({ page }) => {

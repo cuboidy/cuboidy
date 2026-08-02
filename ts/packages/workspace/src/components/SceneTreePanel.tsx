@@ -4,8 +4,9 @@ import {
   Box,
   ChevronDown,
   ChevronRight,
+  Eye,
+  EyeOff,
   Plug,
-  X,
 } from 'lucide-react';
 import { InlineNameInput } from '@cuboidy/ui';
 import type { PanelRow, PlacedInstance } from '../lib/scene.js';
@@ -14,8 +15,9 @@ interface Props {
   rows: readonly PanelRow[];
   all: readonly PlacedInstance[];
   selected: string | null;
+  hidden: ReadonlySet<string>;
   onSelect: (id: string) => void;
-  onRemove: (id: string) => void;
+  onToggleVisible: (id: string) => void;
   onRename: (from: string, to: string) => void;
   // Drop `id` onto a specific socket, or detach it (`target` null).
   onAttach: (
@@ -41,8 +43,9 @@ export function SceneTreePanel({
   rows,
   all,
   selected,
+  hidden,
   onSelect,
-  onRemove,
+  onToggleVisible,
   onRename,
   onAttach,
 }: Props) {
@@ -99,6 +102,7 @@ export function SceneTreePanel({
             row={r}
             depth={0}
             selected={selected}
+            hidden={hidden}
             dragging={dragging}
             dropTarget={dropTarget}
             forbidden={forbidden}
@@ -107,7 +111,7 @@ export function SceneTreePanel({
             nameFree={nameFree}
             onToggle={toggle}
             onSelect={onSelect}
-            onRemove={onRemove}
+            onToggleVisible={onToggleVisible}
             onStartRename={setRenaming}
             onFinishRename={(from, to) => {
               setRenaming(null);
@@ -151,6 +155,7 @@ interface RowProps {
   row: PanelRow;
   depth: number;
   selected: string | null;
+  hidden: ReadonlySet<string>;
   dragging: string | null;
   dropTarget: string | null;
   forbidden: ReadonlySet<string>;
@@ -159,7 +164,7 @@ interface RowProps {
   nameFree: (from: string) => (name: string) => boolean;
   onToggle: (key: string) => void;
   onSelect: (id: string) => void;
-  onRemove: (id: string) => void;
+  onToggleVisible: (id: string) => void;
   onStartRename: (id: string) => void;
   onFinishRename: (from: string, to: string | null) => void;
   onDragStartId: (id: string) => void;
@@ -215,12 +220,13 @@ function InstanceRow({
   row,
   depth,
   selected,
+  hidden,
   dragging,
   renaming,
   nameFree,
   caret,
   onSelect,
-  onRemove,
+  onToggleVisible,
   onStartRename,
   onFinishRename,
   onDragStartId,
@@ -232,6 +238,7 @@ function InstanceRow({
   const { instance, problem } = row.placed;
   const id = instance.id;
   const isRenaming = renaming === id;
+  const isHidden = hidden.has(id);
 
   const onDragStart = (e: DragEvent<HTMLDivElement>): void => {
     e.dataTransfer.effectAllowed = 'move';
@@ -243,6 +250,7 @@ function InstanceRow({
   const cls = [
     'tree-row',
     id === selected ? 'selected' : '',
+    isHidden ? 'hidden' : '',
     dragging === id ? 'dragging' : '',
   ]
     .filter(Boolean)
@@ -289,17 +297,22 @@ function InstanceRow({
       {problem !== undefined && instance.attach === undefined && (
         <AlertTriangle size={12} className="tree-warn" aria-label={problem} />
       )}
+      {/* The row's only trailing control. Removing an instance lives in
+          the Properties panel, where the editor keeps Delete part and
+          where you can see what you are about to lose — an × revealed on
+          hover, a pixel from a toggle, is an × you hit by accident. */}
       <button
         type="button"
-        className="icon-btn tree-action"
-        title={`Remove ${id} from the scene`}
-        aria-label={`Remove ${id}`}
+        className="tree-action"
+        aria-label={`${isHidden ? 'Show' : 'Hide'} ${id}`}
+        aria-pressed={isHidden}
+        title={isHidden ? 'Show in the scene' : 'Hide in the scene'}
         onClick={(e) => {
           e.stopPropagation();
-          onRemove(id);
+          onToggleVisible(id);
         }}
       >
-        <X size={12} />
+        {isHidden ? <EyeOff size={14} /> : <Eye size={14} />}
       </button>
     </div>
   );

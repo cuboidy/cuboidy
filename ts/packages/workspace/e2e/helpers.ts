@@ -97,6 +97,16 @@ export async function renderHost(
   }, id);
 }
 
+// How many meshes an instance is drawing of its own — zero when hidden.
+// The centre pixel cannot answer this: the ground grid is drawn either
+// way, so an empty canvas is legitimately not blank.
+export async function renderMeshes(page: Page, id: string): Promise<number> {
+  return page.evaluate((wanted) => {
+    const w = window as unknown as { __renderMeshes?: (id: string) => number };
+    return w.__renderMeshes?.(wanted) ?? -1;
+  }, id);
+}
+
 // Where an instance's group actually ends up, after every ancestor
 // transform. Compared against the resolved frame, this is what keeps the
 // two paths honest.

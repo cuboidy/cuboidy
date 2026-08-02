@@ -392,7 +392,7 @@ function PartTreeBranch(props: BranchProps) {
         )}
         <button
           type="button"
-          className="part-tree-visibility"
+          className="tree-action"
           aria-label={`${hidden ? 'Show' : 'Hide'} ${node.name}`}
           aria-pressed={hidden}
           title={hidden ? 'Show part' : 'Hide part'}

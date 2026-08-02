@@ -10,6 +10,10 @@ interface Props {
     id: string,
     patch: { pos?: [number, number, number]; rot?: [number, number, number] },
   ) => void;
+  // Here rather than on the tree row, matching the editor's Delete part:
+  // a destructive action belongs in the panel that shows you what it is
+  // about to take, not behind a hover on a list.
+  onRemove: (id: string) => void;
 }
 
 // Everything about the selected instance: what it is, what carries it, and
@@ -31,6 +35,7 @@ export function AttachProperties({
   onAttach,
   onRename,
   onPlace,
+  onRemove,
 }: Props) {
   if (placed === null) return <p className="empty">No instance selected.</p>;
   const { instance } = placed;
@@ -173,6 +178,17 @@ export function AttachProperties({
             />
           ))}
         </div>
+      </div>
+
+      <div className="prop-footer">
+        <button
+          type="button"
+          className="btn btn-danger btn-sm"
+          title={`Remove ${instance.id} from the scene`}
+          onClick={() => onRemove(instance.id)}
+        >
+          Remove from scene
+        </button>
       </div>
     </div>
   );

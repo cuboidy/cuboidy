@@ -38,6 +38,10 @@ interface Props {
   tool: SceneTool;
   toolDisabled: Partial<Record<SceneTool, string>>;
   gizmos: SceneGizmos;
+  // Instances not drawn. Their GROUPS still render, because a hidden host
+  // still carries its guests — hiding a knight should not take the sword
+  // out of the scene with it.
+  hidden: ReadonlySet<string>;
   onSelect: (id: string | null) => void;
   // The model being dragged out of the library, and its outline drawn
   // where it would land. Resolved here because the camera is here.
@@ -84,6 +88,7 @@ export function SceneView({
   tool,
   toolDisabled,
   gizmos,
+  hidden,
   onSelect,
   dragModel,
   onDropTarget,
@@ -158,6 +163,7 @@ export function SceneView({
   //
   //   __renderHost   the instance whose group actually contains this one
   //   __renderWorld  where its group actually ends up
+  //   __renderMeshes how many meshes it is drawing OF ITS OWN
   //
   // A canvas cannot be asked either question, and asserting on
   // window.__scene would only re-check the arithmetic against itself.
@@ -165,8 +171,26 @@ export function SceneView({
     const w = window as unknown as {
       __renderHost?: (id: string) => string | null;
       __renderWorld?: (id: string) => [number, number, number] | null;
+      __renderMeshes?: (id: string) => number;
     };
     const groups = objects.current;
+    // Of its OWN: the walk stops at any descendant that is another
+    // instance's group, so a hidden host carrying a visible guest reads
+    // zero rather than counting the guest's meshes as its own.
+    w.__renderMeshes = (id) => {
+      const g = groups.get(id);
+      if (g === undefined) return 0;
+      let n = 0;
+      const walk = (o: Object3D): void => {
+        for (const c of o.children) {
+          if (typeof c.userData['instanceId'] === 'string') continue;
+          if ((c as { isMesh?: boolean }).isMesh === true) n += 1;
+          walk(c);
+        }
+      };
+      walk(g);
+      return n;
+    };
     w.__renderHost = (id) => {
       let o = groups.get(id)?.parent ?? null;
       while (o !== null) {
@@ -186,6 +210,7 @@ export function SceneView({
     return () => {
       delete w.__renderHost;
       delete w.__renderWorld;
+      delete w.__renderMeshes;
     };
   }, []);
 
@@ -408,6 +433,7 @@ export function SceneView({
             key={n.placed.instance.id}
             node={n}
             selected={selected}
+            hidden={hidden}
             gizmos={gizmos}
             register={register}
             onSelect={onSelect}
@@ -524,12 +550,14 @@ export function SceneView({
 function InstanceMesh({
   node,
   selected,
+  hidden,
   gizmos,
   register,
   onSelect,
 }: {
   node: SceneNode;
   selected: string | null;
+  hidden: ReadonlySet<string>;
   gizmos: SceneGizmos;
   register: (id: string, obj: Object3D | null) => void;
   onSelect: (id: string) => void;
@@ -597,7 +625,7 @@ function InstanceMesh({
           onSelect(id);
         }}
       >
-        {view !== null && (
+        {view !== null && !hidden.has(id) && (
           <>
             <RiggedParts
               roots={view.roots}
@@ -619,6 +647,7 @@ function InstanceMesh({
             key={c.placed.instance.id}
             node={c}
             selected={selected}
+            hidden={hidden}
             gizmos={gizmos}
             register={register}
             onSelect={onSelect}

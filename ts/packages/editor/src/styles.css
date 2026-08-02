@@ -37,42 +37,6 @@ pre {
    Segmented controls (.view-toggle), dock tabs and tree rows keep their
    own patterns. The transparent border keeps bordered intents (danger/
    warning/create) the same size as borderless ones. */
-.btn:hover:not(:disabled) {
-  background: var(--bg-4);
-}
-
-.btn-danger {
-  background: var(--danger-bg);
-  color: var(--danger-fg);
-  border-color: var(--danger-border);
-}
-
-.btn-danger:hover:not(:disabled) {
-  background: var(--danger-hover);
-}
-
-.btn-warning {
-  background: var(--warn-bg);
-  color: var(--warn);
-  border-color: var(--warn-border);
-}
-
-.btn-warning:hover:not(:disabled) {
-  background: var(--warn-hover);
-}
-
-/* Dashed = creates something that doesn't exist yet. */
-.btn-create {
-  background: var(--create-bg);
-  color: var(--create-fg);
-  border: 1px solid var(--create-border);
-}
-
-.btn-create:hover:not(:disabled) {
-  background: var(--create-hover);
-  border-color: var(--accent-lo);
-}
-
 /* Dense contexts: panel toolbars, inline actions. */
 .btn-sm {
   padding: 0.25rem 0.6rem;
@@ -1008,43 +972,6 @@ pre {
 }
 
 /* Hidden-part dim — a Parts-only state layered on the shared row. */
-.tree-row.hidden .tree-name {
-  opacity: 0.4;
-}
-
-/* Visibility toggle at the right end of a part row (name flex:1 pushes
-   it over). */
-/* Eye / eye-off toggle. Like VS Code: the eye is revealed on hover for a
-   visible part, but a hidden part keeps its eye-off showing so the state
-   reads without hovering. */
-.part-tree-visibility {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  margin-left: 0.4rem;
-  padding: 0;
-  background: none;
-  border: none;
-  color: var(--txt-3);
-  cursor: pointer;
-  opacity: 0;
-}
-
-.tree-row:hover .part-tree-visibility,
-.tree-row.selected .part-tree-visibility,
-.tree-row.hidden .part-tree-visibility {
-  opacity: 1;
-}
-
-.part-tree-visibility:hover {
-  color: var(--txt-1);
-}
-
-.tree-row.selected .part-tree-visibility {
-  color: var(--txt-1);
-}
-
 /* Target-file picker on the new-part draft row (multi-file models
    only). Compact sibling of the name input; option text is the full
    package-relative path so same-named files in different folders stay

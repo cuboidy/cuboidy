@@ -193,7 +193,10 @@ test('removing a host detaches what it carried rather than deleting it', async (
   await page.locator('.scene-tree-panel .tree-row[draggable] .tree-name', { hasText: /^sword$/ }).click();
   await page.locator('.field', { hasText: 'attached to' }).locator('select')
     .selectOption('knight');
-  await page.getByRole('button', { name: 'Remove knight' }).click();
+  // Removing is a Properties action now, as Delete part is in the editor —
+  // so it acts on the SELECTION and you can see what it will take.
+  await page.locator('.scene-tree-panel .tree-row[draggable] .tree-name', { hasText: /^knight$/ }).click();
+  await page.getByRole('button', { name: 'Remove from scene' }).click();
   // The sword survives, at the scene root.
   await expect(instanceNames(page)).toHaveText(['sword']);
 });
