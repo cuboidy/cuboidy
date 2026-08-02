@@ -53,15 +53,6 @@ export function quatMultiply(a: QuatTuple, b: QuatTuple): QuatTuple {
   ];
 }
 
-// The inverse of a UNIT quaternion. Every quaternion this module
-// produces is unit (they all come from quatFromEulerZXYDeg or products
-// of such), so the conjugate is the inverse and no normalisation is
-// needed. Used to undo a frame: given a composed q and a known left
-// factor, q_rest = conj(q_left) ⊗ q.
-export function quatConjugate(q: QuatTuple): QuatTuple {
-  return [-q[0], -q[1], -q[2], q[3]];
-}
-
 // Rotate a vector by a unit quaternion: q v q⁻¹, expanded via the
 // standard t = 2(q_v × v) shortcut.
 export function quatRotateVec3(q: QuatTuple, v: Vec3Tuple): [number, number, number] {

@@ -3,7 +3,7 @@ import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { Box, Crosshair, MousePointer2, Move, Plug, Rotate3d } from 'lucide-react';
 import { Vector3, type Camera, type Object3D } from 'three';
-import type { Geometry, Palette } from '@cuboidy/core';
+import { quatFromEulerZXYDeg, type Geometry, type Palette } from '@cuboidy/core';
 import {
   RiggedParts,
   ToggleGroup,
@@ -16,7 +16,7 @@ import {
   computeSceneSpan,
 } from '@cuboidy/ui';
 import type { LibraryModel } from '../lib/library.js';
-import { localPosFrom, type PlacedInstance } from '../lib/scene.js';
+import { drawTree, type PlacedInstance, type SceneNode } from '../lib/scene.js';
 import type { SceneGizmos, SceneTool, SceneViewMode } from '../lib/view.js';
 import {
   dropKey,
@@ -97,6 +97,9 @@ export function SceneView({
   const selectedPlaced =
     placed.find((p) => p.instance.id === selected) ?? null;
 
+  // Guests nested under their hosts, so a host's transform carries them.
+  const roots = useMemo(() => drawTree(placed), [placed]);
+
   // id → the instance's outer group, registered from inside the canvas so
   // the transform gizmo has something to attach to.
   const objects = useRef(new Map<string, Object3D>());
@@ -133,6 +136,44 @@ export function SceneView({
     },
     [onDropTarget],
   );
+
+  // Two read-only hooks for the tests, both about the RENDERED scene
+  // rather than the resolved one — the distinction the flat graph got
+  // wrong, where placeScene said a guest was on its host's socket and the
+  // screen showed it a drag behind.
+  //
+  //   __renderHost   the instance whose group actually contains this one
+  //   __renderWorld  where its group actually ends up
+  //
+  // A canvas cannot be asked either question, and asserting on
+  // window.__scene would only re-check the arithmetic against itself.
+  useEffect(() => {
+    const w = window as unknown as {
+      __renderHost?: (id: string) => string | null;
+      __renderWorld?: (id: string) => [number, number, number] | null;
+    };
+    const groups = objects.current;
+    w.__renderHost = (id) => {
+      let o = groups.get(id)?.parent ?? null;
+      while (o !== null) {
+        const owner = o.userData['instanceId'];
+        if (typeof owner === 'string') return owner;
+        o = o.parent;
+      }
+      return null;
+    };
+    w.__renderWorld = (id) => {
+      const g = groups.get(id);
+      if (g === undefined) return null;
+      g.updateWorldMatrix(true, false);
+      const v = new Vector3().setFromMatrixPosition(g.matrixWorld);
+      return [v.x, v.y, v.z];
+    };
+    return () => {
+      delete w.__renderHost;
+      delete w.__renderWorld;
+    };
+  }, []);
 
   // Where a published socket is on screen, for the tests. A drop onto a
   // socket is aimed with the pointer, so a test that wants to prove the
@@ -316,14 +357,14 @@ export function SceneView({
         {dragModel !== null && target !== null && (
           <DropPreview model={dragModel} target={target} />
         )}
-        {placed.map((p) => (
+        {roots.map((n) => (
           <InstanceMesh
-            key={p.instance.id}
-            placed={p}
-            selected={p.instance.id === selected}
+            key={n.placed.instance.id}
+            node={n}
+            selected={selected}
             gizmos={gizmos}
             register={register}
-            onSelect={() => onSelect(p.instance.id)}
+            onSelect={onSelect}
           />
         ))}
         {transformMode !== null && selectedPlaced !== null && (
@@ -336,16 +377,15 @@ export function SceneView({
             // than anything in a scene is measured on. Shift still drops
             // to 0.1.
             snapCoarse={1}
-            // The group's quaternion is base ⊗ placement.rot; factoring
-            // the base out on the left leaves exactly the stored value.
-            factorOutLeft={selectedPlaced.base.quat}
+            // Nothing to factor out. The gizmo attaches to the inner
+            // group, whose parent is the socket (or the world), so its
+            // local transform IS the stored placement — TransformControls
+            // edits exactly the value that gets written. Before the
+            // nesting this needed the world frame un-rotated back into
+            // socket space on every commit.
+            factorOutLeft={undefined}
             factorOutRight={undefined}
-            onCommitPosition={(p) =>
-              onMove(
-                selectedPlaced.instance.id,
-                localPosFrom(selectedPlaced.base, p),
-              )
-            }
+            onCommitPosition={(p) => onMove(selectedPlaced.instance.id, p)}
             onCommitRotation={(r) => onRotate(selectedPlaced.instance.id, r)}
           />
         )}
@@ -361,19 +401,32 @@ export function SceneView({
   );
 }
 
+// One instance and everything hanging off it.
+//
+// The nesting is the point. A guest sits inside its host's group, behind
+// the socket's own frame, so the host's transform carries it — including
+// while a gizmo is mutating that transform imperatively mid-drag, which a
+// sibling would not hear about until the drag committed.
+//
+// Two groups per instance, not one: the outer carries the model into the
+// frame it belongs to (the world for a free instance, the socket for a
+// guest), and the inner carries the PLACEMENT. Keeping them apart is what
+// makes the inner group's local transform exactly the stored value, so a
+// move commit is `target.position` with no conversion at all.
 function InstanceMesh({
-  placed,
+  node,
   selected,
   gizmos,
   register,
   onSelect,
 }: {
-  placed: PlacedInstance;
-  selected: boolean;
+  node: SceneNode;
+  selected: string | null;
   gizmos: SceneGizmos;
   register: (id: string, obj: Object3D | null) => void;
-  onSelect: () => void;
+  onSelect: (id: string) => void;
 }) {
+  const placed = node.placed;
   const view = useMemo(() => {
     const geometry = viewGeometry(placed.model);
     if (geometry === null) return null;
@@ -389,42 +442,91 @@ function InstanceMesh({
   // Registration is unconditional on mount/unmount, so it must not sit
   // behind the `view === null` early return below.
   const ref = useCallback(
-    (obj: Object3D | null) => register(id, obj),
+    (obj: Object3D | null) => {
+      if (obj !== null) obj.userData['instanceId'] = id;
+      register(id, obj);
+    },
     [register, id],
   );
-  if (view === null) return null;
 
-  const [x, y, z] = placed.frame.pos;
-  const q = placed.frame.quat;
+  // Where this instance's frame comes from. A nested guest measures from
+  // the socket in its HOST MODEL's space — the host's group has already
+  // put that space in the world. A root instance measures from the world
+  // directly, which for an unresolved attachment means the frame
+  // placeScene worked out rather than a host it could not find.
+  const base = placed.attachAt;
+  const outer: [number, number, number] = base === null ? [0, 0, 0] : [...base.pos];
+  const outerQuat: [number, number, number, number] =
+    base === null
+      ? [0, 0, 0, 1]
+      : [base.quat[0], base.quat[1], base.quat[2], base.quat[3]];
+  const inner: [number, number, number] =
+    base === null ? [...placed.frame.pos] : [...placed.instance.placement.pos];
+  const innerQuat: [number, number, number, number] =
+    base === null
+      ? [
+          placed.frame.quat[0],
+          placed.frame.quat[1],
+          placed.frame.quat[2],
+          placed.frame.quat[3],
+        ]
+      : placementQuat(placed.instance.placement.rot);
+
   return (
-    <group
-      ref={ref}
-      position={[x, y, z]}
-      quaternion={[q[0], q[1], q[2], q[3]]}
-      onClick={(e) => {
-        // An orbit or gizmo drag ends in a click too, and r3f's delta (px
-        // moved between down and up) is what tells them apart. RiggedParts
-        // guards its own part meshes, but a guarded click does not stop
-        // propagating — so without this the drag would bubble up here and
-        // change the selection out from under the drag.
-        if (e.delta > 2) return;
-        e.stopPropagation();
-        onSelect();
-      }}
-    >
-      <RiggedParts
-        roots={view.roots}
-        palette={view.geometry.palette}
-        partPalettes={view.partPalettes}
-        poses={placed.poses}
-        hiddenParts={EMPTY}
-        selectedPart={null}
-        gizmos={NO_PART_GIZMOS}
-        onSelectPart={onSelect}
-      />
-      {selected && <InstanceGizmos model={placed.model} show={gizmos} />}
+    <group position={outer} quaternion={outerQuat}>
+      <group
+        ref={ref}
+        position={inner}
+        quaternion={innerQuat}
+        onClick={(e) => {
+          // An orbit or gizmo drag ends in a click too, and r3f's delta
+          // (px moved between down and up) is what tells them apart.
+          // RiggedParts guards its own part meshes, but a guarded click
+          // does not stop propagating — so without this the drag would
+          // bubble up here and change the selection out from under it.
+          if (e.delta > 2) return;
+          e.stopPropagation();
+          onSelect(id);
+        }}
+      >
+        {view !== null && (
+          <>
+            <RiggedParts
+              roots={view.roots}
+              palette={view.geometry.palette}
+              partPalettes={view.partPalettes}
+              poses={placed.poses}
+              hiddenParts={EMPTY}
+              selectedPart={null}
+              gizmos={NO_PART_GIZMOS}
+              onSelectPart={() => onSelect(id)}
+            />
+            {id === selected && (
+              <InstanceGizmos model={placed.model} show={gizmos} />
+            )}
+          </>
+        )}
+        {node.children.map((c) => (
+          <InstanceMesh
+            key={c.placed.instance.id}
+            node={c}
+            selected={selected}
+            gizmos={gizmos}
+            register={register}
+            onSelect={onSelect}
+          />
+        ))}
+      </group>
     </group>
   );
+}
+
+function placementQuat(
+  rot: readonly [number, number, number] | undefined,
+): [number, number, number, number] {
+  if (rot === undefined) return [0, 0, 0, 1];
+  const q = quatFromEulerZXYDeg(rot);
+  return [q[0], q[1], q[2], q[3]];
 }
 
 // A resolved model as the geometry-shaped view @cuboidy/ui takes. `palette`

@@ -1,7 +1,6 @@
 import {
   QUAT_IDENTITY,
   publishedSocketFrame,
-  quatConjugate,
   quatFromEulerZXYDeg,
   quatMultiply,
   quatRotateVec3,
@@ -206,12 +205,16 @@ export interface PlacedInstance {
   // World position of the model's ORIGIN (§6.12) and the orientation its
   // axes take — `placement` already applied.
   frame: SocketFrame;
-  // The frame `placement` is measured in: the world for a free instance,
-  // the host's socket for an attached one. Carried because the 3D view
-  // edits WORLD transforms and has to get back to a placement — see
-  // localPosFrom. Also the frame an attached instance falls back to when
-  // its offset is zero, which is what a socket join looks like.
-  base: SocketFrame;
+  // The socket this instance hangs from, in the HOST MODEL's own space —
+  // not the world. Null when it is free, or when the attachment did not
+  // resolve.
+  //
+  // Model space rather than world because the 3D view NESTS a guest under
+  // its host: the host's group already carries the host into the world,
+  // so what the guest needs on top is exactly this. Nesting is what makes
+  // a guest follow while its host is being dragged, rather than jumping
+  // to the new socket once the drag commits.
+  attachAt: SocketFrame | null;
   // This instance's sampled pose, or null for the rest pose. Passed
   // straight to the renderer, AND used to place anything attached to it —
   // a socket on a swinging arm moves, so its guest moves.
@@ -253,6 +256,7 @@ export function placeScene(
     // The frame the instance's placement is measured in. The world, until
     // an attachment says otherwise.
     let base: SocketFrame = { pos: [0, 0, 0], quat: QUAT_IDENTITY };
+    let attachAt: SocketFrame | null = null;
     let problem: string | undefined;
 
     // §6.11: one clip at a time. Playing reads the shared clock; paused
@@ -288,6 +292,7 @@ export function placeScene(
         if (socket === null) {
           problem = `'${hostPlaced.model.dir}' does not publish a socket called '${inst.attach.socket}'`;
         } else {
+          attachAt = socket;
           base = carryOnto(hostPlaced.frame, socket);
         }
       }
@@ -296,7 +301,7 @@ export function placeScene(
     const placed: PlacedInstance = {
       instance: inst,
       model,
-      base,
+      attachAt,
       frame: applyPlacement(base, inst.placement),
       poses,
       ...(problem !== undefined && { problem }),
@@ -350,52 +355,71 @@ function applyPlacement(base: SocketFrame, placement: Placement): SocketFrame {
   };
 }
 
-// The inverse of the offset half: a world position back to the placement
-// that would put the origin there.
-//
-// The 3D view's move gizmo edits a WORLD transform — an attached instance
-// is drawn at its resolved frame, not nested under its host — so getting
-// back to the stored value is a real step, and the one place a sign error
-// would silently misplace everything hanging off a rotated socket. Hence
-// here, next to its forward direction, and tested against it.
-export function localPosFrom(
-  base: SocketFrame,
-  world: readonly [number, number, number],
-): [number, number, number] {
-  const d: [number, number, number] = [
-    world[0] - base.pos[0],
-    world[1] - base.pos[1],
-    world[2] - base.pos[2],
-  ];
-  const local = quatRotateVec3(quatConjugate(base.quat), d);
-  // Back onto the 0.1 authoring grid: the gizmo snapped in world space,
-  // and un-rotating that lands just off it.
-  return [round1(local[0]), round1(local[1]), round1(local[2])];
-}
-
-function round1(v: number): number {
-  return Math.round(v * 10) / 10;
-}
-
-// The tree the model panel shows: free instances at the top, each with
-// whatever hangs off it.
+// A guest under its host.
 export interface SceneNode {
   placed: PlacedInstance;
   children: SceneNode[];
 }
 
+// The tree the Instances panel shows: nested by what the scene CLAIMS, so
+// a row sits under the host it names even when that attachment did not
+// resolve — the reason is reported on the row, and hiding the claim would
+// make the report unattributable.
 export function sceneTree(placed: readonly PlacedInstance[]): SceneNode[] {
+  return buildTree(placed, (p) => p.instance.attach?.to);
+}
+
+// The tree the 3D view draws, nested by what actually RESOLVED.
+//
+// A guest is a real child of its host's group, which is what makes it
+// follow while the host is dragged: a transform gizmo mutates one group's
+// matrix imperatively, and a sibling would simply not hear about it until
+// the drag committed and the whole scene re-resolved.
+//
+// An UNRESOLVED attachment is left at the root, because placeScene draws
+// it at its own placement in world space; hanging it off the host would
+// move it somewhere nothing asked for.
+export function drawTree(placed: readonly PlacedInstance[]): SceneNode[] {
+  return buildTree(placed, (p) =>
+    p.attachAt === null ? undefined : p.instance.attach?.to,
+  );
+}
+
+function buildTree(
+  placed: readonly PlacedInstance[],
+  hostOf: (p: PlacedInstance) => string | undefined,
+): SceneNode[] {
   const nodes = new Map<string, SceneNode>();
-  for (const p of placed) nodes.set(p.instance.id, { placed: p, children: [] });
+  const hosts = new Map<string, string | undefined>();
+  for (const p of placed) {
+    nodes.set(p.instance.id, { placed: p, children: [] });
+    hosts.set(p.instance.id, hostOf(p));
+  }
+
+  // Walking up from the proposed host must terminate. setAttachment
+  // refuses a cycle, but a hand-edited scene file is not required to —
+  // and a cycle here would leave BOTH instances as somebody's child and
+  // neither in the roots, i.e. silently absent from the panel and, now
+  // that the 3D view nests too, from the screen.
+  const effectiveHost = (id: string): string | undefined => {
+    const host = hosts.get(id);
+    if (host === undefined || host === id || !nodes.has(host)) return undefined;
+    const seen = new Set<string>([id]);
+    let cur: string | undefined = host;
+    while (cur !== undefined && nodes.has(cur)) {
+      if (seen.has(cur)) return undefined; // would close a cycle
+      seen.add(cur);
+      cur = hosts.get(cur);
+    }
+    return host;
+  };
+
   const roots: SceneNode[] = [];
   for (const p of placed) {
     const node = nodes.get(p.instance.id)!;
-    const hostId = p.instance.attach?.to;
-    const host = hostId === undefined ? undefined : nodes.get(hostId);
-    // An unresolved attachment shows at the top rather than vanishing —
-    // the problem is reported on the row.
-    if (host === undefined || host === node) roots.push(node);
-    else host.children.push(node);
+    const host = effectiveHost(p.instance.id);
+    if (host === undefined) roots.push(node);
+    else nodes.get(host)!.children.push(node);
   }
   return roots;
 }

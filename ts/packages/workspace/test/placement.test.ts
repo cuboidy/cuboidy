@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { quatFromEulerZXYDeg, quatRotateVec3 } from '@cuboidy/core';
 import { buildLibrary } from '../src/lib/library.js';
 import {
   addInstance,
+  drawTree,
   emptyScene,
-  localPosFrom,
   placeScene,
+  sceneTree,
   setAttachment,
   setPlacement,
   type Scene,
@@ -80,8 +80,7 @@ describe('a free instance', () => {
   it('is placed in world space, unrotated', () => {
     const gem = find(setPlacement(scene(), 'gem', { pos: [3, 1, -2] }), 'gem');
     expect(gem.frame.pos).toEqual([3, 1, -2]);
-    expect(gem.base.pos).toEqual([0, 0, 0]);
-    expect(gem.base.quat).toEqual([0, 0, 0, 1]);
+    expect(gem.attachAt).toBeNull();
   });
 
   it('turns about its own origin, so rotating never moves it', () => {
@@ -96,12 +95,33 @@ describe('an attached instance', () => {
   const attached = (): Scene =>
     setAttachment(scene(), 'gem', { to: 'tower', socket: 'peg' });
 
-  it('measures its base from the socket, orientation included', () => {
+  it('reports the socket in the HOST MODEL space, not the world', () => {
     const gem = find(attached(), 'gem');
-    expect(gem.base.pos).toEqual([0, 2, 0]);
+    expect(gem.attachAt?.pos).toEqual([0, 2, 0]);
     // A quarter turn about Y.
-    expect(gem.base.quat[1]).toBeCloseTo(Math.SQRT1_2, 6);
-    expect(gem.base.quat[3]).toBeCloseTo(Math.SQRT1_2, 6);
+    expect(gem.attachAt!.quat[1]).toBeCloseTo(Math.SQRT1_2, 6);
+    expect(gem.attachAt!.quat[3]).toBeCloseTo(Math.SQRT1_2, 6);
+  });
+
+  it('keeps that frame unchanged when the HOST moves', () => {
+    // The distinction that lets the 3D view nest: the host's own group
+    // carries its model into the world, so what a guest needs on top is
+    // the socket within that model — a value the host's placement must
+    // not appear in, or it would be applied twice.
+    const s = setPlacement(attached(), 'tower', { pos: [10, 0, 5] });
+    const gem = find(s, 'gem');
+    expect(gem.attachAt?.pos).toEqual([0, 2, 0]);
+    // The resolved world frame does move, of course.
+    expect(gem.frame.pos).toEqual([10, 2, 5]);
+  });
+
+  it('has no socket frame when the attachment did not resolve', () => {
+    // Nothing to nest under, so the 3D view leaves it at the root and
+    // draws it where placeScene put it.
+    const s = setAttachment(scene(), 'gem', { to: 'tower', socket: 'gone' });
+    const gem = find(s, 'gem');
+    expect(gem.attachAt).toBeNull();
+    expect(gem.problem).toMatch(/does not publish/);
   });
 
   it('offsets along the SOCKET axes, not the world ones', () => {
@@ -125,41 +145,59 @@ describe('an attached instance', () => {
   });
 });
 
-describe('localPosFrom', () => {
-  it('inverts the forward placement exactly', () => {
-    const base = find(
-      setAttachment(scene(), 'gem', { to: 'tower', socket: 'peg' }),
+// The two trees. The panel nests by what the scene CLAIMS so a problem
+// stays attributable to the host it names; the 3D nests by what RESOLVED,
+// because nesting is a transform and an unresolved guest has none to
+// inherit.
+describe('drawTree', () => {
+  const attached = (): Scene =>
+    setAttachment(scene(), 'gem', { to: 'tower', socket: 'peg' });
+
+  it('nests a resolved guest under its host', () => {
+    const roots = drawTree(placeScene(attached(), LIBRARY));
+    expect(roots.map((n) => n.placed.instance.id)).toEqual(['tower']);
+    expect(roots[0]?.children.map((n) => n.placed.instance.id)).toEqual(['gem']);
+  });
+
+  it('leaves an UNRESOLVED attachment at the root', () => {
+    // placeScene draws it at its own placement in world space; hanging it
+    // off the host would move it somewhere nothing asked for.
+    const s = setAttachment(scene(), 'gem', { to: 'tower', socket: 'gone' });
+    const placed = placeScene(s, LIBRARY);
+    expect(drawTree(placed).map((n) => n.placed.instance.id)).toEqual([
+      'tower',
       'gem',
-    ).base;
-    for (const want of [
-      [0, 0, 0],
-      [1, 0, 0],
-      [-2.5, 3, 0.5],
-      [7, -1.2, -4],
-    ] as [number, number, number][]) {
-      // Forward: the same composition placeScene does.
-      const off = quatRotateVec3(base.quat, want);
-      const world: [number, number, number] = [
-        base.pos[0] + off[0],
-        base.pos[1] + off[1],
-        base.pos[2] + off[2],
-      ];
-      expect(localPosFrom(base, world)).toEqual(want);
-    }
+    ]);
+    // The panel still shows the claim, so the problem has a row to sit on.
+    expect(sceneTree(placed)[0]?.children).toHaveLength(1);
   });
 
-  it('is the identity in an unrotated frame', () => {
-    const base = { pos: [0, 0, 0] as [number, number, number], quat: [0, 0, 0, 1] as const };
-    expect(localPosFrom(base, [4, -1, 2])).toEqual([4, -1, 2]);
-  });
-
-  it('rounds back onto the 0.1 authoring grid', () => {
-    // The gizmo snaps in WORLD space; un-rotating that lands just off the
-    // grid, and the file must never see the float noise.
-    const base = { pos: [0, 0, 0] as [number, number, number], quat: quatFromEulerZXYDeg([0, 37, 0]) };
-    const [x, y, z] = localPosFrom(base, [3, 0, 5]);
-    for (const v of [x, y, z]) {
-      expect(Math.abs(v * 10 - Math.round(v * 10))).toBeLessThan(1e-9);
-    }
+  it('survives a cycle rather than dropping both instances', () => {
+    // setAttachment refuses one, but a hand-edited scene file is not
+    // required to. Before this, a cycle left both as somebody's child and
+    // neither in the roots — absent from the panel and, once the 3D view
+    // nested too, from the screen.
+    const s: Scene = {
+      name: 's',
+      instances: [
+        {
+          id: 'a',
+          model: 'tower',
+          placement: { pos: [0, 0, 0] },
+          attach: { to: 'b', socket: 'peg' },
+        },
+        {
+          id: 'b',
+          model: 'tower',
+          placement: { pos: [0, 0, 0] },
+          attach: { to: 'a', socket: 'peg' },
+        },
+      ],
+    };
+    const placed = placeScene(s, LIBRARY);
+    const ids = (ns: ReturnType<typeof drawTree>): string[] =>
+      ns.flatMap((n) => [n.placed.instance.id, ...ids(n.children)]);
+    expect(ids(drawTree(placed)).sort()).toEqual(['a', 'b']);
+    expect(ids(sceneTree(placed)).sort()).toEqual(['a', 'b']);
   });
 });

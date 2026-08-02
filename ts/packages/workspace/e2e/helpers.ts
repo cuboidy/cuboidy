@@ -62,6 +62,36 @@ export async function thumbnailCoverage(
   }, model);
 }
 
+// The instance whose GROUP actually contains this one, read off the
+// three.js object graph. Distinct from what the scene resolved to: a flat
+// graph can report the right world frame and still leave a guest behind
+// while its host is dragged, because a sibling hears nothing about a
+// matrix mutated in place.
+export async function renderHost(
+  page: Page,
+  id: string,
+): Promise<string | null> {
+  return page.evaluate((wanted) => {
+    const w = window as unknown as { __renderHost?: (id: string) => string | null };
+    return w.__renderHost?.(wanted) ?? null;
+  }, id);
+}
+
+// Where an instance's group actually ends up, after every ancestor
+// transform. Compared against the resolved frame, this is what keeps the
+// two paths honest.
+export async function renderWorld(
+  page: Page,
+  id: string,
+): Promise<[number, number, number] | null> {
+  return page.evaluate((wanted) => {
+    const w = window as unknown as {
+      __renderWorld?: (id: string) => [number, number, number] | null;
+    };
+    return w.__renderWorld?.(wanted) ?? null;
+  }, id);
+}
+
 export async function place(page: Page, model: string): Promise<void> {
   await page.locator('.model-card-name', { hasText: new RegExp(`^${model}$`) })
     .dblclick();
