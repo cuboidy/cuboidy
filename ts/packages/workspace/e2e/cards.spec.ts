@@ -78,6 +78,50 @@ test('the card is still what places a model in the scene', async ({ page }) => {
   ]);
 });
 
+test('a card offers a visible way in, not just gestures', async ({ page }) => {
+  // Dragging has to be guessed at and double-clicking has to be tried.
+  // The + button is the one route that shows itself.
+  await openLibrary(page, MODELS);
+  const cell = page.locator('.model-cell', { hasText: 'knight' }).first();
+  const add = cell.getByRole('button', { name: 'Add knight to the scene' });
+
+  await expect(add).toHaveCSS('opacity', '0');
+  await cell.hover();
+  await expect(add).toHaveCSS('opacity', '1');
+  await add.click();
+  await expect(page.locator('.scene-tree-panel .tree-name')).toHaveText([
+    'knight',
+  ]);
+});
+
+test('the library can be used without a pointer', async ({ page }) => {
+  // Drag and double-click are both mouse gestures; without the + button
+  // there is no keyboard route into the scene at all.
+  await openLibrary(page, MODELS);
+  const add = page
+    .locator('.model-cell', { hasText: 'knight' })
+    .first()
+    .getByRole('button', { name: 'Add knight to the scene' });
+
+  await add.focus();
+  // Focus reveals it: hidden from sight is fine, hidden from Tab is not.
+  await expect(add).toHaveCSS('opacity', '1');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.scene-tree-panel .tree-name')).toHaveText([
+    'knight',
+  ]);
+});
+
+test('the tooltip carries facts, not instructions', async ({ page }) => {
+  // How to use the app does not belong somewhere you have to hover for a
+  // second to read.
+  await openLibrary(page, MODELS);
+  const card = page.locator('.model-card', { hasText: 'knight' }).first();
+  const title = await card.getAttribute('title');
+  expect(title).toContain('part');
+  expect(title).not.toMatch(/drag|double-click/i);
+});
+
 test('a card says whether the model can be attached to', async ({ page }) => {
   // The one fact worth keeping on the card: a model that publishes no
   // socket cannot host anything, and that decides what you reach for.

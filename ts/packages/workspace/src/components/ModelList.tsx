@@ -1,4 +1,4 @@
-import { AlertTriangle, Box, Plug } from 'lucide-react';
+import { AlertTriangle, Box, Plug, Plus } from 'lucide-react';
 import type { Library, LibraryModel } from '../lib/library.js';
 import type { Thumbnail } from '../lib/thumbnail.js';
 
@@ -84,7 +84,11 @@ function ModelCard({
   const published = Object.keys(model.manifest.sockets ?? {}).length;
 
   return (
-    <li>
+    // The add button is a SIBLING laid over the card, not a child of it:
+    // the card is a <button> and a button cannot contain one. Overlaying
+    // also keeps the card's native semantics — Enter and Space select it,
+    // and the focus ring is the browser's.
+    <li className="model-cell">
       <button
         type="button"
         className={`model-card${selected ? ' selected' : ''}`}
@@ -104,7 +108,11 @@ function ModelCard({
         onDragEnd={onDragEnd}
         onClick={onSelect}
         onDoubleClick={onPlace}
-        title={`${model.dir} — ${summary(model)}. Drag into the scene, or double-click.`}
+        // Facts about the model, not instructions for using the app. How
+        // to put one in the scene is the + button's job to show and
+        // `cursor: grab`'s job to say; a tooltip nobody opens is not
+        // where an interaction should be taught.
+        title={`${model.dir} — ${summary(model)}`}
       >
         <span className="model-card-art">
           {thumb === undefined ? (
@@ -142,6 +150,20 @@ function ModelCard({
             />
           )}
         </span>
+      </button>
+      {/* The third way in, and the only one that does not need a
+          pointer: dragging and double-clicking are both mouse gestures,
+          so without this the library cannot be used from a keyboard at
+          all. Revealed on hover AND on focus — hidden from sight is fine,
+          hidden from Tab is not. */}
+      <button
+        type="button"
+        className="model-add"
+        title={`Add ${model.dir} to the scene`}
+        aria-label={`Add ${model.dir} to the scene`}
+        onClick={onPlace}
+      >
+        <Plus size={12} />
       </button>
     </li>
   );

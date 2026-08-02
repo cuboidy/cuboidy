@@ -232,15 +232,24 @@ test('the seek bar scrubs a paused instance', async ({ page }) => {
     .selectOption('walk');
   await page.getByRole('button', { name: 'Pause' }).click();
 
-  const before = await instancePose(page, 'knight');
-  // Drag the range to the middle of the clip.
+  // BOTH ends of the comparison are seeked to. Reading the pose straight
+  // after Pause would compare against wherever the clock happened to
+  // reach between selecting the clip and the click landing — which on a
+  // loaded machine can be the very point the seek then moves to, and the
+  // test fails for a reason that has nothing to do with seeking.
   const bar = page.getByLabel('Seek');
   const box = (await bar.boundingBox())!;
-  await page.mouse.click(box.x + box.width * 0.5, box.y + box.height / 2);
+  const seekTo = async (frac: number): Promise<void> => {
+    await page.mouse.click(box.x + box.width * frac, box.y + box.height / 2);
+  };
+
+  await seekTo(0.2);
+  const before = await instancePose(page, 'knight');
+  await seekTo(0.7);
+  const after = await instancePose(page, 'knight');
 
   // The pose changed, and STAYS changed — a paused instance holds its
   // own point rather than being carried by the shared clock.
-  const after = await instancePose(page, 'knight');
   expect(after).not.toEqual(before);
   await page.waitForTimeout(350);
   expect(await instancePose(page, 'knight')).toEqual(after);
