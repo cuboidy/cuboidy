@@ -1,28 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FolderOpen, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import {
   AppHeader,
   Dock,
   HeaderDivider,
   HeaderGroup,
   UndoRedoGroup,
-  isTextEntryTarget,
   useDockLayout,
-  useSaveFlash,
   type PanelContent,
 } from '@cuboidy/ui';
 import { ModelList } from './components/ModelList.js';
+import { OpenFolderButton } from './components/OpenFolderButton.js';
 import { SceneView } from './components/SceneView.js';
 import { DragLayer } from './components/DragLayer.js';
 import { AttachProperties } from './components/AttachmentPanel.js';
 import { SceneActions } from './components/SceneActions.js';
 import { SceneList } from './components/SceneList.js';
 import { SceneTreePanel } from './components/SceneTreePanel.js';
-import {
-  canUseDirectoryPicker,
-  openLibraryFromInput,
-  openLibraryWithPicker,
-} from './lib/open-folder.js';
 import type { Library } from './lib/library.js';
 import {
   ALL_PANELS,
@@ -44,9 +38,9 @@ import {
 } from './lib/scene-doc.js';
 import { placeScene } from './lib/scene-resolve.js';
 import { panelTree } from './lib/scene-tree.js';
-import { parseScene, serializeScene } from './lib/scene-file.js';
-import { saveScene } from './lib/save-scene.js';
+import { useDeleteKey } from './lib/useDeleteKey.js';
 import { useSceneClock } from './lib/useSceneClock.js';
+import { useSceneDocument } from './lib/useSceneDocument.js';
 import { useSceneHistory } from './lib/useSceneHistory.js';
 import { useThumbnails } from './lib/useThumbnails.js';
 import {
@@ -79,22 +73,10 @@ export function App() {
   const [selected, setSelected] = useState<string | null>(null);
   const [browsing, setBrowsing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Something that needs reading: a save that could only download, a file
-  // that would not parse. NOT "Saved x." — a write that worked says so on
-  // the button and then gets out of the way.
-  const [notice, setNotice] = useState<string | null>(null);
-  // Save-button state; the 'saved' flash decays inside the hook.
-  const {
-    state: saveState,
-    setSaving,
-    flashSaved,
-    reset: resetSaveState,
-  } = useSaveFlash();
-  // Which file the scene came from, and what was in it. Both are the
-  // APP's state rather than the document's: a scene does not know its own
-  // name, and "has it changed" is a question about the pair.
-  const [sceneFile, setSceneFile] = useState<string | null>(null);
-  const [savedText, setSavedText] = useState<string | null>(null);
+  // Which file the scene came from, dirty tracking, open/new/save and the
+  // notice banner (lib/useSceneDocument).
+  const onDocumentSwap = useCallback(() => setSelected(null), []);
+  const doc = useSceneDocument({ scene, library, replace, onDocumentSwap });
   // Dock layout state + the six Dock handlers, from the shared hook.
   const dock = useDockLayout<PanelId>({
     initial: initialLayout,
@@ -121,26 +103,19 @@ export function App() {
   const [dragging, setDragging] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
 
-  const adopt = useCallback((next: Library) => {
-    setLibrary(next);
-    setError(null);
-    replace(emptyScene());
-    setSceneFile(null);
-    setSavedText(null);
-    setNotice(null);
-    setSelected(null);
-    setHiddenInstances(new Set());
-    setBrowsing(next.models[0]?.dir ?? null);
-  }, [replace]);
-
-  const handlePick = useCallback(async () => {
-    try {
-      adopt(await openLibraryWithPicker());
-    } catch (e) {
-      if ((e as Error).name === 'AbortError') return; // user changed their mind
-      setError((e as Error).message);
-    }
-  }, [adopt]);
+  const { resetForLibrary } = doc;
+  const adopt = useCallback(
+    (next: Library) => {
+      setLibrary(next);
+      setError(null);
+      replace(emptyScene());
+      resetForLibrary();
+      setSelected(null);
+      setHiddenInstances(new Set());
+      setBrowsing(next.models[0]?.dir ?? null);
+    },
+    [replace, resetForLibrary],
+  );
 
   // One picture per model, rendered once when the library opens. Also
   // what follows the cursor while a card is dragged.
@@ -158,25 +133,8 @@ export function App() {
     setSelected(null);
   }, [edit, selected]);
 
-  // Delete / Backspace removes the selected instance.
-  //
-  // Held back until there was an undo stack to take it back: without one,
-  // a keypress losing an instance's placement, rotation and attachment
-  // would have been the only irreversible single-key action in either
-  // app — worse than the row × it replaces, which is why that moved to
-  // Properties in the first place.
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
-      // In a text field these keys are text editing, not scene editing.
-      if (isTextEntryTarget(e.target)) return;
-      e.preventDefault();
-      removeSelected();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [removeSelected]);
+  // Delete / Backspace removes the selected instance (lib/useDeleteKey).
+  useDeleteKey(removeSelected);
 
   // Anim view needs something in the scene that can animate — otherwise
   // it is rig view with a different name on it. Derived from the scene
@@ -231,94 +189,6 @@ export function App() {
     selectedPlaced?.model ??
     library?.models.find((m) => m.dir === browsing) ??
     null;
-
-  // What Save would write — also the source panel's body and the dirty
-  // check's left-hand side. Memoized on the scene: during playback only
-  // the clock changes, and serializing the whole scene twice per frame
-  // (dirty + source panel) was measurable work for an unchanged answer.
-  const sourceText = useMemo(() => serializeScene(scene), [scene]);
-
-  // Would saving change the file? Comparing serializations rather than
-  // tracking edits: every mutation would otherwise have to remember to
-  // set a flag, and the one that forgets is invisible.
-  const dirty =
-    savedText === null ? scene.instances.length > 0 : sourceText !== savedText;
-
-  // Now that the app knows whether there is unsaved work, it can stop
-  // throwing it away silently. Both routes out of a scene ask.
-  const mayDiscard = useCallback(
-    (what: string): boolean =>
-      !dirty ||
-      // eslint-disable-next-line no-alert
-      window.confirm(`${what} without saving the current scene?`),
-    [dirty],
-  );
-
-  // Opening a scene replaces the current one. A scene that does not parse
-  // reports why and leaves what is on screen alone — losing an
-  // arrangement to a typo in a different file would be a poor trade.
-  const openSceneFile = useCallback(
-    (file: string) => {
-      const text = library?.scenes.get(file);
-      if (text === undefined) return;
-      if (!mayDiscard(`Open ${file}`)) return;
-      const r = parseScene(text);
-      if (!r.ok) {
-        setNotice(`${file}: ${r.error}`);
-        return;
-      }
-      replace(r.scene);
-      setSceneFile(file);
-      // The SERIALIZATION of what was parsed, not the bytes on disk. A
-      // hand-formatted file, or one still carrying the old `name`, would
-      // otherwise read as modified the moment it opened.
-      setSavedText(serializeScene(r.scene));
-      setSelected(null);
-      setNotice(null);
-    },
-    [library, mayDiscard, replace],
-  );
-
-  const newScene = useCallback(() => {
-    if (!mayDiscard('Start a new scene')) return;
-    replace(emptyScene());
-    setSceneFile(null);
-    setSavedText(null);
-    setSelected(null);
-    setNotice(null);
-  }, [mayDiscard, replace]);
-
-  const handleSaveScene = useCallback(
-    (file: string) => {
-      if (library === null) return;
-      const written = sourceText;
-      setSaving();
-      void saveScene(scene, library, file)
-        .then((out) => {
-          setSceneFile(out.file);
-          setSavedText(written);
-          if (out.kind === 'wrote') {
-            // The button says it and then stops saying it. A banner for
-            // something that simply worked is a banner you learn to
-            // ignore, which is how the next one gets missed too.
-            flashSaved();
-            setNotice(null);
-          } else {
-            // This one needs doing something about: the browser can only
-            // drop a file in Downloads, flat, and it has to be moved.
-            resetSaveState();
-            setNotice(
-              `Downloaded ${out.downloadedAs ?? out.file} — move it to ${library.name}/${out.file}, beside the models it references.`,
-            );
-          }
-        })
-        .catch((e: Error) => {
-          resetSaveState();
-          setNotice(`Could not save: ${e.message}`);
-        });
-    },
-    [scene, library, sourceText, setSaving, flashSaved, resetSaveState],
-  );
 
   // Put a model in the scene, at wherever the drag resolved to (or the
   // origin, for a double-click that expressed no place).
@@ -390,8 +260,8 @@ export function App() {
               <div className="panel-list">
                 <SceneList
                   files={[...library.scenes.keys()].sort()}
-                  current={sceneFile}
-                  onOpen={openSceneFile}
+                  current={doc.sceneFile}
+                  onOpen={doc.openSceneFile}
                 />
               </div>
             ),
@@ -512,7 +382,7 @@ export function App() {
           return {
             title,
             fill: true,
-            body: <pre className="source-view">{sourceText}</pre>,
+            body: <pre className="source-view">{doc.sourceText}</pre>,
           };
         case 'problems':
           return {
@@ -544,10 +414,11 @@ export function App() {
       selectedPlaced,
       detailModel,
       scene,
-      sourceText,
+      doc.sourceText,
+      doc.sceneFile,
+      doc.openSceneFile,
       time,
       seek,
-      openSceneFile,
       effectiveView,
       effectiveTool,
       animUnavailable,
@@ -577,11 +448,11 @@ export function App() {
                 <HeaderDivider />
                 <HeaderGroup>
                   <SceneActions
-                    file={sceneFile}
-                    dirty={dirty}
-                    state={saveState}
-                    onNew={newScene}
-                    onSave={handleSaveScene}
+                    file={doc.sceneFile}
+                    dirty={doc.dirty}
+                    state={doc.saveState}
+                    onNew={doc.newScene}
+                    onSave={doc.save}
                   />
                 </HeaderGroup>
                 <HeaderDivider />
@@ -589,32 +460,7 @@ export function App() {
                 <HeaderDivider />
               </>
             )}
-            {canUseDirectoryPicker() ? (
-              <button type="button" className="btn" onClick={() => void handlePick()}>
-                <FolderOpen size={14} />
-                Open folder
-              </button>
-            ) : (
-              <label className="btn">
-                <FolderOpen size={14} />
-                Open folder
-                <input
-                  type="file"
-                  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-                  {...({ webkitdirectory: '' } as any)}
-                  multiple
-                  hidden
-                  onChange={(e) => {
-                    const files = e.target.files;
-                    if (files !== null && files.length > 0) {
-                      void openLibraryFromInput(files)
-                        .then(adopt)
-                        .catch((err: Error) => setError(err.message));
-                    }
-                  }}
-                />
-              </label>
-            )}
+            <OpenFolderButton onAdopt={adopt} onError={setError} />
           </>
         }
       />
@@ -623,15 +469,15 @@ export function App() {
       {/* Under the header, full width, because both things that land here
           need doing something about — a file to move, or a scene that
           would not open. */}
-      {notice !== null && (
+      {doc.notice !== null && (
         <p className="notice-banner">
-          {notice}
+          {doc.notice}
           <button
             type="button"
             className="icon-btn"
             title="Dismiss"
             aria-label="Dismiss"
-            onClick={() => setNotice(null)}
+            onClick={doc.dismissNotice}
           >
             <X size={13} />
           </button>
