@@ -39,6 +39,12 @@ interface Props {
   // Keep the colors but drop the reference, writing them into the geometry
   // file itself (the palette file is kept — it may be shared).
   onInline?: (() => void) | undefined;
+  // Palette files present in the package (§6.10), package-relative. The
+  // picker below binds one to this target — the operation lives here,
+  // not on a Files-tree row, because a palette belongs to the document
+  // that uses it (§7.4) and this panel is what knows which that is.
+  paletteFiles?: readonly string[] | undefined;
+  onUsePaletteFile?: ((ref: string) => void) | undefined;
 }
 
 // Palette editing as a panel. All edits route through the callbacks; the
@@ -61,8 +67,13 @@ export function PalettePanel({
   onDeleteColor,
   onExternalize,
   onInline,
+  paletteFiles,
+  onUsePaletteFile,
 }: Props) {
   const usage = computePaletteUsage(palette, parts);
+  // The palette files worth offering: every one in the package except
+  // the one this target already uses (picking it would be a no-op).
+  const bindable = (paletteFiles ?? []).filter((p) => p !== target.ref);
   // The document these colors are written in, for the panel's labels: a
   // geometry file, or the manifest when the target is the model-level
   // palette inline parts draw on (SPEC §6.13).
@@ -156,6 +167,29 @@ export function PalettePanel({
         </button>
       )}
       </div>
+      {/* OUTSIDE palette-body on purpose: that div goes pointer-events:
+          none when the panel is disabled, and an UNRESOLVED reference is
+          precisely the state this control exists to fix — pointing
+          somewhere that loads is the way out of it. */}
+      {onUsePaletteFile !== undefined && bindable.length > 0 && (
+        <label className="palette-storage-action palette-use-file">
+          <span>Use palette file</span>
+          <select
+            value=""
+            title={`Point ${owner} at a palette file already in this package. Its colors replace the ones shown here — the voxel indices keep their numbers.`}
+            onChange={(e) => {
+              if (e.target.value !== '') onUsePaletteFile(e.target.value);
+            }}
+          >
+            <option value="">Choose…</option>
+            {bindable.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
     </section>
   );
 }

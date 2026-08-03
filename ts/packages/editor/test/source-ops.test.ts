@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseGeometryText, parseManifest, type Geometry, type Manifest } from '@cuboidy/core';
 import { resolveProjectRefs } from '../src/lib/load-model.js';
-import { applyFileEdit, deleteFileInSource, mapGeometryFiles, mergeGeometries, moveFolderInSource, renameFileInSource, repointPaletteRef, manifestText, primaryGeometry, uniquePartName, withManifest, withManifestText, writeFile } from '../src/lib/source-ops.js';
+import { applyFileEdit, deleteFileInSource, mapGeometryFiles, mergeGeometries, moveFolderInSource, paletteFilesIn, relativeRefFrom, renameFileInSource, repointPaletteRef, manifestText, primaryGeometry, uniquePartName, withManifest, withManifestText, writeFile } from '../src/lib/source-ops.js';
 import type { LoadedSource } from '../src/lib/types.js';
 
 // These are the operations that keep a package's REFERENCES intact while its
@@ -521,6 +521,55 @@ describe('deleteFileInSource', () => {
 
   it('returns null for a path that is not in the package', () => {
     expect(deleteFileInSource(full(), 'nope.json')).toBeNull();
+  });
+});
+
+describe('paletteFilesIn', () => {
+  // Every file in a v0.9 package is `.json`, so the NAME settles nothing:
+  // these tests pin that the content decides, the way the CLI's W07 scan
+  // already does for geometry.
+  it('finds palette files by content, whatever they are called or where', () => {
+    const src = pkg({
+      [MANIFEST]: manifestJson({
+        name: 'm',
+        geometry: ['body.json'],
+        parts: [{ name: 'body' }],
+        animations: { wave: 'anims/wave.json' },
+      }),
+      'body.json': GEO([{ name: 'body', voxels: '0' }], ['#FF0000']),
+      // Named nothing like a palette, in a subfolder, and unreferenced.
+      'gear/autumn.json': PALETTE,
+      'palette.json': PALETTE,
+      'anims/wave.json': CLIP,
+    }, 'body.json');
+    expect(paletteFilesIn(src)).toEqual(['gear/autumn.json', 'palette.json']);
+  });
+
+  it('never mistakes the manifest, a geometry file or a clip for a palette', () => {
+    const src = pkg({
+      [MANIFEST]: manifestJson({
+        name: 'm',
+        geometry: ['body.json'],
+        parts: [{ name: 'body' }],
+        animations: { wave: 'anims/wave.json' },
+      }),
+      'body.json': GEO([{ name: 'body', voxels: '0' }], ['#FF0000']),
+      'anims/wave.json': CLIP,
+      'notes.txt': 'not json at all',
+      'broken.json': '{ this is not json',
+    }, 'body.json');
+    expect(paletteFilesIn(src)).toEqual([]);
+  });
+});
+
+describe('relativeRefFrom', () => {
+  // SPEC §8: a reference is resolved against the file that WROTE it, so
+  // binding a palette has to express the target from the referrer's seat.
+  it('writes a package-relative target as a ref relative to the referrer', () => {
+    expect(relativeRefFrom('body.json', 'palette.json')).toBe('palette.json');
+    expect(relativeRefFrom('gear/body.json', 'palette.json')).toBe('../palette.json');
+    expect(relativeRefFrom('body.json', 'gear/palette.json')).toBe('gear/palette.json');
+    expect(relativeRefFrom('gear/body.json', 'gear/palette.json')).toBe('palette.json');
   });
 });
 

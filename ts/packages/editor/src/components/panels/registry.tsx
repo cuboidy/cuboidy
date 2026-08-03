@@ -45,6 +45,8 @@ export interface EditorPanelContext {
   clipRefs: ReadonlyMap<string, string>;
   partPalettes: Map<string, Palette> | undefined;
   paletteTarget: PaletteTargetInfo | undefined;
+  // Palette files present in the package (§6.10), by content.
+  paletteFiles: readonly string[];
   geometryPaths: readonly string[] | undefined;
   effectiveSelectedPart: string | null;
   treeFileErrors: ReadonlyMap<string, string>;
@@ -367,6 +369,17 @@ export function renderEditorPanel(
               target.file !== undefined && shared && !target.unresolved
                 ? () => paletteEdits.handleInlinePalette(target.file!)
                 : undefined
+            }
+            paletteFiles={ctx.paletteFiles}
+            // Gated on editsBlocked ALONE, not on the panel's `disabled`:
+            // an unresolved reference disables the swatches but must
+            // leave this available, since re-pointing is how that state
+            // gets fixed. A parse error still blocks it — a rewrite
+            // would clobber the in-progress text.
+            onUsePaletteFile={
+              ctx.editsBlocked || manifest === undefined
+                ? undefined
+                : (ref) => paletteEdits.handleUsePaletteFile(target.file, ref)
             }
           />
         ),

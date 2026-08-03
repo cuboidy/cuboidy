@@ -271,6 +271,21 @@ pre {
   margin-top: 0.75rem;
 }
 
+/* Bind an existing palette file (§7.4). A label + select rather than a
+   button, because the operation needs to name WHICH file. */
+.palette-use-file {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--txt-2);
+}
+
+.palette-use-file select {
+  flex: 1;
+  min-width: 0;
+}
+
 .palette-panel .panel-note {
   font-size: 0.75rem;
   color: var(--warn);

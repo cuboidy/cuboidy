@@ -485,6 +485,28 @@ export function classifyPackageFiles(src: LoadedSource): {
   return { loadedGeometry, referencedNonGeometry };
 }
 
+// Every package file whose CONTENT is a §6.10 palette file, sorted.
+//
+// Content decides, not the name. Since v0.9 the manifest, the geometry
+// files, the animation clips and the palettes are all `.json`, so the
+// extension settles nothing — the same reasoning the CLI's W07 scan
+// already applies ("a file is geometry if the geometry reader accepts
+// it"). PaletteFileSchema is `.strict()` on a lone `colors` array, so
+// nothing else in the package can be mistaken for one.
+export function paletteFilesIn(src: LoadedSource): string[] {
+  const out: string[] = [];
+  for (const [path, text] of src.files) {
+    if (path === src.manifestPath) continue;
+    if (!path.toLowerCase().endsWith('.json')) continue;
+    try {
+      if (parsePaletteFile(JSON.parse(text)).ok) out.push(path);
+    } catch {
+      // Not JSON at all — not a palette file either.
+    }
+  }
+  return out.sort();
+}
+
 // Every §7.4 palette path the model's geometry files currently point at.
 // The manifest is not consulted: since v0.9 a palette is referenced by the
 // geometry file that uses it, never model-wide.
@@ -500,7 +522,7 @@ function geometryPaletteRefs(src: LoadedSource): ReadonlySet<string> {
 // a reference written INSIDE `fromFile`. Renaming a palette file has to
 // rewrite each referrer's ref, and a bare package-relative path would be
 // wrong for any referrer that is not at the root (§8).
-function relativeRefFrom(fromFile: string, target: string): string {
+export function relativeRefFrom(fromFile: string, target: string): string {
   const from = fromFile.split('/').slice(0, -1);
   const to = target.split('/');
   const name = to.pop()!;

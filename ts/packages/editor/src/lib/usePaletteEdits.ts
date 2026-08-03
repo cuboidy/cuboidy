@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { AIR, serializeColor, type Geometry, type Manifest, type Palette, type Part } from '@cuboidy/core';
-import { normalizePath } from './load-model.js';
-import { geometryAt, mapGeometryFiles, modelPalette, paletteFileText, sharesPalette, withInlinePart, withManifest, writeFile } from './source-ops.js';
+import { normalizePath, withResolvedPalette } from './load-model.js';
+import { geometryAt, mapGeometryFiles, modelPalette, paletteFileText, relativeRefFrom, sharesPalette, withInlinePart, withManifest, writeFile } from './source-ops.js';
 import type { LoadResult, LoadedSource } from './types.js';
 import { useSourceMutations } from './useSourceMutations.js';
 
@@ -218,10 +218,57 @@ export function usePaletteEdits({ dispatchEdit, editsBlocked }: Params) {
     },
     [mutateSource],
   );
+  // Point this palette at an EXISTING palette file — the third storage
+  // move, beside Externalize (colors out to a NEW file) and Inline (a
+  // file's colors back into the document). It is what "use the palette
+  // I already have" means, and it lives HERE rather than on a file-tree
+  // row because §7.4 binds a palette to the document that uses it: this
+  // panel is the one place that knows which document that is, so there
+  // is no target to guess.
+  //
+  // `ref` is package-relative; a geometry file records it relative to
+  // ITSELF (§8). The colors become the target's — voxel indices keep
+  // their numbers and take on new meanings, which is the point of
+  // sharing a palette rather than copying it.
+  const handleUsePaletteFile = useCallback(
+    (file: string | undefined, ref: string) => {
+      mutateSource(null, (src) => {
+        const target = normalizePath(ref);
+        if (!src.files.has(target)) return null;
+        if (file === undefined) {
+          // The manifest's model-level palette (§6.1) takes the same two
+          // forms a geometry file's does, so pointing it at a file is
+          // simply the string form. withManifest re-resolves, which is
+          // what carries the new colors to the inline parts.
+          if (src.manifest === undefined) return null;
+          if (src.manifest.palette === target) return null;
+          return withManifest(src, { ...src.manifest, palette: target });
+        }
+        const geometry = geometryAt(src, file);
+        if (geometry === undefined) return null;
+        const written = relativeRefFrom(file, target);
+        if (geometry.paletteRef === written) return null;
+        // Resolve in the same step: the AST carries the colors it now
+        // renders, while the re-serialized text carries the reference.
+        return mapGeometryFiles(src, (g, path) =>
+          path === file
+            ? withResolvedPalette(
+                { ...g, paletteRef: written },
+                (p) => src.files.get(p),
+                file,
+              )
+            : null,
+        );
+      });
+    },
+    [mutateSource],
+  );
+
   return {
     handleEditPalette,
     handleDeletePaletteColor,
     handleExternalizePalette,
     handleInlinePalette,
+    handleUsePaletteFile,
   };
 }

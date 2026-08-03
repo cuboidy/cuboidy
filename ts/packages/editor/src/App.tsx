@@ -16,7 +16,7 @@ import { animManifestOf, clipRefsOf, modelGeometryOf, partPalettesOf, paletteTar
 import { buildConsoleEntries, buildTreeFileErrors } from './components/panels/console-entries.js';
 import { renderEditorPanel } from './components/panels/registry.js';
 
-import { mergeGeometries, pathBasename } from './lib/source-ops.js';
+import { mergeGeometries, paletteFilesIn, pathBasename } from './lib/source-ops.js';
 import { useAnimationEdits } from './lib/useAnimationEdits.js';
 import { useFileOps } from './lib/useFileOps.js';
 import { usePaletteEdits } from './lib/usePaletteEdits.js';
@@ -289,6 +289,14 @@ export function App() {
     [source, effectiveSelectedPart, partFiles, merged],
   );
 
+  // Palette files the package holds (§6.10) — what the Palette panel
+  // offers to bind. Identified by CONTENT, so a palette in a folder or
+  // under any name is found and a geometry file never is.
+  const paletteFiles = useMemo(
+    (): readonly string[] => (source === undefined ? [] : paletteFilesIn(source)),
+    [source],
+  );
+
   // Geometry files a part can be created in or moved to. Undefined for a
   // single-geometry model, where there is no choice to offer.
   const geometryPaths = useMemo(
@@ -412,6 +420,7 @@ export function App() {
       clipRefs,
       partPalettes,
       paletteTarget,
+      paletteFiles,
       geometryPaths,
       effectiveSelectedPart,
       treeFileErrors,
