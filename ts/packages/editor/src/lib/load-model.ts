@@ -1,8 +1,7 @@
-import { InlineAnimationSchema, geometryPaths, manifestGeometry, parseGeometryText, parseManifest, parsePaletteFile, resolvePartGeometry, resolveRefFrom, type Geometry, type InlineAnimation, type Manifest, type Palette, type Part, type ResolvedPart } from '@cuboidy/core';
+import { InlineAnimationSchema, geometryPaths, normalizeRefPath as normalizePath, parseGeometryText, parseManifest, parsePaletteFile, resolvePartGeometry, resolveRefFrom, type Geometry, type InlineAnimation, type Manifest, type Palette, type ResolvedPart } from '@cuboidy/core';
 import { strFromU8, unzipSync } from 'fflate';
 import type { LoadResult, LoadedSource } from './types.js';
 
-const GEOMETRY_FILE = 'voxels.json';
 const MANIFEST_FILE = 'cuboidy.json';
 const CUBOIDY_EXT = /\.cuboidy$/i;
 // Package files worth reading as text. Referenced files are only ever
@@ -545,18 +544,10 @@ export function isGeometryPath(
   return geometryPaths(manifest).some((ref) => normalizePath(ref) === norm);
 }
 
-export function normalizePath(path: string): string {
-  const out: string[] = [];
-  for (const seg of path.split('/')) {
-    if (seg === '' || seg === '.') continue;
-    if (seg === '..' && out.length > 0 && out[out.length - 1] !== '..') {
-      out.pop();
-    } else {
-      out.push(seg);
-    }
-  }
-  return out.join('/');
-}
+// Core's §8 normalizer, re-exported under the name the editor has always
+// used — the implementation lived here as a byte-identical copy until it
+// was deduplicated.
+export { normalizePath };
 
 // If every path shares one top-level directory, returns `"<dir>/"`;
 // otherwise null. Used to unwrap folder-wrapped ZIPs.

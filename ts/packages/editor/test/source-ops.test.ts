@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseGeometryText, parseManifest, type Geometry, type Manifest } from '@cuboidy/core';
 import { resolveProjectRefs } from '../src/lib/load-model.js';
-import { applyFileEdit, deleteFileInSource, mapGeometryFiles, mergeGeometries, moveFolderInSource, remapPartPalette, renameFileInSource, repointPaletteRef, manifestText, primaryGeometry, uniquePartName, withManifest, withManifestText, writeFile } from '../src/lib/source-ops.js';
+import { applyFileEdit, deleteFileInSource, mapGeometryFiles, mergeGeometries, moveFolderInSource, renameFileInSource, repointPaletteRef, manifestText, primaryGeometry, uniquePartName, withManifest, withManifestText, writeFile } from '../src/lib/source-ops.js';
 import type { LoadedSource } from '../src/lib/types.js';
 
 // These are the operations that keep a package's REFERENCES intact while its
@@ -204,39 +204,8 @@ describe('repointPaletteRef', () => {
   });
 });
 
-describe('remapPartPalette', () => {
-  const RED = { r: 255, g: 0, b: 0, a: 255 };
-  const GREEN = { r: 0, g: 255, b: 0, a: 255 };
-  const BLUE = { r: 0, g: 0, b: 255, a: 255 };
-
-  const part = (voxels: number[]) => ({
-    name: 'p',
-    size: { w: voxels.length, h: 1, d: 1 },
-    pivot: { pos: { x: 0, y: 0, z: 0 } },
-    sockets: [],
-    voxels: [[voxels]],
-  });
-
-  it('appends colors the target lacks and rewrites the indices', () => {
-    const r = remapPartPalette(part([0, 1]), [RED, GREEN], [BLUE]);
-    expect(r.palette).toEqual([BLUE, RED, GREEN]);
-    expect(r.part.voxels[0]?.[0]).toEqual([1, 2]);
-  });
-
-  it('reuses an exact rgba match rather than duplicating it', () => {
-    const r = remapPartPalette(part([0]), [RED], [GREEN, RED]);
-    expect(r.palette).toEqual([GREEN, RED]);
-    expect(r.part.voxels[0]?.[0]).toEqual([1]);
-  });
-
-  it('is identity when the palettes already agree', () => {
-    const p = part([0, 1]);
-    const to = [RED, GREEN];
-    const r = remapPartPalette(p, [RED, GREEN], to);
-    expect(r.part).toBe(p);
-    expect(r.palette).toBe(to);
-  });
-});
+// remapPartPalette moved to @cuboidy/core (geometry/transform.ts), which
+// owns its tests — the editor had a byte-identical copy of both.
 
 // ── file rename / move / delete ────────────────────────────────────────
 

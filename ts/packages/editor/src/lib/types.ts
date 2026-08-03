@@ -1,4 +1,4 @@
-import type { Geometry, InlineAnimation, KeyAttr, Manifest, Part, ResolvedPart } from '@cuboidy/core';
+import type { Geometry, InlineAnimation, Manifest, ResolvedPart } from '@cuboidy/core';
 
 // What the editor currently has loaded.
 //

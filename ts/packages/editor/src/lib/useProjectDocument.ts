@@ -70,7 +70,7 @@ export function useProjectDocument() {
       ? null
       : (fileParseErrors.get(loaded.source.primaryPath) ?? null);
   const manifestParseError =
-    loaded?.source?.manifestPath === undefined
+    loaded?.source === undefined
       ? null
       : (fileParseErrors.get(loaded.source.manifestPath) ?? null);
   const editsBlocked = fileParseErrors.size > 0;

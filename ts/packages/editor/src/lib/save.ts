@@ -25,15 +25,13 @@ declare global {
 //      permission the first time it's called for a given handle.
 //   2. downloadFile — single-file download via <a download>. Works in
 //      every browser.
-//   3. downloadAsZip — bundle voxels.json (+ cuboidy.json if present)
-//      into a `.cuboidy` ZIP, then download. Works in every browser;
-//      the only viable path on FF/Safari and on synthetic folders.
+//   3. downloadAsZip — bundle the whole package into a `.cuboidy` ZIP,
+//      then download. Works in every browser; the only viable path on
+//      FF/Safari and on synthetic folders.
 //
-// Pre-edit phase note: until the editor mutates the loaded AST, save
-// just round-trips the original text bytes. When edits land, the
-// dirty-tracking layer will swap `(fileText(source, source.primaryPath) ?? '')` for a fresh
-// serialize. This file doesn't need to change at that point — it
-// already takes text and writes text.
+// Everything here takes text and writes text: `source.files` is the
+// single store, kept current by the edit layer, so save is a plain
+// walk over it.
 
 export async function saveToFolder(
   source: LoadedSource,

@@ -68,9 +68,9 @@ interface Props {
 
 const NONE_VALUE = '__none__';
 
-// Right-panel inspector for a single selected part. Phase 1 surfaces
-// the rig fields (parent + position) only; geometry-side fields (size /
-// pivot / sockets) get their own section in a follow-up stage.
+// Right-panel inspector for a single selected part: the manifest's rig
+// fields (parent / position / rotation) plus the geometry-side section
+// (size / pivot / sockets — GeometryFields below).
 
 export function PartProperties({
   selectedPart,

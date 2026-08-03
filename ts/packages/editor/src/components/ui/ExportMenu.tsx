@@ -8,11 +8,8 @@ interface Props {
   source: LoadedSource;
 }
 
-// Dropdown-style Export menu. Always available when something is loaded;
-// the visible items depend on what's actually exportable:
-//   - lone geometry file: just that file
-//   - package + manifest: geometry / cuboidy.json / .cuboidy ZIP
-//   - package + no manifest: geometry + .cuboidy ZIP containing only it
+// Dropdown-style Export menu: the primary geometry file, cuboidy.json,
+// or the whole package as a .cuboidy ZIP.
 //
 // Closes on outside click and on Escape. The dropdown is positioned
 // relative to the trigger button via CSS, so we don't need a portal.
@@ -56,22 +53,15 @@ export function ExportMenu({ source }: Props) {
   }, [source, close]);
 
   const handleDownloadManifest = useCallback(() => {
-    if (source.manifestPath !== undefined) {
-      downloadFile(source.manifestPath, (manifestText(source) ?? ''));
-    }
+    downloadFile(source.manifestPath, manifestText(source) ?? '');
     close();
   }, [source, close]);
 
   const handleDownloadZip = useCallback(async () => {
-    // No package name = a lone geometry file; there is nothing to bundle.
-    if (source.folderName === undefined) return;
     const base = source.folderName.replace(/\.cuboidy$/i, '');
     await downloadAsZip(source, `${base}.cuboidy`);
     close();
   }, [source, close]);
-
-  const isFolder = source.folderName !== undefined;
-  const hasManifest = source.manifestPath !== undefined;
 
   return (
     <div className="export-menu" ref={containerRef}>
@@ -95,26 +85,22 @@ export function ExportMenu({ source }: Props) {
           >
             Download {source.primaryPath}
           </button>
-          {hasManifest && (
-            <button
-              type="button"
-              className="menu-item"
-              role="menuitem"
-              onClick={handleDownloadManifest}
-            >
-              Download {source.manifestPath ?? 'cuboidy.json'}
-            </button>
-          )}
-          {isFolder && (
-            <button
-              type="button"
-              className="menu-item"
-              role="menuitem"
-              onClick={handleDownloadZip}
-            >
-              Download as .cuboidy (ZIP)
-            </button>
-          )}
+          <button
+            type="button"
+            className="menu-item"
+            role="menuitem"
+            onClick={handleDownloadManifest}
+          >
+            Download {source.manifestPath}
+          </button>
+          <button
+            type="button"
+            className="menu-item"
+            role="menuitem"
+            onClick={handleDownloadZip}
+          >
+            Download as .cuboidy (ZIP)
+          </button>
         </div>
       )}
     </div>

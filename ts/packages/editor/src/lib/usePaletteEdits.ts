@@ -204,7 +204,7 @@ export function usePaletteEdits({ dispatchEdit, editsBlocked }: Params) {
       if (editsBlocked) return;
       dispatchEdit(null, (current) => {
         const src = current?.source;
-        if (src === undefined || src.files === undefined) return current;
+        if (src === undefined) return current;
         const geometry = geometryAt(src, file);
         if (geometry === undefined) return current;
         if (geometry.paletteRef !== undefined) return current;

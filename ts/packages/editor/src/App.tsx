@@ -189,6 +189,9 @@ export function App() {
     replaceDocument(null);
     resetPartState();
     setViewMode('geometry');
+    // A paint color is per-model state: index 3 in the next model is a
+    // different (or missing) color.
+    setActiveColorIndex(0);
   }, [replaceDocument, resetPartState]);
 
   // Palette editing (lib/usePaletteEdits).
@@ -579,7 +582,7 @@ export function App() {
     }
     // A load-time manifest error stands until the text is edited, at which
     // point fileParseErrors takes over reporting it.
-    const manifestPath = source.manifestPath ?? 'cuboidy.json';
+    const manifestPath = source.manifestPath;
     if (
       source.manifestError !== undefined &&
       !fileParseErrors.has(manifestPath)
@@ -629,11 +632,7 @@ export function App() {
     const mErr =
       manifestParseError ??
       source.manifestError;
-    if (
-      mErr !== undefined &&
-      mErr !== null &&
-      source.manifestPath !== undefined
-    ) {
+    if (mErr !== undefined && mErr !== null) {
       m.set(source.manifestPath, mErr);
     }
     if (geometryParseError !== null && source.primaryPath !== undefined) {

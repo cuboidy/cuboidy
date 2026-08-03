@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { AIR, manifestGeometry, type Geometry, type Manifest, type Part } from '@cuboidy/core';
 import { serializeGeometry } from '@cuboidy/core';
 import { normalizePath } from './load-model.js';
-import { deleteFileInSource, mergeGeometries, moveFolderInSource, primaryGeometry, renameFileInSource, withManifest } from './source-ops.js';
+import { deleteFileInSource, mergeGeometries, moveFolderInSource, pathBasename, pathDirname, renameFileInSource, withManifest } from './source-ops.js';
 import type { LoadedSource, LoadResult } from './types.js';
 
 // Creating, renaming, moving and deleting package files. Each operation is
@@ -46,12 +46,7 @@ export function useFileOps({ dispatchEdit, setFileParseErrors }: Params) {
     (path: string) => {
       dispatchEdit(null, (current) => {
         const src = current?.source;
-        if (
-          src === undefined ||
-          src.files === undefined
-        ) {
-          return current;
-        }
+        if (src === undefined) return current;
         const norm = normalizePath(path);
         if (norm === '' || norm.startsWith('../')) return current;
         if (
@@ -101,9 +96,7 @@ export function useFileOps({ dispatchEdit, setFileParseErrors }: Params) {
         removedFiles.delete(norm); // re-creating a removed path revives it
         let next: typeof src = { ...src, files, removedFiles };
         if (isGeometry && parsed !== null) {
-          const geometries = new Map(
-            src.geometries ?? [[src.primaryPath, primaryGeometry(src)]],
-          );
+          const geometries = new Map(src.geometries);
           geometries.set(norm, parsed);
           next = { ...next, geometries };
           // Reference it from the manifest so it's part of the model
@@ -130,13 +123,7 @@ export function useFileOps({ dispatchEdit, setFileParseErrors }: Params) {
     (path: string) => {
       dispatchEdit(null, (current) => {
         const src = current?.source;
-        if (
-          src === undefined ||
-          src.files === undefined ||
-          src.manifest === undefined
-        ) {
-          return current;
-        }
+        if (src === undefined || src.manifest === undefined) return current;
         const norm = normalizePath(path);
         if (!src.files.has(norm)) return current;
         const geometry = geometryListToExtend(src.manifest);
@@ -158,12 +145,7 @@ export function useFileOps({ dispatchEdit, setFileParseErrors }: Params) {
       // path) would no-op, leaving a stale AST under the new name.
       dispatchEdit(null, (current) => {
         const src = current?.source;
-        if (
-          src === undefined ||
-          src.files === undefined
-        ) {
-          return current;
-        }
+        if (src === undefined) return current;
         const next = renameFileInSource(src, from, to);
         return next === null ? current : { ...current, source: next };
       });
@@ -191,12 +173,7 @@ export function useFileOps({ dispatchEdit, setFileParseErrors }: Params) {
       if (newDir === from) return;
       dispatchEdit(null, (current) => {
         const src = current?.source;
-        if (
-          src === undefined ||
-          src.files === undefined
-        ) {
-          return current;
-        }
+        if (src === undefined) return current;
         const next = moveFolderInSource(src, from, newDir);
         return next === null ? current : { ...current, source: next };
       });
@@ -222,7 +199,7 @@ export function useFileOps({ dispatchEdit, setFileParseErrors }: Params) {
       const from = normalizePath(srcDir);
       const dest = normalizePath(destDir);
       if (dest === from || dest.startsWith(`${from}/`)) return; // self/descendant
-      const name = from.slice(from.lastIndexOf('/') + 1);
+      const name = pathBasename(from);
       relocateFolder(from, dest === '' ? name : `${dest}/${name}`);
     },
     [relocateFolder],
@@ -233,8 +210,7 @@ export function useFileOps({ dispatchEdit, setFileParseErrors }: Params) {
   const handleRenameFolder = useCallback(
     (oldDir: string, newName: string) => {
       const from = normalizePath(oldDir);
-      const i = from.lastIndexOf('/');
-      const parent = i === -1 ? '' : from.slice(0, i);
+      const parent = pathDirname(from);
       relocateFolder(
         from,
         normalizePath(parent === '' ? newName : `${parent}/${newName}`),
@@ -248,12 +224,7 @@ export function useFileOps({ dispatchEdit, setFileParseErrors }: Params) {
       const p = normalizePath(path);
       dispatchEdit(null, (current) => {
         const src = current?.source;
-        if (
-          src === undefined ||
-          src.files === undefined
-        ) {
-          return current;
-        }
+        if (src === undefined) return current;
         const next = deleteFileInSource(src, p);
         return next === null ? current : { ...current, source: next };
       });
@@ -277,12 +248,7 @@ export function useFileOps({ dispatchEdit, setFileParseErrors }: Params) {
       const prefix = `${from}/`;
       dispatchEdit(null, (current) => {
         const src = current?.source;
-        if (
-          src === undefined ||
-          src.files === undefined
-        ) {
-          return current;
-        }
+        if (src === undefined) return current;
         const targets = [...src.files.keys()]
           .filter((k) => k.startsWith(prefix))
           .sort();

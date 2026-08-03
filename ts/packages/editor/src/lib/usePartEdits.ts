@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
-import { AIR, duplicatePart, isIdentifier, mirrorPart, type Axis, type InlineAnimation, type Manifest, type ManifestPart, type Part, type PublishedSocket } from '@cuboidy/core';
+import { AIR, duplicatePart, isIdentifier, mirrorPart, remapPartPalette, type Axis, type InlineAnimation, type Manifest, type ManifestPart, type Part, type PublishedSocket } from '@cuboidy/core';
 import { normalizePath } from './load-model.js';
-import { isInlinePart, mapGeometryFiles, mergeGeometries, primaryGeometry, remapPartPalette, rewriteExternalAnims, uniquePartName, withInlinePart, withManifest } from './source-ops.js';
+import { isInlinePart, mapGeometryFiles, mergeGeometries, primaryGeometry, rewriteExternalAnims, uniquePartName, withInlinePart, withManifest } from './source-ops.js';
 import type { LoadResult } from './types.js';
 import { usePreviewEdits } from './usePreviewEdits.js';
 
@@ -420,11 +420,7 @@ export function usePartEdits({
       if (editsBlocked) return;
       dispatchEdit(null, (current) => {
         const src = current?.source;
-        if (
-          src === undefined ||
-          src.geometries === undefined ||
-          !src.geometries.has(targetPath)
-        ) {
+        if (src === undefined || !src.geometries.has(targetPath)) {
           return current;
         }
         const fromPath = mergeGeometries(src).files.get(name);
@@ -843,7 +839,6 @@ export function usePartEdits({
     handleToggle,
     handleShowAll,
     handleHideAll,
-    mutateManifest,
     handleEditPart,
     handleStartCreatePart,
     handleCancelCreatePart,

@@ -8,6 +8,7 @@ import {
 import { ChevronDown, ChevronRight, Eye, EyeOff } from 'lucide-react';
 import { InlineNameInput } from '@cuboidy/ui';
 import { buildPartTree, descendantNames, type PartTreeNode } from '../../lib/part-tree.js';
+import { pathBasename } from '../../lib/source-ops.js';
 import type { Manifest, Part } from '@cuboidy/core';
 
 interface Props {
@@ -48,11 +49,6 @@ interface Props {
 }
 
 type DropTarget = { kind: 'node'; name: string } | { kind: 'root' };
-
-function basename(path: string): string {
-  const i = path.lastIndexOf('/');
-  return i === -1 ? path : path.slice(i + 1);
-}
 
 export function PartTree({
   parts,
@@ -387,7 +383,7 @@ function PartTreeBranch(props: BranchProps) {
         )}
         {partFiles?.has(node.name) === true && (
           <span className="part-tree-file" title={partFiles.get(node.name)}>
-            {basename(partFiles.get(node.name)!)}
+            {pathBasename(partFiles.get(node.name)!)}
           </span>
         )}
         <button

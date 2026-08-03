@@ -1,5 +1,6 @@
-import { AIR, type Color, type Palette, type Part } from '@cuboidy/core';
+import { MAX_PALETTE, indexToChar, parseHexColor, type Color, type Palette, type Part } from '@cuboidy/core';
 import { Plus, X } from 'lucide-react';
+import { computePaletteUsage } from '../../lib/palette-usage.js';
 
 // What the panel is editing (SPEC §7.4): the palette of ONE geometry file
 // — the one defining the selected part. `ref` is set when those colors are
@@ -50,8 +51,6 @@ interface Props {
 //     surprised users — "delete color" should mean "tidy the palette,"
 //     not "make voxels disappear."
 
-export const MAX_PALETTE = 62; // SPEC §7.4
-
 export function PalettePanel({
   palette,
   parts,
@@ -71,9 +70,12 @@ export function PalettePanel({
 
   const handleEditColor = (index: number, hex: string) => {
     if (disabled) return;
-    const rgb = hexToRgb(hex);
+    // <input type="color"> always yields #rrggbb; the picked color keeps
+    // the swatch's existing alpha.
+    const picked = parseHexColor(hex);
+    if (picked === null) return;
     onChange(
-      palette.map((c, i) => (i === index ? { ...c, ...rgb } : c)),
+      palette.map((c, i) => (i === index ? { ...picked, a: c.a } : c)),
       `palette:color:${index}`,
     );
   };
@@ -237,41 +239,12 @@ function PaletteSwatch({
   );
 }
 
-function computePaletteUsage(
-  palette: Palette,
-  parts: readonly Part[],
-): number[] {
-  const usage = palette.map(() => 0);
-  for (const part of parts) {
-    for (const layer of part.voxels) {
-      for (const row of layer) {
-        for (const idx of row) {
-          if (idx !== AIR && idx >= 0 && idx < usage.length) usage[idx]! += 1;
-        }
-      }
-    }
-  }
-  return usage;
-}
-
-function hexToRgb(hex: string): { r: number; g: number; b: number } {
-  return {
-    r: parseInt(hex.slice(1, 3), 16),
-    g: parseInt(hex.slice(3, 5), 16),
-    b: parseInt(hex.slice(5, 7), 16),
-  };
-}
-
+// The <input type="color"> value: #rrggbb, alpha dropped (the input
+// cannot represent it — core's serializeColor would emit #RRGGBBAA).
 function colorToHex(c: Color): string {
   return `#${hex2(c.r)}${hex2(c.g)}${hex2(c.b)}`;
 }
 
 function hex2(n: number): string {
   return n.toString(16).padStart(2, '0');
-}
-
-function indexToChar(idx: number): string {
-  if (idx < 10) return String(idx);
-  if (idx < 36) return String.fromCharCode(97 + idx - 10);
-  return String.fromCharCode(65 + idx - 36);
 }

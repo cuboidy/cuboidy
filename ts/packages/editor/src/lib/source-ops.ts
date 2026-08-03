@@ -1,4 +1,4 @@
-import { InlineAnimationSchema, manifestGeometry, parseGeometryText, parseManifest, parsePaletteFile, resolvePartGeometry, serializeColor, resolveRefFrom, serializeGeometry, toInlineGeometry, type Geometry, type InlineAnimation, type Manifest, type ManifestPart, type Palette, type Part } from '@cuboidy/core';
+import { InlineAnimationSchema, parseGeometryText, parseManifest, parsePaletteFile, resolvePartGeometry, serializeColor, resolveRefFrom, serializeGeometry, toInlineGeometry, type Geometry, type InlineAnimation, type Manifest, type ManifestPart, type Palette, type Part } from '@cuboidy/core';
 import { isGeometryPath, normalizePath, resolveProjectRefs, withResolvedPalette } from './load-model.js';
 import type { LoadedSource } from './types.js';
 
@@ -117,46 +117,14 @@ function currentInlinePalette(
   return g?.palette;
 }
 
-// Rewrite a part's voxel indices from one inline palette to another,
-// appending colors the target palette lacks (exact rgba match). AIR and
-// out-of-range indices pass through unchanged (the latter are lint
-// errors either way). Used when moving a part between UNBOUND files,
-// where each file's inline palette gives indices their meaning (§6.10)
-// — without the remap the moved part would silently change color.
-export function remapPartPalette(
-  part: Part,
-  from: Palette,
-  to: Palette,
-): { part: Part; palette: Palette } {
-  const palette = [...to];
-  const map = new Map<number, number>();
-  for (const layer of part.voxels) {
-    for (const row of layer) {
-      for (const v of row) {
-        if (v < 0 || v >= from.length || map.has(v)) continue;
-        const c = from[v]!;
-        let j = palette.findIndex(
-          (t) => t.r === c.r && t.g === c.g && t.b === c.b && t.a === c.a,
-        );
-        if (j === -1) {
-          j = palette.length;
-          palette.push(c);
-        }
-        map.set(v, j);
-      }
-    }
-  }
-  const identity = [...map].every(([a, b]) => a === b);
-  if (identity && palette.length === to.length) return { part, palette: to };
-  const voxels = part.voxels.map((layer) =>
-    layer.map((row) => row.map((v) => map.get(v) ?? v)),
-  );
-  return { part: { ...part, voxels }, palette };
-}
-
 export function pathBasename(path: string): string {
   const i = path.lastIndexOf('/');
   return i === -1 ? path : path.slice(i + 1);
+}
+
+export function pathDirname(path: string): string {
+  const i = path.lastIndexOf('/');
+  return i === -1 ? '' : path.slice(0, i);
 }
 
 // Apply `fn` to every geometry file AST. Each CHANGED file is written to
@@ -186,7 +154,7 @@ export function mapGeometryFiles(
 // write to either has to rebuild it or the model on screen drifts from the
 // documents. Manifest writes go through withResolvedRefs, which rebuilds
 // everything; this is the geometry-file side of the same obligation.
-export function withRebuiltParts(src: LoadedSource): LoadedSource {
+function withRebuiltParts(src: LoadedSource): LoadedSource {
   if (src.manifest === undefined) return src;
   const { parts } = resolvePartGeometry(
     src.manifest,
@@ -266,13 +234,11 @@ export function fileText(src: LoadedSource, path: string): string | undefined {
 }
 
 export function manifestText(src: LoadedSource): string | undefined {
-  return src.manifestPath === undefined
-    ? undefined
-    : src.files.get(src.manifestPath);
+  return src.files.get(src.manifestPath);
 }
 
 // Canonical text for cuboidy.json.
-export function manifestJson(manifest: Manifest): string {
+function manifestJson(manifest: Manifest): string {
   return JSON.stringify(manifest, null, 2) + '\n';
 }
 
@@ -348,7 +314,7 @@ export function geometryAt(src: LoadedSource, path: string): Geometry | undefine
 // Every §7.4 palette path the model's geometry files currently point at.
 // The manifest is not consulted: since v0.9 a palette is referenced by the
 // geometry file that uses it, never model-wide.
-export function geometryPaletteRefs(src: LoadedSource): ReadonlySet<string> {
+function geometryPaletteRefs(src: LoadedSource): ReadonlySet<string> {
   const out = new Set<string>();
   for (const [path, g] of src.geometries) {
     if (g.paletteRef !== undefined) out.add(resolveRefFrom(path, g.paletteRef));
@@ -360,7 +326,7 @@ export function geometryPaletteRefs(src: LoadedSource): ReadonlySet<string> {
 // a reference written INSIDE `fromFile`. Renaming a palette file has to
 // rewrite each referrer's ref, and a bare package-relative path would be
 // wrong for any referrer that is not at the root (§8).
-export function relativeRefFrom(fromFile: string, target: string): string {
+function relativeRefFrom(fromFile: string, target: string): string {
   const from = fromFile.split('/').slice(0, -1);
   const to = target.split('/');
   const name = to.pop()!;
@@ -727,7 +693,7 @@ function deriveAfterWrite(
 }
 
 // Re-resolve everything the manifest references, after it changed.
-export function withResolvedRefs(
+function withResolvedRefs(
   src: LoadedSource,
   manifest: Manifest,
 ): LoadedSource {

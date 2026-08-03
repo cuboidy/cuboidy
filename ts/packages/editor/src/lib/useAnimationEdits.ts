@@ -340,9 +340,7 @@ export function useAnimationEdits({
       dispatchEdit(null, (current) => {
         if (current?.source === undefined) return current;
         const src = current.source;
-        if (src.manifest === undefined || src.files === undefined) {
-          return current;
-        }
+        if (src.manifest === undefined) return current;
         const anim = src.manifest.animations?.[name];
         if (anim === undefined || typeof anim === 'string') return current;
         let path = `anims/${name}.json`;

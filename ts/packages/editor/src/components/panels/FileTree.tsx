@@ -6,6 +6,7 @@ import { fileIcon } from '../ui/fileIcon.js';
 import type { DirNode } from '../../lib/fs-tree.js';
 import { useFileTreeState } from '../../lib/useFileTreeState.js';
 import { normalizePath } from '../../lib/load-model.js';
+import { pathBasename, pathDirname } from '../../lib/source-ops.js';
 import type { LoadedSource } from '../../lib/types.js';
 
 interface Props {
@@ -14,8 +15,7 @@ interface Props {
   // VS Code-style red filename; the tooltip carries the message.
   fileErrors: ReadonlyMap<string, string>;
   onOpenPath: (path: string) => void;
-  // File CRUD (v0.7 Phase D). Only meaningful for sources carrying a
-  // files map; the tree hides the affordances otherwise.
+  // File CRUD (v0.7 Phase D).
   onCreateFile: (path: string) => void;
   onRenameFile: (oldPath: string, newPath: string) => void;
   // Move a folder (and everything under it) into destDir ('' = root).
@@ -87,14 +87,9 @@ export function FileTree({
     selectedFile: selectedFileForHighlight,
   } = useFileTreeState(source);
 
-  // A lone geometry file has no package around it (LoadedSource): the
-  // tree draws a flat file row rather than a collapsible package root.
-  const isFolder = source.folderName !== undefined;
-  const canEdit = source.files !== undefined;
-  const anchor = isFolder ? (source.manifestPath ?? 'cuboidy.json') : null;
+  const anchor = source.manifestPath;
   const primary = source.primaryPath;
   const hasManifest = source.manifest !== undefined;
-  const hasManifestFile = source.manifestPath !== undefined;
 
   // Normalized refs the manifest's geometry list loads (default = the
   // primary alone). A package geometry file outside this set is inert — lint
@@ -131,25 +126,17 @@ export function FileTree({
   // left is "a .json the model does not otherwise account for" — the manifest,
   // the bound palette and the referenced clips are all known here.
   const isUnreferenced = (path: string): boolean => {
-    if (loadedGeometry === null) return false;
     const norm = normalizePath(path);
     if (!norm.toLowerCase().endsWith('.json')) return false;
     if (loadedGeometry.has(norm)) return false;
-    if (norm === normalizePath(source.manifestPath ?? '')) return false;
+    if (norm === normalizePath(source.manifestPath)) return false;
     return !referencedNonGeometry.has(norm);
   };
 
   const isGeometryRow = (path: string): boolean =>
-    loadedGeometry !== null && loadedGeometry.has(normalizePath(path));
+    loadedGeometry.has(normalizePath(path));
 
   const rowOps = (path: string): RowOps => {
-    if (!canEdit) {
-      return {
-        renameReason: 'hidden',
-        deleteReason: 'hidden',
-        addReason: 'hidden',
-      };
-    }
     const renameReason =
       path === anchor
         ? 'cuboidy.json is the fixed anchor file and cannot be renamed'
@@ -196,9 +183,9 @@ export function FileTree({
   // folder, must be a valid creatable file, and keeps the file's type
   // (every reference is .json — §8).
   const validateRename = (oldPath: string) => (name: string) => {
-    if (name === baseName(oldPath)) return true;
+    if (name === pathBasename(oldPath)) return true;
     if (name.includes('/')) return false;
-    const parent = parentDir(oldPath);
+    const parent = pathDirname(oldPath);
     const newPath = parent === '' ? name : `${parent}/${name}`;
     if (!validateNewPath(newPath)) return false;
     const oldExt = oldPath.slice(oldPath.lastIndexOf('.')).toLowerCase();
@@ -211,9 +198,9 @@ export function FileTree({
   // free sibling path, and — since it re-prefixes every contained file —
   // requires all of them to be movable (same rule that gates a drag).
   const validateRenameFolder = (dir: string) => (name: string) => {
-    if (name === baseName(dir)) return true;
+    if (name === pathBasename(dir)) return true;
     if (name.includes('/') || !validNewSegments(name)) return false;
-    const parent = parentDir(dir);
+    const parent = pathDirname(dir);
     const newDir = parent === '' ? name : `${parent}/${name}`;
     if (allPaths.has(newDir) || allDirs.has(newDir)) return false;
     return filesUnder(dir).every(isMovable);
@@ -245,20 +232,12 @@ export function FileTree({
   };
 
   // ── drag-and-drop move ──────────────────────────────────────────────
-  const baseName = (p: string): string => {
-    const i = p.lastIndexOf('/');
-    return i === -1 ? p : p.slice(i + 1);
-  };
-  const parentDir = (p: string): string => {
-    const i = p.lastIndexOf('/');
-    return i === -1 ? '' : p.slice(0, i);
-  };
   const moveTarget = (dir: string, path: string): string =>
-    dir === '' ? baseName(path) : `${dir}/${baseName(path)}`;
+    dir === '' ? pathBasename(path) : `${dir}/${pathBasename(path)}`;
   // A file is draggable when it's renamable — a move IS a rename, so the
   // manifest anchor and a manifest-less primary geometry stay pinned.
   const isMovable = (path: string): boolean =>
-    canEdit && rowOps(path).renameReason === null;
+    rowOps(path).renameReason === null;
   const filesUnder = (dir: string): string[] =>
     [...allPaths].filter((p) => p.startsWith(`${dir}/`));
   // A folder is draggable when it holds ≥1 file and every one is movable,
@@ -319,7 +298,7 @@ export function FileTree({
   };
   const commitRenameFolder = (dir: string, name: string): void => {
     setRenamingDir(null);
-    const parent = parentDir(dir);
+    const parent = pathDirname(dir);
     const newDir = parent === '' ? name : `${parent}/${name}`;
     if (newDir === dir) return;
     // Draft-only folders have no real files: skip the (no-op) App call
@@ -330,7 +309,7 @@ export function FileTree({
   // Rename a file in place — reattach the new filename to its folder.
   const commitRenameFile = (oldPath: string, name: string): void => {
     setRenamingPath(null);
-    const parent = parentDir(oldPath);
+    const parent = pathDirname(oldPath);
     onRenameFile(oldPath, parent === '' ? name : `${parent}/${name}`);
   };
   // null = the folder can be deleted; a string = disabled tooltip (it
@@ -342,7 +321,7 @@ export function FileTree({
     );
     return pinned === undefined
       ? null
-      : `Can't delete — contains ${baseName(pinned)}, which can't be deleted`;
+      : `Can't delete — contains ${pathBasename(pinned)}, which can't be deleted`;
   };
   const commitDeleteFolder = (dir: string): void => {
     if (folderDeleteReason(dir) !== null) return;
@@ -367,7 +346,7 @@ export function FileTree({
   // Drop-target handlers for a row. `target` drives which row highlights;
   // a drop always resolves to a directory (a file targets its folder).
   const dropHandlers = (target: { kind: 'file' | 'dir'; path: string }) => {
-    const dir = target.kind === 'dir' ? target.path : parentDir(target.path);
+    const dir = target.kind === 'dir' ? target.path : pathDirname(target.path);
     return {
       onDragOver: (e: DragEvent) => {
         if (!canDropInto(dir)) return;
@@ -419,36 +398,33 @@ export function FileTree({
 
   return (
     <div className="file-tree">
-      {canEdit && (
-        <div className="panel-toolbar">
-          <button
-            type="button"
-            className="btn btn-sm"
-            title={`New file in ${effectiveDir === '' ? 'the package root' : `${effectiveDir}/`} (use / for deeper folders)`}
-            onClick={() => {
-              setCreatingFolderIn(null);
-              setCreatingIn(effectiveDir);
-            }}
-          >
-            <Plus size={13} />
-            New file
-          </button>
-          <button
-            type="button"
-            className="btn btn-sm"
-            title={`New folder in ${effectiveDir === '' ? 'the package root' : `${effectiveDir}/`} (kept for this session; saved to disk once a file is created inside)`}
-            onClick={() => {
-              setCreatingIn(null);
-              setCreatingFolderIn(effectiveDir);
-            }}
-          >
-            <Plus size={13} />
-            New folder
-          </button>
-        </div>
-      )}
-      {isFolder ? (
-        <ul className="tree-list">
+      <div className="panel-toolbar">
+        <button
+          type="button"
+          className="btn btn-sm"
+          title={`New file in ${effectiveDir === '' ? 'the package root' : `${effectiveDir}/`} (use / for deeper folders)`}
+          onClick={() => {
+            setCreatingFolderIn(null);
+            setCreatingIn(effectiveDir);
+          }}
+        >
+          <Plus size={13} />
+          New file
+        </button>
+        <button
+          type="button"
+          className="btn btn-sm"
+          title={`New folder in ${effectiveDir === '' ? 'the package root' : `${effectiveDir}/`} (kept for this session; saved to disk once a file is created inside)`}
+          onClick={() => {
+            setCreatingIn(null);
+            setCreatingFolderIn(effectiveDir);
+          }}
+        >
+          <Plus size={13} />
+          New folder
+        </button>
+      </div>
+      <ul className="tree-list">
           <li className="tree-node">
             <div
               className={`tree-row${selectedDirForHighlight === '' ? ' selected' : ''}${dropTarget?.kind === 'dir' && dropTarget.path === '' ? ' drop-target' : ''}${dragging?.kind === 'dir' && dragging.path === '' ? ' dragging' : ''}`}
@@ -477,7 +453,6 @@ export function FileTree({
               <span className="tree-name">{source.folderName}</span>
             </div>
             {!collapsed.has('') && (
-              <>
                 <DirChildren
                   node={tree}
                   dirPath=""
@@ -490,7 +465,6 @@ export function FileTree({
                   folderRowProps={folderRowProps}
                   fileRowProps={fileRowProps}
                   newBadgePath={undefined}
-                  canEdit={canEdit}
                   creatingIn={creatingIn}
                   creatingFolderIn={creatingFolderIn}
                   selectedDir={selectedDirForHighlight}
@@ -522,51 +496,19 @@ export function FileTree({
                   onDeleteFile={onDeleteFile}
                   onAddFileToModel={onAddFileToModel}
                 />
-                {!hasManifestFile && (
-                  <ul className="tree-list">
-                    <li className="tree-node">
-                      <div
-                        className="tree-row missing"
-                        style={{ paddingLeft: `${0.5 + 0.9}rem` }}
-                        title="Not present in this folder"
-                      >
-                        <span className="tree-caret-spacer" aria-hidden="true" />
-                        <span className="tree-icon">{fileIcon('cuboidy.json')}</span>
-                        <span className="tree-name">cuboidy.json</span>
-                      </div>
-                    </li>
-                  </ul>
-                )}
-              </>
             )}
           </li>
         </ul>
-      ) : primary === undefined ? null : (
-        <ul className="tree-list">
-          <li className="tree-node">
-            <div
-              className={`tree-row${fileErrors.has(primary) ? ' error' : ''}`}
-              style={{ paddingLeft: '0.5rem' }}
-              title={fileErrors.get(primary) ?? primary}
-              onClick={() => onOpenPath(primary)}
-            >
-              <span className="tree-caret-spacer" aria-hidden="true" />
-              <span className="tree-icon">{fileIcon(primary, 'geometry')}</span>
-              <span className="tree-name">{primary}</span>
-            </div>
-          </li>
-        </ul>
-      )}
     </div>
   );
 }
 
-// null = allowed; string = disabled with this tooltip; 'hidden' = don't
-// even render the affordance (read-only sources).
+// null = allowed; string = disabled with this tooltip.
 interface RowOps {
   renameReason: string | null;
   deleteReason: string | null;
-  // Add-to-model "+": 'hidden' unless the file is unreferenced geometry.
+  // Add-to-model "+": 'hidden' (not rendered) unless the file is
+  // unreferenced geometry.
   addReason: string | null;
 }
 
@@ -604,7 +546,6 @@ interface DirChildrenProps {
     onDrop: (e: DragEvent) => void;
   };
   newBadgePath?: string | undefined;
-  canEdit: boolean;
   creatingIn: string | null;
   creatingFolderIn: string | null;
   // Explicitly selected folder / file to highlight (null = none;
@@ -693,9 +634,7 @@ function DirChildren(props: DirChildrenProps) {
               style={{ paddingLeft: pad }}
               title={`${childPath}/ — double-click to rename`}
               onClick={() => props.onSelectDir(childPath)}
-              onDoubleClick={() => {
-                if (props.canEdit) props.onStartRenameDir(childPath);
-              }}
+              onDoubleClick={() => props.onStartRenameDir(childPath)}
               {...props.folderRowProps(childPath)}
             >
               {expandable ? (
@@ -720,28 +659,27 @@ function DirChildren(props: DirChildrenProps) {
                 <span className="tree-caret-spacer" aria-hidden="true" />
               )}
               <span className="tree-name">{name}</span>
-              {props.canEdit &&
-                (() => {
-                  const reason = props.folderDeleteReason(childPath);
-                  return (
-                    <span
-                      className="file-delete"
-                      role="button"
-                      aria-disabled={reason !== null}
-                      aria-label={`Delete folder ${childPath}`}
-                      title={
-                        reason ??
-                        `Delete ${childPath}/ and everything in it (undo restores it)`
-                      }
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (reason === null) props.onDeleteFolderRow(childPath);
-                      }}
-                    >
-                      <X size={14} />
-                    </span>
-                  );
-                })()}
+              {(() => {
+                const reason = props.folderDeleteReason(childPath);
+                return (
+                  <span
+                    className="file-delete"
+                    role="button"
+                    aria-disabled={reason !== null}
+                    aria-label={`Delete folder ${childPath}`}
+                    title={
+                      reason ??
+                      `Delete ${childPath}/ and everything in it (undo restores it)`
+                    }
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (reason === null) props.onDeleteFolderRow(childPath);
+                    }}
+                  >
+                    <X size={14} />
+                  </span>
+                );
+              })()}
             </div>
             {expanded && (
               <DirChildren
@@ -929,21 +867,19 @@ function FileNode({
             load
           </span>
         )}
-        {ops.deleteReason !== 'hidden' && (
-          <span
-            className="file-delete"
-            role="button"
-            aria-disabled={ops.deleteReason !== null}
-            aria-label={`Delete ${path}`}
-            title={ops.deleteReason ?? `Delete ${path} (undo restores it)`}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (ops.deleteReason === null) onDeleteFile(path);
-            }}
-          >
-            <X size={14} />
-          </span>
-        )}
+        <span
+          className="file-delete"
+          role="button"
+          aria-disabled={ops.deleteReason !== null}
+          aria-label={`Delete ${path}`}
+          title={ops.deleteReason ?? `Delete ${path} (undo restores it)`}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (ops.deleteReason === null) onDeleteFile(path);
+          }}
+        >
+          <X size={14} />
+        </span>
       </div>
     </li>
   );

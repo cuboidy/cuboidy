@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { buildFsTree, dirsOf, type DirNode } from './fs-tree.js';
+import { pathDirname } from './source-ops.js';
 import type { LoadedSource } from './types.js';
 
 // The Files panel's own state: what is selected, collapsed, being renamed,
@@ -83,7 +84,7 @@ export function useFileTreeState(source: LoadedSource) {
   const allPaths = useMemo(() => {
     const paths = new Set<string>(source.files.keys());
     if (source.primaryPath !== undefined) paths.add(source.primaryPath);
-    if (source.manifestPath !== undefined) paths.add(source.manifestPath);
+    paths.add(source.manifestPath);
     return paths;
   }, [source]);
 
@@ -109,8 +110,7 @@ export function useFileTreeState(source: LoadedSource) {
         : '';
     }
     if (!allPaths.has(selected.path)) return '';
-    const i = selected.path.lastIndexOf('/');
-    return i === -1 ? '' : selected.path.slice(0, i);
+    return pathDirname(selected.path);
   })();
 
   // Exactly ONE node carries the selection highlight — a folder or a file,

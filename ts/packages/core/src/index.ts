@@ -60,7 +60,7 @@ export {
 export { GeometrySchema, GeometryPartSchema } from './geometry/schema.js';
 export type { GeometryDoc, GeometryDocPart } from './geometry/schema.js';
 
-export { serializeColor } from './geometry/palette.js';
+export { parseHexColor, serializeColor } from './geometry/palette.js';
 export {
   duplicatePart,
   mirrorGeometry,
@@ -69,7 +69,7 @@ export {
   type Axis,
 } from './geometry/transform.js';
 
-export { AIR } from './geometry/voxel-row.js';
+export { AIR, indexToChar } from './geometry/voxel-row.js';
 export type {
   Color,
   Geometry,
