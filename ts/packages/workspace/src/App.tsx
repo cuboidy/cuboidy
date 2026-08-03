@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FolderOpen, Redo2, Undo2, X } from 'lucide-react';
+import { FolderOpen, X } from 'lucide-react';
 import {
   AppHeader,
   Dock,
   HeaderDivider,
   HeaderGroup,
+  UndoRedoGroup,
   addPanelAt,
   closePanelAt,
+  isTextEntryTarget,
   placePanelBeside,
   placedPanels,
   splitLeafWith,
@@ -165,15 +167,7 @@ export function App() {
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       // In a text field these keys are text editing, not scene editing.
-      const t = e.target;
-      if (
-        t instanceof Element &&
-        t.closest(
-          'textarea, input, select, [contenteditable=""], [contenteditable="true"]',
-        ) !== null
-      ) {
-        return;
-      }
+      if (isTextEntryTarget(e.target)) return;
       e.preventDefault();
       removeSelected();
     };
@@ -580,29 +574,12 @@ export function App() {
           <>
             {library !== null && (
               <>
-                {/* Same pair, same place, same shortcuts as the editor's. */}
-                <HeaderGroup>
-                  <button
-                    type="button"
-                    className="icon-btn"
-                    disabled={!canUndo}
-                    title="Undo (Ctrl+Z)"
-                    aria-label="Undo"
-                    onClick={undo}
-                  >
-                    <Undo2 size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    className="icon-btn"
-                    disabled={!canRedo}
-                    title="Redo (Ctrl+Shift+Z)"
-                    aria-label="Redo"
-                    onClick={redo}
-                  >
-                    <Redo2 size={16} />
-                  </button>
-                </HeaderGroup>
+                <UndoRedoGroup
+                  canUndo={canUndo}
+                  canRedo={canRedo}
+                  onUndo={undo}
+                  onRedo={redo}
+                />
                 <HeaderDivider />
                 <HeaderGroup>
                   <SceneActions

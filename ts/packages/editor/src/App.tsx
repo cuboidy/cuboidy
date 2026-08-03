@@ -8,12 +8,7 @@ import { ConsolePanel, type ConsoleEntry } from './components/panels/ConsolePane
 import { lintSource } from './lib/lint.js';
 
 import { ExportMenu } from './components/ui/ExportMenu.js';
-import {
-  FolderOpen,
-  Plus,
-  Redo2,
-  Undo2,
-} from 'lucide-react';
+import { FolderOpen, Plus } from 'lucide-react';
 import { FileDropZone } from './components/ui/FileDropZone.js';
 import { FileTree } from './components/panels/FileTree.js';
 import { ModelProperties } from './components/panels/ModelProperties.js';
@@ -36,7 +31,7 @@ import { usePartEdits } from './lib/usePartEdits.js';
 import { useProjectDocument } from './lib/useProjectDocument.js';
 import { useAnimationSession } from './lib/useAnimationSession.js';
 import type { LoadResult } from './lib/types.js';
-import { AppHeader, Dock, HeaderDivider, HeaderGroup, addPanelAt, closePanelAt, isPanelVisible, openPanelById, placePanelBeside, placedPanels, splitLeafWith, withActiveAt, withRatioAt } from '@cuboidy/ui';
+import { AppHeader, Dock, HeaderDivider, HeaderGroup, UndoRedoGroup, addPanelAt, closePanelAt, isPanelVisible, openPanelById, placePanelBeside, placedPanels, splitLeafWith, withActiveAt, withRatioAt } from '@cuboidy/ui';
 import {
   ALL_PANELS,
   MAIN_PANEL,
@@ -975,28 +970,12 @@ export function App() {
           <>
             {source !== undefined && (
               <>
-                <HeaderGroup>
-                  <button
-                    type="button"
-                    className="icon-btn"
-                    disabled={!canUndo}
-                    title="Undo (Ctrl+Z)"
-                    aria-label="Undo"
-                    onClick={performUndo}
-                  >
-                    <Undo2 size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    className="icon-btn"
-                    disabled={!canRedo}
-                    title="Redo (Ctrl+Shift+Z)"
-                    aria-label="Redo"
-                    onClick={performRedo}
-                  >
-                    <Redo2 size={16} />
-                  </button>
-                </HeaderGroup>
+                <UndoRedoGroup
+                  canUndo={canUndo}
+                  canRedo={canRedo}
+                  onUndo={performUndo}
+                  onRedo={performRedo}
+                />
                 <HeaderDivider />
                 <HeaderGroup>
                   <SaveButton source={source} />

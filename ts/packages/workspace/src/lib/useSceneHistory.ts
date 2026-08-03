@@ -1,5 +1,10 @@
-import { useCallback, useEffect, useReducer } from 'react';
-import { historyReducer, makeHistory, type HistoryState } from '@cuboidy/ui';
+import { useCallback, useReducer } from 'react';
+import {
+  historyReducer,
+  makeHistory,
+  useUndoRedoShortcuts,
+  type HistoryState,
+} from '@cuboidy/ui';
 import { emptyScene, type Scene } from './scene.js';
 
 export interface SceneHistory {
@@ -58,34 +63,7 @@ export function useSceneHistory(): SceneHistory {
   const undo = useCallback(() => dispatch({ type: 'undo' }), []);
   const redo = useCallback(() => dispatch({ type: 'redo' }), []);
 
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent): void => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
-      const key = e.key.toLowerCase();
-      const isUndo = key === 'z' && !e.shiftKey;
-      const isRedo = (key === 'z' && e.shiftKey) || key === 'y';
-      if (!isUndo && !isRedo) return;
-      // Mid-IME-composition keystrokes are the IME's business.
-      if (e.isComposing || e.keyCode === 229) return;
-      // Inside a text field the browser's own undo applies — taking the
-      // whole scene back because someone mistyped a name would be a
-      // surprising trade.
-      const t = e.target;
-      if (
-        t instanceof Element &&
-        t.closest(
-          'textarea, input, select, [contenteditable=""], [contenteditable="true"]',
-        ) !== null
-      ) {
-        return;
-      }
-      e.preventDefault();
-      if (isUndo) undo();
-      else redo();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [undo, redo]);
+  useUndoRedoShortcuts(undo, redo);
 
   return {
     scene: history.present,

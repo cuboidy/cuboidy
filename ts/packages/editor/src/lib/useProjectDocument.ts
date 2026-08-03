@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
-import { historyReducer, makeHistory } from '@cuboidy/ui';
+import { useCallback, useReducer, useRef, useState } from 'react';
+import { historyReducer, makeHistory, useUndoRedoShortcuts } from '@cuboidy/ui';
 import { applyFileEdit } from './source-ops.js';
 import type { LoadResult } from './types.js';
 
@@ -132,34 +132,7 @@ export function useProjectDocument() {
     revalidateRestored(target);
   }, [history, revalidateRestored]);
 
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
-      const key = e.key.toLowerCase();
-      const isUndo = key === 'z' && !e.shiftKey;
-      const isRedo = (key === 'z' && e.shiftKey) || key === 'y';
-      if (!isUndo && !isRedo) return;
-      // Mid-IME-composition keystrokes are the IME's business.
-      if (e.isComposing || e.keyCode === 229) return;
-      // Inside a text field, the browser's native undo applies (source
-      // textareas, number inputs); only intercept document-level undo
-      // elsewhere.
-      const t = e.target;
-      if (
-        t instanceof Element &&
-        t.closest(
-          'textarea, input, select, [contenteditable=""], [contenteditable="true"]',
-        ) !== null
-      ) {
-        return;
-      }
-      e.preventDefault();
-      if (isUndo) performUndo();
-      else performRedo();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [performUndo, performRedo]);
+  useUndoRedoShortcuts(performUndo, performRedo);
 
   return {
     loaded,
