@@ -31,7 +31,7 @@ import { usePartEdits } from './lib/usePartEdits.js';
 import { useProjectDocument } from './lib/useProjectDocument.js';
 import { useAnimationSession } from './lib/useAnimationSession.js';
 import type { LoadResult } from './lib/types.js';
-import { AppHeader, Dock, HeaderDivider, HeaderGroup, UndoRedoGroup, addPanelAt, closePanelAt, isPanelVisible, openPanelById, placePanelBeside, placedPanels, splitLeafWith, withActiveAt, withRatioAt } from '@cuboidy/ui';
+import { AppHeader, Dock, HeaderDivider, HeaderGroup, UndoRedoGroup, isPanelVisible, useDockLayout } from '@cuboidy/ui';
 import {
   ALL_PANELS,
   MAIN_PANEL,
@@ -40,12 +40,9 @@ import {
   initialLayout,
 } from './lib/panels.js';
 import type {
-  Edge,
   GizmoVisibility,
-  LayoutNode,
   PanelContent,
   PreviewTool,
-  Side,
   ViewMode,
 } from '@cuboidy/ui';
 import type { PanelId } from './lib/panels.js';
@@ -156,39 +153,6 @@ export function App() {
     manifestParseError,
   });
 
-  const handleLoad = useCallback(
-    (result: LoadResult) => {
-      replaceDocument(result);
-      resetPartState();
-      setFramingKey((k) => k + 1);
-      const hasManifest =
-        result.source !== undefined &&
-        result.source.manifest !== undefined;
-      setViewMode(hasManifest ? 'rig' : 'geometry');
-      setLayout((l) => openPanelById(l, 'preview', MAIN_PANEL));
-      // A load that carries problems (a manifest that didn't parse, an
-      // unresolved reference) foregrounds the Console so the notice isn't
-      // silently hidden behind the Timeline tab.
-      if (
-        result.source !== undefined &&
-        (result.source.manifestError !== undefined ||
-          (result.source.projectErrors?.length ?? 0) > 0)
-      ) {
-        setLayout((l) => openPanelById(l, 'console', MAIN_PANEL));
-      }
-    },
-    [replaceDocument, resetPartState],
-  );
-
-  const handleReset = useCallback(() => {
-    replaceDocument(null);
-    resetPartState();
-    setViewMode('geometry');
-    // A paint color is per-model state: index 3 in the next model is a
-    // different (or missing) color.
-    setActiveColorIndex(0);
-  }, [replaceDocument, resetPartState]);
-
   // Palette editing (lib/usePaletteEdits).
   const {
     handleEditPalette,
@@ -208,12 +172,64 @@ export function App() {
     handleDeleteFolder,
   } = useFileOps({ dispatchEdit, setFileParseErrors });
 
+  const source = loaded?.source;
+
+  // Display title for any panel. Static for tool panels; the source files take
+  // their actual file name so the dock tab reads "voxels.json" / "cuboidy.json"
+  // (matching the file tree). Used for both tab labels and the + menu.
+  const panelTitle = useCallback(
+    (id: PanelId): string => {
+      const fpath = filePanelPath(id);
+      if (fpath !== null) return pathBasename(fpath);
+      switch (id) {
+        case 'files':
+          return 'Files';
+        case 'model':
+          return 'Model';
+        case 'parts':
+          return 'Parts';
+        case 'properties':
+          return 'Properties';
+        case 'palette':
+          return 'Palette';
+        case 'inspector':
+          return 'Key Inspector';
+        case 'preview':
+          return 'Preview';
+        case 'timeline':
+          return 'Timeline';
+        case 'console':
+          return 'Console';
+        case 'geometry':
+          return source?.primaryPath ?? 'voxels.json';
+        case 'manifest':
+          return source?.manifestPath ?? 'cuboidy.json';
+        default:
+          return id;
+      }
+    },
+    [source],
+  );
+
+  // Dock layout tree (resizable, rearrangeable): state, the six Dock
+  // handlers, closed-panel list, reset and reopen all come from the
+  // shared hook. In-memory only — layout is session-scoped by design (no
+  // persistence); "Reset layout" restores the initial arrangement. Null =
+  // every panel closed; App renders an add-panel state.
+  const dock = useDockLayout<PanelId>({
+    initial: initialLayout,
+    allPanels: ALL_PANELS,
+    titleOf: panelTitle,
+    mainPanel: MAIN_PANEL,
+  });
+  const { layout, closedPanels, openPanel } = dock;
+
   // Creating a clip moves the editor to the anim view. Layout state lives
   // here, so the hook calls back rather than reaching for it.
   const onClipCreated = useCallback(() => {
     setViewMode('anim');
-    setLayout((l) => openPanelById(l, 'preview', MAIN_PANEL));
-  }, []);
+    openPanel('preview');
+  }, [openPanel]);
   // Every keyframe-editor edit (lib/useAnimationEdits).
   const {
     handleSetAnimField,
@@ -236,8 +252,6 @@ export function App() {
   const handleViewModeChange = useCallback((mode: ViewMode) => {
     setViewMode(mode);
   }, []);
-
-  const source = loaded?.source;
   const rigAvailable =
     source !== undefined && source.manifest !== undefined;
   // The anim view doubles as the animation editor, so it's reachable for any
@@ -453,92 +467,39 @@ export function App() {
     [source],
   );
 
-  // Dock layout tree (resizable, rearrangeable). In-memory only — layout is
-  // session-scoped by design (no persistence); "Reset layout" restores it.
-  // Null = every panel closed (empty dock); App renders an add-panel state.
-  const [layout, setLayout] = useState<LayoutNode<PanelId> | null>(initialLayout);
-
-  // Display title for any panel. Static for tool panels; the source files take
-  // their actual file name so the dock tab reads "voxels.json" / "cuboidy.json"
-  // (matching the file tree). Used for both tab labels and the + menu.
-  const panelTitle = useCallback(
-    (id: PanelId): string => {
-      const fpath = filePanelPath(id);
-      if (fpath !== null) return pathBasename(fpath);
-      switch (id) {
-        case 'files':
-          return 'Files';
-        case 'model':
-          return 'Model';
-        case 'parts':
-          return 'Parts';
-        case 'properties':
-          return 'Properties';
-        case 'palette':
-          return 'Palette';
-        case 'inspector':
-          return 'Key Inspector';
-        case 'preview':
-          return 'Preview';
-        case 'timeline':
-          return 'Timeline';
-        case 'console':
-          return 'Console';
-        case 'geometry':
-          return source?.primaryPath ?? 'voxels.json';
-        case 'manifest':
-          return source?.manifestPath ?? 'cuboidy.json';
-        default:
-          return id;
+  const handleLoad = useCallback(
+    (result: LoadResult) => {
+      replaceDocument(result);
+      resetPartState();
+      setFramingKey((k) => k + 1);
+      const hasManifest =
+        result.source !== undefined &&
+        result.source.manifest !== undefined;
+      setViewMode(hasManifest ? 'rig' : 'geometry');
+      openPanel('preview');
+      // A load that carries problems (a manifest that didn't parse, an
+      // unresolved reference) foregrounds the Console so the notice isn't
+      // silently hidden behind the Timeline tab.
+      if (
+        result.source !== undefined &&
+        (result.source.manifestError !== undefined ||
+          (result.source.projectErrors?.length ?? 0) > 0)
+      ) {
+        openPanel('console');
       }
     },
-    [source],
+    [replaceDocument, resetPartState, openPanel],
   );
-  // Layout mutations no-op on a null (empty) dock — they only fire from a
-  // rendered Dock, but the guard keeps the reducer total.
-  const handleResize = useCallback((path: Side[], ratio: number) => {
-    setLayout((current) => (current === null ? null : withRatioAt(current, path, ratio)));
-  }, []);
-  const handleActivatePanel = useCallback((path: Side[], id: PanelId) => {
-    setLayout((current) => (current === null ? null : withActiveAt(current, path, id)));
-  }, []);
-  const handleClosePanel = useCallback((path: Side[], id: PanelId) => {
-    setLayout((current) => (current === null ? null : closePanelAt(current, path, id)));
-  }, []);
-  const handleAddPanel = useCallback((path: Side[], id: PanelId) => {
-    setLayout((current) => (current === null ? null : addPanelAt(current, path, id)));
-  }, []);
-  const handleSplitLeaf = useCallback(
-    (toPath: Side[], edge: Edge, id: PanelId, fromPath: Side[]) => {
-      setLayout((current) =>
-        current === null ? null : splitLeafWith(current, toPath, edge, id, fromPath),
-      );
-    },
-    [],
-  );
-  const handleReorderPanel = useCallback(
-    (
-      toPath: Side[],
-      targetId: PanelId,
-      before: boolean,
-      id: PanelId,
-      fromPath: Side[],
-    ) => {
-      setLayout((current) =>
-        current === null
-          ? null
-          : placePanelBeside(current, toPath, targetId, before, id, fromPath),
-      );
-    },
-    [],
-  );
-  const handleResetLayout = useCallback(() => setLayout(initialLayout), []);
-  // Re-open a panel by id — brings it forward if placed, else re-adds it (and
-  // seeds a fresh leaf from an empty dock). Drives both the tree-file clicks
-  // and the empty-dock add buttons.
-  const handleReopenPanel = useCallback((id: PanelId) => {
-    setLayout((l) => openPanelById(l, id, MAIN_PANEL));
-  }, []);
+
+  const handleReset = useCallback(() => {
+    replaceDocument(null);
+    resetPartState();
+    setViewMode('geometry');
+    // A paint color is per-model state: index 3 in the next model is a
+    // different (or missing) color.
+    setActiveColorIndex(0);
+  }, [replaceDocument, resetPartState]);
+
   // Click a file in the tree → bring its panel forward (re-opening it if
   // it was closed). The primary geometry maps to the classic geometry panel,
   // cuboidy.json to the manifest panel, anything else to a dynamic
@@ -553,9 +514,9 @@ export function App() {
           : src.manifestPath === path
             ? 'manifest'
             : filePanel(path);
-      setLayout((l) => openPanelById(l, id, MAIN_PANEL));
+      openPanel(id);
     },
-    [loaded],
+    [loaded, openPanel],
   );
   // The model's current problems, for the Console panel. Derived, never
   // stored. fileParseErrors already covers EVERY file including the primary
@@ -652,17 +613,6 @@ export function App() {
     onClearPartTrack: handleClearPartTrack,
     onPasteAnimKeyframe: handlePasteAnimKeyframe,
   });
-  // Any panel not currently placed anywhere — offered by each leaf's + menu so
-  // a closed panel can be reopened (and by the empty-dock state, where the set
-  // is everything).
-  const closedPanels = useMemo(() => {
-    const placed = layout === null ? new Set<PanelId>() : placedPanels(layout);
-    return ALL_PANELS.filter((id) => !placed.has(id)).map((id) => ({
-      id,
-      title: panelTitle(id),
-    }));
-  }, [layout, panelTitle]);
-
   // Per-panel content for the dock's tab rows. The leaf owns the tab header,
   // so each panel supplies just { title, fill?, body }. The source panels
   // (preview / geometry / manifest) were the in-center TabBar's tabs; they now
@@ -964,7 +914,7 @@ export function App() {
       <AppHeader
         product="Editor"
         left={source !== undefined ? (
-            <SettingsMenu onResetLayout={handleResetLayout} />
+            <SettingsMenu onResetLayout={dock.reset} />
           ) : undefined}
         right={
           <>
@@ -1010,7 +960,7 @@ export function App() {
                   type="button"
                   key={p.id}
                   className="btn btn-create"
-                  onClick={() => handleReopenPanel(p.id)}
+                  onClick={() => openPanel(p.id)}
                 >
                   <Plus size={13} />
                   {p.title}
@@ -1020,7 +970,7 @@ export function App() {
             <button
               type="button"
               className="btn"
-              onClick={handleResetLayout}
+              onClick={dock.reset}
             >
               Reset layout
             </button>
@@ -1030,12 +980,12 @@ export function App() {
             node={layout}
             getPanel={getPanel}
             closedPanels={closedPanels}
-            onResize={handleResize}
-            onActivate={handleActivatePanel}
-            onClose={handleClosePanel}
-            onAdd={handleAddPanel}
-            onSplit={handleSplitLeaf}
-            onReorder={handleReorderPanel}
+            onResize={dock.onResize}
+            onActivate={dock.onActivate}
+            onClose={dock.onClose}
+            onAdd={dock.onAdd}
+            onSplit={dock.onSplit}
+            onReorder={dock.onReorder}
           />
         )}
       </main>

@@ -58,6 +58,9 @@ export const PANEL_TITLES: Record<PanelId, string> = {
   source: 'scene.json',
 };
 
+// Stable function form, for useDockLayout's titleOf.
+export const panelTitle = (id: PanelId): string => PANEL_TITLES[id];
+
 // Left column = the library over the scene built from it, so what you
 // drag and where it lands are adjacent. Centre = the view. Right = what
 // the selection is attached to and what it plays, over the scene as it

@@ -6,18 +6,9 @@ import {
   HeaderDivider,
   HeaderGroup,
   UndoRedoGroup,
-  addPanelAt,
-  closePanelAt,
   isTextEntryTarget,
-  placePanelBeside,
-  placedPanels,
-  splitLeafWith,
-  withActiveAt,
-  withRatioAt,
-  type Edge,
-  type LayoutNode,
+  useDockLayout,
   type PanelContent,
-  type Side,
 } from '@cuboidy/ui';
 import { ModelList } from './components/ModelList.js';
 import { SceneView } from './components/SceneView.js';
@@ -36,6 +27,7 @@ import {
   ALL_PANELS,
   PANEL_TITLES,
   initialLayout,
+  panelTitle,
   type PanelId,
 } from './lib/panels.js';
 import {
@@ -99,7 +91,14 @@ export function App() {
   // name, and "has it changed" is a question about the pair.
   const [sceneFile, setSceneFile] = useState<string | null>(null);
   const [savedText, setSavedText] = useState<string | null>(null);
-  const [layout, setLayout] = useState<LayoutNode<PanelId> | null>(initialLayout);
+  // Dock layout state + the six Dock handlers, from the shared hook.
+  const dock = useDockLayout<PanelId>({
+    initial: initialLayout,
+    allPanels: ALL_PANELS,
+    titleOf: panelTitle,
+    mainPanel: 'view',
+  });
+  const { layout, closedPanels } = dock;
   // Anim view by default: choosing a clip starts it, and a default that
   // showed the rest pose would make that look like nothing happened.
   const [viewMode, setViewMode] = useState<SceneViewMode>('anim');
@@ -558,14 +557,6 @@ export function App() {
     ],
   );
 
-  const closed = useMemo(() => {
-    const here = layout === null ? new Set<PanelId>() : placedPanels(layout);
-    return ALL_PANELS.filter((id) => !here.has(id)).map((id) => ({
-      id,
-      title: PANEL_TITLES[id],
-    }));
-  }, [layout]);
-
   return (
     <div className="app">
       <AppHeader
@@ -662,31 +653,13 @@ export function App() {
           <Dock
             node={layout}
             getPanel={renderPanel}
-            closedPanels={closed}
-            onResize={(path, ratio) =>
-              setLayout((l) => (l === null ? l : withRatioAt(l, path, ratio)))
-            }
-            onActivate={(path, id) =>
-              setLayout((l) => (l === null ? l : withActiveAt(l, path, id)))
-            }
-            onClose={(path, id) =>
-              setLayout((l) => (l === null ? l : closePanelAt(l, path, id)))
-            }
-            onAdd={(path, id) =>
-              setLayout((l) => (l === null ? l : addPanelAt(l, path, id)))
-            }
-            onSplit={(toPath: Side[], edge: Edge, id, fromPath) =>
-              setLayout((l) =>
-                l === null ? l : splitLeafWith(l, toPath, edge, id, fromPath),
-              )
-            }
-            onReorder={(toPath, targetId, before, id, fromPath) =>
-              setLayout((l) =>
-                l === null
-                  ? l
-                  : placePanelBeside(l, toPath, targetId, before, id, fromPath),
-              )
-            }
+            closedPanels={closedPanels}
+            onResize={dock.onResize}
+            onActivate={dock.onActivate}
+            onClose={dock.onClose}
+            onAdd={dock.onAdd}
+            onSplit={dock.onSplit}
+            onReorder={dock.onReorder}
           />
         </main>
       )}

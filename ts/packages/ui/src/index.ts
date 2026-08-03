@@ -39,6 +39,9 @@ export {
 } from './layout.js';
 export type { Edge, LayoutNode, Side } from './layout.js';
 
+export { useDockLayout } from './useDockLayout.js';
+export type { DockHandlers, DockLayout } from './useDockLayout.js';
+
 export { historyReducer, makeHistory, COALESCE_MS, HISTORY_CAP } from './history.js';
 export type { HistoryAction, HistoryState } from './history.js';
 export { isTextEntryTarget, useUndoRedoShortcuts } from './shortcuts.js';
