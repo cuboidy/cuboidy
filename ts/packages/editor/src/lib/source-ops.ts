@@ -700,7 +700,7 @@ function withResolvedRefs(
   const primary = primaryGeometry(src);
   const refs = resolveProjectRefs(
     manifest,
-    (p) => src.files.get(p),
+    src.files,
     src.primaryPath !== undefined && primary !== undefined
       ? { path: src.primaryPath, geometry: primary }
       : undefined,

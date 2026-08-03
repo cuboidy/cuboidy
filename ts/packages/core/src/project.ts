@@ -173,10 +173,20 @@ export interface ResolvedProject {
 export function resolveGeometries(
   manifest: Manifest | null,
   files: ReadonlyMap<string, string>,
+  // Live-edited geometry ASTs that WIN over the file map's text for
+  // their (normalized) paths — the editor's mid-edit primary. An
+  // override stands in even while the file's text does not parse, which
+  // is the point: the last good AST keeps rendering.
+  overrides?: ReadonlyMap<string, Geometry>,
 ): { geometries: GeometryFile[]; diagnostics: ProjectDiagnostic[] } {
   const diagnostics: ProjectDiagnostic[] = [];
   const geometries: GeometryFile[] = [];
   for (const ref of projectFilePaths(manifest).geometry) {
+    const override = overrides?.get(ref);
+    if (override !== undefined) {
+      geometries.push({ path: ref, geometry: override });
+      continue;
+    }
     const text = files.get(ref);
     if (text === undefined) {
       diagnostics.push({
@@ -310,8 +320,16 @@ export function resolvePartGeometry(
 export function resolveProject(
   manifest: Manifest | null,
   files: ReadonlyMap<string, string>,
+  opts: {
+    // See resolveGeometries — the editor's live-edited ASTs.
+    overrides?: ReadonlyMap<string, Geometry>;
+  } = {},
 ): ResolvedProject {
-  const { geometries: parsed, diagnostics } = resolveGeometries(manifest, files);
+  const { geometries: parsed, diagnostics } = resolveGeometries(
+    manifest,
+    files,
+    opts.overrides,
+  );
 
   // §7.4 palette references, resolved per geometry file. Filling `palette`
   // in HERE is what keeps every consumer downstream free of "inline or

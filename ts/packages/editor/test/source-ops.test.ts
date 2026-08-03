@@ -50,7 +50,7 @@ function pkg(files: Record<string, string>, primary = 'voxels.json'): LoadedSour
   const manifest = manifestText !== undefined ? manifestOf(manifestText) : undefined;
   const primaryText = files[primary];
   if (primaryText === undefined) throw new Error(`fixture has no ${primary}`);
-  const refs = resolveProjectRefs(manifest, (p) => files[p], {
+  const refs = resolveProjectRefs(manifest, new Map(Object.entries(files)), {
     path: primary,
     geometry: geom(primaryText),
   });

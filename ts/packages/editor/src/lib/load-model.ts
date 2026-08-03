@@ -1,4 +1,4 @@
-import { InlineAnimationSchema, MANIFEST_FILE, geometryPaths, normalizeRefPath as normalizePath, parseGeometryText, parseManifest, parsePaletteFile, resolvePartGeometry, resolveRefFrom, type Geometry, type InlineAnimation, type Manifest, type Palette, type ResolvedPart } from '@cuboidy/core';
+import { MANIFEST_FILE, geometryPaths, normalizeRefPath as normalizePath, parseGeometryText, parseManifest, parsePaletteFile, resolveProject, resolveRefFrom, type Geometry, type InlineAnimation, type Manifest, type ResolvedPart } from '@cuboidy/core';
 import { strFromU8, unzipSync } from 'fflate';
 import type { LoadResult, LoadedSource } from './types.js';
 const CUBOIDY_EXT = /\.cuboidy$/i;
@@ -298,7 +298,7 @@ function buildFolderResult(
 
   const refs = resolveProjectRefs(
     manifest,
-    (p) => fileTexts.get(p),
+    fileTexts,
     primary !== undefined && primaryGeom !== undefined
       ? { path: primary, geometry: primaryGeom }
       : undefined,
@@ -371,152 +371,47 @@ export function withResolvedPalette(
 // binding, §6.3 animation string refs — against the package's current
 // file texts. Pure; used by the loader AND by the editor's manifest
 // re-parse, so the derived maps never go stale when cuboidy.json is
-// edited directly. `primary` is the live-edited geometry (its in-memory AST
-// wins over its file-map snapshot).
+// edited directly. `primary` is the live-edited geometry (its in-memory
+// AST wins over its file-map snapshot).
+//
+// A thin adapter over core's resolveProject — this used to be a ~115-line
+// second implementation of the same walk, and the two had already begun
+// to drift. The editor's only additions are the shape of the error list
+// and friendlier wording for a `../` ref.
 export function resolveProjectRefs(
   manifest: Manifest | undefined,
-  getText: (path: string) => string | undefined,
+  files: ReadonlyMap<string, string>,
   // ABSENT for an all-inline model (§6.13): there is no geometry file, so
   // there is no primary one to hold live-edited text for.
   primary?: { path: string; geometry: Geometry },
 ): ResolvedProjectRefs {
-  const projectErrors: Array<{ file: string; message: string }> = [];
-  const geometries = new Map<string, Geometry>();
-
-  // §6.9 + §6.13 via core, so the editor reads the same set of files the
-  // CLIs do — including files reached only by a part-level `geometry.path`,
-  // and NOT the ["voxels.json"] default when no part needs the by-name
-  // lookup (which is what makes a one-file model loadable at all).
-  const geometryRefs = (
-    manifest !== undefined
-      ? geometryPaths(manifest)
-      : primary !== undefined
-        ? [primary.path]
-        : []
-  ).map(normalizePath);
-  for (const ref of geometryRefs) {
-    if (primary !== undefined && ref === primary.path) {
-      geometries.set(ref, primary.geometry);
-      continue;
-    }
-    const text = getText(ref);
-    if (text === undefined) {
-      projectErrors.push({
-        file: ref,
-        message: ref.startsWith('../')
-          ? 'outside the package — workspace references are not supported yet'
-          : 'referenced by the manifest geometry list but not found',
-      });
-      continue;
-    }
-    const r = parseGeometryText(text);
-    if (!r.ok) projectErrors.push({ file: ref, message: r.message });
-    else geometries.set(ref, r.value);
+  // No manifest, nothing to resolve: what it references is exactly what
+  // could not be read. Only the live primary itself survives.
+  if (manifest === undefined) {
+    const geometries = new Map<string, Geometry>();
+    if (primary !== undefined) geometries.set(primary.path, primary.geometry);
+    return { geometries, parts: new Map<string, ResolvedPart>(), projectErrors: [] };
   }
-
-  // §7.4 palette references, resolved per geometry file and cached by path
-  // so files sharing one palette read it once and report at most one error.
-  const paletteCache = new Map<string, Palette | null>();
-  for (const [path, geometry] of geometries) {
-    if (geometry.paletteRef === undefined) continue;
-    const ref = resolveRefFrom(path, geometry.paletteRef); // §8
-    let palette = paletteCache.get(ref);
-    if (palette === undefined) {
-      palette = readPaletteRef(ref, getText, projectErrors);
-      paletteCache.set(ref, palette);
-    }
-    if (palette !== null) geometries.set(path, { ...geometry, palette });
-  }
-
-  // §6.13 part binding, through core's resolver rather than a second
-  // implementation here — the editor and the CLIs must agree about which
-  // shape a part has and what colors it means. ALL of it is kept: the
-  // file-backed entries used to be dropped and re-derived by name, which
-  // is exactly where an aliased or shared shape lost its rig name.
-  const parts =
-    manifest === undefined
-      ? new Map<string, ResolvedPart>()
-      : resolvePartGeometry(
-          manifest,
-          [...geometries].map(([path, geometry]) => ({ path, geometry })),
-          (ref) => readPaletteRef(normalizePath(ref), getText, projectErrors),
-        ).parts;
-
-  // External animations (§6.3 string refs): each references a JSON file
-  // holding ONE inline-animation object. Resolved per clip name.
-  const externalAnims = new Map<string, { path: string; anim: InlineAnimation }>();
-  if (manifest?.animations !== undefined) {
-    for (const [clip, anim] of Object.entries(manifest.animations)) {
-      if (typeof anim !== 'string') continue;
-      const ref = normalizePath(anim);
-      const text = getText(ref);
-      if (text === undefined) {
-        projectErrors.push({
-          file: ref,
-          message: ref.startsWith('../')
-            ? `animation '${clip}': outside the package — workspace references are not supported yet`
-            : `animation '${clip}' references it, but it was not found`,
-        });
-        continue;
-      }
-      try {
-        const parsed = InlineAnimationSchema.safeParse(JSON.parse(text));
-        if (parsed.success) {
-          externalAnims.set(clip, { path: ref, anim: parsed.data });
-        } else {
-          const issue = parsed.error.issues[0]!;
-          const at = issue.path.length > 0 ? issue.path.join('.') : '<root>';
-          projectErrors.push({
-            file: ref,
-            message: `animation '${clip}': ${at}: ${issue.message}`,
-          });
-        }
-      } catch (e) {
-        projectErrors.push({
-          file: ref,
-          message: `JSON parse: ${(e as Error).message}`,
-        });
-      }
-    }
-  }
-
+  const r = resolveProject(manifest, files, {
+    ...(primary !== undefined && {
+      overrides: new Map([[primary.path, primary.geometry]]),
+    }),
+  });
+  const geometries = new Map(r.geometries.map((g) => [g.path, g.geometry]));
+  const projectErrors = r.diagnostics.map((d) => ({
+    file: d.file,
+    // §8 allows `../` in principle; this app does not load anything
+    // outside the picked folder, so say that instead of "cannot read".
+    message: d.file.startsWith('../')
+      ? 'outside the package — workspace references are not supported yet'
+      : d.diag.message,
+  }));
   return {
     geometries,
-    parts,
-    ...(externalAnims.size > 0 && { externalAnims }),
+    parts: r.parts,
+    ...(r.externalAnims.size > 0 && { externalAnims: r.externalAnims }),
     projectErrors,
   };
-}
-
-// Read + validate one referenced palette file (§6.10). null (plus a project
-// error) when it is missing or malformed; the referring geometry then keeps
-// its empty palette and cross-file lint explains the consequence.
-function readPaletteRef(
-  ref: string,
-  getText: (path: string) => string | undefined,
-  projectErrors: Array<{ file: string; message: string }>,
-): Palette | null {
-  const text = getText(ref);
-  if (text === undefined) {
-    projectErrors.push({
-      file: ref,
-      message: ref.startsWith('../')
-        ? 'outside the package — workspace references are not supported yet'
-        : 'referenced as a geometry palette but not found',
-    });
-    return null;
-  }
-  try {
-    const r = parsePaletteFile(JSON.parse(text));
-    if (r.ok) return r.value;
-    projectErrors.push({ file: ref, message: r.message });
-  } catch (e) {
-    projectErrors.push({
-      file: ref,
-      message: `JSON parse: ${(e as Error).message}`,
-    });
-  }
-  return null;
 }
 
 // ── path helpers ─────────────────────────────────────────────────────

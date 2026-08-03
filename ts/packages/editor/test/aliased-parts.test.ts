@@ -19,7 +19,7 @@ function pkg(files: Record<string, string>, primary?: string): LoadedSource {
   const manifest: Manifest = mR.value;
   const refs = resolveProjectRefs(
     manifest,
-    (p) => files[p],
+    new Map(Object.entries(files)),
     primary === undefined
       ? undefined
       : { path: primary, geometry: parseOk(files[primary]!) },

@@ -29,11 +29,9 @@ function manifest(patch: Partial<Manifest> = {}): Manifest {
   return { name: 'model', parts: [{ name: 'a' }], ...patch };
 }
 
-// A file map as the `getText` callback resolveProjectRefs expects.
-const texts =
-  (files: Record<string, string>) =>
-  (p: string): string | undefined =>
-    files[p];
+// A file map in the shape resolveProjectRefs expects.
+const texts = (files: Record<string, string>): ReadonlyMap<string, string> =>
+  new Map(Object.entries(files));
 
 function manifestOf(text: string): Manifest {
   const r = parseManifest(JSON.parse(text));
@@ -148,7 +146,7 @@ describe('resolveProjectRefs — geometry list', () => {
     expect([...refs.geometries.keys()]).toEqual(['body.json', 'limbs.json']);
     expect(refs.projectErrors).toHaveLength(1);
     expect(refs.projectErrors[0]?.file).toBe('gone.json');
-    expect(refs.projectErrors[0]?.message).toMatch(/not found/);
+    expect(refs.projectErrors[0]?.message).toMatch(/cannot read/);
   });
 
   it('reports an unparseable geometry file', () => {
@@ -280,7 +278,7 @@ describe('resolveProjectRefs — §8 reference base', () => {
       'gear/body.json': body,
       'gear/palette.json': JSON.stringify({ colors: ['#FF0000'] }),
     };
-    const refs = resolveProjectRefs(manifest, (p) => files[p], {
+    const refs = resolveProjectRefs(manifest, new Map(Object.entries(files)), {
       path: 'gear/body.json',
       geometry: parseOk(body),
     });
@@ -293,7 +291,7 @@ describe('resolveProjectRefs — §8 reference base', () => {
       'gear/body.json': body,
       'palette.json': JSON.stringify({ colors: ['#FF0000'] }),
     };
-    const refs = resolveProjectRefs(manifest, (p) => files[p], {
+    const refs = resolveProjectRefs(manifest, new Map(Object.entries(files)), {
       path: 'gear/body.json',
       geometry: parseOk(body),
     });
