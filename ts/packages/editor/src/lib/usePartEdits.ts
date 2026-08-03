@@ -75,6 +75,28 @@ function withSockets(
     : { ...rest, sockets, animations };
 }
 
+// Re-key (`to` a name) or drop (`to` null) the track for `from` in one
+// clip's parts map, preserving entry order. Null = clip untouched. The
+// part rename and delete paths, inline AND external (§6.3), all run
+// this one loop — four hand-written copies used to have to stay in step
+// by care alone.
+function rekeyPartTracks(
+  parts: InlineAnimation['parts'],
+  from: string,
+  to: string | null,
+): InlineAnimation['parts'] | null {
+  if (!Object.hasOwn(parts, from)) return null;
+  const next: InlineAnimation['parts'] = {};
+  for (const [name, track] of Object.entries(parts)) {
+    if (name === from) {
+      if (to !== null) next[to] = track;
+      continue;
+    }
+    next[name] = track;
+  }
+  return next;
+}
+
 // The published name a given (part, socket) currently goes by, or null.
 // A socket MAY be published under several names (§6.12); the inspector's
 // one field manages the FIRST, and leaves any others to the source view.
@@ -501,12 +523,8 @@ export function usePartEdits({
         });
         // §6.3 external animation files reference the part by name too.
         nextSrc = rewriteExternalAnims(nextSrc, (anim) => {
-          if (!Object.hasOwn(anim.parts, oldName)) return null;
-          const nextTracks: InlineAnimation['parts'] = {};
-          for (const [pName, track] of Object.entries(anim.parts)) {
-            nextTracks[pName === oldName ? newName : pName] = track;
-          }
-          return { ...anim, parts: nextTracks };
+          const parts = rekeyPartTracks(anim.parts, oldName, newName);
+          return parts === null ? null : { ...anim, parts };
         });
         if (src.manifest !== undefined) {
           const m = src.manifest;
@@ -525,15 +543,16 @@ export function usePartEdits({
             const rebuilt: NonNullable<Manifest['animations']> = {};
             let changed = false;
             for (const [aName, anim] of Object.entries(m.animations)) {
-              if (typeof anim === 'string' || !Object.hasOwn(anim.parts, oldName)) {
+              if (typeof anim === 'string') {
                 rebuilt[aName] = anim;
                 continue;
               }
-              const nextTracks: InlineAnimation['parts'] = {};
-              for (const [pName, track] of Object.entries(anim.parts)) {
-                nextTracks[pName === oldName ? newName : pName] = track;
+              const parts = rekeyPartTracks(anim.parts, oldName, newName);
+              if (parts === null) {
+                rebuilt[aName] = anim;
+                continue;
               }
-              rebuilt[aName] = { ...anim, parts: nextTracks };
+              rebuilt[aName] = { ...anim, parts };
               changed = true;
             }
             if (changed) nextManifest = { ...nextManifest, animations: rebuilt };
@@ -573,9 +592,8 @@ export function usePartEdits({
             : null,
         );
         nextSrc = rewriteExternalAnims(nextSrc, (anim) => {
-          if (!Object.hasOwn(anim.parts, name)) return null;
-          const { [name]: _dropped, ...restTracks } = anim.parts;
-          return { ...anim, parts: restTracks };
+          const parts = rekeyPartTracks(anim.parts, name, null);
+          return parts === null ? null : { ...anim, parts };
         });
         if (src.manifest !== undefined) {
           const m = src.manifest;
@@ -604,12 +622,16 @@ export function usePartEdits({
             const rebuilt: NonNullable<Manifest['animations']> = {};
             let changed = false;
             for (const [aName, anim] of Object.entries(m.animations)) {
-              if (typeof anim === 'string' || !Object.hasOwn(anim.parts, name)) {
+              if (typeof anim === 'string') {
                 rebuilt[aName] = anim;
                 continue;
               }
-              const { [name]: _dropped, ...restTracks } = anim.parts;
-              rebuilt[aName] = { ...anim, parts: restTracks };
+              const parts = rekeyPartTracks(anim.parts, name, null);
+              if (parts === null) {
+                rebuilt[aName] = anim;
+                continue;
+              }
+              rebuilt[aName] = { ...anim, parts };
               changed = true;
             }
             if (changed) nextManifest = { ...nextManifest, animations: rebuilt };

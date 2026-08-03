@@ -240,12 +240,17 @@ pass. Existing coverage that must stay green: `editor/test/source-ops.test.ts`
   40-prop `DirChildrenProps` drill (575-640, spread through the recursion)
   into a row-ops context or single `ops` object.
 - **R2-d: editor `source-ops.ts` (767)** — split into read / write /
-  file-refs modules. Inside: factor `retargetManifestRefs(m, from, to |
-  null)` — `renameFileInSource` (407-518) and `deleteFileInSource`
-  (549-618) run the same three manifest rewrites with `to` vs `null`
-  (~40 lines, and the two paths can no longer diverge). Same trick for the
-  part-rename/part-delete animation loops
-  (`usePartEdits.ts:546-562` vs 627-640 → `mapAnimationTracks`).
+  file-refs modules. The animation-track half is DONE (`rekeyPartTracks`
+  in usePartEdits unifies the four rename/delete track loops, inline and
+  external). The `retargetManifestRefs` unification turned out NOT to be
+  mechanical — the two paths already diverge in ways that need product
+  decisions before converging:
+  - `renameFileInSource` normalizes EVERY geometry-list entry as a side
+    effect; `deleteFileInSource` leaves non-matching entries verbatim.
+  - **Found bug:** `deleteFileInSource` never rewrites a part-level
+    `geometry.path`, so deleting a non-primary geometry file a part
+    points at directly leaves a dangling path (a load error on reopen).
+    Decide: drop the part, inline it, or refuse the delete.
 - **R2-e: workspace `App.tsx` (712 → ~150)** — extract `useLibrary()` +
   `<OpenFolderButton>` (118-137, 606-631), `useSceneDocument()` (231-310;
   cleanest cut — four states nothing else reads), `useDeleteKey`
