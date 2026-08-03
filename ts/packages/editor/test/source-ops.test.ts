@@ -572,6 +572,19 @@ describe('writeFile — text and derived state move together', () => {
       expect(r.error).toMatch(/animation 'walk'/);
     });
 
+    it('a geometry text edit rebuilds the resolved parts (the render source)', () => {
+      // The 3D view draws src.parts (§6.13). This branch used to update
+      // only the AST map, leaving the render on the stale shape until
+      // some structural edit rebuilt parts as a side effect.
+      const r = applyFileEdit(
+        referencing(),
+        'v.json',
+        GEO([{ name: 'p', voxels: '00' }], 'palette.json'),
+      );
+      expect(r.error).toBeNull();
+      expect(r.source.parts.get('p')?.part.size.w).toBe(2);
+    });
+
     it('a VALID palette edit reaches every geometry pointing at it', () => {
       const r = applyFileEdit(
         referencing(),

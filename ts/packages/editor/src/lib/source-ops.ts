@@ -648,7 +648,11 @@ function deriveAfterWrite(
       path,
       withResolvedPalette(r.value, (p) => next.files.get(p), path),
     );
-    return { source: { ...next, geometries }, error: null };
+    // `parts` is derived from the manifest AND the geometry ASTs (§6.13),
+    // so it has to be rebuilt here too — this branch used to update only
+    // the AST map, leaving the render on the stale parts until some
+    // structural edit rebuilt them as a side effect.
+    return { source: withRebuiltParts({ ...next, geometries }), error: null };
   }
 
   if (path.toLowerCase().endsWith('.json')) {
