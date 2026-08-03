@@ -92,11 +92,11 @@ export interface LoadedSource {
   removedFiles?: ReadonlySet<string>;
 }
 
-// Result of attempting a load. `source` is undefined on hard parse
-// failures; `error` is the user-facing message in that case.
+// Result of attempting a load. `source` is undefined on the failures the
+// editor cannot open a document for (no manifest, unreadable folder);
+// `error` is the user-facing message in that case. A broken FILE is not
+// one of those — it loads, with its problem in the Console.
 export interface LoadResult {
   source?: LoadedSource;
   error?: string;
-  // Always populated for UI feedback ("could not parse X.json").
-  geometryFileName?: string;
 }

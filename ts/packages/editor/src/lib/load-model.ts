@@ -1,4 +1,4 @@
-import { MANIFEST_FILE, geometryPaths, normalizeRefPath as normalizePath, parseGeometryText, parseManifest, parsePaletteFile, resolveProject, resolveRefFrom, type Geometry, type InlineAnimation, type Manifest, type ResolvedPart } from '@cuboidy/core';
+import { MANIFEST_FILE, geometryPaths, normalizeRefPath as normalizePath, parseManifest, parsePaletteFile, resolveProject, resolveRefFrom, type Geometry, type InlineAnimation, type Manifest, type ResolvedPart } from '@cuboidy/core';
 import { strFromU8, unzipSync } from 'fflate';
 import type { LoadResult, LoadedSource } from './types.js';
 const CUBOIDY_EXT = /\.cuboidy$/i;
@@ -277,38 +277,19 @@ function buildFolderResult(
   const geometryRefs = (
     manifest !== undefined ? geometryPaths(manifest) : []
   ).map(normalizePath);
-  const primary: string | undefined = geometryRefs[0];
-
-  // The primary is loaded eagerly (a parse failure here fails the whole
-  // load) because it is the file the geometry panel edits and its AST must
-  // exist for the panel to open. With no geometry file there is nothing to
-  // do here: every part's shape is in the manifest.
-  let primaryGeom: Geometry | undefined;
-  if (primary !== undefined) {
-    const primaryText = fileTexts.get(primary);
-    if (primaryText === undefined) {
-      return { error: `No ${primary} in folder '${folderName}'` };
-    }
-    const geometryR = parseGeometryText(primaryText);
-    if (!geometryR.ok) {
-      return { error: geometryR.message, geometryFileName: primary };
-    }
-    primaryGeom = geometryR.value;
-  }
-
-  const refs = resolveProjectRefs(
-    manifest,
-    fileTexts,
-    primary !== undefined && primaryGeom !== undefined
-      ? { path: primary, geometry: primaryGeom }
-      : undefined,
+  // The file the geometry panel edits by DEFAULT: the first referenced
+  // geometry file that is actually present. A UI default and nothing
+  // more — the SPEC has no primary geometry (the manifest is the only
+  // fixed name, §3), so a missing or unparseable geometry file, first
+  // in the list or not, is a per-file diagnostic from resolveProjectRefs
+  // like any other, never a load failure. Absent when the model has no
+  // geometry file at all (§6.13, every shape inline).
+  const primary: string | undefined = geometryRefs.find((p) =>
+    fileTexts.has(p),
   );
+
+  const refs = resolveProjectRefs(manifest, fileTexts);
   const { geometries, externalAnims, projectErrors } = refs;
-  // The primary always resolves (its text parsed above), so the AST store
-  // is complete for it even if a sibling ref failed.
-  if (primary !== undefined && primaryGeom !== undefined && !geometries.has(primary)) {
-    geometries.set(primary, primaryGeom);
-  }
 
   const source: LoadedSource = {
     folderName,
@@ -324,7 +305,7 @@ function buildFolderResult(
     ...(externalAnims !== undefined && { externalAnims }),
     ...(projectErrors.length > 0 && { projectErrors }),
   };
-  return { source, ...(primary !== undefined && { geometryFileName: primary }) };
+  return { source };
 }
 
 // ── reference resolution ─────────────────────────────────────────────

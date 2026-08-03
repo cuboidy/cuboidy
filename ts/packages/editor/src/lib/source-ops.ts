@@ -687,12 +687,12 @@ export function moveFolderInSource(
 // PARTS it defined too — by-name and §6.13 by-path alike — with the full
 // part-delete cleanup (entries, children, sockets, tracks): keeping the
 // entries would leave dangling references, and a dangling `geometry.path`
-// was a load error on the next open. Returns null if the file is pinned
-// (the anchor or primary geometry) or already gone. Extracted from
-// handleDeleteFile so a folder delete can fold it over the subtree.
+// was a load error on the next open. Returns null if the file is the
+// manifest anchor — the ONLY undeletable file (§3) — or already gone.
+// Extracted from handleDeleteFile so a folder delete can fold it over
+// the subtree.
 export function deleteFileInSource(src: LoadedSource, p: string): LoadedSource | null {
   if (src.manifestPath === p) return null; // the anchor
-  if (src.primaryPath === p) return null; // primary geometry
   if (!src.files.has(p)) return null;
   // The parts whose shape this file supplied, under their RIG names (a
   // §6.13 `part` alias differs from the file's name on purpose).
@@ -734,7 +734,16 @@ export function deleteFileInSource(src: LoadedSource, p: string): LoadedSource |
       m.geometry !== undefined &&
       m.geometry.some((g) => normalizePath(g) === p)
     ) {
-      m = { ...m, geometry: m.geometry.filter((g) => normalizePath(g) !== p) };
+      const kept = m.geometry.filter((g) => normalizePath(g) !== p);
+      if (kept.length > 0) {
+        m = { ...m, geometry: kept };
+      } else {
+        // §6.9: the list is non-empty by schema, so a model whose last
+        // listed file goes simply has no list — its parts are inline,
+        // by-path, or gone with their files.
+        const { geometry: _drop, ...rest } = m;
+        m = rest;
+      }
       changed = true;
     }
     // Deleting an external animation file removes the clips that
@@ -765,6 +774,20 @@ export function deleteFileInSource(src: LoadedSource, p: string): LoadedSource |
   // Deleting the palette file itself: the geometry files that pointed at
   // it keep the colors they last resolved, written back out inline.
   if (geometryPaletteRefs(src).has(p)) next = repointPaletteRef(next, p, null);
+  // The deleted file may have been the geometry panel's default document
+  // (`primaryPath` — a UI default, not a SPEC concept). Promote the first
+  // remaining referenced file that exists; none left → an all-inline
+  // model, which has no geometry file (§6.13).
+  if (src.primaryPath === p) {
+    const promoted =
+      next.manifest === undefined
+        ? undefined
+        : geometryPaths(next.manifest)
+            .map(normalizePath)
+            .find((ref) => next.files.has(ref));
+    const { primaryPath: _drop, ...rest } = next;
+    next = promoted !== undefined ? { ...rest, primaryPath: promoted } : rest;
+  }
   return next;
 }
 

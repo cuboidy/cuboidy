@@ -482,9 +482,41 @@ describe('deleteFileInSource', () => {
     expect(next!.externalAnims).toBeUndefined();
   });
 
-  it('refuses to delete the manifest anchor or the primary geometry', () => {
+  it('refuses to delete only the manifest anchor (§3, the one fixed file)', () => {
     expect(deleteFileInSource(full(), MANIFEST)).toBeNull();
-    expect(deleteFileInSource(full(), 'body.json')).toBeNull();
+  });
+
+  it('deleting the panel-default ("primary") geometry file promotes the next one', () => {
+    // The SPEC has no primary geometry — the first file is merely the
+    // geometry panel's default document, so deleting it works like any
+    // other geometry-file delete and the default moves along.
+    const next = deleteFileInSource(full(), 'body.json');
+    expect(next).not.toBeNull();
+    expect(next!.primaryPath).toBe('limbs.json');
+    expect(next!.manifest?.geometry).toEqual(['limbs.json']);
+    expect(next!.manifest?.parts.map((p) => p.name)).toEqual(['arm']);
+  });
+
+  it('deleting the last geometry file leaves a working all-inline model', () => {
+    const src = pkg({
+      [MANIFEST]: manifestJson({
+        name: 'm',
+        geometry: ['body.json'],
+        parts: [
+          { name: 'body' },
+          { name: 'orb', geometry: { size: [1, 1, 1], voxels: [['.']] } },
+        ],
+      }),
+      'body.json': GEO([{ name: 'body', voxels: '0' }], ['#FF0000']),
+    }, 'body.json');
+    const next = deleteFileInSource(src, 'body.json');
+    expect(next).not.toBeNull();
+    // No geometry file left: no primary, and the list is DROPPED rather
+    // than written as the schema-invalid [].
+    expect(next!.primaryPath).toBeUndefined();
+    expect(next!.manifest?.geometry).toBeUndefined();
+    expect(next!.manifest?.parts.map((p) => p.name)).toEqual(['orb']);
+    expect(next!.parts.has('orb')).toBe(true);
   });
 
   it('returns null for a path that is not in the package', () => {

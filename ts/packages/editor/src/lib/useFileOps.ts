@@ -52,11 +52,7 @@ export function useFileOps({ dispatchEdit, setFileParseErrors }: Params) {
       mutateSource(null, (src) => {
         const norm = normalizePath(path);
         if (norm === '' || norm.startsWith('../')) return null;
-        if (
-          src.files.has(norm) ||
-          src.primaryPath === norm ||
-          src.manifestPath === norm
-        ) {
+        if (src.files.has(norm) || src.manifestPath === norm) {
           return null;
         }
         // Creating a file used to state its role through the extension: a

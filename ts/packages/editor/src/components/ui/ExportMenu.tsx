@@ -77,14 +77,16 @@ export function ExportMenu({ source }: Props) {
       </button>
       {open && (
         <div className="menu export-menu-items" role="menu">
-          <button
-            type="button"
-            className="menu-item"
-            role="menuitem"
-            onClick={handleDownloadGeometry}
-          >
-            Download {source.primaryPath}
-          </button>
+          {source.primaryPath !== undefined && (
+            <button
+              type="button"
+              className="menu-item"
+              role="menuitem"
+              onClick={handleDownloadGeometry}
+            >
+              Download {source.primaryPath}
+            </button>
+          )}
           <button
             type="button"
             className="menu-item"

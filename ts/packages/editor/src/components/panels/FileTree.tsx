@@ -115,11 +115,7 @@ export function FileTree({
           ? 'Create a manifest first — the rename must be recorded in its geometry list'
           : null;
     const deleteReason =
-      path === anchor
-        ? "The manifest can't be deleted"
-        : path === primary
-          ? "The primary geometry file can't be deleted"
-          : null;
+      path === anchor ? "The manifest can't be deleted" : null;
     const addReason = !isUnreferenced(path)
       ? 'hidden'
       : hasManifest
@@ -262,8 +258,10 @@ export function FileTree({
     onRenameFile(oldPath, parent === '' ? name : `${parent}/${name}`);
   };
   // null = the folder can be deleted; a string = disabled tooltip (it
-  // holds a file that can't be deleted, e.g. the primary geometry). An
-  // empty draft folder holds no files → always deletable.
+  // holds a file that can't be deleted — only the manifest anchor is,
+  // and it lives at the root, but the guard is cheap and stays honest
+  // if that ever changes). An empty draft folder holds no files →
+  // always deletable.
   const folderDeleteReason = (dir: string): string | null => {
     const pinned = filesUnder(dir).find(
       (p) => rowOps(p).deleteReason !== null,
