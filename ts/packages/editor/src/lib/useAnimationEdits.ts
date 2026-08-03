@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { addAttrAtTime, deleteAttrAtKey, isIdentifier, mergeKeyframeAtTime, moveAttrKey, setAttrAtKey, setEaseAtKey, trimTrackKeys, type AttrValue, type EaseAttr, type EasingName, type InlineAnimation, type KeyAttr, type Keyframe, type Manifest } from '@cuboidy/core';
 import { withManifest, writeFile } from './source-ops.js';
 import type { LoadResult } from './types.js';
+import { useSourceMutations } from './useSourceMutations.js';
 
 // Every edit the keyframe editor can make, in one place. They all funnel
 // through mutateManifestAnimation, which is the interesting part: a clip
@@ -28,6 +29,11 @@ export function useAnimationEdits({
   editsBlocked,
   onClipCreated,
 }: Params) {
+  const { mutateSource, mutateManifest } = useSourceMutations({
+    dispatchEdit,
+    editsBlocked,
+  });
+
   // ─── Animation (keyframe editor) edits ──────────────────────────────
   //
   // The `animations` analog of mutateManifestPart: immutably updates one
@@ -42,39 +48,29 @@ export function useAnimationEdits({
       animName: string,
       build: (anim: InlineAnimation) => InlineAnimation,
     ) => {
-      if (editsBlocked) return;
-      dispatchEdit(tag, (current) => {
-        if (current?.source === undefined) return current;
-        const src = current.source;
-        if (src.manifest === undefined) return current;
+      mutateSource(tag, (src) => {
+        if (src.manifest === undefined) return null;
         const prev = src.manifest.animations?.[animName];
-        if (prev === undefined) return current;
+        if (prev === undefined) return null;
         if (typeof prev === 'string') {
           const rec = src.externalAnims?.get(animName);
-          if (rec === undefined) return current; // unresolved ref
+          if (rec === undefined) return null; // unresolved ref
           const built = build(rec.anim);
-          if (built === rec.anim) return current;
+          if (built === rec.anim) return null;
           const externalAnims = new Map(src.externalAnims);
           externalAnims.set(animName, { path: rec.path, anim: built });
           return {
-            ...current,
-            source: {
-              ...writeFile(src, rec.path, JSON.stringify(built, null, 2) + '\n'),
-              externalAnims,
-            },
+            ...writeFile(src, rec.path, JSON.stringify(built, null, 2) + '\n'),
+            externalAnims,
           };
         }
         const built = build(prev);
-        // A no-op build must return `current` itself, or the fresh wrapper
-        // objects below would defeat the history reducer's `next === present`
-        // no-op detection and record a junk undo entry.
-        if (built === prev) return current;
+        if (built === prev) return null;
         const animations = { ...src.manifest.animations, [animName]: built };
-        const nextManifest: Manifest = { ...src.manifest, animations };
-        return { ...current, source: withManifest(src, nextManifest) };
+        return withManifest(src, { ...src.manifest, animations });
       });
     },
-    [dispatchEdit, editsBlocked],
+    [mutateSource],
   );
 
   // Overwrite an existing key's attribute value. Vec3 fields commit per
@@ -227,12 +223,11 @@ export function useAnimationEdits({
   // the anim view. Can't go through mutateManifestAnimation since the entry
   // doesn't exist yet.
   const handleCreateAnimationClip = useCallback(() => {
+    // Gated here, not just inside mutateManifest: the view switch below
+    // must not run either when edits are blocked.
     if (editsBlocked) return;
-    dispatchEdit(null, (current) => {
-      if (current?.source === undefined) return current;
-      const src = current.source;
-      if (src.manifest === undefined) return current;
-      const existing = src.manifest.animations ?? {};
+    mutateManifest(null, (m) => {
+      const existing = m.animations ?? {};
       let n = 1;
       let name = `clip${n}`;
       while (existing[name] !== undefined) {
@@ -240,14 +235,12 @@ export function useAnimationEdits({
         name = `clip${n}`;
       }
       const newClip: InlineAnimation = { duration: 1, loop: true, parts: {} };
-      const animations = { ...existing, [name]: newClip };
-      const nextManifest: Manifest = { ...src.manifest, animations };
-      return { ...current, source: withManifest(src, nextManifest) };
+      return { ...m, animations: { ...existing, [name]: newClip } };
     });
     // Outside the apply closure: reducer appliers must stay pure, and
     // StrictMode double-invokes them.
     onClipCreated();
-  }, [dispatchEdit, editsBlocked, onClipCreated]);
+  }, [editsBlocked, mutateManifest, onClipCreated]);
 
   // Rename a clip, preserving its position in the animations map (rebuild
   // entries in insertion order, swapping the key) so the JSON diff is one
@@ -257,16 +250,13 @@ export function useAnimationEdits({
   const handleRenameClip = useCallback(
     (oldName: string, newName: string) => {
       if (oldName === newName || !isIdentifier(newName)) return;
-      if (editsBlocked) return;
-      dispatchEdit(null, (current) => {
-        if (current?.source === undefined) return current;
-        const src = current.source;
-        if (src.manifest === undefined) return current;
+      mutateSource(null, (src) => {
+        if (src.manifest === undefined) return null;
         const animations = src.manifest.animations;
         if (animations === undefined || !Object.hasOwn(animations, oldName)) {
-          return current;
+          return null;
         }
-        if (Object.hasOwn(animations, newName)) return current;
+        if (Object.hasOwn(animations, newName)) return null;
         const next: NonNullable<Manifest['animations']> = {};
         for (const [k, v] of Object.entries(animations)) {
           next[k === oldName ? newName : k] = v;
@@ -282,13 +272,13 @@ export function useAnimationEdits({
           rebuilt.set(newName, ext);
           externalAnims = rebuilt;
         }
-            return {
-              ...current,
-              source: { ...withManifest(src, nextManifest), ...(externalAnims !== undefined && { externalAnims }), },
-            };
+        return {
+          ...withManifest(src, nextManifest),
+          ...(externalAnims !== undefined && { externalAnims }),
+        };
       });
     },
-    [dispatchEdit, editsBlocked],
+    [mutateSource],
   );
 
   // Delete a clip. No confirmation — undo is the safety net. Deleting the
@@ -296,14 +286,11 @@ export function useAnimationEdits({
   // animations; cleaner authored JSON).
   const handleDeleteClip = useCallback(
     (name: string) => {
-      if (editsBlocked) return;
-      dispatchEdit(null, (current) => {
-        if (current?.source === undefined) return current;
-        const src = current.source;
-        if (src.manifest === undefined) return current;
+      mutateSource(null, (src) => {
+        if (src.manifest === undefined) return null;
         const animations = src.manifest.animations;
         if (animations === undefined || !Object.hasOwn(animations, name)) {
-          return current;
+          return null;
         }
         const { [name]: _dropped, ...rest } = animations;
         let nextManifest: Manifest;
@@ -313,7 +300,7 @@ export function useAnimationEdits({
         } else {
           nextManifest = { ...src.manifest, animations: rest };
         }
-              // Deleting an external clip removes the manifest entry only; the
+        // Deleting an external clip removes the manifest entry only; the
         // referenced file stays (it may be shared — delete it from the
         // Files tree if it's truly orphaned).
         let externalAnims = src.externalAnims;
@@ -323,12 +310,12 @@ export function useAnimationEdits({
           externalAnims = rebuilt;
         }
         return {
-          ...current,
-          source: { ...withManifest(src, nextManifest), ...(externalAnims !== undefined && { externalAnims }), },
+          ...withManifest(src, nextManifest),
+          ...(externalAnims !== undefined && { externalAnims }),
         };
       });
     },
-    [dispatchEdit, editsBlocked],
+    [mutateSource],
   );
 
   // Move an inline clip out to its own file (§6.3): write
@@ -336,13 +323,10 @@ export function useAnimationEdits({
   // value to the reference path. One dispatchEdit = one undo.
   const handleExternalizeClip = useCallback(
     (name: string) => {
-      if (editsBlocked) return;
-      dispatchEdit(null, (current) => {
-        if (current?.source === undefined) return current;
-        const src = current.source;
-        if (src.manifest === undefined) return current;
+      mutateSource(null, (src) => {
+        if (src.manifest === undefined) return null;
         const anim = src.manifest.animations?.[name];
-        if (anim === undefined || typeof anim === 'string') return current;
+        if (anim === undefined || typeof anim === 'string') return null;
         let path = `anims/${name}.json`;
         let n = 2;
         while (src.files.has(path)) path = `anims/${name}-${n++}.json`;
@@ -355,14 +339,10 @@ export function useAnimationEdits({
           JSON.stringify(anim, null, 2) + '\n',
         );
         const animations = { ...src.manifest.animations, [name]: path };
-        const nextManifest: Manifest = { ...src.manifest, animations };
-        return {
-          ...current,
-          source: withManifest(withClipFile, nextManifest),
-        };
+        return withManifest(withClipFile, { ...src.manifest, animations });
       });
     },
-    [dispatchEdit, editsBlocked],
+    [mutateSource],
   );
 
   // The reverse: copy an external clip's object back into the manifest.
@@ -370,21 +350,15 @@ export function useAnimationEdits({
   // unreferenced; delete it from the Files tree if it's orphaned.
   const handleInlineClip = useCallback(
     (name: string) => {
-      if (editsBlocked) return;
-      dispatchEdit(null, (current) => {
-        if (current?.source === undefined) return current;
-        const src = current.source;
-        if (src.manifest === undefined) return current;
-        const ref = src.manifest.animations?.[name];
-        if (typeof ref !== 'string') return current;
+      mutateManifest(null, (m, src) => {
+        const ref = m.animations?.[name];
+        if (typeof ref !== 'string') return null;
         const rec = src.externalAnims?.get(name);
-        if (rec === undefined) return current; // unresolved ref
-        const animations = { ...src.manifest.animations, [name]: rec.anim };
-        const nextManifest: Manifest = { ...src.manifest, animations };
-        return { ...current, source: withManifest(src, nextManifest) };
+        if (rec === undefined) return null; // unresolved ref
+        return { ...m, animations: { ...m.animations, [name]: rec.anim } };
       });
     },
-    [dispatchEdit, editsBlocked],
+    [mutateManifest],
   );
 
   // Remove a part's whole track from a clip (the timeline's per-part ×).

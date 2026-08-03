@@ -2,7 +2,8 @@ import { useCallback } from 'react';
 import { AIR, serializeColor, type Geometry, type Manifest, type Palette, type Part } from '@cuboidy/core';
 import { normalizePath } from './load-model.js';
 import { geometryAt, mapGeometryFiles, modelPalette, paletteFileText, sharesPalette, withInlinePart, withManifest, writeFile } from './source-ops.js';
-import type { LoadResult } from './types.js';
+import type { LoadResult, LoadedSource } from './types.js';
+import { useSourceMutations } from './useSourceMutations.js';
 
 interface Params {
   dispatchEdit: (
@@ -18,11 +19,10 @@ interface Params {
 // reference is handled by the same `ref` branch the file case uses, so
 // only the spelled-out form lands here.
 function withModelPalette(
-  current: LoadResult | null,
+  src: LoadedSource,
   next: Palette,
-): LoadResult | null {
-  const src = current?.source;
-  if (src?.manifest === undefined) return current;
+): LoadedSource | null {
+  if (src.manifest === undefined) return null;
   const colors = next.map(serializeColor);
   // An empty palette is spelled as an ABSENT field (§6.1), the same way a
   // geometry file omits one it does not have — so clearing every color
@@ -35,10 +35,12 @@ function withModelPalette(
   } else {
     manifest = { ...src.manifest, palette: colors };
   }
-  return { ...current, source: withManifest(src, manifest) };
+  return withManifest(src, manifest);
 }
 
 export function usePaletteEdits({ dispatchEdit, editsBlocked }: Params) {
+  const { mutateSource } = useSourceMutations({ dispatchEdit, editsBlocked });
+
   // ── Palette editing. SPEC §7.4: a palette belongs to the document that
   // uses it — a geometry file, or (since §6.13) the manifest, for parts
   // written inline there. So every operation names its target: a path, or
@@ -57,32 +59,23 @@ export function usePaletteEdits({ dispatchEdit, editsBlocked }: Params) {
   // one an all-inline model has.
   const handleEditPalette = useCallback(
     (file: string | undefined, next: Palette, tag?: string) => {
-      if (editsBlocked) return;
-      dispatchEdit(tag ?? null, (current) => {
-        const src = current?.source;
-        if (src === undefined) return current;
-        if (file === undefined) return withModelPalette(current, next);
+      mutateSource(tag ?? null, (src) => {
+        if (file === undefined) return withModelPalette(src, next);
         const geometry = geometryAt(src, file);
-        if (geometry === undefined) return current;
+        if (geometry === undefined) return null;
         if (geometry.paletteRef === undefined) {
-          const nextSrc = mapGeometryFiles(src, (g, path) =>
+          return mapGeometryFiles(src, (g, path) =>
             path === file ? { ...g, palette: next } : null,
           );
-          return nextSrc === src ? current : { ...current, source: nextSrc };
         }
-        // Referenced: the palette FILE is the source of truth. Refresh the
-        // resolved copy on every geometry pointing at it so the 3D view
-        // updates without a reload.
-        // Writing the palette FILE re-resolves it into every geometry that
-        // points at it, so the 3D view updates without a reload.
+        // Referenced: the palette FILE is the source of truth. Writing it
+        // re-resolves the colors into every geometry pointing at it, so
+        // the 3D view updates without a reload.
         const ref = normalizePath(geometry.paletteRef);
-        return {
-          ...current,
-          source: writeFile(src, ref, paletteFileText(next)),
-        };
+        return writeFile(src, ref, paletteFileText(next));
       });
     },
-    [dispatchEdit, editsBlocked],
+    [mutateSource],
   );
 
   // Delete an (unused) color: every higher index shifts down, so the voxels
@@ -91,10 +84,7 @@ export function usePaletteEdits({ dispatchEdit, editsBlocked }: Params) {
   // own file. Refuses while any in-scope voxel still uses the color.
   const handleDeletePaletteColor = useCallback(
     (file: string | undefined, index: number) => {
-      if (editsBlocked) return;
-      dispatchEdit(null, (current) => {
-        const src = current?.source;
-        if (src === undefined) return current;
+      mutateSource(null, (src) => {
         // The manifest's palette (§6.13): scope is the inline parts that
         // fall back to it, and the same refuse-if-used rule applies.
         if (file === undefined) {
@@ -105,50 +95,47 @@ export function usePaletteEdits({ dispatchEdit, editsBlocked }: Params) {
                 ?.palette === undefined,
           );
           const palette = modelPalette(src);
-          if (index < 0 || index >= palette.length) return current;
+          if (index < 0 || index >= palette.length) return null;
           for (const [, entry] of scope) {
             for (const layer of entry.part.voxels) {
               for (const row of layer) {
-                if (row.includes(index)) return current;
+                if (row.includes(index)) return null;
               }
             }
           }
           let next = withModelPalette(
-            current,
+            src,
             palette.filter((_, i) => i !== index),
           );
+          if (next === null) return null;
           // Every higher index shifts down, so the parts drawing on this
           // palette are remapped in the SAME edit — one undo, and never a
           // frame where a voxel names the wrong color.
           for (const [name, entry] of scope) {
-            const nextSrc = next?.source;
-            if (nextSrc === undefined) break;
             let changed = false;
-            const voxels = entry.part.voxels.map((layer: readonly (readonly number[])[]) =>
-              layer.map((row) =>
-                row.map((idx) => {
-                  if (idx !== AIR && idx > index) {
-                    changed = true;
-                    return idx - 1;
-                  }
-                  return idx;
-                }),
-              ),
+            const voxels = entry.part.voxels.map(
+              (layer: readonly (readonly number[])[]) =>
+                layer.map((row) =>
+                  row.map((idx) => {
+                    if (idx !== AIR && idx > index) {
+                      changed = true;
+                      return idx - 1;
+                    }
+                    return idx;
+                  }),
+                ),
             );
             if (!changed) continue;
-            next = {
-              ...next,
-              source: withInlinePart(nextSrc, name, (p) =>
-                p === undefined ? entry.part : { ...p, voxels },
-              ),
-            };
+            next = withInlinePart(next, name, (p) =>
+              p === undefined ? entry.part : { ...p, voxels },
+            );
           }
           return next;
         }
         const geometry = geometryAt(src, file);
-        if (geometry === undefined) return current;
+        if (geometry === undefined) return null;
         const palette = geometry.palette;
-        if (index < 0 || index >= palette.length) return current;
+        if (index < 0 || index >= palette.length) return null;
         const ref =
           geometry.paletteRef !== undefined
             ? normalizePath(geometry.paletteRef)
@@ -161,7 +148,7 @@ export function usePaletteEdits({ dispatchEdit, editsBlocked }: Params) {
           for (const part of g.parts) {
             for (const layer of part.voxels) {
               for (const row of layer) {
-                if (row.includes(index)) return current;
+                if (row.includes(index)) return null;
               }
             }
           }
@@ -187,41 +174,32 @@ export function usePaletteEdits({ dispatchEdit, editsBlocked }: Params) {
           });
           return { ...g, parts, palette: nextPalette };
         });
-        if (ref === undefined) return { ...current, source: nextSrc };
-        return {
-          ...current,
-          source: writeFile(nextSrc, ref, paletteFileText(nextPalette)),
-        };
+        if (ref === undefined) return nextSrc;
+        return writeFile(nextSrc, ref, paletteFileText(nextPalette));
       });
     },
-    [dispatchEdit, editsBlocked],
+    [mutateSource],
   );
 
   // Move ONE file's inline palette out to a palette file and point at it.
   // The colors are unchanged — only where they live. One undo.
   const handleExternalizePalette = useCallback(
     (file: string) => {
-      if (editsBlocked) return;
-      dispatchEdit(null, (current) => {
-        const src = current?.source;
-        if (src === undefined) return current;
+      mutateSource(null, (src) => {
         const geometry = geometryAt(src, file);
-        if (geometry === undefined) return current;
-        if (geometry.paletteRef !== undefined) return current;
-        if (geometry.palette.length === 0) return current;
+        if (geometry === undefined) return null;
+        if (geometry.paletteRef !== undefined) return null;
+        if (geometry.palette.length === 0) return null;
         let path = 'palette.json';
         let n = 2;
         while (src.files.has(path)) path = `palette-${n++}.json`;
         const nextSrc = mapGeometryFiles(src, (g, at) =>
           at === file ? { ...g, paletteRef: path } : null,
         );
-        return {
-          ...current,
-          source: writeFile(nextSrc, path, paletteFileText(geometry.palette)),
-        };
+        return writeFile(nextSrc, path, paletteFileText(geometry.palette));
       });
     },
-    [dispatchEdit, editsBlocked],
+    [mutateSource],
   );
 
   // The reverse: keep the colors, drop the reference so they are written
@@ -229,20 +207,16 @@ export function usePaletteEdits({ dispatchEdit, editsBlocked }: Params) {
   // — delete it from the Files tree if it is truly orphaned.
   const handleInlinePalette = useCallback(
     (file: string) => {
-      if (editsBlocked) return;
-      dispatchEdit(null, (current) => {
-        const src = current?.source;
-        if (src === undefined) return current;
-        if (geometryAt(src, file)?.paletteRef === undefined) return current;
-        const nextSrc = mapGeometryFiles(src, (g, path) => {
+      mutateSource(null, (src) => {
+        if (geometryAt(src, file)?.paletteRef === undefined) return null;
+        return mapGeometryFiles(src, (g, path) => {
           if (path !== file) return null;
           const { paletteRef: _drop, ...rest } = g;
           return rest;
         });
-        return nextSrc === src ? current : { ...current, source: nextSrc };
       });
     },
-    [dispatchEdit, editsBlocked],
+    [mutateSource],
   );
   return {
     handleEditPalette,

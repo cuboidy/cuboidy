@@ -4,6 +4,7 @@ import { serializeGeometry } from '@cuboidy/core';
 import { normalizePath } from './load-model.js';
 import { deleteFileInSource, mergeGeometries, moveFolderInSource, pathBasename, pathDirname, renameFileInSource, withManifest } from './source-ops.js';
 import type { LoadedSource, LoadResult } from './types.js';
+import { useSourceMutations } from './useSourceMutations.js';
 
 // Creating, renaming, moving and deleting package files. Each operation is
 // ONE dispatchEdit, so it is one undo step even when it touches several
@@ -40,21 +41,23 @@ export function useFileOps({ dispatchEdit, setFileParseErrors }: Params) {
   // ── File CRUD (Phase D). Folder sources with a files map only; each
   // operation is one dispatchEdit = one atomic undo step. The manifest
   // is the reference anchor, so structural file ops keep its geometry /
-  // palette / animation refs in sync and re-serialize it. ──
+  // palette / animation refs in sync and re-serialize it.
+  //
+  // No editsBlocked gate: file operations don't re-serialize an AST over
+  // a mid-edit file, so they stay available while text is unparseable. ──
+  const { mutateSource } = useSourceMutations({ dispatchEdit });
 
   const handleCreateFile = useCallback(
     (path: string) => {
-      dispatchEdit(null, (current) => {
-        const src = current?.source;
-        if (src === undefined) return current;
+      mutateSource(null, (src) => {
         const norm = normalizePath(path);
-        if (norm === '' || norm.startsWith('../')) return current;
+        if (norm === '' || norm.startsWith('../')) return null;
         if (
           src.files.has(norm) ||
           src.primaryPath === norm ||
           src.manifestPath === norm
         ) {
-          return current;
+          return null;
         }
         // Creating a file used to state its role through the extension: a
         // `.cvox` name meant geometry, any other `.json` meant a palette or an
@@ -108,10 +111,10 @@ export function useFileOps({ dispatchEdit, setFileParseErrors }: Params) {
             next = withManifest(next, nextManifest);
           }
         }
-        return { ...current, source: next };
+        return next;
       });
     },
-    [dispatchEdit],
+    [mutateSource],
   );
 
   // Reference an existing-but-unreferenced geometry file from the manifest's
@@ -121,19 +124,17 @@ export function useFileOps({ dispatchEdit, setFileParseErrors }: Params) {
   // parts again.
   const handleAddFileToModel = useCallback(
     (path: string) => {
-      dispatchEdit(null, (current) => {
-        const src = current?.source;
-        if (src === undefined || src.manifest === undefined) return current;
+      mutateSource(null, (src) => {
+        if (src.manifest === undefined) return null;
         const norm = normalizePath(path);
-        if (!src.files.has(norm)) return current;
+        if (!src.files.has(norm)) return null;
         const geometry = geometryListToExtend(src.manifest);
-        if (geometry.includes(norm)) return current;
+        if (geometry.includes(norm)) return null;
         geometry.push(norm);
-        const nextManifest: Manifest = { ...src.manifest, geometry };
-        return { ...current, source: withManifest(src, nextManifest) };
+        return withManifest(src, { ...src.manifest, geometry });
       });
     },
-    [dispatchEdit],
+    [mutateSource],
   );
 
   const handleRenameFile = useCallback(
@@ -143,12 +144,7 @@ export function useFileOps({ dispatchEdit, setFileParseErrors }: Params) {
       // Land any pending reparses first: the rename re-keys the file's
       // AST/geometry entry, and a timer firing later (keyed to the OLD
       // path) would no-op, leaving a stale AST under the new name.
-      dispatchEdit(null, (current) => {
-        const src = current?.source;
-        if (src === undefined) return current;
-        const next = renameFileInSource(src, from, to);
-        return next === null ? current : { ...current, source: next };
-      });
+      mutateSource(null, (src) => renameFileInSource(src, from, to));
       // Re-key any live parse error for the renamed file.
       setFileParseErrors((prev) => {
         if (!prev.has(from)) return prev;
@@ -159,7 +155,7 @@ export function useFileOps({ dispatchEdit, setFileParseErrors }: Params) {
         return next;
       });
     },
-    [dispatchEdit, setFileParseErrors],
+    [mutateSource, setFileParseErrors],
   );
 
   // Relocate a whole folder (and everything under it) so its new path is
@@ -171,12 +167,7 @@ export function useFileOps({ dispatchEdit, setFileParseErrors }: Params) {
   const relocateFolder = useCallback(
     (from: string, newDir: string) => {
       if (newDir === from) return;
-      dispatchEdit(null, (current) => {
-        const src = current?.source;
-        if (src === undefined) return current;
-        const next = moveFolderInSource(src, from, newDir);
-        return next === null ? current : { ...current, source: next };
-      });
+      mutateSource(null, (src) => moveFolderInSource(src, from, newDir));
       // Re-key live parse errors under the folder by path prefix.
       setFileParseErrors((prev) => {
         const prefix = `${from}/`;
@@ -190,7 +181,7 @@ export function useFileOps({ dispatchEdit, setFileParseErrors }: Params) {
         return next ?? prev;
       });
     },
-    [dispatchEdit, setFileParseErrors],
+    [mutateSource, setFileParseErrors],
   );
 
   // Move a folder INTO destDir ('' = package root), keeping its name.
@@ -222,12 +213,7 @@ export function useFileOps({ dispatchEdit, setFileParseErrors }: Params) {
   const handleDeleteFile = useCallback(
     (path: string) => {
       const p = normalizePath(path);
-      dispatchEdit(null, (current) => {
-        const src = current?.source;
-        if (src === undefined) return current;
-        const next = deleteFileInSource(src, p);
-        return next === null ? current : { ...current, source: next };
-      });
+      mutateSource(null, (src) => deleteFileInSource(src, p));
       setFileParseErrors((prev) => {
         if (!prev.has(p)) return prev;
         const next = new Map(prev);
@@ -235,7 +221,7 @@ export function useFileOps({ dispatchEdit, setFileParseErrors }: Params) {
         return next;
       });
     },
-    [dispatchEdit, setFileParseErrors],
+    [mutateSource, setFileParseErrors],
   );
 
   // Delete a whole folder — every file under it, atomically (one undo).
@@ -246,20 +232,18 @@ export function useFileOps({ dispatchEdit, setFileParseErrors }: Params) {
     (dir: string) => {
       const from = normalizePath(dir);
       const prefix = `${from}/`;
-      dispatchEdit(null, (current) => {
-        const src = current?.source;
-        if (src === undefined) return current;
+      mutateSource(null, (src) => {
         const targets = [...src.files.keys()]
           .filter((k) => k.startsWith(prefix))
           .sort();
-        if (targets.length === 0) return current;
+        if (targets.length === 0) return null;
         let next: LoadedSource = src;
         for (const k of targets) {
           const stepped = deleteFileInSource(next, k);
-          if (stepped === null) return current; // a pinned file aborts
+          if (stepped === null) return null; // a pinned file aborts
           next = stepped;
         }
-        return { ...current, source: next };
+        return next;
       });
       setFileParseErrors((prev) => {
         let next: Map<string, string> | null = null;
@@ -271,7 +255,7 @@ export function useFileOps({ dispatchEdit, setFileParseErrors }: Params) {
         return next ?? prev;
       });
     },
-    [dispatchEdit, setFileParseErrors],
+    [mutateSource, setFileParseErrors],
   );
   return {
     handleCreateFile,

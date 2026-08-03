@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { AIR, composePartRotation, quatRotateVec3, type Manifest, type ManifestPart, type Part } from '@cuboidy/core';
 import { mapGeometryFiles, mergeGeometries, withManifest } from './source-ops.js';
-import type { LoadResult } from './types.js';
+import type { LoadedSource } from './types.js';
 import type { VoxelEdit } from '@cuboidy/ui';
 
 // Committing a direct manipulation in the 3D preview: the gizmo drags and
@@ -18,11 +18,11 @@ import type { VoxelEdit } from '@cuboidy/ui';
 // the same mutators back the inspector.
 
 interface Params {
-  dispatchEdit: (
+  // The shared edit prologue (useSourceMutations), owned by usePartEdits.
+  mutateSource: (
     tag: string | null,
-    apply: (c: LoadResult | null) => LoadResult | null,
+    build: (src: LoadedSource) => LoadedSource | null,
   ) => void;
-  editsBlocked: boolean;
   mutateGeometryPart: (
     tag: string | null,
     partName: string,
@@ -36,8 +36,7 @@ interface Params {
 }
 
 export function usePreviewEdits({
-  dispatchEdit,
-  editsBlocked,
+  mutateSource,
   mutateGeometryPart,
   mutateManifestPart,
 }: Params) {
@@ -80,17 +79,14 @@ export function usePreviewEdits({
   // enough to keep the invariant, sane enough for the file.
   const handleGizmoMovePivot = useCallback(
     (partName: string, pos: [number, number, number]) => {
-      if (editsBlocked) return;
-      dispatchEdit(null, (current) => {
-        const src = current?.source;
-        if (src === undefined) return current;
+      mutateSource(null, (src) => {
         const part = mergeGeometries(src).parts.find(
           (p) => p.name === partName,
         );
-        if (part === undefined) return current;
+        if (part === undefined) return null;
         const op = part.pivot.pos;
         if (op.x === pos[0] && op.y === pos[1] && op.z === pos[2]) {
-          return current;
+          return null;
         }
         const delta: [number, number, number] = [
           pos[0] - op.x,
@@ -110,10 +106,10 @@ export function usePreviewEdits({
           };
           return { ...geometry, parts };
         });
-        if (nextSrc === src) return current;
+        if (nextSrc === src) return null;
         if (nextSrc.manifest === undefined) {
           // No rig to keep in place — a plain geometry edit.
-          return { ...current, source: nextSrc };
+          return nextSrc;
         }
         const round3 = (v: number) => Math.round(v * 1000) / 1000;
         const m = nextSrc.manifest;
@@ -153,10 +149,10 @@ export function usePreviewEdits({
           };
         }
         const nextManifest: Manifest = { ...m, parts };
-        return { ...current, source: withManifest(nextSrc, nextManifest) };
+        return withManifest(nextSrc, nextManifest);
       });
     },
-    [dispatchEdit, editsBlocked],
+    [mutateSource],
   );
 
   // Pivot rotate commit — writes the geometry-side pivot.rot (§7.7

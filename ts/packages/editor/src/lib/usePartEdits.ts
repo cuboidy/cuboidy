@@ -4,6 +4,7 @@ import { normalizePath } from './load-model.js';
 import { isInlinePart, mapGeometryFiles, mergeGeometries, primaryGeometry, rewriteExternalAnims, uniquePartName, withInlinePart, withManifest } from './source-ops.js';
 import type { LoadResult } from './types.js';
 import { usePreviewEdits } from './usePreviewEdits.js';
+import { useSourceMutations } from './useSourceMutations.js';
 
 // Everything that edits ONE part, plus the selection it acts on.
 //
@@ -106,6 +107,13 @@ export function usePartEdits({
     null,
   );
 
+  // The shared edit prologue/epilogue; mutateManifest also backs the
+  // Model panel's name/version fields directly.
+  const { mutateSource, mutateManifest } = useSourceMutations({
+    dispatchEdit,
+    editsBlocked,
+  });
+
   const handleToggle = useCallback((name: string) => {
     setHiddenParts((prev) => {
       const next = new Set(prev);
@@ -138,22 +146,18 @@ export function usePartEdits({
   // history reducer drops the entry). Backs PartProperties' Geometry section.
   const mutateGeometryPart = useCallback(
     (tag: string | null, partName: string, build: (part: Part) => Part) => {
-      if (editsBlocked) return;
-      dispatchEdit(tag, (current) => {
-        const src = current?.source;
-        if (src === undefined) return current;
+      mutateSource(tag, (src) => {
         // SPEC §6.13: the shape may be in a geometry file or in the
         // manifest. This is the one place per-part geometry edits pass
         // through — the inspector, the pivot gizmo and the voxel tools all
         // funnel here — so routing it once is what keeps every one of them
         // working on an inline part without knowing that it is one.
         if (isInlinePart(src, partName)) {
-          const nextSrc = withInlinePart(src, partName, (part) =>
+          return withInlinePart(src, partName, (part) =>
             part === undefined ? part! : build(part),
           );
-          return nextSrc === src ? current : { ...current, source: nextSrc };
         }
-        const nextSrc = mapGeometryFiles(src, (geometry) => {
+        return mapGeometryFiles(src, (geometry) => {
           const i = geometry.parts.findIndex((p) => p.name === partName);
           if (i < 0) return null;
           const built = build(geometry.parts[i]!);
@@ -162,10 +166,9 @@ export function usePartEdits({
           parts[i] = built;
           return { ...geometry, parts };
         });
-        return nextSrc === src ? current : { ...current, source: nextSrc };
       });
     },
-    [dispatchEdit, editsBlocked],
+    [mutateSource],
   );
 
   // Adapter for PartProperties' Geometry section: (partName, build, tag?) —
@@ -192,10 +195,7 @@ export function usePartEdits({
       // Returns the rewritten socket, or null to delete it.
       buildSocket: (socket: Part['sockets'][number]) => Part['sockets'][number] | null,
     ) => {
-      if (editsBlocked) return;
-      dispatchEdit(null, (current) => {
-        const src = current?.source;
-        if (src === undefined) return current;
+      mutateSource(null, (src) => {
         let oldName: string | null = null;
         let newName: string | null = null;
         const nextSrc = mapGeometryFiles(src, (geometry) => {
@@ -216,10 +216,8 @@ export function usePartEdits({
           parts[i] = { ...part, sockets };
           return { ...geometry, parts };
         });
-        if (nextSrc === src || oldName === null) return current;
-        if (src.manifest === undefined) {
-          return { ...current, source: nextSrc };
-        }
+        if (nextSrc === src || oldName === null) return null;
+        if (src.manifest === undefined) return nextSrc;
         const nextManifest = mapPublishedSockets(src.manifest, (t) =>
           t.part === partName && t.socket === oldName
             ? newName === null
@@ -227,16 +225,12 @@ export function usePartEdits({
               : { ...t, socket: newName }
             : t,
         );
-        return {
-          ...current,
-          source:
-            nextManifest === src.manifest
-              ? nextSrc
-              : withManifest(nextSrc, nextManifest),
-        };
+        return nextManifest === src.manifest
+          ? nextSrc
+          : withManifest(nextSrc, nextManifest);
       });
     },
-    [dispatchEdit, editsBlocked],
+    [mutateSource],
   );
 
   const handleRenameSocket = useCallback(
@@ -296,24 +290,21 @@ export function usePartEdits({
       const existing = new Set(merged.parts.map((p) => p.name));
       if (!existing.has(sourceName)) return;
       const newName = uniquePartName(existing, base);
-      dispatchEdit(null, (current) => {
-        const src = current?.source;
-        if (src === undefined) return current;
+      mutateSource(null, (src) => {
         const m = mergeGeometries(src);
         const source = m.parts.find((p) => p.name === sourceName);
         if (source === undefined || m.parts.some((p) => p.name === newName)) {
-          return current;
+          return null;
         }
         const file = m.files.get(sourceName) ?? src.primaryPath;
         const newPart = make(source, newName);
-        const nextSrc = mapGeometryFiles(src, (geometry, path) =>
+        return mapGeometryFiles(src, (geometry, path) =>
           path === file ? { ...geometry, parts: [...geometry.parts, newPart] } : null,
         );
-        return nextSrc === src ? current : { ...current, source: nextSrc };
       });
       setSelectedPartName(newName);
     },
-    [dispatchEdit, editsBlocked, loadedRef],
+    [mutateSource, editsBlocked, loadedRef],
   );
 
   const handleDuplicatePart = useCallback(
@@ -342,13 +333,11 @@ export function usePartEdits({
   const handleConfirmCreatePart = useCallback(
     (name: string, parent: string | null, file?: string) => {
       if (editsBlocked) return;
-      dispatchEdit(null, (current) => {
-        if (current?.source === undefined) return current;
-        const src = current.source;
+      mutateSource(null, (src) => {
         // Uniqueness is model-wide (§5): guard against a name defined in
         // ANY geometry file.
         if (mergeGeometries(src).parts.some((p) => p.name === name)) {
-          return current;
+          return null;
         }
         // Target geometry file: the draft row's picker choice, as long
         // as it's still a loaded geometry file; else the primary.
@@ -380,7 +369,7 @@ export function usePartEdits({
         // inline — which keeps a single-file model a single file instead
         // of silently growing a voxels.json beside it.
         if (target === undefined) {
-          if (src.manifest === undefined) return current;
+          if (src.manifest === undefined) return null;
           let nextSrc = withInlinePart(src, name, () => newPart);
           if (parent !== null && nextSrc.manifest !== undefined) {
             const parts = nextSrc.manifest.parts.map((p) =>
@@ -388,7 +377,7 @@ export function usePartEdits({
             );
             nextSrc = withManifest(nextSrc, { ...nextSrc.manifest, parts });
           }
-          return { ...current, source: nextSrc };
+          return nextSrc;
         }
         const nextSrc = mapGeometryFiles(src, (geometry, path) =>
           path === target
@@ -397,15 +386,14 @@ export function usePartEdits({
         );
         if (parent !== null && src.manifest !== undefined) {
           const parts: ManifestPart[] = [...src.manifest.parts, { name, parent }];
-          const nextManifest: Manifest = { ...src.manifest, parts };
-          return { ...current, source: withManifest(nextSrc, nextManifest) };
+          return withManifest(nextSrc, { ...src.manifest, parts });
         }
-        return { ...current, source: nextSrc };
+        return nextSrc;
       });
       setSelectedPartName(name);
       setCreating(null);
     },
-    [dispatchEdit, editsBlocked],
+    [mutateSource, editsBlocked],
   );
 
   // Move a part's declaration to another geometry file, atomically (one
@@ -417,14 +405,10 @@ export function usePartEdits({
   // target palette).
   const handleMovePart = useCallback(
     (name: string, targetPath: string) => {
-      if (editsBlocked) return;
-      dispatchEdit(null, (current) => {
-        const src = current?.source;
-        if (src === undefined || !src.geometries.has(targetPath)) {
-          return current;
-        }
+      mutateSource(null, (src) => {
+        if (!src.geometries.has(targetPath)) return null;
         const fromPath = mergeGeometries(src).files.get(name);
-        if (fromPath === undefined || fromPath === targetPath) return current;
+        if (fromPath === undefined || fromPath === targetPath) return null;
         const fromGeometry =
           fromPath === src.primaryPath
             ? primaryGeometry(src)
@@ -433,13 +417,13 @@ export function usePartEdits({
           targetPath === src.primaryPath
             ? primaryGeometry(src)
             : src.geometries.get(targetPath);
-        if (fromGeometry === undefined || toGeometry === undefined) return current;
+        if (fromGeometry === undefined || toGeometry === undefined) return null;
         // The name the part has IN THE FILE, which is not the rig's name
         // when `geometry.part` renames it (§6.13). Searching by the rig's
         // name found nothing there and the move silently did nothing.
         const sourceName = src.parts.get(name)?.source?.part ?? name;
         const part = fromGeometry.parts.find((p) => p.name === sourceName);
-        if (part === undefined) return current;
+        if (part === undefined) return null;
         let moved = part;
         let toPalette = toGeometry.palette;
         // Color indices are portable only when both files resolve against
@@ -482,10 +466,10 @@ export function usePartEdits({
             nextSrc = withManifest(nextSrc, { ...src.manifest, parts });
           }
         }
-        return { ...current, source: nextSrc };
+        return nextSrc;
       });
     },
-    [dispatchEdit, editsBlocked],
+    [mutateSource],
   );
 
   // Rename a part everywhere it's referenced, atomically (one dispatchEdit =
@@ -500,14 +484,12 @@ export function usePartEdits({
     (oldName: string, newName: string) => {
       if (oldName === newName || !isIdentifier(newName)) return;
       if (editsBlocked) return;
-      dispatchEdit(null, (current) => {
-        if (current?.source === undefined) return current;
-        const src = current.source;
+      mutateSource(null, (src) => {
         // Existence / collision checks are model-wide (§5) — the part may
         // live in any geometry file.
         const allParts = mergeGeometries(src).parts;
-        if (!allParts.some((p) => p.name === oldName)) return current;
-        if (allParts.some((p) => p.name === newName)) return current;
+        if (!allParts.some((p) => p.name === oldName)) return null;
+        if (allParts.some((p) => p.name === newName)) return null;
         let nextSrc = mapGeometryFiles(src, (geometry) => {
           let changed = false;
           const parts: Part[] = geometry.parts.map((p) => {
@@ -556,9 +538,9 @@ export function usePartEdits({
             }
             if (changed) nextManifest = { ...nextManifest, animations: rebuilt };
           }
-          return { ...current, source: withManifest(nextSrc, nextManifest) };
+          return withManifest(nextSrc, nextManifest);
         }
-        return { ...current, source: nextSrc };
+        return nextSrc;
       });
       setSelectedPartName(newName);
       // Carry a hidden part's visibility over to the new name.
@@ -570,7 +552,7 @@ export function usePartEdits({
         return next;
       });
     },
-    [dispatchEdit, editsBlocked],
+    [mutateSource, editsBlocked],
   );
 
   // Delete a part, cleaning up its references atomically (one undo). Removes
@@ -581,12 +563,10 @@ export function usePartEdits({
   const handleDeletePart = useCallback(
     (name: string) => {
       if (editsBlocked) return;
-      dispatchEdit(null, (current) => {
-        if (current?.source === undefined) return current;
-        const src = current.source;
+      mutateSource(null, (src) => {
         // Model-wide check (§5): the part may live in any geometry file.
         const allParts = mergeGeometries(src).parts;
-        if (!allParts.some((p) => p.name === name)) return current;
+        if (!allParts.some((p) => p.name === name)) return null;
         let nextSrc = mapGeometryFiles(src, (geometry) =>
           geometry.parts.some((p) => p.name === name)
             ? { ...geometry, parts: geometry.parts.filter((p) => p.name !== name) }
@@ -634,9 +614,9 @@ export function usePartEdits({
             }
             if (changed) nextManifest = { ...nextManifest, animations: rebuilt };
           }
-          return { ...current, source: withManifest(nextSrc, nextManifest) };
+          return withManifest(nextSrc, nextManifest);
         }
-        return { ...current, source: nextSrc };
+        return nextSrc;
       });
       setSelectedPartName((prev) => (prev === name ? null : prev));
       setHiddenParts((prev) => {
@@ -646,7 +626,7 @@ export function usePartEdits({
         return next;
       });
     },
-    [dispatchEdit, editsBlocked],
+    [mutateSource, editsBlocked],
   );
 
   // Single-part edits coming from PartTree (D&D parent change) and
@@ -664,40 +644,17 @@ export function usePartEdits({
       partName: string,
       build: (entry: ManifestPart) => ManifestPart,
     ) => {
-      if (editsBlocked) return;
-      dispatchEdit(tag, (current) => {
-        if (current?.source === undefined) return current;
-        const src = current.source;
-        if (src.manifest === undefined) return current;
-        const parts = src.manifest.parts.slice();
+      mutateManifest(tag, (m) => {
+        const parts = m.parts.slice();
         const i = parts.findIndex((p) => p.name === partName);
         const base: ManifestPart = i >= 0 ? parts[i]! : { name: partName };
         const next = build(base);
         if (i >= 0) parts[i] = next;
         else parts.push(next);
-        const nextManifest: Manifest = { ...src.manifest, parts };
-        return { ...current, source: withManifest(src, nextManifest) };
+        return { ...m, parts };
       });
     },
-    [dispatchEdit, editsBlocked],
-  );
-
-  // Model-level manifest fields (name / version) — the cuboidy.json data that
-  // isn't per-part. Same re-serialize + clear-error shape as mutateManifestPart
-  // but rewrites the top-level object. Backs the Model panel.
-  const mutateManifest = useCallback(
-    (tag: string | null, build: (m: Manifest) => Manifest) => {
-      if (editsBlocked) return;
-      dispatchEdit(tag, (current) => {
-        if (current?.source === undefined) return current;
-        const src = current.source;
-        if (src.manifest === undefined) return current;
-        const nextManifest = build(src.manifest);
-        if (nextManifest === src.manifest) return current;
-        return { ...current, source: withManifest(src, nextManifest) };
-      });
-    },
-    [dispatchEdit, editsBlocked],
+    [mutateManifest],
   );
 
   const handleChangeModelName = useCallback(
@@ -800,8 +757,7 @@ export function usePartEdits({
     handleGizmoRotateSocket,
     handleStrokeVoxels,
   } = usePreviewEdits({
-    dispatchEdit,
-    editsBlocked,
+    mutateSource,
     mutateGeometryPart,
     mutateManifestPart,
   });
