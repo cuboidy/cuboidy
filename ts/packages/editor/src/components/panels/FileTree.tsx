@@ -1,12 +1,17 @@
 import { useMemo, type DragEvent } from 'react';
-import { geometryPaths } from '@cuboidy/core';
 import { ChevronDown, ChevronRight, Plus, X } from 'lucide-react';
 import { InlineNameInput } from '@cuboidy/ui';
 import { fileIcon } from '../ui/fileIcon.js';
 import type { DirNode } from '../../lib/fs-tree.js';
 import { useFileTreeState } from '../../lib/useFileTreeState.js';
 import { normalizePath } from '../../lib/load-model.js';
-import { pathBasename, pathDirname } from '../../lib/source-ops.js';
+import {
+  validateNewFolderName,
+  validateNewPath as validateNewPathRule,
+  validateRenameFolderName,
+  validateRenameName,
+} from '../../lib/file-name-rules.js';
+import { classifyPackageFiles, pathBasename, pathDirname } from '../../lib/source-ops.js';
 import type { LoadedSource } from '../../lib/types.js';
 
 interface Props {
@@ -31,10 +36,6 @@ interface Props {
   // parts load (the tree's "not loaded" rows).
   onAddFileToModel: (path: string) => void;
 }
-
-// Files the loader reads as text (and therefore the only ones worth
-// creating in the editor) — mirrors load-model's TEXT_FILE_RE.
-const CREATABLE_RE = /^[^\\:]+\.(json|md|txt)$/i;
 
 // The Files sidebar: the WHOLE package as a VS Code Explorer-shaped tree
 // (v0.7 — every text file collected at load, not just the fixed pair).
@@ -91,50 +92,20 @@ export function FileTree({
   const primary = source.primaryPath;
   const hasManifest = source.manifest !== undefined;
 
-  // Normalized refs the manifest's geometry list loads (default = the
-  // primary alone). A package geometry file outside this set is inert — lint
-  // W07 — so its row is dimmed with a "not loaded" badge and a hover
-  // "+" that references it.
-  const loadedGeometry = useMemo(() => {
-    // §6.9 + §6.13: files the top-level list names AND files a part
-    // points at. An all-inline model names none, which is correct — it
-    // has no geometry file to badge.
-    const refs =
-      source.manifest !== undefined
-        ? geometryPaths(source.manifest)
-        : source.primaryPath !== undefined
-          ? [source.primaryPath]
-          : [];
-    return new Set(refs.map(normalizePath));
-  }, [source]);
-
-  // Everything else the model accounts for: the palette files its geometry
-  // points at (§7.4) and any externalized animation clip. Needed because
-  // these are `.json` too and must not be mistaken for stray geometry.
-  const referencedNonGeometry = useMemo(() => {
-    const out = new Set<string>();
-    for (const g of source.geometries.values()) {
-      if (g.paletteRef !== undefined) out.add(normalizePath(g.paletteRef));
-    }
-    for (const clip of Object.values(source.manifest?.animations ?? {})) {
-      if (typeof clip === 'string') out.add(normalizePath(clip));
-    }
-    return out;
-  }, [source]);
-  // A stray geometry file the manifest does not list (lints as W07). The
-  // extension used to identify one; with a single extension the discriminator
-  // left is "a .json the model does not otherwise account for" — the manifest,
-  // the bound palette and the referenced clips are all known here.
+  // Which files the model accounts for (lib/source-ops): loaded geometry
+  // gets its badge-free row, a stray .json is dimmed "not loaded" (lint
+  // W07) with a hover "+" that references it.
+  const classified = useMemo(() => classifyPackageFiles(source), [source]);
   const isUnreferenced = (path: string): boolean => {
     const norm = normalizePath(path);
     if (!norm.toLowerCase().endsWith('.json')) return false;
-    if (loadedGeometry.has(norm)) return false;
+    if (classified.loadedGeometry.has(norm)) return false;
     if (norm === normalizePath(source.manifestPath)) return false;
-    return !referencedNonGeometry.has(norm);
+    return !classified.referencedNonGeometry.has(norm);
   };
 
   const isGeometryRow = (path: string): boolean =>
-    loadedGeometry.has(normalizePath(path));
+    classified.loadedGeometry.has(normalizePath(path));
 
   const rowOps = (path: string): RowOps => {
     const renameReason =
@@ -157,54 +128,32 @@ export function FileTree({
     return { renameReason, deleteReason, addReason };
   };
 
-  const validNewSegments = (name: string): boolean =>
-    !name.startsWith('/') &&
-    !name.includes('\\') &&
-    !name.includes(':') &&
-    !name.split('/').some((s) => s === '' || s === '.' || s === '..');
-
+  // The pure naming rules live in lib/file-name-rules; these closures
+  // bind them to the tree's current path/dir/draft sets.
   const validateNewPath = (path: string): boolean =>
-    CREATABLE_RE.test(path) && validNewSegments(path) && !allPaths.has(path);
+    validateNewPathRule(path, allPaths);
 
   const validateNewFolderIn =
     (dir: string) =>
-    (name: string): boolean => {
-      const joined = dir === '' ? name : `${dir}/${name}`;
-      return (
-        validNewSegments(name) &&
-        !allPaths.has(joined) &&
-        !allDirs.has(joined) &&
-        !draftDirs.has(joined)
-      );
-    };
+    (name: string): boolean =>
+      validateNewFolderName(dir, name, {
+        paths: allPaths,
+        dirs: allDirs,
+        drafts: draftDirs,
+      });
 
-  // A file rename edits only the filename (last segment) — moving between
-  // folders is drag-and-drop's job. The new name lands in the same
-  // folder, must be a valid creatable file, and keeps the file's type
-  // (every reference is .json — §8).
-  const validateRename = (oldPath: string) => (name: string) => {
-    if (name === pathBasename(oldPath)) return true;
-    if (name.includes('/')) return false;
-    const parent = pathDirname(oldPath);
-    const newPath = parent === '' ? name : `${parent}/${name}`;
-    if (!validateNewPath(newPath)) return false;
-    const oldExt = oldPath.slice(oldPath.lastIndexOf('.')).toLowerCase();
-    const newExt = name.slice(name.lastIndexOf('.')).toLowerCase();
-    if (oldExt === '.json') return newExt === oldExt;
-    return true;
-  };
+  const validateRename = (oldPath: string) => (name: string) =>
+    validateRenameName(oldPath, name, allPaths);
 
-  // A folder rename edits only the last path segment (no `/`), lands on a
-  // free sibling path, and — since it re-prefixes every contained file —
+  // A folder rename also — since it re-prefixes every contained file —
   // requires all of them to be movable (same rule that gates a drag).
-  const validateRenameFolder = (dir: string) => (name: string) => {
-    if (name === pathBasename(dir)) return true;
-    if (name.includes('/') || !validNewSegments(name)) return false;
-    const parent = pathDirname(dir);
-    const newDir = parent === '' ? name : `${parent}/${name}`;
-    if (allPaths.has(newDir) || allDirs.has(newDir)) return false;
-    return filesUnder(dir).every(isMovable);
-  };
+  const validateRenameFolder = (dir: string) => (name: string) =>
+    name === pathBasename(dir)
+      ? true
+      : validateRenameFolderName(dir, name, {
+          paths: allPaths,
+          dirs: allDirs,
+        }) && filesUnder(dir).every(isMovable);
 
   const commitCreateFile = (dirPath: string, name: string): void => {
     const path = dirPath === '' ? name : `${dirPath}/${name}`;

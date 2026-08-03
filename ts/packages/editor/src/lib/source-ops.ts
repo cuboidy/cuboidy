@@ -1,4 +1,4 @@
-import { InlineAnimationSchema, parseGeometryText, parseManifest, parsePaletteFile, resolvePartGeometry, serializeColor, resolveRefFrom, serializeGeometry, toInlineGeometry, type Geometry, type InlineAnimation, type Manifest, type ManifestPart, type Palette, type Part } from '@cuboidy/core';
+import { InlineAnimationSchema, geometryPaths, parseGeometryText, parseManifest, parsePaletteFile, resolvePartGeometry, serializeColor, resolveRefFrom, serializeGeometry, toInlineGeometry, type Geometry, type InlineAnimation, type Manifest, type ManifestPart, type Palette, type Part } from '@cuboidy/core';
 import { isGeometryPath, normalizePath, resolveProjectRefs, withResolvedPalette } from './load-model.js';
 import type { LoadedSource } from './types.js';
 
@@ -309,6 +309,36 @@ export function sharesPalette(
 
 export function geometryAt(src: LoadedSource, path: string): Geometry | undefined {
   return src.geometries.get(path);
+}
+
+// Which package files the model accounts for. `loadedGeometry` is what
+// the model loads as geometry (§6.9 + §6.13 — the same set the loader
+// reads); `referencedNonGeometry` is every other .json the model
+// reaches: §7.4 palette files and §6.3 external clips. A .json in
+// neither set is a stray — lint W07, the Files tree's "not loaded" row.
+export function classifyPackageFiles(src: LoadedSource): {
+  loadedGeometry: ReadonlySet<string>;
+  referencedNonGeometry: ReadonlySet<string>;
+} {
+  const loadedGeometry = new Set(
+    (src.manifest !== undefined
+      ? geometryPaths(src.manifest)
+      : src.primaryPath !== undefined
+        ? [src.primaryPath]
+        : []
+    ).map(normalizePath),
+  );
+  // Palette refs through geometryPaletteRefs, which resolves them
+  // against the file that wrote them (§8) — the tree used to normalize
+  // the raw ref instead, marking `gear/palette.json` unreferenced while
+  // calling a root file of the same name referenced.
+  const referencedNonGeometry = new Set(geometryPaletteRefs(src));
+  for (const clip of Object.values(src.manifest?.animations ?? {})) {
+    if (typeof clip === 'string') {
+      referencedNonGeometry.add(normalizePath(clip));
+    }
+  }
+  return { loadedGeometry, referencedNonGeometry };
 }
 
 // Every §7.4 palette path the model's geometry files currently point at.
