@@ -23,6 +23,12 @@ import {
 // field (file rows pass `fileIcon` so the glyph tracks the typed
 // extension live — type `.md` and it flips from the JSON braces to the
 // braces icon). Rows without an icon (folders, parts) just omit it.
+//
+// `trailing` makes the field a COMPOSITE row (the part-create draft adds
+// a target-file picker): the extra control renders after the input, and
+// commit/cancel move to a display:contents container — Enter commits
+// from either control, and only focus leaving the WHOLE row cancels, so
+// tabbing into the picker doesn't throw the draft away.
 export function InlineNameInput({
   initial,
   ariaLabel,
@@ -30,6 +36,7 @@ export function InlineNameInput({
   onCommit,
   onCancel,
   leadingIcon,
+  trailing,
 }: {
   initial: string;
   ariaLabel: string;
@@ -37,6 +44,7 @@ export function InlineNameInput({
   onCommit: (name: string) => void;
   onCancel: () => void;
   leadingIcon?: (name: string) => ReactNode;
+  trailing?: ReactNode;
 }) {
   const ref = useRef<HTMLInputElement>(null);
   const [text, setText] = useState(initial);
@@ -66,6 +74,9 @@ export function InlineNameInput({
     }
     if (!validate(next)) {
       setInvalid(true);
+      // In a composite row the commit may come from the trailing control;
+      // the fix happens in the name field, so put focus back there.
+      ref.current?.focus();
       return;
     }
     done.current = true;
@@ -82,7 +93,8 @@ export function InlineNameInput({
     }
   };
 
-  return (
+  const composite = trailing !== undefined;
+  const body = (
     <>
       {leadingIcon !== undefined && (
         <span className="tree-icon">{leadingIcon(text)}</span>
@@ -99,10 +111,30 @@ export function InlineNameInput({
           setText(e.target.value);
           setInvalid(false);
         }}
-        onKeyDown={handleKeyDown}
-        onBlur={() => finish(false)}
+        {...(!composite && {
+          onKeyDown: handleKeyDown,
+          onBlur: () => finish(false),
+        })}
         onAnimationEnd={() => setInvalid(false)}
       />
+      {trailing}
     </>
+  );
+  if (!composite) return body;
+  return (
+    // display:contents (tree.css), so the row's flex layout still sees
+    // the input and the trailing control as direct items.
+    <span
+      className="inline-name-row"
+      onKeyDown={handleKeyDown}
+      onBlur={(e) => {
+        // focusout whose relatedTarget is still inside the row is just
+        // the user moving between the controls — not a cancel.
+        if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+        finish(false);
+      }}
+    >
+      {body}
+    </span>
   );
 }

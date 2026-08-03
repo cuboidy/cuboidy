@@ -1,11 +1,11 @@
 import { useMemo } from 'react';
-import { Plus } from 'lucide-react';
 import { OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import type { Geometry, Manifest, Palette } from '@cuboidy/core';
 import { RiggedParts, buildRigTree, computeSceneCenter, computeSceneSpan } from '@cuboidy/ui';
 import type { GizmoVisibility } from '@cuboidy/ui';
 import type { AnimationSession } from '../../lib/useAnimationSession.js';
+import { NoAnimationsYet } from '../ui/NoAnimationsYet.js';
 
 interface Props {
   geometry: Geometry;
@@ -81,16 +81,10 @@ export function AnimationViewport({
   if (inline === undefined) {
     return (
       <div className="anim-empty">
-        <p>This model has no animations yet.</p>
-        <button
-          type="button"
-          className="btn btn-create"
+        <NoAnimationsYet
           disabled={manifestEditsDisabled}
-          onClick={onCreateClip}
-        >
-          <Plus size={13} />
-          Create animation
-        </button>
+          onCreateClip={onCreateClip}
+        />
       </div>
     );
   }

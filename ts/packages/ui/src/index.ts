@@ -48,6 +48,7 @@ export { isTextEntryTarget, useUndoRedoShortcuts } from './shortcuts.js';
 export { UndoRedoGroup } from './UndoRedoGroup.js';
 export { SaveButton, useSaveFlash } from './SaveButton.js';
 export type { SaveState } from './SaveButton.js';
+export { VisibilityButtons } from './VisibilityButtons.js';
 
 export { buildRigTree, computeSceneCenter, computeSceneSpan } from './rig.js';
 

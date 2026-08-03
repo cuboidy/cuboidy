@@ -8,8 +8,9 @@ import {
   type PointerEvent,
 } from 'react';
 import { ChevronDown, ChevronRight, Plus, X } from 'lucide-react';
-import { formatTimeKey, type AnimationTrack, type EasingName, type InlineAnimation, type KeyAttr } from '@cuboidy/core';
+import { formatTimeKey, retimeWindow, type AnimationTrack, type EasingName, type InlineAnimation, type KeyAttr } from '@cuboidy/core';
 import type { SelectedKey } from '@cuboidy/ui';
+import { SNAP_STEP, snapMs, snapTo } from '../../lib/timeline-snap.js';
 
 // Width (px) of the left label gutter. Single-sourced here and fed to both
 // the gutter elements and the playhead's horizontal offset so the playhead
@@ -22,12 +23,6 @@ const LABEL_W = 96;
 // Windows 11's overlay scrollbar, which paints on top of the content's
 // right edge.
 const RIGHT_PAD = 14;
-
-// One step of the canonical time grid (formatTimeKey rounds to 1e-3).
-// Neighbor clamps keep a full grid step of clearance, which strictly exceeds
-// nearestExistingKey's eps (5e-4), so a clamped drag can never silently merge
-// into a same-attribute neighbor.
-const GRID = 0.001;
 
 // Pointer must travel this far (px) before a press becomes a drag, so plain
 // clicks never mint an accidental micro-move.
@@ -43,13 +38,6 @@ const ATTRS: ReadonlyArray<{ key: KeyAttr; label: string }> = [
 ];
 
 const clamp01 = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x);
-const snap = (t: number): number => Math.round(t * 1000) / 1000;
-
-// Coarse snap grid for dragging keyframes — markers land on 0.05s steps so a
-// drag reads as deliberate "clicks" instead of free-floating. Holding Alt
-// bypasses to the fine 1e-3 grid (formatTimeKey's storage resolution).
-export const SNAP_STEP = 0.05;
-const snapTo = (t: number, step: number): number => Math.round(t / step) * step;
 
 // Ruler tick / lane gridline spacing: a "nice" step (1/2/2.5/5 ×10ⁿ) chosen so
 // ~8 labelled ticks span the clip — makes the grid the keyframes snap onto
@@ -165,7 +153,7 @@ export function Timeline({
   const ticks: number[] = [];
   if (majorStep > 0 && duration > 0) {
     for (let i = 0; i * majorStep <= duration + 1e-9; i++) {
-      ticks.push(snap(i * majorStep));
+      ticks.push(snapMs(i * majorStep));
     }
   }
 
@@ -540,22 +528,17 @@ function TimelineMarker({
   }, [dragging]);
 
   // clientX → clamped grid time. Snap FIRST (coarse SNAP_STEP, or the fine
-  // 1e-3 grid when Alt bypasses), then clamp to the grid-aligned duration and
-  // same-attr neighbor bounds (snapping after clamping could round back onto a
-  // neighbor).
+  // 1e-3 grid when Alt bypasses), then clamp to core's retimeWindow — the
+  // same neighbor/duration rule the inspector's numeric field applies, so
+  // the two surfaces cannot disagree about whether a move is legal.
   const dragTimeFromClientX = (clientX: number, altKey: boolean): number => {
     const rect = laneRectRef.current;
     if (rect === null || duration <= 0) return t;
     const raw = clamp01((clientX - rect.left) / rect.width) * duration;
-    const snapped = altKey ? snap(raw) : snap(snapTo(raw, SNAP_STEP));
-    const durGrid = Math.floor(duration * 1000) / 1000;
-    // A grid step of clearance from each same-attr neighbor (no merge, no
-    // crossing). No prev neighbor → 0 is allowed: landing on a "0.0" entry
-    // that does not carry this attribute is a legitimate cross-attr merge.
-    const min = prevT !== null ? snap(prevT + GRID) : 0;
-    const max = Math.min(nextT !== null ? snap(nextT - GRID) : durGrid, durGrid);
-    if (min > max) return t; // degenerate gap — pin to the original time
-    return Math.min(Math.max(snapped, min), max);
+    const snapped = altKey ? snapMs(raw) : snapMs(snapTo(raw, SNAP_STEP));
+    const window = retimeWindow(duration, prevT, nextT);
+    if (window === null) return t; // degenerate gap — pin to the original time
+    return Math.min(Math.max(snapped, window.min), window.max);
   };
 
   const handlePointerDown = (e: PointerEvent<HTMLButtonElement>): void => {

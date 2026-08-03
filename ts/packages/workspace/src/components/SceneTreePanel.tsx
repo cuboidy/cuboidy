@@ -8,7 +8,7 @@ import {
   EyeOff,
   Plug,
 } from 'lucide-react';
-import { InlineNameInput } from '@cuboidy/ui';
+import { InlineNameInput, VisibilityButtons } from '@cuboidy/ui';
 import type { PanelRow, PlacedInstance } from '../lib/scene.js';
 
 interface Props {
@@ -104,24 +104,12 @@ export function SceneTreePanel({
   return (
     <>
       <div className="panel-toolbar">
-        <button
-          type="button"
-          className="btn btn-sm"
-          disabled={!anyHidden}
-          onClick={onShowAll}
-        >
-          <Eye size={13} />
-          Show all
-        </button>
-        <button
-          type="button"
-          className="btn btn-sm"
-          disabled={!anyShown}
-          onClick={onHideAll}
-        >
-          <EyeOff size={13} />
-          Hide all
-        </button>
+        <VisibilityButtons
+          anyHidden={anyHidden}
+          anyShown={anyShown}
+          onShowAll={onShowAll}
+          onHideAll={onHideAll}
+        />
       </div>
       {rows.length === 0 ? (
         <p className="empty">Nothing in the scene yet.</p>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { clampToClip, formatTimeKey, isInlineAnimation, nearestExistingKey, restValue, sampleAnimation, type AttrValue, type Geometry, type InlineAnimation, type KeyAttr, type Keyframe, type Manifest, type Pose } from '@cuboidy/core';
+import { clampRetime, clampToClip, formatTimeKey, isInlineAnimation, nearestExistingKey, restValue, sampleAnimation, type AttrValue, type Geometry, type InlineAnimation, type KeyAttr, type Keyframe, type Manifest, type Pose } from '@cuboidy/core';
 
-import { SNAP_STEP } from '../components/panels/Timeline.js';
+import { SNAP_STEP } from './timeline-snap.js';
 import type { SelectedKey } from '@cuboidy/ui';
 
 // The animation editing "session": the shared playback + selection state that
@@ -294,33 +294,21 @@ export function useAnimationSession({
     [onMoveAnimKey],
   );
 
-  // Retime via the inspector's numeric time field. Applies the same rules
-  // as a marker drag: snap to the 1e-3 grid, stay one grid step clear of
-  // same-attribute neighbors (no silent merge/crossing), clamp to the clip
-  // range — then delegates to moveKey.
+  // Retime via the inspector's numeric time field, through core's
+  // clampRetime — the same neighbor/duration rule the marker drag
+  // applies, so the two surfaces cannot disagree about whether a move
+  // is legal.
   const retimeKey = useCallback(
     (part: string, attr: KeyAttr, fromTimeKey: string, toTime: number) => {
-      const track = inlineRef.current?.parts[part];
-      const dur = inlineRef.current?.duration ?? 0;
-      if (track === undefined || dur <= 0) return;
-      const fromT = Number(fromTimeKey);
-      const times = Object.keys(track)
-        .filter((k) => attr in track[k]!)
-        .map(Number)
-        .filter(Number.isFinite)
-        .sort((a, b) => a - b);
-      const i = times.indexOf(fromT);
-      const prev = i > 0 ? times[i - 1]! : null;
-      const next = i >= 0 && i < times.length - 1 ? times[i + 1]! : null;
-      const durGrid = Math.floor(dur * 1000) / 1000;
-      const min = prev !== null ? Math.round((prev + 0.001) * 1000) / 1000 : 0;
-      const max = Math.min(
-        next !== null ? Math.round((next - 0.001) * 1000) / 1000 : durGrid,
-        durGrid,
+      const clamped = clampRetime(
+        inlineRef.current?.parts[part],
+        attr,
+        fromTimeKey,
+        toTime,
+        inlineRef.current?.duration ?? 0,
       );
-      if (min > max) return;
-      const snapped = Math.round(toTime * 1000) / 1000;
-      moveKey(part, attr, fromTimeKey, Math.min(Math.max(snapped, min), max));
+      if (clamped === null) return;
+      moveKey(part, attr, fromTimeKey, clamped);
     },
     [moveKey],
   );

@@ -183,3 +183,10 @@ svg.ficon-json {
 .tree-row.hidden .tree-name {
   opacity: 0.4;
 }
+
+/* InlineNameInput's composite-row container (name field + a trailing
+   control): a box-less wrapper, so the row's flex layout still lays the
+   two controls out as its own items. */
+.inline-name-row {
+  display: contents;
+}

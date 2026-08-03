@@ -427,13 +427,12 @@ function PartTreeBranch(props: BranchProps) {
   );
 }
 
-// Draft row for creating a part — a caret spacer keeps its input aligned with
-// the other rows' names. Owns its name field instead of reusing
-// InlineNameInput because the row is a composite (name + optional
-// target-file picker): focus moving BETWEEN the two must not cancel,
-// only focus leaving the whole row. Enter commits from either field,
-// Escape cancels; the commit/cancel semantics otherwise mirror
-// InlineNameInput (empty commits cancel, invalid names flash and stay).
+// Draft row for creating a part — a caret spacer keeps its input aligned
+// with the other rows' names. The name field is the shared
+// InlineNameInput in composite mode: the optional target-file picker
+// rides as `trailing`, so Enter commits from either control and only
+// focus leaving the whole row cancels. This row owns just the picker's
+// value.
 function DraftPartRow({
   depth,
   suggested,
@@ -453,36 +452,7 @@ function DraftPartRow({
   onConfirm: (name: string, file?: string) => void;
   onCancel: () => void;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [text, setText] = useState(suggested);
-  const [invalid, setInvalid] = useState(false);
   const [file, setFile] = useState(defaultFile);
-  const done = useRef(false);
-
-  useEffect(() => {
-    const el = inputRef.current;
-    if (el !== null) {
-      el.focus();
-      el.select();
-    }
-  }, []);
-
-  const finish = (commit: boolean): void => {
-    if (done.current) return;
-    const next = text.trim();
-    if (!commit || next === '') {
-      done.current = true;
-      onCancel();
-      return;
-    }
-    if (!validate(next)) {
-      setInvalid(true);
-      inputRef.current?.focus();
-      return;
-    }
-    done.current = true;
-    onConfirm(next, file);
-  };
 
   return (
     <li className="tree-node" role="treeitem">
@@ -490,51 +460,32 @@ function DraftPartRow({
         className="tree-row draft"
         style={{ paddingLeft: `${0.5 + depth * 0.9}rem` }}
         onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            finish(true);
-          } else if (e.key === 'Escape') {
-            e.preventDefault();
-            finish(false);
-          }
-        }}
-        onBlur={(e) => {
-          // focusout whose relatedTarget is still inside the row is just
-          // the user moving between name and file picker — not a cancel.
-          if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-          finish(false);
-        }}
       >
         <span className="tree-caret-spacer" aria-hidden="true" />
-        <input
-          ref={inputRef}
-          type="text"
-          className={`tree-name-input${invalid ? ' invalid' : ''}`}
-          value={text}
-          aria-label="New part name"
-          spellCheck={false}
-          onChange={(e) => {
-            setText(e.target.value);
-            setInvalid(false);
-          }}
-          onAnimationEnd={() => setInvalid(false)}
+        <InlineNameInput
+          initial={suggested}
+          ariaLabel="New part name"
+          validate={validate}
+          onCommit={(name) => onConfirm(name, file)}
+          onCancel={onCancel}
+          trailing={
+            files !== undefined ? (
+              <select
+                className="part-tree-draft-file"
+                value={file}
+                aria-label="File to create the part in"
+                title="Which geometry file the new part is written to"
+                onChange={(e) => setFile(e.target.value)}
+              >
+                {files.map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
+              </select>
+            ) : undefined
+          }
         />
-        {files !== undefined && (
-          <select
-            className="part-tree-draft-file"
-            value={file}
-            aria-label="File to create the part in"
-            title="Which geometry file the new part is written to"
-            onChange={(e) => setFile(e.target.value)}
-          >
-            {files.map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
-            ))}
-          </select>
-        )}
       </div>
     </li>
   );

@@ -316,3 +316,57 @@ export function trimTrackKeys(
   for (const k of over) delete out[k];
   return out;
 }
+
+// ── retiming ─────────────────────────────────────────────────────────
+
+// One step of the canonical time grid (formatTimeKey rounds to 1e-3).
+// Neighbor clamps keep a full grid step of clearance, which strictly
+// exceeds nearestExistingKey's eps (5e-4), so a clamped retime can never
+// silently merge into a same-attribute neighbor.
+const GRID = 0.001;
+
+const snapMs = (t: number): number => Math.round(t * 1000) / 1000;
+
+// The legal window for retiming a key whose same-attribute neighbors sit
+// at prevT / nextT (null at the lane's edges): one grid step clear of
+// each neighbor, inside the grid-aligned duration. Null = degenerate gap
+// — the caller pins to the original time. No prev neighbor → 0 is
+// allowed: landing on a "0.0" entry that does not carry this attribute
+// is a legitimate cross-attr merge.
+export function retimeWindow(
+  duration: number,
+  prevT: number | null,
+  nextT: number | null,
+): { min: number; max: number } | null {
+  const durGrid = Math.floor(duration * 1000) / 1000;
+  const min = prevT !== null ? snapMs(prevT + GRID) : 0;
+  const max = Math.min(nextT !== null ? snapMs(nextT - GRID) : durGrid, durGrid);
+  return min > max ? null : { min, max };
+}
+
+// Clamp a retime request to its legal window, deriving the neighbors
+// from the track. The marker drag and the inspector's numeric time field
+// both come through this rule, so they cannot disagree about whether a
+// move is legal. Null when the track / duration cannot host the move.
+export function clampRetime(
+  track: AnimationTrack | undefined,
+  attr: KeyAttr,
+  fromTimeKey: string,
+  toTime: number,
+  duration: number,
+): number | null {
+  if (track === undefined || duration <= 0) return null;
+  const fromT = Number(fromTimeKey);
+  const times = Object.keys(track)
+    .filter((k) => attr in track[k]!)
+    .map(Number)
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
+  const i = times.indexOf(fromT);
+  const prev = i > 0 ? times[i - 1]! : null;
+  const next = i >= 0 && i < times.length - 1 ? times[i + 1]! : null;
+  const window = retimeWindow(duration, prev, next);
+  if (window === null) return null;
+  const snapped = snapMs(toTime);
+  return Math.min(Math.max(snapped, window.min), window.max);
+}

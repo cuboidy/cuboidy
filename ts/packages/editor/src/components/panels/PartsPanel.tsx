@@ -1,5 +1,6 @@
 import { isIdentifier, type Manifest, type Part } from '@cuboidy/core';
-import { Eye, EyeOff, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
+import { VisibilityButtons } from '@cuboidy/ui';
 import { PartTree } from './PartTree.js';
 
 interface Props {
@@ -76,24 +77,12 @@ export function PartsPanel({
           <Plus size={13} />
           New part
         </button>
-        <button
-          type="button"
-          className="btn btn-sm"
-          onClick={onShowAll}
-          disabled={hiddenParts.size === 0}
-        >
-          <Eye size={13} />
-          Show all
-        </button>
-        <button
-          type="button"
-          className="btn btn-sm"
-          onClick={onHideAll}
-          disabled={visibleCount === 0}
-        >
-          <EyeOff size={13} />
-          Hide all
-        </button>
+        <VisibilityButtons
+          anyHidden={hiddenParts.size > 0}
+          anyShown={visibleCount > 0}
+          onShowAll={onShowAll}
+          onHideAll={onHideAll}
+        />
       </div>
       <div className="parts-scroll">
         <PartTree

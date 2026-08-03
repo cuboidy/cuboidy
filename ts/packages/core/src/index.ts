@@ -34,8 +34,10 @@ export { EASING_NAMES, DEFAULT_EASING, applyEasing } from './easing.js';
 export type { EasingName } from './easing.js';
 
 export {
+  clampRetime,
   formatTimeKey,
   nearestExistingKey,
+  retimeWindow,
   sortTrackKeys,
   setAttrAtKey,
   addAttrAtTime,

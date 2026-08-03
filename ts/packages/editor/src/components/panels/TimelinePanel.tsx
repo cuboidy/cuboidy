@@ -1,6 +1,6 @@
 import { isIdentifier, type Manifest } from '@cuboidy/core';
-import { Plus } from 'lucide-react';
 import type { AnimationSession } from '../../lib/useAnimationSession.js';
+import { NoAnimationsYet } from '../ui/NoAnimationsYet.js';
 import { NumberInput } from '@cuboidy/ui';
 import { TextInput } from '@cuboidy/ui';
 import { Timeline } from './Timeline.js';
@@ -67,18 +67,10 @@ export function TimelinePanel({
     return (
       <div className="timeline-panel timeline-empty">
         {hasManifest ? (
-          <>
-            <p>This model has no animations yet.</p>
-            <button
-              type="button"
-              className="btn btn-create"
-              disabled={manifestEditsDisabled}
-              onClick={onCreateClip}
-            >
-              <Plus size={13} />
-              Create animation
-            </button>
-          </>
+          <NoAnimationsYet
+            disabled={manifestEditsDisabled}
+            onCreateClip={onCreateClip}
+          />
         ) : (
           <p>Rig this model (create a manifest) to add animations.</p>
         )}
