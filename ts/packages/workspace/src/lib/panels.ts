@@ -58,10 +58,6 @@ export const PANEL_TITLES: Record<PanelId, string> = {
   source: 'scene.json',
 };
 
-// The panel a reopened one appears beside: the 3D view is this app's
-// main surface, as the preview is the editor's.
-export const MAIN_PANEL: PanelId = 'view';
-
 // Left column = the library over the scene built from it, so what you
 // drag and where it lands are adjacent. Centre = the view. Right = what
 // the selection is attached to and what it plays, over the scene as it

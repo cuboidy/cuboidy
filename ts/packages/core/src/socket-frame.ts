@@ -82,6 +82,31 @@ export function publishedSocketFrame(
   return socketFrameOn(resolved.part, world, target.socket);
 }
 
+// Every frame the model publishes (§6.12), keyed by published name, with
+// the rig chain computed ONCE. The per-name entry point above re-derives
+// the whole chain per call — an N-socket loop should come here instead.
+// Names that do not resolve are simply absent (§11.6's consumer-side
+// `unknown`), same as the single-name form returning null.
+export function publishedSocketFrames(
+  manifest: Manifest,
+  parts: ReadonlyMap<string, ResolvedPart>,
+  poses?: ReadonlyMap<string, AnimPose>,
+): Map<string, SocketFrame> {
+  const out = new Map<string, SocketFrame>();
+  const published = manifest.sockets;
+  if (published === undefined) return out;
+  const world = worldTransformsFor(manifest, parts, poses);
+  for (const [name, target] of Object.entries(published)) {
+    const resolved = parts.get(target.part);
+    if (resolved === undefined) continue;
+    const wt = world.get(target.part);
+    if (wt === undefined) continue;
+    const frame = socketFrameOn(resolved.part, wt, target.socket);
+    if (frame !== null) out.set(name, frame);
+  }
+  return out;
+}
+
 // Rest-or-posed world transforms for a resolved model. Separate so a
 // caller placing several guests on one host computes the chain once.
 export function worldTransformsFor(

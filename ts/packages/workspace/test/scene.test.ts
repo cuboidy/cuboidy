@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildLibrary } from '../src/lib/library.js';
+import { GEM_JSON, towerAndGemLibrary } from './fixtures.js';
 import {
   addInstance,
   anyPlaying,
@@ -19,37 +20,7 @@ import {
 // model says what it OFFERS (§6.12) and never what it is used in, so the
 // arrangement is the app's. These pin the rules that arrangement has.
 
-const host = (name: string) =>
-  JSON.stringify({
-    name,
-    parts: [
-      {
-        name: 'body',
-        geometry: {
-          size: [1, 2, 1],
-          pivot: { pos: [0, 0, 0] },
-          sockets: [{ name: 'top', pos: [0, 2, 0] }],
-          voxels: [['0'], ['0']],
-        },
-      },
-    ],
-    palette: ['#FF0000'],
-    sockets: { peg: { part: 'body', socket: 'top' } },
-  });
-
-const guest = JSON.stringify({
-  name: 'gem',
-  palette: ['#00FF00'],
-  parts: [{ name: 'gem', geometry: { size: [1, 1, 1], voxels: [['0']] } }],
-});
-
-const LIBRARY = buildLibrary(
-  'lib',
-  new Map([
-    ['tower/cuboidy.json', host('tower')],
-    ['gem/cuboidy.json', guest],
-  ]),
-);
+const LIBRARY = towerAndGemLibrary();
 
 const scene = (): Scene =>
   addInstance(addInstance(emptyScene(), 'tower'), 'gem');
@@ -255,7 +226,7 @@ const ANIM_LIB = buildLibrary(
   'lib',
   new Map([
     ['swinger/cuboidy.json', SWINGER],
-    ['gem/cuboidy.json', guest],
+    ['gem/cuboidy.json', GEM_JSON],
   ]),
 );
 

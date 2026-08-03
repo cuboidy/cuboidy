@@ -65,8 +65,9 @@ import type { DropTarget } from './lib/drop.js';
 
 const PAUSE_FIRST = 'Pause playback before moving things';
 
-// Cuboidy Workspace — stage 1: open a folder of models, put them in a
-// scene, attach them to each other's published sockets.
+// Cuboidy Workspace: open a folder of models, arrange them in a scene,
+// attach them to each other's published sockets, play their clips, and
+// save the arrangement as a *.scene.json beside the models.
 //
 // The editor and this are separate apps on purpose. The editor is closed
 // over ONE model; a workspace holds a scene of several. What they share is
@@ -214,8 +215,17 @@ export function App() {
   const rows = useMemo(() => panelTree(placed), [placed]);
   // The resolved scene, for tests. Where an instance ENDED UP is the only
   // way to tell an attachment that took effect from one that merely says
-  // it did, and a canvas cannot be asked. Read-only, and cheap.
-  (window as unknown as { __scene?: unknown }).__scene = placed;
+  // it did, and a canvas cannot be asked. Read-only, and cheap. An
+  // effect, not a render-phase write: rendering must stay side-effect
+  // free (StrictMode runs it twice), and the effect cleans up after
+  // itself.
+  useEffect(() => {
+    const w = window as unknown as { __scene?: unknown };
+    w.__scene = placed;
+    return () => {
+      delete w.__scene;
+    };
+  }, [placed]);
   const selectedPlaced = placed.find((p) => p.instance.id === selected) ?? null;
   // The detail panels follow the SCENE selection when there is one, and the
   // library browse otherwise — so clicking a library row previews it and
@@ -225,12 +235,17 @@ export function App() {
     library?.models.find((m) => m.dir === browsing) ??
     null;
 
+  // What Save would write — also the source panel's body and the dirty
+  // check's left-hand side. Memoized on the scene: during playback only
+  // the clock changes, and serializing the whole scene twice per frame
+  // (dirty + source panel) was measurable work for an unchanged answer.
+  const sourceText = useMemo(() => serializeScene(scene), [scene]);
+
   // Would saving change the file? Comparing serializations rather than
   // tracking edits: every mutation would otherwise have to remember to
   // set a flag, and the one that forgets is invisible.
-  const dirty = savedText === null
-    ? scene.instances.length > 0
-    : serializeScene(scene) !== savedText;
+  const dirty =
+    savedText === null ? scene.instances.length > 0 : sourceText !== savedText;
 
   // Now that the app knows whether there is unsaved work, it can stop
   // throwing it away silently. Both routes out of a scene ask.
@@ -279,7 +294,7 @@ export function App() {
   const handleSaveScene = useCallback(
     (file: string) => {
       if (library === null) return;
-      const written = serializeScene(scene);
+      const written = sourceText;
       setSaveState('saving');
       void saveScene(scene, library, file)
         .then((out) => {
@@ -306,7 +321,7 @@ export function App() {
           setNotice(`Could not save: ${e.message}`);
         });
     },
-    [scene, library],
+    [scene, library, sourceText],
   );
 
   // Put a model in the scene, at wherever the drag resolved to (or the
@@ -501,7 +516,7 @@ export function App() {
           return {
             title,
             fill: true,
-            body: <pre className="source-view">{serializeScene(scene)}</pre>,
+            body: <pre className="source-view">{sourceText}</pre>,
           };
         case 'problems':
           return {
@@ -533,10 +548,10 @@ export function App() {
       selectedPlaced,
       detailModel,
       scene,
+      sourceText,
       time,
       seek,
       openSceneFile,
-      handleSaveScene,
       effectiveView,
       effectiveTool,
       animUnavailable,

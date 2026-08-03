@@ -100,6 +100,7 @@ export type {
 
 export {
   publishedSocketFrame,
+  publishedSocketFrames,
   socketFrameOn,
   worldTransformsFor,
 } from './socket-frame.js';

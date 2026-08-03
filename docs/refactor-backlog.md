@@ -24,7 +24,7 @@ Real defects, not style. Each gets fixed by (or during) the chunk noted.
 |---|---|---|
 | Junk undo entries: three edit sites rebuild the document wrapper without the `next === present` identity check the history reducer depends on | `editor/src/lib/useAnimationEdits.ts:287, 327`, `usePaletteEdits.ts:139` | R2-a (`mutateSource`) |
 | Render-phase side effect: `window.__scene = placed` runs during render (double-fires under StrictMode, never cleaned up) | `workspace/src/App.tsx:218` | R0-b |
-| Playback re-renders everything at 60 fps: `renderPanel` closes over `time`, so every rAF tick rebuilds all seven panel bodies; `serializeScene(scene)` runs twice per frame (dirty check + source panel, both unmemoized) | `workspace/src/App.tsx:233, 349-550, 504` | R0-b |
+| Playback re-renders everything at 60 fps: `renderPanel` closes over `time`, so every rAF tick rebuilds all seven panel bodies; `serializeScene(scene)` ran twice per frame (fixed in R0-b — the memo). The Dock-wide rebuild needs the panel restructure and lands with R2-e | `workspace/src/App.tsx:233, 349-550, 504` | R0-b (partial) / R2-e |
 | `.btn-sm` / `.btn` silently redefined by the editor over the shared stylesheet — the two apps' small buttons differ, exactly what tokens.css exists to prevent | `editor/src/styles.css:41-44` vs `ui/src/chrome.css:128-131` | R0-c |
 | `activeColorIndex` survives a model swap (`handleReset` doesn't clear it) — wrong-but-valid initial paint color on the next model | `editor/src/App.tsx:188-192` | R0-a |
 | O(instances × sockets × parts): `publishedSocketFrame` re-derives the whole rig per socket in two loops, despite core's own comment telling callers to hoist | `workspace/src/lib/drop.ts:64-66`, `InstanceGizmos.tsx:78-84` | R0-b |
@@ -80,18 +80,18 @@ check needed except where noted.
   src/test/e2e.
 - **Delete** `MAIN_PANEL` (`lib/panels.ts:63`, zero refs), the dead
   `exclude` param of `socketCandidates` (`lib/drop.ts:58-62`, only a test
-  passes it), unused `ParseResult` export (`scene-file.ts:21-23`), the
-  unreachable `library === null` arm of `renderPanel` (`App.tsx:352`), stale
-  `handleSaveScene` dep (`App.tsx:539`).
+  passes it), stale `handleSaveScene` dep (`App.tsx:539`). (Kept on
+  review: `ParseResult` is `parseScene`'s return type, and `renderPanel`'s
+  `library === null` arm is the TypeScript narrowing guard.)
 - **Fix `window.__scene`** → `useEffect` with cleanup (bug above).
 - **Memoize `serializeScene`** — one `useMemo(() => serializeScene(scene),
   [scene])` feeds both the dirty check and the source panel.
-- **Stop per-frame Dock rebuilds** — split the clock-dependent panel out so
-  `time` doesn't flow through `renderPanel`'s closure; memoize panel bodies.
-- **Hoist rig derivation out of socket loops** — call
-  `worldTransformsFor` once per instance, then `socketFrameOn` per socket
-  (`drop.ts:64-66`, `InstanceGizmos.tsx:78-84`; also `SceneView.tsx:229`
-  re-running `socketCandidates` when the memoized `candidates` exists).
+- **Hoist rig derivation out of socket loops** — one
+  `publishedSocketFrames(manifest, parts)` in core computes the chain once
+  per model; `drop.ts` and `InstanceGizmos.tsx` loop its result.
+  (`SceneView.tsx:229`'s per-call `socketCandidates` turned out fine as
+  is — it is a lazily-invoked test probe, and the memoized `candidates`
+  is empty outside a drag.)
 - **Test fixture dedup** — `TOWER`/`GEM`/`LIBRARY` verbatim in
   `test/placement.test.ts`, `test/drop.test.ts`, near-verbatim in
   `test/scene.test.ts` → `test/fixtures.ts` (~80 lines).
@@ -247,6 +247,9 @@ pass. Existing coverage that must stay green: `editor/test/source-ops.test.ts`
   cleanest cut — four states nothing else reads), `useDeleteKey`
   (162-181), derived view state (186-213, 328-347), the 201-line
   `renderPanel` switch (349-550) → panel components, header (562-634).
+  Includes the deferred per-frame fix: move the clock so `time` stops
+  flowing through `renderPanel`'s closure (during playback every rAF tick
+  currently rebuilds all seven panel bodies).
 - **R2-f: workspace `SceneView.tsx` (717 → ~150)** — `ScenePanel`
   (chrome + transport, mirroring the editor's `PreviewPanel`/`VoxelScene`
   split), `scene/InstanceMesh.tsx` (550-659), `scene/cameras.tsx`

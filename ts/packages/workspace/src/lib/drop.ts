@@ -1,4 +1,4 @@
-import { publishedSocketFrame, quatMultiply, quatRotateVec3 } from '@cuboidy/core';
+import { publishedSocketFrames, quatMultiply, quatRotateVec3 } from '@cuboidy/core';
 import type { SocketFrame } from '@cuboidy/core';
 import type { PlacedInstance } from './scene.js';
 
@@ -55,15 +55,13 @@ export interface SocketCandidate {
 // socket once attached — that is placeScene's job, and it samples.
 export function socketCandidates(
   placed: readonly PlacedInstance[],
-  // Skip this instance's own sockets, when re-targeting an existing one.
-  exclude?: string,
 ): SocketCandidate[] {
   const out: SocketCandidate[] = [];
   for (const p of placed) {
-    if (p.instance.id === exclude) continue;
-    for (const name of Object.keys(p.model.manifest.sockets ?? {})) {
-      const local = publishedSocketFrame(p.model.manifest, p.model.parts, name);
-      if (local === null) continue;
+    for (const [name, local] of publishedSocketFrames(
+      p.model.manifest,
+      p.model.parts,
+    )) {
       out.push({
         host: p.instance.id,
         socket: name,

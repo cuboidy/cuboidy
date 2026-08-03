@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { buildLibrary } from '../src/lib/library.js';
 import {
   addInstance,
   drawTree,
@@ -10,6 +9,7 @@ import {
   setPlacement,
   type Scene,
 } from '../src/lib/scene.js';
+import { towerAndGemLibrary } from './fixtures.js';
 
 // Where an instance ends up, and how a drag in the 3D view gets back to
 // the value that put it there.
@@ -19,39 +19,9 @@ import {
 // the same conversion. A sign error there would misplace everything
 // hanging off a rotated socket and look like the socket was wrong.
 
-// A host whose published socket is turned a quarter turn about Y, so the
-// guest's frame is genuinely rotated rather than a translated copy of the
-// world's.
-const TOWER = JSON.stringify({
-  name: 'tower',
-  parts: [
-    {
-      name: 'body',
-      geometry: {
-        size: [1, 2, 1],
-        pivot: { pos: [0, 0, 0] },
-        sockets: [{ name: 'top', pos: [0, 2, 0], rot: [0, 90, 0] }],
-        voxels: [['0'], ['0']],
-      },
-    },
-  ],
-  palette: ['#FF0000'],
-  sockets: { peg: { part: 'body', socket: 'top' } },
-});
-
-const GEM = JSON.stringify({
-  name: 'gem',
-  palette: ['#00FF00'],
-  parts: [{ name: 'gem', geometry: { size: [1, 1, 1], voxels: [['0']] } }],
-});
-
-const LIBRARY = buildLibrary(
-  'lib',
-  new Map([
-    ['tower/cuboidy.json', TOWER],
-    ['gem/cuboidy.json', GEM],
-  ]),
-);
+// The socket is turned a quarter turn about Y, so the guest's frame is
+// genuinely rotated rather than a translated copy of the world's.
+const LIBRARY = towerAndGemLibrary({ socketRot: [0, 90, 0] });
 
 const scene = (): Scene =>
   addInstance(addInstance(emptyScene(), 'tower'), 'gem');

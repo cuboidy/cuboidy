@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react';
-import { publishedSocketFrame } from '@cuboidy/core';
+import { publishedSocketFrames } from '@cuboidy/core';
 import {
   BoxGeometry,
   BufferAttribute,
@@ -75,13 +75,13 @@ export function InstanceGizmos({ model, show }: Props) {
 
   // Where each published name actually resolves to. At rest: the markers
   // say what the model OFFERS, which does not change with the clock.
-  const sockets = useMemo(() => {
-    const names = Object.keys(model.manifest.sockets ?? {});
-    return names.flatMap((name) => {
-      const frame = publishedSocketFrame(model.manifest, model.parts, name);
-      return frame === null ? [] : [{ name, frame }];
-    });
-  }, [model]);
+  const sockets = useMemo(
+    () =>
+      [...publishedSocketFrames(model.manifest, model.parts)].map(
+        ([name, frame]) => ({ name, frame }),
+      ),
+    [model],
+  );
 
   return (
     <>

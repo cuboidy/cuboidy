@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { buildLibrary } from '../src/lib/library.js';
 import {
   addInstance,
   emptyScene,
@@ -16,6 +15,7 @@ import {
   type ProjectToPixels,
   type Ray,
 } from '../src/lib/drop.js';
+import { towerAndGemLibrary } from './fixtures.js';
 
 // Where a dragged model lands.
 //
@@ -23,36 +23,7 @@ import {
 // a wrong sign or a missed frame composition puts the model somewhere
 // plausible-looking, and "it appeared in the scene" passes either way.
 
-const TOWER = JSON.stringify({
-  name: 'tower',
-  parts: [
-    {
-      name: 'body',
-      geometry: {
-        size: [1, 2, 1],
-        pivot: { pos: [0, 0, 0] },
-        sockets: [{ name: 'top', pos: [0, 2, 0] }],
-        voxels: [['0'], ['0']],
-      },
-    },
-  ],
-  palette: ['#FF0000'],
-  sockets: { peg: { part: 'body', socket: 'top' } },
-});
-
-const GEM = JSON.stringify({
-  name: 'gem',
-  palette: ['#00FF00'],
-  parts: [{ name: 'gem', geometry: { size: [1, 1, 1], voxels: [['0']] } }],
-});
-
-const LIBRARY = buildLibrary(
-  'lib',
-  new Map([
-    ['tower/cuboidy.json', TOWER],
-    ['gem/cuboidy.json', GEM],
-  ]),
-);
+const LIBRARY = towerAndGemLibrary();
 
 // A camera looking straight down from above: the world's x/z map to
 // screen x/y at one pixel per unit, which makes the expected pixel of any
@@ -109,14 +80,6 @@ describe('socketCandidates', () => {
   it('offers nothing for a model that publishes nothing', () => {
     const s = addInstance(emptyScene(), 'gem');
     expect(socketCandidates(placeScene(s, LIBRARY))).toEqual([]);
-  });
-
-  it('can leave one instance out, for re-targeting an existing one', () => {
-    let s = addInstance(emptyScene(), 'tower');
-    s = addInstance(s, 'tower');
-    const placed = placeScene(s, LIBRARY);
-    expect(socketCandidates(placed)).toHaveLength(2);
-    expect(socketCandidates(placed, 'tower')).toHaveLength(1);
   });
 });
 
