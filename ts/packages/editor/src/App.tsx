@@ -4,27 +4,19 @@ import {
   useState,
 } from 'react';
 import { type Geometry } from '@cuboidy/core';
-import { ConsolePanel, type ConsoleEntry } from './components/panels/ConsolePanel.js';
+import { type ConsoleEntry } from './components/panels/ConsolePanel.js';
 import { lintSource } from './lib/lint.js';
 
 import { ExportMenu } from './components/ui/ExportMenu.js';
 import { FolderOpen, Plus } from 'lucide-react';
 import { FileDropZone } from './components/ui/FileDropZone.js';
-import { FileTree } from './components/panels/FileTree.js';
-import { ModelProperties } from './components/panels/ModelProperties.js';
-import { KeyInspectorPanel } from './components/panels/KeyInspectorPanel.js';
-import { PalettePanel } from './components/panels/PalettePanel.js';
-import { PreviewPanel } from './components/panels/PreviewPanel.js';
-import { PartProperties } from './components/panels/PartProperties.js';
-import { PartsPanel } from './components/panels/PartsPanel.js';
 import { SaveButton } from './components/ui/SaveButton.js';
 import { SettingsMenu } from './components/ui/SettingsMenu.js';
-import { SourceEditor } from './components/panels/SourceEditor.js';
-import { TimelinePanel } from './components/panels/TimelinePanel.js';
 import { animManifestOf, clipRefsOf, modelGeometryOf, partPalettesOf, paletteTargetOf, type PaletteTargetInfo } from './lib/derived-model.js';
 import { buildConsoleEntries, buildTreeFileErrors } from './components/panels/console-entries.js';
+import { renderEditorPanel } from './components/panels/registry.js';
 
-import { fileText, manifestText, mergeGeometries, pathBasename } from './lib/source-ops.js';
+import { mergeGeometries, pathBasename } from './lib/source-ops.js';
 import { useAnimationEdits } from './lib/useAnimationEdits.js';
 import { useFileOps } from './lib/useFileOps.js';
 import { usePaletteEdits } from './lib/usePaletteEdits.js';
@@ -95,67 +87,23 @@ export function App() {
   // Clamped at use (palettes shrink; selection changes files).
   const [activeColorIndex, setActiveColorIndex] = useState(0);
 
+  // The grouped edit hooks ride into the panel registry wholesale; App
+  // destructures only what its own body reads.
   // Part + rig editing, and the selection it acts on (lib/usePartEdits).
-  const {
-    hiddenParts,
-    selectedPartName,
-    setSelectedPartName,
-    creating,
-    resetPartState,
-    handleToggle,
-    handleShowAll,
-    handleHideAll,
-    handleEditPart,
-    handleStartCreatePart,
-    handleCancelCreatePart,
-    handleConfirmCreatePart,
-    handleDuplicatePart,
-    handleMirrorPart,
-    handleMovePart,
-    handleRenamePart,
-    handleDeletePart,
-    handleChangeModelName,
-    handleChangeModelVersion,
-    handleChangePartParent,
-    handleChangePartPosition,
-    handleChangePartRotation,
-    handleTogglePartRotation,
-    handleRenameSocket,
-    handleDeleteSocket,
-    handlePublishSocket,
-    handleGizmoMovePart,
-    handleGizmoRotatePart,
-    handleGizmoMovePivot,
-    handleGizmoRotatePivot,
-    handleGizmoMoveSocket,
-    handleGizmoRotateSocket,
-    handleStrokeVoxels,
-  } = usePartEdits({
+  const partEdits = usePartEdits({
     loaded,
     loadedRef,
     dispatchEdit,
     editsBlocked,
     manifestParseError,
   });
+  const { selectedPartName, resetPartState } = partEdits;
 
   // Palette editing (lib/usePaletteEdits).
-  const {
-    handleEditPalette,
-    handleDeletePaletteColor,
-    handleExternalizePalette,
-    handleInlinePalette,
-  } = usePaletteEdits({ dispatchEdit, editsBlocked });
+  const paletteEdits = usePaletteEdits({ dispatchEdit, editsBlocked });
 
   // Package file create / rename / move / delete (lib/useFileOps).
-  const {
-    handleCreateFile,
-    handleAddFileToModel,
-    handleRenameFile,
-    handleMoveFolder,
-    handleRenameFolder,
-    handleDeleteFile,
-    handleDeleteFolder,
-  } = useFileOps({ dispatchEdit, setFileParseErrors });
+  const fileOps = useFileOps({ dispatchEdit, setFileParseErrors });
 
   const source = loaded?.source;
 
@@ -216,23 +164,11 @@ export function App() {
     openPanel('preview');
   }, [openPanel]);
   // Every keyframe-editor edit (lib/useAnimationEdits).
-  const {
-    handleSetAnimField,
-    handleSetAnimEase,
-    handleAddAnimKey,
-    handleDeleteAnimKey,
-    handlePasteAnimKeyframe,
-    handleMoveAnimKey,
-    handleTrimClip,
-    handleSetClipDuration,
-    handleSetClipLoop,
-    handleCreateAnimationClip,
-    handleRenameClip,
-    handleDeleteClip,
-    handleExternalizeClip,
-    handleInlineClip,
-    handleClearPartTrack,
-  } = useAnimationEdits({ dispatchEdit, editsBlocked, onClipCreated });
+  const animationEdits = useAnimationEdits({
+    dispatchEdit,
+    editsBlocked,
+    onClipCreated,
+  });
 
   const handleViewModeChange = useCallback((mode: ViewMode) => {
     setViewMode(mode);
@@ -451,306 +387,54 @@ export function App() {
     clockEnabled: effectiveViewMode === 'anim' && animManifest !== undefined,
     editKeysEnabled:
       layout !== null && isPanelVisible(layout, 'timeline') && animManifest !== undefined,
-    onAddAnimKey: handleAddAnimKey,
-    onDeleteAnimKey: handleDeleteAnimKey,
-    onMoveAnimKey: handleMoveAnimKey,
-    onClearPartTrack: handleClearPartTrack,
-    onPasteAnimKeyframe: handlePasteAnimKeyframe,
+    onAddAnimKey: animationEdits.handleAddAnimKey,
+    onDeleteAnimKey: animationEdits.handleDeleteAnimKey,
+    onMoveAnimKey: animationEdits.handleMoveAnimKey,
+    onClearPartTrack: animationEdits.handleClearPartTrack,
+    onPasteAnimKeyframe: animationEdits.handlePasteAnimKeyframe,
   });
-  // Per-panel content for the dock's tab rows. The leaf owns the tab header,
-  // so each panel supplies just { title, fill?, body }. The source panels
-  // (preview / geometry / manifest) were the in-center TabBar's tabs; they now
-  // `fill` their leaf and manage their own scrolling (3D canvas, textareas).
+  // Per-panel content for the dock's tab rows, built by the registry
+  // (components/panels/registry) from one context bag. The edit hooks
+  // ride wholesale, so the wiring lives beside the panels.
   const getPanel = (id: PanelId): PanelContent | null => {
     if (source === undefined) return null;
-    const manifest = source.manifest;
-    const title = panelTitle(id);
-    // Dynamic per-file editor tabs (v0.7): any package file the Files
-    // tree opened that isn't the primary geometry / manifest pair.
-    const fpath = filePanelPath(id);
-    if (fpath !== null) {
-      const entry = source.files.get(fpath);
-      if (entry === undefined) {
-        return {
-          title,
-          body: <p className="panel-empty">File not found in this package.</p>,
-        };
-      }
-      const err = fileParseErrors.get(fpath);
-      return {
-        title,
-        fill: true,
-        body: (
-          <SourceEditor
-            text={entry}
-            {...(err !== undefined && { parseError: err })}
-            onChange={(t) => handleEditFileText(fpath, t)}
-          />
-        ),
-      };
-    }
-    switch (id) {
-      case 'preview': {
-        // The paint strip offers the SELECTED part's effective palette, so
-        // a painted index means the right color in the right file (§7.4).
-        const stripPalette =
-          (effectiveSelectedPart !== null
-            ? partPalettes?.get(effectiveSelectedPart)
-            : undefined) ?? viewGeometry.palette;
-        return {
-          title,
-          fill: true,
-          body: (
-            <PreviewPanel
-              geometry={viewGeometry}
-              manifest={source.manifest}
-              animManifest={animManifest}
-              partPalettes={partPalettes}
-              stripPalette={stripPalette}
-              activeColorIndex={activeColorIndex}
-              viewMode={effectiveViewMode}
-              rigAvailable={rigAvailable}
-              animAvailable={animAvailable}
-              tool={effectivePreviewTool}
-              toolDisabled={previewToolDisabled}
-              gizmos={gizmoVis}
-              hiddenParts={hiddenParts}
-              selectedPart={effectiveSelectedPart}
-              manifestEditsDisabled={manifestParseError !== null}
-              session={animSession}
-              framingKey={framingKey}
-              onSetTool={setPreviewTool}
-              onToggleGizmo={handleToggleGizmo}
-              onChangeViewMode={handleViewModeChange}
-              onSelectPart={setSelectedPartName}
-              onPickColor={setActiveColorIndex}
-              onCreateClip={handleCreateAnimationClip}
-              onMovePart={handleGizmoMovePart}
-              onRotatePart={handleGizmoRotatePart}
-              onMovePivot={handleGizmoMovePivot}
-              onRotatePivot={handleGizmoRotatePivot}
-              onMoveSocket={handleGizmoMoveSocket}
-              onRotateSocket={handleGizmoRotateSocket}
-              onStrokeVoxels={handleStrokeVoxels}
-            />
-          ),
-        };
-      }
-      case 'timeline':
-        return {
-          title,
-          fill: true,
-          body: (
-            <TimelinePanel
-              session={animSession}
-              manifest={animManifest}
-              hasManifest={manifest !== undefined}
-              manifestEditsDisabled={manifestParseError !== null}
-              clipRefs={clipRefs}
-              onExternalizeClip={handleExternalizeClip}
-              onInlineClip={handleInlineClip}
-              onTrimClip={handleTrimClip}
-              onSetClipDuration={handleSetClipDuration}
-              onSetClipLoop={handleSetClipLoop}
-              onCreateClip={handleCreateAnimationClip}
-              onRenameClip={handleRenameClip}
-              onDeleteClip={handleDeleteClip}
-            />
-          ),
-        };
-      case 'inspector':
-        return {
-          title,
-          body: (
-            <KeyInspectorPanel
-              session={animSession}
-              manifestEditsDisabled={manifestParseError !== null}
-              onSetAnimField={handleSetAnimField}
-              onSetAnimEase={handleSetAnimEase}
-              onDeleteAnimKey={handleDeleteAnimKey}
-            />
-          ),
-        };
-      case 'geometry': {
-        // An all-inline model (§6.13) has no geometry FILE to open here;
-        // its shapes are in cuboidy.json, which the manifest tab shows.
-        const primary = source.primaryPath;
-        return {
-          title,
-          fill: true,
-          body:
-            primary === undefined ? (
-              <p className="panel-empty">
-                This model keeps every part&apos;s geometry in the manifest —
-                open cuboidy.json to edit it as text.
-              </p>
-            ) : (
-              <SourceEditor
-                text={fileText(source, primary) ?? ''}
-                {...(geometryParseError !== null && { parseError: geometryParseError })}
-                onChange={(t) => handleEditFileText(primary, t)}
-              />
-            ),
-        };
-      }
-      case 'manifest':
-        return {
-          title,
-          fill: true,
-          body: (
-            <SourceEditor
-              text={manifestText(source) ?? ''}
-              {...(manifestParseError !== null && {
-                parseError: manifestParseError,
-              })}
-              onChange={(t) => handleEditFileText(source.manifestPath, t)}
-            />
-          ),
-        };
-      case 'model':
-        return {
-          title,
-          body: (
-            <ModelProperties
-              manifest={manifest}
-              disabled={manifestParseError !== null}
-              onChangeName={handleChangeModelName}
-              onChangeVersion={handleChangeModelVersion}
-            />
-          ),
-        };
-      case 'files':
-        return {
-          title,
-          body: (
-            <FileTree
-              source={source}
-              fileErrors={treeFileErrors}
-              onOpenPath={handleOpenPath}
-              onCreateFile={handleCreateFile}
-              onRenameFile={handleRenameFile}
-              onMoveFolder={handleMoveFolder}
-              onRenameFolder={handleRenameFolder}
-              onDeleteFile={handleDeleteFile}
-              onDeleteFolder={handleDeleteFolder}
-              onAddFileToModel={handleAddFileToModel}
-            />
-          ),
-        };
-      case 'parts': {
-        return {
-          title: 'Parts',
-          fill: true,
-          body: (
-            <PartsPanel
-              parts={merged?.parts ?? viewGeometry.parts}
-              partFiles={geometryPaths !== undefined ? partFiles : undefined}
-              geometryFiles={geometryPaths}
-              manifest={manifest}
-              hiddenParts={hiddenParts}
-              selectedPart={effectiveSelectedPart}
-              creating={creating}
-              editsBlocked={editsBlocked}
-              onStartCreate={handleStartCreatePart}
-              onShowAll={handleShowAll}
-              onHideAll={handleHideAll}
-              onToggleVisibility={handleToggle}
-              onSelectPart={setSelectedPartName}
-              onChangeParent={handleChangePartParent}
-              onConfirmCreate={(name, file) =>
-                handleConfirmCreatePart(name, creating?.parent ?? null, file)
-              }
-              onCancelCreate={handleCancelCreatePart}
-              onRenamePart={handleRenamePart}
-            />
-          ),
-        };
-      }
-      case 'properties':
-        return {
-          title: 'Properties',
-          body:
-            effectiveSelectedPart !== null ? (
-              <PartProperties
-                selectedPart={effectiveSelectedPart}
-                geometry={viewGeometry}
-                manifest={manifest}
-                manifestEditsDisabled={manifestParseError !== null}
-                renameDisabled={editsBlocked}
-                geometryFiles={geometryPaths}
-                partFile={partFiles?.get(effectiveSelectedPart)}
-                moveDisabled={editsBlocked}
-                geometryEditsDisabled={editsBlocked}
-                onChangeParent={handleChangePartParent}
-                onChangePosition={handleChangePartPosition}
-                onChangeRotation={handleChangePartRotation}
-                onToggleRotation={handleTogglePartRotation}
-                onRenamePart={handleRenamePart}
-                onDeletePart={handleDeletePart}
-                  onMovePart={handleMovePart}
-                onEditPart={handleEditPart}
-                onRenameSocket={handleRenameSocket}
-                onDeleteSocket={handleDeleteSocket}
-                onPublishSocket={handlePublishSocket}
-                onDuplicatePart={handleDuplicatePart}
-                onMirrorPart={handleMirrorPart}
-              />
-            ) : (
-              <p className="panel-empty">
-                Select a part to edit its properties.
-              </p>
-            ),
-        };
-      case 'palette': {
-        // paletteTarget is defined whenever a source is, and already
-        // handles the manifest-palette case (§6.13), so this is only a
-        // type-level floor.
-        const target: PaletteTargetInfo = paletteTarget ?? {
-          palette: viewGeometry.palette,
-          scopeParts: viewGeometry.parts,
-          unresolved: false,
-        };
-        const shared = target.ref !== undefined;
-        return {
-          title: 'Palette',
-          body: (
-            <PalettePanel
-              palette={target.palette}
-              parts={target.scopeParts}
-              target={{
-                ...(target.file !== undefined && { file: target.file }),
-                ...(target.ref !== undefined && { ref: target.ref }),
-              }}
-              disabled={editsBlocked || target.unresolved}
-              disabledReason={
-                target.unresolved
-                  ? `The palette ${target.file ?? 'cuboidy.json'} points at (${target.ref}) is missing or invalid — fix that file to edit these colors.`
-                  : undefined
-              }
-              onChange={(next, tag) => handleEditPalette(target.file, next, tag)}
-              onDeleteColor={(index) =>
-                handleDeletePaletteColor(target.file, index)
-              }
-              onExternalize={
-                target.file !== undefined && !shared && target.palette.length > 0
-                  ? () => handleExternalizePalette(target.file!)
-                  : undefined
-              }
-              onInline={
-                target.file !== undefined && shared && !target.unresolved
-                  ? () => handleInlinePalette(target.file!)
-                  : undefined
-              }
-            />
-          ),
-        };
-      }
-      case 'console':
-        return { title, body: <ConsolePanel entries={consoleEntries} /> };
-    }
-    // Unreachable for static ids (the switch is exhaustive over them);
-    // satisfies TS now that PanelId also includes dynamic file ids.
-    return null;
+    return renderEditorPanel(id, {
+      source,
+      panelTitle,
+      fileParseErrors,
+      geometryParseError,
+      manifestParseError,
+      editsBlocked,
+      onEditFileText: handleEditFileText,
+      merged,
+      viewGeometry,
+      animManifest,
+      clipRefs,
+      partPalettes,
+      paletteTarget,
+      geometryPaths,
+      effectiveSelectedPart,
+      treeFileErrors,
+      consoleEntries,
+      effectiveViewMode,
+      rigAvailable,
+      animAvailable,
+      effectivePreviewTool,
+      previewToolDisabled,
+      gizmoVis,
+      framingKey,
+      activeColorIndex,
+      onSetPreviewTool: setPreviewTool,
+      onToggleGizmo: handleToggleGizmo,
+      onChangeViewMode: handleViewModeChange,
+      onPickColor: setActiveColorIndex,
+      onOpenPath: handleOpenPath,
+      animSession,
+      partEdits,
+      animationEdits,
+      paletteEdits,
+      fileOps,
+    });
   };
 
   return (
