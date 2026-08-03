@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   addInstance,
   emptyScene,
-  placeScene,
   setPlacement,
   type Scene,
-} from '../src/lib/scene.js';
+} from '../src/lib/scene-doc.js';
+import { placeScene } from '../src/lib/scene-resolve.js';
 import {
   SOCKET_GRAB_PX,
   dropKey,

@@ -17,7 +17,8 @@ import {
   computeSceneSpan,
 } from '@cuboidy/ui';
 import type { LibraryModel } from '../lib/library.js';
-import { drawTree, type PlacedInstance, type SceneNode } from '../lib/scene.js';
+import type { PlacedInstance } from '../lib/scene-resolve.js';
+import { drawTree, type SceneNode } from '../lib/scene-tree.js';
 import type { SceneGizmos, SceneTool, SceneViewMode } from '../lib/view.js';
 import {
   dropKey,

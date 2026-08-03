@@ -6,15 +6,14 @@ import {
   anyPlaying,
   emptyScene,
   freshId,
-  panelTree,
-  placeScene,
   removeInstance,
   renameInstance,
   setAnimation,
   setAttachment,
-  type PanelRow,
   type Scene,
-} from '../src/lib/scene.js';
+} from '../src/lib/scene-doc.js';
+import { placeScene } from '../src/lib/scene-resolve.js';
+import { panelTree, type PanelRow } from '../src/lib/scene-tree.js';
 
 // The scene layer: the format the SPEC deliberately does not define. A
 // model says what it OFFERS (§6.12) and never what it is used in, so the

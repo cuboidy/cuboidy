@@ -6,7 +6,7 @@ import {
   setAnimation,
   setAttachment,
   type Scene,
-} from '../src/lib/scene.js';
+} from '../src/lib/scene-doc.js';
 
 // The `*.scene.json` file. Not a Cuboidy file — the SPEC says nothing
 // about composition, so this format is the workspace's and is versioned

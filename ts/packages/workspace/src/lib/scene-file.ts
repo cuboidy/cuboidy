@@ -1,4 +1,4 @@
-import type { Instance, Scene } from './scene.js';
+import type { Instance, Scene } from './scene-doc.js';
 
 // The `*.scene.json` file: an arrangement of models, on disk.
 //

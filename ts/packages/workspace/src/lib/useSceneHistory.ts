@@ -5,7 +5,7 @@ import {
   useUndoRedoShortcuts,
   type HistoryState,
 } from '@cuboidy/ui';
-import { emptyScene, type Scene } from './scene.js';
+import { emptyScene, type Scene } from './scene-doc.js';
 
 export interface SceneHistory {
   scene: Scene;

@@ -1,5 +1,5 @@
 import { NumberInput, TextInput } from '@cuboidy/ui';
-import type { PlacedInstance } from '../lib/scene.js';
+import type { PlacedInstance } from '../lib/scene-resolve.js';
 
 interface Props {
   placed: PlacedInstance | null;

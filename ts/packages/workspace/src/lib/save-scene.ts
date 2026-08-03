@@ -1,6 +1,6 @@
 import type { Library } from './library.js';
 import { SCENE_EXT, serializeScene } from './scene-file.js';
-import type { Scene } from './scene.js';
+import type { Scene } from './scene-doc.js';
 
 // Writing a scene back.
 //

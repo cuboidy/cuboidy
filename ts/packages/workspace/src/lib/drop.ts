@@ -1,6 +1,6 @@
 import { composeFrames, publishedSocketFrames } from '@cuboidy/core';
 import type { SocketFrame } from '@cuboidy/core';
-import type { PlacedInstance } from './scene.js';
+import type { PlacedInstance } from './scene-resolve.js';
 
 // Where a model dragged from the library will land.
 //

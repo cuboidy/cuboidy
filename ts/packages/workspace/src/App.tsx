@@ -36,15 +36,14 @@ import {
   anyPlaying,
   emptyScene,
   freshId,
-  panelTree,
-  placeScene,
   removeInstance,
   renameInstance,
   setAnimation,
   setAttachment,
   setPlacement,
-  type Scene,
-} from './lib/scene.js';
+} from './lib/scene-doc.js';
+import { placeScene } from './lib/scene-resolve.js';
+import { panelTree } from './lib/scene-tree.js';
 import { parseScene, serializeScene } from './lib/scene-file.js';
 import { saveScene } from './lib/save-scene.js';
 import { useSceneClock } from './lib/useSceneClock.js';

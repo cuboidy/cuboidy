@@ -9,7 +9,8 @@ import {
   Plug,
 } from 'lucide-react';
 import { InlineNameInput, VisibilityButtons } from '@cuboidy/ui';
-import type { PanelRow, PlacedInstance } from '../lib/scene.js';
+import type { PlacedInstance } from '../lib/scene-resolve.js';
+import type { PanelRow } from '../lib/scene-tree.js';
 
 interface Props {
   rows: readonly PanelRow[];

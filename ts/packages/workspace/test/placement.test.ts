@@ -1,14 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   addInstance,
-  drawTree,
   emptyScene,
-  panelTree,
-  placeScene,
   setAttachment,
   setPlacement,
   type Scene,
-} from '../src/lib/scene.js';
+} from '../src/lib/scene-doc.js';
+import { placeScene } from '../src/lib/scene-resolve.js';
+import { drawTree, panelTree } from '../src/lib/scene-tree.js';
 import { towerAndGemLibrary } from './fixtures.js';
 
 // Where an instance ends up, and how a drag in the 3D view gets back to
