@@ -11,7 +11,7 @@ import {
 } from '@cuboidy/ui';
 import { ModelList } from './components/ModelList.js';
 import { OpenFolderButton } from './components/OpenFolderButton.js';
-import { SceneView } from './components/SceneView.js';
+import { SceneViewPanel } from './components/SceneViewPanel.js';
 import { DragLayer } from './components/DragLayer.js';
 import { AttachProperties } from './components/AttachmentPanel.js';
 import { SceneActions } from './components/SceneActions.js';
@@ -39,7 +39,6 @@ import {
 import { placeScene } from './lib/scene-resolve.js';
 import { panelTree } from './lib/scene-tree.js';
 import { useDeleteKey } from './lib/useDeleteKey.js';
-import { useSceneClock } from './lib/useSceneClock.js';
 import { useSceneDocument } from './lib/useSceneDocument.js';
 import { useSceneHistory } from './lib/useSceneHistory.js';
 import { useThumbnails } from './lib/useThumbnails.js';
@@ -155,32 +154,24 @@ export function App() {
   const effectiveView: SceneViewMode =
     viewMode === 'anim' && animUnavailable !== undefined ? 'rig' : viewMode;
 
-  // One clock for the scene, running only while something plays — and
-  // only while a view is watching. Rig view stops it rather than merely
-  // ignoring it: a clock nobody reads is frames nobody sees.
+  // Playing gates the transform tools (a running clock would overwrite a
+  // gizmo drag); scene-derived, so no clock is needed here. The clock
+  // itself, the ANIMATED placeScene and the __scene test probe all live
+  // in SceneViewPanel — inside the view's subtree, so a running clip
+  // re-renders that panel alone instead of every panel per rAF tick.
   const playing = anyPlaying(scene) && effectiveView === 'anim';
-  const { time, seek } = useSceneClock(playing);
+  // The STATIC resolution, for the tree / properties panels: `time` only
+  // moves instances that are PLAYING (a paused one reads its own frozen
+  // `at`), and neither panel shows a mid-clip pose — structure and
+  // placement values are time-independent.
   const placed = useMemo(
     () =>
       library === null
         ? []
-        : placeScene(scene, library, time, { rest: effectiveView === 'rig' }),
-    [scene, library, time, effectiveView],
+        : placeScene(scene, library, 0, { rest: effectiveView === 'rig' }),
+    [scene, library, effectiveView],
   );
   const rows = useMemo(() => panelTree(placed), [placed]);
-  // The resolved scene, for tests. Where an instance ENDED UP is the only
-  // way to tell an attachment that took effect from one that merely says
-  // it did, and a canvas cannot be asked. Read-only, and cheap. An
-  // effect, not a render-phase write: rendering must stay side-effect
-  // free (StrictMode runs it twice), and the effect cleans up after
-  // itself.
-  useEffect(() => {
-    const w = window as unknown as { __scene?: unknown };
-    w.__scene = placed;
-    return () => {
-      delete w.__scene;
-    };
-  }, [placed]);
   const selectedPlaced = placed.find((p) => p.instance.id === selected) ?? null;
   // The detail panels follow the SCENE selection when there is one, and the
   // library browse otherwise — so clicking a library row previews it and
@@ -315,15 +306,16 @@ export function App() {
             title,
             fill: true,
             body: (
-              <SceneView
-                placed={placed}
-                selected={selected}
-                viewMode={effectiveView}
+              <SceneViewPanel
+                scene={scene}
+                library={library}
+                view={effectiveView}
                 animUnavailable={animUnavailable}
                 tool={effectiveTool}
                 toolDisabled={toolDisabled}
                 gizmos={gizmos}
                 hidden={hiddenInstances}
+                selected={selected}
                 onSelect={setSelected}
                 dragModel={draggedModel}
                 onDropTarget={setDropTarget}
@@ -339,8 +331,6 @@ export function App() {
                 onRotate={(id2, rot) =>
                   edit(`rot:${id2}`, (s) => setPlacement(s, id2, { rot }))
                 }
-                sceneTime={time}
-                onSeek={seek}
                 onSetAnim={(id2, a) =>
                   amend((s) => setAnimation(s, id2, a))
                 }
@@ -417,8 +407,6 @@ export function App() {
       doc.sourceText,
       doc.sceneFile,
       doc.openSceneFile,
-      time,
-      seek,
       effectiveView,
       effectiveTool,
       animUnavailable,
