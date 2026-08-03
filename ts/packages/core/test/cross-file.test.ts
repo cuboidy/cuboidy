@@ -232,7 +232,7 @@ describe('validateProject (v0.7)', () => {
     const diags = validateProject({
       manifest,
       geometries: [{ path: 'body.json', geometry: bodyCvox }],
-      packageCvoxPaths: ['body.json', 'scratch.json'],
+      packageGeometryPaths: ['body.json', 'scratch.json'],
     });
     expect(diags.map((d) => d.ruleId)).toEqual(['W07']);
     expect(diags[0]?.message).toContain('scratch.json');

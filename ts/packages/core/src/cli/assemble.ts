@@ -1,17 +1,18 @@
-import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { parseManifest } from '../manifest.js';
 import { isInlineAnimation, type InlineAnimation } from '../animation.js';
 import type { Manifest, ManifestPart } from '../manifest.js';
 import type { Color, Palette, Part, Vec3 } from '../geometry/types.js';
-import { AIR } from './../geometry/voxel-row.js';
+import { AIR, maxPaletteIndex } from './../geometry/voxel-row.js';
 import { MAX_PALETTE } from '../geometry/palette.js';
+import { round6 } from '../num.js';
+import type { OrientedPart } from '../render/scene.js';
 import {
   computeRestWorldTransforms,
   type Vec3Tuple,
-  type WorldTransform,
 } from '../rig-transform.js';
 import {
+  MANIFEST_FILE,
   palettePathsOf,
   projectFilePaths,
   resolveGeometries,
@@ -19,6 +20,7 @@ import {
   type GeometryFile,
   type ResolvedPart as ProjectPart,
 } from '../project.js';
+import { tryReadText } from './fs.js';
 
 // Shared assembly layer used by cuboidy-view (2D projection),
 // cuboidy-query (coordinate lookup) and cuboidy-snap (PNG rendering).
@@ -31,8 +33,6 @@ import {
 // projection time. Keeping the grid fractional lets a half-voxel offset
 // (a part whose pivot is 0.5 or whose position contains 0.5) survive
 // assembly intact.
-
-const MANIFEST_FILE = 'cuboidy.json';
 
 export interface BBox {
   minX: number;
@@ -81,13 +81,10 @@ export interface Assembly {
   warnings: string[];
 }
 
-export interface PlacedPart {
+// OrientedPart (the render layer's input) plus the name the rig uses.
+// The remap is the same table the grid values went through.
+export interface PlacedPart extends OrientedPart {
   name: string;
-  part: Part;
-  // Index remap from the defining file's palette into Assembly.palette
-  // (null = identity), same table the grid values went through.
-  remap: readonly number[] | null;
-  transform: WorldTransform;
 }
 
 export interface LoadResult {
@@ -228,7 +225,7 @@ function buildEffectivePalette(
 
   for (const [name, r] of parts) {
     const palette = r.palette;
-    const maxIdx = maxIndexIn(r.part);
+    const maxIdx = maxPaletteIndex(r.part);
     const where = r.source?.file ?? `inline part '${name}'`;
     if (palette.length === 0) {
       // §7.4 / §6.13: no palette resolved by any route — the part may then
@@ -294,18 +291,6 @@ function colorKey(c: Color): string {
   return `${c.r},${c.g},${c.b},${c.a}`;
 }
 
-function maxIndexIn(part: Part): number {
-  let m = AIR;
-  for (const layer of part.voxels) {
-    for (const row of layer) {
-      for (const idx of row) {
-        if (idx > m) m = idx;
-      }
-    }
-  }
-  return m;
-}
-
 function assembleWorld(
   manifest: Manifest,
   parts: ReadonlyMap<string, ProjectPart>,
@@ -319,12 +304,12 @@ function assembleWorld(
   // keyed by the name the RIG uses. Assembly no longer joins anything — it
   // used to search every geometry file by name, which is exactly the join
   // that could not see a part written inline in the manifest.
-  const cvoxByName = new Map<
+  const shapesByName = new Map<
     string,
     { part: Part; remap: readonly number[] | null }
   >();
   for (const [name, r] of parts) {
-    cvoxByName.set(name, { part: r.part, remap: eff.remap.get(name) ?? null });
+    shapesByName.set(name, { part: r.part, remap: eff.remap.get(name) ?? null });
   }
 
   // SPEC §7.7 rest world transforms from the shared rig-transform layer
@@ -332,7 +317,7 @@ function assembleWorld(
   // — a child of a rotated parent lands where the rig puts it; only each
   // part's own voxel orientation is approximated below (axis-aligned).
   const pivotRots = new Map<string, Vec3Tuple>();
-  for (const [name, { part }] of cvoxByName) {
+  for (const [name, { part }] of shapesByName) {
     const rot = part.pivot.rot;
     if (rot !== undefined) pivotRots.set(name, [rot.x, rot.y, rot.z]);
   }
@@ -348,7 +333,7 @@ function assembleWorld(
   let hasFractional = false;
 
   for (const mp of order) {
-    const entry = cvoxByName.get(mp.name);
+    const entry = shapesByName.get(mp.name);
     if (entry === undefined) {
       warnings.push(`part "${mp.name}" in manifest has no matching geometry part — skipping`);
       continue;
@@ -428,10 +413,6 @@ export function gridRotationWarnings(asm: Assembly): string[] {
   return out;
 }
 
-function round6(n: number): number {
-  return Math.round(n * 1e6) / 1e6;
-}
-
 // Canonical coord-key encoding. JavaScript's String(n) is canonical for
 // finite numbers (no trailing zeros, no leading +), so two assemblies of
 // the same model produce byte-identical keys. Keep both halves of the
@@ -484,12 +465,4 @@ function topoSortParts(manifest: Manifest): TopoOk | { error: string } {
     if (e) return { error: e };
   }
   return { order };
-}
-
-async function tryReadText(path: string): Promise<string | null> {
-  try {
-    return await readFile(path, 'utf-8');
-  } catch {
-    return null;
-  }
 }

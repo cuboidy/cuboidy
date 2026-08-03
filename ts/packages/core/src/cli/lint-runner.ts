@@ -1,13 +1,15 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { parseManifest } from '../manifest.js';
 import type { Manifest } from '../manifest.js';
 import {
+  MANIFEST_FILE,
   palettePathsOf,
   projectFilePaths,
   resolveGeometries,
   resolveProject,
 } from '../project.js';
+import { tryReadText } from './fs.js';
 import { validateProject } from '../lint/cross-file.js';
 import { lintGeometry } from '../lint/voxel-rules.js';
 import { parseGeometryText } from '../geometry/parse.js';
@@ -54,7 +56,6 @@ export interface RunResult {
   exitCode: 0 | 1 | 2;
 }
 
-const MANIFEST_FILE = 'cuboidy.json';
 // Pseudo-file label for diagnostics that span files (cross-file lint).
 // Cross-file rules don't belong to a single source location, so we tag
 // them with a sentinel rather than picking one file arbitrarily.
@@ -154,7 +155,7 @@ export async function runLint(
       parts: project.parts,
       unresolved: project.unresolved,
       externalAnims: project.externalAnims,
-      packageCvoxPaths: await enumerateGeometryFiles(root),
+      packageGeometryPaths: await enumerateGeometryFiles(root),
     })) {
       diagnostics.push({ file: CROSS_FILE_LABEL, diag: d });
     }
@@ -186,13 +187,9 @@ async function enumerateGeometryFiles(root: string): Promise<string[]> {
     const rel = entry.replaceAll('\\', '/');
     if (!rel.toLowerCase().endsWith('.json')) continue;
     if (rel === MANIFEST_FILE) continue;
-    let text: string;
-    try {
-      text = await readFile(resolve(root, entry), 'utf-8');
-    } catch {
-      continue; // a directory, or unreadable — neither is a geometry file
-    }
-    if (parseGeometryText(text).ok) found.push(rel);
+    const text = await tryReadText(resolve(root, entry));
+    // null: a directory, or unreadable — neither is a geometry file.
+    if (text !== null && parseGeometryText(text).ok) found.push(rel);
   }
   return found;
 }
@@ -210,14 +207,6 @@ function computeExitCode(
   if (hasError) return 1;
   if (opts.strict === true && hasWarning) return 1;
   return 0;
-}
-
-async function tryReadText(path: string): Promise<string | null> {
-  try {
-    return await readFile(path, 'utf-8');
-  } catch {
-    return null;
-  }
 }
 
 // Formatter for SPEC §11.7. Lint diagnostics carry no source position

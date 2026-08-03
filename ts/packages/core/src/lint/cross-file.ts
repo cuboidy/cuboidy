@@ -1,8 +1,9 @@
 import type { Diagnostic } from '../diagnostic.js';
 import { isInlineAnimation, type InlineAnimation } from '../animation.js';
 import type { Geometry, Part } from '../geometry/types.js';
-import { AIR } from '../geometry/voxel-row.js';
+import { AIR, maxPaletteIndex } from '../geometry/voxel-row.js';
 import type { Manifest } from '../manifest.js';
+import { round6 } from '../num.js';
 import type { ResolvedPart, UnresolvedPart } from '../project.js';
 
 // SPEC §11 cross-file validation, v0.7 project shape: a manifest plus one
@@ -32,7 +33,7 @@ export interface ProjectInput {
   unresolved?: readonly UnresolvedPart[];
   // Every geometry path present in the package (for the W07 unreferenced
   // check). Absent → the check is skipped (caller can't enumerate files).
-  packageCvoxPaths?: readonly string[];
+  packageGeometryPaths?: readonly string[];
 }
 
 export function validateProject(input: ProjectInput): Diagnostic[] {
@@ -180,7 +181,7 @@ export function validateProject(input: ProjectInput): Diagnostic[] {
   // loop above covers file-backed parts; an inline one is in no file.
   for (const [name, r] of resolved ?? []) {
     if (r.source !== null || r.palette.length > 0) continue;
-    const maxIdx = maxUsedIndexIn(r.part);
+    const maxIdx = maxPaletteIndex(r.part);
     if (maxIdx === AIR) continue;
     diags.push({
       code: 'missing',
@@ -215,9 +216,9 @@ export function validateProject(input: ProjectInput): Diagnostic[] {
   // W07 — a geometry file present in the package but referenced by neither
   // the manifest geometry list nor any part's `geometry.path` (§6.13).
   // Compares package-relative paths verbatim.
-  if (input.packageCvoxPaths !== undefined) {
+  if (input.packageGeometryPaths !== undefined) {
     const referenced = new Set(geometries.map((g) => g.path));
-    for (const path of input.packageCvoxPaths) {
+    for (const path of input.packageGeometryPaths) {
       if (!referenced.has(path)) {
         diags.push({
           code: 'invalid-value',
@@ -247,20 +248,8 @@ export function validateCrossFile(
 function maxUsedIndex(geometry: Geometry): number {
   let max = AIR;
   for (const part of geometry.parts) {
-    const m = maxUsedIndexIn(part);
+    const m = maxPaletteIndex(part);
     if (m > max) max = m;
-  }
-  return max;
-}
-
-function maxUsedIndexIn(part: Part): number {
-  let max = AIR;
-  for (const layer of part.voxels) {
-    for (const row of layer) {
-      for (const idx of row) {
-        if (idx > max) max = idx;
-      }
-    }
   }
   return max;
 }
@@ -370,6 +359,3 @@ function cellKey(x: number, y: number, z: number): string {
   return `${round6(x)},${round6(y)},${round6(z)}`;
 }
 
-function round6(n: number): number {
-  return Math.round(n * 1e6) / 1e6;
-}

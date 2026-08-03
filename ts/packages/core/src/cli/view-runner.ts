@@ -1,4 +1,3 @@
-import type { Palette } from '../geometry/types.js';
 import { AIR, indexToChar } from '../geometry/voxel-row.js';
 import {
   gridRotationWarnings,
@@ -7,6 +6,7 @@ import {
   type Assembly,
   type BBox,
 } from './assemble.js';
+import { formatPaletteBlock } from './palette-legend.js';
 
 // cuboidy-view: assemble a model in rest pose, project to 2D from one or
 // more cardinal view directions, and emit each view as a grid of palette
@@ -98,7 +98,7 @@ function renderModel(asm: Assembly, opts: ViewOptions): RunResult {
   // The header block printed here came from the text format's leading comments
   // (SPEC §7.11.1, retired). JSON geometry carries none, so there is nothing
   // left to echo.
-  out.push(formatPalette(asm.palette));
+  out.push(formatPaletteBlock(asm.palette));
   out.push('');
   out.push('voxel cell legend: each character is the palette index of the front-most voxel along the view direction; `.` = empty');
   out.push('');
@@ -256,21 +256,3 @@ function formatBBox(b: BBox): string {
   );
 }
 
-function formatPalette(palette: Palette): string {
-  const lines = ['palette:'];
-  for (let i = 0; i < palette.length; i++) {
-    const c = palette[i]!;
-    const hex =
-      '#' +
-      toHex(c.r) +
-      toHex(c.g) +
-      toHex(c.b) +
-      (c.a === 255 ? '' : toHex(c.a));
-    lines.push(`  ${indexToChar(i)} = ${hex}`);
-  }
-  return lines.join('\n');
-}
-
-function toHex(n: number): string {
-  return n.toString(16).padStart(2, '0').toUpperCase();
-}

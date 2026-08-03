@@ -7,7 +7,6 @@
 // app whose unit is a scene of several models rather than a single package.
 
 export { AppHeader, HeaderDivider, HeaderGroup } from './AppHeader.js';
-export { Logo } from './Logo.js';
 export { InlineNameInput } from './InlineNameInput.js';
 export { NumberInput } from './NumberInput.js';
 export { TextInput } from './TextInput.js';
@@ -20,11 +19,7 @@ export {
   ViewOverlay,
   ViewToggle,
 } from './ViewportChrome.js';
-export type {
-  ToggleGroupItem,
-  ToolBarItem,
-  ViewToggleItem,
-} from './ViewportChrome.js';
+export type { ToolBarItem, ViewToggleItem } from './ViewportChrome.js';
 
 export { Dock } from './Dock.js';
 export type { PanelContent } from './Dock.js';
@@ -32,7 +27,6 @@ export type { PanelContent } from './Dock.js';
 export {
   addPanelAt,
   closePanelAt,
-  findLeafPath,
   isPanelVisible,
   leaf,
   openPanelById,
@@ -43,27 +37,18 @@ export {
   withActiveAt,
   withRatioAt,
 } from './layout.js';
-export type {
-  Edge,
-  LayoutNode,
-  LeafNode,
-  Side,
-  SplitDir,
-  SplitNode,
-} from './layout.js';
+export type { Edge, LayoutNode, Side } from './layout.js';
 
 export { historyReducer, makeHistory, COALESCE_MS, HISTORY_CAP } from './history.js';
 export type { HistoryAction, HistoryState } from './history.js';
 
 export { buildRigTree, computeSceneCenter, computeSceneSpan } from './rig.js';
-export type { RigNode, Span } from './rig.js';
 
 export { RiggedParts } from './scene/RiggedParts.js';
 export type { VoxelStrokeHandlers } from './scene/RiggedParts.js';
 export { PartMesh } from './scene/PartMesh.js';
 export { PartGizmos } from './scene/PartGizmos.js';
 export type { GizmoPicking } from './scene/PartGizmos.js';
-export { TransformGizmo } from './scene/TransformGizmo.js';
 export { TransformGizmoHost } from './scene/TransformGizmoHost.js';
 
 export type {

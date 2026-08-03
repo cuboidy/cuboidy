@@ -5,7 +5,6 @@ import {
   quatMultiply,
   quatRotateVec3,
   sampleAnimation,
-  type AnimPose,
   type Pose,
   type SocketFrame,
 } from '@cuboidy/core';
@@ -323,11 +322,13 @@ export function placeScene(
       } else {
         // Sampled with the HOST's poses: the whole point of attaching to
         // a socket rather than to a position is that the socket moves.
+        // A Pose is structurally an AnimPose (rot/pos plus fields the
+        // rig ignores), so the sampled map passes straight through.
         const socket = publishedSocketFrame(
           hostPlaced.model.manifest,
           hostPlaced.model.parts,
           inst.attach.socket,
-          hostPlaced.poses === null ? undefined : toAnimPoses(hostPlaced.poses),
+          hostPlaced.poses ?? undefined,
         );
         if (socket === null) {
           problem = `'${hostPlaced.model.dir}' does not publish a socket called '${inst.attach.socket}'`;
@@ -355,14 +356,6 @@ export function placeScene(
     const placed = place(inst, new Set());
     if (placed !== null) out.push(placed);
   }
-  return out;
-}
-
-// The rig transform only needs rot/pos; `scale` and `visible` are the
-// renderer's business (§7.7 — scale does not propagate to children).
-function toAnimPoses(poses: ReadonlyMap<string, Pose>): Map<string, AnimPose> {
-  const out = new Map<string, AnimPose>();
-  for (const [name, p] of poses) out.set(name, { rot: p.rot, pos: p.pos });
   return out;
 }
 

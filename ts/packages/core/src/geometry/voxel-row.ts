@@ -3,7 +3,8 @@
 // A-Z → 36-61, which is why the palette caps at 62 (§7.4).
 //
 // Row width and index range are validated by the schema, which has `size` and
-// the palette length in hand; this module is only the character mapping.
+// the palette length in hand; this module is the character mapping and the
+// index-space helpers, nothing more.
 
 export const AIR = -1;
 
@@ -22,6 +23,23 @@ export function charToIndex(c: string): number | null {
   if (code >= LOWER_A && code <= LOWER_Z) return code - LOWER_A + 10;
   if (code >= UPPER_A && code <= UPPER_Z) return code - UPPER_A + 36;
   return null;
+}
+
+// Highest palette index a part's voxels reference (AIR when the part is
+// all air). Both the assembler's palette-overflow check and lint's E04
+// ask this; keeping it beside AIR keeps the index space in one file.
+export function maxPaletteIndex(part: {
+  voxels: readonly (readonly (readonly number[])[])[];
+}): number {
+  let max = AIR;
+  for (const layer of part.voxels) {
+    for (const row of layer) {
+      for (const idx of row) {
+        if (idx > max) max = idx;
+      }
+    }
+  }
+  return max;
 }
 
 // Inverse of charToIndex, used by the serializer. Throws on out-of-range input

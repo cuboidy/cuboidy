@@ -101,10 +101,11 @@ check needed except where noted.
 
 - **Delete dead code**: `buildScene` + `Voxel`
   (`core/src/render/scene.ts:27-32, 67-108`, superseded by
-  `buildSceneFromParts`); `validateCrossFile`
-  (`lint/cross-file.ts:237-245`) *plus* the legacy `input.parts ===
-  undefined` branches only it reaches (63-75, 96-124); `angleOrNull`
-  (`cli/gif-runner.ts:268-270`).
+  `buildSceneFromParts`); `angleOrNull` (`cli/gif-runner.ts:268-270`).
+  (`validateCrossFile` + the legacy `input.parts === undefined` branches
+  moved to R3-b: `cross-file.test.ts` exercises real rules through the
+  legacy entry point, so deleting it means migrating those tests to the
+  modern `ProjectInput` shape — same job as the lint consolidation.)
 - **Delete both `toAnimPoses`-style converters**
   (`cli/gif-runner.ts:137-138`, `workspace/src/lib/scene.ts:363-367`) —
   `ReadonlyMap<string, Pose>` is directly assignable to
@@ -119,10 +120,13 @@ check needed except where noted.
   (`lint/cross-file.ts` + 2 call sites), `readCvox`→`readGeometryFile`
   (`cli/part-runner.ts`); fix the ghost reference to deleted `part.ts` in
   `geometry/transform.ts:8`.
-- **CSS unification**: delete editor-local `.btn`/`.btn-sm` overrides;
-  rename editor `.btn-icon` usages (PartProperties, Timeline) to ui's
-  `.icon-btn` and delete the local rules (~30 lines); drop the undefined
-  `tree-node` class in `SceneTreePanel.tsx`.
+- **CSS unification**: delete editor-local `.btn-sm` override and the
+  `.btn:disabled` / `.btn:focus-visible` redefinitions (opacity .45 vs
+  ui's .4 — ui now owns `.btn` entirely). Deferred on review:
+  `.btn-icon`→`.icon-btn` is NOT a mechanical rename (padding 0 vs
+  .25rem, hover background vs color-only) — folding them is a design
+  decision for the restyle owner; `tree-node` is an undefined-but-
+  semantic class used by both apps' trees, left as a styling hook.
 - **ui barrel trim** — drop internal-only exports: `Logo`,
   `TransformGizmo`, `findLeafPath`, `ToggleGroupItem`, `RigNode`, `Span`,
   `LeafNode`, `SplitDir`, `SplitNode`.
@@ -297,7 +301,9 @@ low mechanical risk because the pure halves are already tested.
   same resolve→validate sequence, independently declared `<cross-file>`
   sentinel). Move into `core/lint/project-lint.ts` over
   `(manifest, files: ReadonlyMap<string,string>)`; CLI and editor become
-  fs/memory adapters.
+  fs/memory adapters. Includes (deferred from R0-c): delete
+  `validateCrossFile` and the legacy `input.parts === undefined`
+  name-join branches, migrating its tests to the modern shape.
 - **R3-c: one Zod→diagnostic mapping.** Three divergent copies (see
   Bugs). One `zod-diagnostic.ts` with `resultFromZodError(error, input,
   opts)`; `parseManifest` / `parseGeometry` / `parsePaletteFile` become

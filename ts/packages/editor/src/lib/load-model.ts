@@ -1,8 +1,6 @@
-import { InlineAnimationSchema, geometryPaths, normalizeRefPath as normalizePath, parseGeometryText, parseManifest, parsePaletteFile, resolvePartGeometry, resolveRefFrom, type Geometry, type InlineAnimation, type Manifest, type Palette, type ResolvedPart } from '@cuboidy/core';
+import { InlineAnimationSchema, MANIFEST_FILE, geometryPaths, normalizeRefPath as normalizePath, parseGeometryText, parseManifest, parsePaletteFile, resolvePartGeometry, resolveRefFrom, type Geometry, type InlineAnimation, type Manifest, type Palette, type ResolvedPart } from '@cuboidy/core';
 import { strFromU8, unzipSync } from 'fflate';
 import type { LoadResult, LoadedSource } from './types.js';
-
-const MANIFEST_FILE = 'cuboidy.json';
 const CUBOIDY_EXT = /\.cuboidy$/i;
 // Package files worth reading as text. Referenced files are only ever
 // .json (SPEC §8); .md/.txt ride along so docs survive a ZIP

@@ -1,4 +1,5 @@
 import {
+  MANIFEST_FILE,
   parseManifest,
   resolveProject,
   type InlineAnimation,
@@ -21,7 +22,6 @@ import {
 
 import { SCENE_EXT } from './scene-file.js';
 
-const MANIFEST_FILE = 'cuboidy.json';
 
 // One model the library offers. `dir` is the library key: the folder name,
 // which is conventional (SPEC §3 says the manifest's `name` is

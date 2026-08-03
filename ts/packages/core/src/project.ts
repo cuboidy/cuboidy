@@ -15,6 +15,11 @@ import { parsePaletteFile } from './palette-file.js';
 // the inspection CLIs (view/query/snap) and the editor all resolve a
 // package through here so every tool interprets the same model identically.
 
+// SPEC §3: the fixed name of the package anchor. Every loader keys the
+// manifest under this name; four hand-written copies of the literal used
+// to live across the packages.
+export const MANIFEST_FILE = 'cuboidy.json';
+
 export interface GeometryFile {
   path: string;
   geometry: Geometry;

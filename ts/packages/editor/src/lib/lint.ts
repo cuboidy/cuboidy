@@ -70,7 +70,7 @@ export function lintSource(src: LoadedSource): FileDiagnostic[] {
     parts: bound.parts,
     unresolved: bound.unresolved,
     externalAnims,
-    packageCvoxPaths: geometryFilePaths(src),
+    packageGeometryPaths: geometryFilePaths(src),
   })) {
     out.push({ file: CROSS_FILE, diag });
   }

@@ -4,8 +4,7 @@ import type { Color, Palette, Part, Pivot, Size, Socket, Vec3 } from './types.js
 // remap. These produce CONCRETE parts (no `from` reference) — the building
 // blocks the `cuboidy-part` CLI and the editor use to author symmetric /
 // copied geometry as plain voxel data, rather than the declarative
-// clone/mirror grammar. The mirror math is shared with the (transitional)
-// reuse resolver in part.ts via `mirrorGeometry`.
+// clone/mirror grammar.
 
 export type Axis = 'x' | 'y' | 'z';
 

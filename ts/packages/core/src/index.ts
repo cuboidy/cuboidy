@@ -82,6 +82,7 @@ export type {
 } from './geometry/types.js';
 
 export {
+  MANIFEST_FILE,
   geometryPaths,
   normalizeRefPath,
   projectFilePaths,

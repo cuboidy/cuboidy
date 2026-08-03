@@ -1,8 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import type { Palette } from '../geometry/types.js';
-import { indexToChar } from '../geometry/voxel-row.js';
 import { encodePng } from '../render/png.js';
+import { formatPaletteBlock } from './palette-legend.js';
 import type { Rgb } from '../render/framebuffer.js';
 import type { Angle } from '../render/camera.js';
 import { STANDARD_IDS, ANGLES } from '../render/camera.js';
@@ -175,7 +174,7 @@ function summary(
     out.push('note: half-voxel offsets present (geometry rendered at true position; use cuboidy-query for exact lookups)');
   }
   out.push('');
-  out.push(formatPalette(asm.palette));
+  out.push(formatPaletteBlock(asm.palette));
   out.push('');
   out.push('angles rendered:');
   for (const angle of opts.angles) {
@@ -189,17 +188,3 @@ function summary(
   return out.join('\n');
 }
 
-function formatPalette(palette: Palette): string {
-  const lines = ['palette:'];
-  for (let i = 0; i < palette.length; i++) {
-    const c = palette[i]!;
-    const hex =
-      '#' + toHex(c.r) + toHex(c.g) + toHex(c.b) + (c.a === 255 ? '' : toHex(c.a));
-    lines.push(`  ${indexToChar(i)} = ${hex}`);
-  }
-  return lines.join('\n');
-}
-
-function toHex(n: number): string {
-  return n.toString(16).padStart(2, '0').toUpperCase();
-}

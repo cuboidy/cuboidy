@@ -1,16 +1,11 @@
 import { writeFile, mkdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import type { Angle } from '../render/camera.js';
-import { ANGLES } from '../render/camera.js';
 import { buildSceneFromParts, type OrientedPart, type Scene } from '../render/scene.js';
 import { computeGlobalScale, renderTile } from '../render/snapshot.js';
 import { encodeGif } from '../render/gif.js';
 import { sampleAnimation, type InlineAnimation } from '../animation.js';
-import {
-  computeWorldTransforms,
-  type AnimPose,
-  type Vec3Tuple,
-} from '../rig-transform.js';
+import { computeWorldTransforms, type Vec3Tuple } from '../rig-transform.js';
 import { loadAndAssemble, type Assembly } from './assemble.js';
 import type { Rgb } from '../render/framebuffer.js';
 
@@ -134,12 +129,12 @@ export function renderGif(
         ? new Map()
         : sampleAnimation(anim, (i / perLoop) * duration);
 
-    const animPoses = new Map<string, AnimPose>();
-    for (const [name, p] of poses) animPoses.set(name, { rot: p.rot, pos: p.pos });
+    // Pose is structurally an AnimPose (rot/pos plus fields the rig
+    // ignores), so the sampled map passes straight through.
     const transforms = computeWorldTransforms(
       asm.manifest.parts,
       pivotRots,
-      animPoses,
+      poses,
     );
 
     const oriented: OrientedPart[] = [];
@@ -265,6 +260,3 @@ export async function runGif(
   };
 }
 
-export function angleOrNull(id: string): Angle | null {
-  return ANGLES[id] ?? null;
-}

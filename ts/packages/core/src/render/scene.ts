@@ -4,32 +4,16 @@ import { quatRotateVec3, type WorldTransform } from '../rig-transform.js';
 import type { Rgb } from './framebuffer.js';
 import type { Vec3 } from './vec.js';
 
-// Turn an assembled, world-space voxel grid into renderable cube faces.
-// A voxel at world coord (x, y, z) occupies the unit cube spanning
-// [x, x+1] on each axis — the same convention as mesh.ts (corner
-// offsets 0/1) and assemble.ts (integer voxel index → world offset).
+// Turn resolved parts into renderable cube faces. A voxel occupies the
+// unit cube spanning [x, x+1] on each axis in part-local space — the
+// same convention as mesh.ts (corner offsets 0/1) — and every corner is
+// pushed through the part's SPEC §7.7 rest world transform, so rest
+// rotations render as true oriented cubes.
 //
-// Faces shared with an occupied neighbour are culled, so only the
-// model's outer shell is emitted. Culling uses an exact-coordinate
-// occupancy set, so it composes across parts (an internal seam between
-// two adjacent parts is removed) and is safe at half-voxel offsets:
-// neighbours that don't line up on the integer grid simply aren't
-// culled (the z-buffer still hides them; the only cost is extra fills).
-//
-// buildSceneFromParts is the rotation-aware sibling: it emits faces per
-// part in part-local space and pushes the corners through the part's
-// SPEC §7.7 rest world transform, so rest rotations render as true
-// oriented cubes. Culling there is per-part only (cross-part seams stay
-// in the quad list — with rotation the parts need not share a lattice);
-// the z-buffer and back-face cull hide them, so the image matches the
-// grid path for unrotated models at the cost of a few extra fills.
-
-export interface Voxel {
-  x: number;
-  y: number;
-  z: number;
-  idx: number; // palette index (never AIR)
-}
+// Culling is per-part only: faces shared with a solid neighbour in the
+// SAME part are dropped, cross-part seams stay in the quad list (with
+// rotation the parts need not share a lattice). The z-buffer and
+// back-face cull hide them; the only cost is a few extra fills.
 
 export interface Quad {
   // Four world-space corners, CCW seen from outside (matches mesh.ts).
@@ -62,55 +46,10 @@ const FACES: readonly FaceDef[] = [
   { normal: [0, 0, -1], d: [0, 0, -1], corners: [[0, 0, 0], [0, 1, 0], [1, 1, 0], [1, 0, 0]] },
 ];
 
-const key = (x: number, y: number, z: number): string => `${x},${y},${z}`;
-
-export function buildScene(voxels: readonly Voxel[], palette: Palette): Scene {
-  // No voxels → no geometry. Return a finite, origin-anchored scene so
-  // callers never see a NaN center (min/max would otherwise stay at the
-  // ±Infinity sentinels and average to NaN). The CLI rejects empty
-  // models earlier; this keeps the direct buildScene/renderSnapshots
-  // API safe too.
-  if (voxels.length === 0) {
-    return { quads: [], center: [0, 0, 0], min: [0, 0, 0], max: [0, 0, 0] };
-  }
-
-  const occupied = new Set<string>();
-  for (const v of voxels) occupied.add(key(v.x, v.y, v.z));
-
-  const srgb = palette.map((c) => [c.r / 255, c.g / 255, c.b / 255] as Rgb);
-
-  const quads: Quad[] = [];
-  let minX = Infinity, minY = Infinity, minZ = Infinity;
-  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-
-  for (const v of voxels) {
-    if (v.x < minX) minX = v.x;
-    if (v.y < minY) minY = v.y;
-    if (v.z < minZ) minZ = v.z;
-    if (v.x + 1 > maxX) maxX = v.x + 1;
-    if (v.y + 1 > maxY) maxY = v.y + 1;
-    if (v.z + 1 > maxZ) maxZ = v.z + 1;
-
-    const color = srgb[v.idx]!;
-    for (const f of FACES) {
-      if (occupied.has(key(v.x + f.d[0], v.y + f.d[1], v.z + f.d[2]))) continue;
-      const corners = f.corners.map(
-        (c) => [v.x + c[0], v.y + c[1], v.z + c[2]] as Vec3,
-      ) as [Vec3, Vec3, Vec3, Vec3];
-      quads.push({ corners, normal: f.normal, color });
-    }
-  }
-
-  const min: Vec3 = [minX, minY, minZ];
-  const max: Vec3 = [maxX, maxY, maxZ];
-  const center: Vec3 = [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2];
-  return { quads, center, min, max };
-}
-
-// One part ready for oriented rendering: geometry geometry, its palette
+// One part ready for oriented rendering: its geometry, its palette
 // remap into the effective palette (null = identity), and its rest
-// world transform. Mirrors assemble.ts's PlacedPart without depending
-// on the CLI layer.
+// world transform. assemble.ts's PlacedPart extends this with the name
+// the rig uses.
 export interface OrientedPart {
   part: Part;
   remap: readonly number[] | null;
@@ -192,9 +131,9 @@ export function buildSceneFromParts(
     }
   }
 
-  // No solid voxels → same finite, origin-anchored scene buildScene
-  // returns (callers reject empty models earlier; this keeps the direct
-  // API NaN-safe).
+  // No solid voxels → a finite, origin-anchored scene, so callers never
+  // see a NaN center (callers reject empty models earlier; this keeps
+  // the direct API NaN-safe).
   if (quads.length === 0) {
     return { quads: [], center: [0, 0, 0], min: [0, 0, 0], max: [0, 0, 0] };
   }

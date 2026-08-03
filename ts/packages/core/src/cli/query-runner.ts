@@ -1,4 +1,4 @@
-import type { Palette, Vec3 } from '../geometry/types.js';
+import type { Vec3 } from '../geometry/types.js';
 import { AIR, indexToChar } from '../geometry/voxel-row.js';
 import {
   gridRotationWarnings,
@@ -7,6 +7,7 @@ import {
   stringifyCoord,
   type Assembly,
 } from './assemble.js';
+import { formatPaletteLine } from './palette-legend.js';
 
 // cuboidy-query: structured, single-line coordinate lookup against an
 // assembled model. Complement to cuboidy-view, designed for LLM
@@ -77,7 +78,7 @@ export async function runQuery(
   const out: string[] = [];
   out.push(`model: ${asm.manifest.name}`);
   out.push(formatBBox(asm));
-  out.push(formatPalette(asm.palette));
+  out.push(formatPaletteLine(asm.palette));
   out.push('');
   for (const q of opts.queries) {
     out.push(executeQuery(asm, q));
@@ -253,21 +254,3 @@ function formatBBox(asm: Assembly): string {
   );
 }
 
-function formatPalette(palette: Palette): string {
-  const entries: string[] = [];
-  for (let i = 0; i < palette.length; i++) {
-    const c = palette[i]!;
-    const hex =
-      '#' +
-      toHex(c.r) +
-      toHex(c.g) +
-      toHex(c.b) +
-      (c.a === 255 ? '' : toHex(c.a));
-    entries.push(`${indexToChar(i)}=${hex}`);
-  }
-  return `palette: ${entries.join(' ')}`;
-}
-
-function toHex(n: number): string {
-  return n.toString(16).padStart(2, '0').toUpperCase();
-}

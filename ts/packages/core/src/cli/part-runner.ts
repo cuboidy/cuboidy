@@ -33,7 +33,7 @@ export interface RunResult {
   exitCode: number;
 }
 
-async function readCvox(
+async function readGeometryFile(
   path: string,
 ): Promise<{ geometry: Geometry } | { error: string; code: number }> {
   let text: string;
@@ -56,7 +56,7 @@ export async function runPart(op: PartOp): Promise<RunResult> {
 async function runMirror(
   op: Extract<PartOp, { op: 'mirror' }>,
 ): Promise<RunResult> {
-  const r = await readCvox(op.file);
+  const r = await readGeometryFile(op.file);
   if ('error' in r) return { text: r.error, exitCode: r.code };
   const i = r.geometry.parts.findIndex((p) => p.name === op.part);
   if (i < 0) {
@@ -86,7 +86,7 @@ async function runDuplicate(
     return { text: `invalid part name "${op.toPart}"`, exitCode: 2 };
   }
 
-  const fromR = await readCvox(op.fromFile);
+  const fromR = await readGeometryFile(op.fromFile);
   if ('error' in fromR) return { text: fromR.error, exitCode: fromR.code };
   const fromGeometry = fromR.geometry;
 
@@ -105,7 +105,7 @@ async function runDuplicate(
   if (sameFile) {
     toGeometry = fromGeometry;
   } else {
-    const toR = await readCvox(op.toFile);
+    const toR = await readGeometryFile(op.toFile);
     if ('error' in toR) return { text: toR.error, exitCode: toR.code };
     toGeometry = toR.geometry;
   }
