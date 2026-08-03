@@ -46,6 +46,8 @@ export { historyReducer, makeHistory, COALESCE_MS, HISTORY_CAP } from './history
 export type { HistoryAction, HistoryState } from './history.js';
 export { isTextEntryTarget, useUndoRedoShortcuts } from './shortcuts.js';
 export { UndoRedoGroup } from './UndoRedoGroup.js';
+export { SaveButton, useSaveFlash } from './SaveButton.js';
+export type { SaveState } from './SaveButton.js';
 
 export { buildRigTree, computeSceneCenter, computeSceneSpan } from './rig.js';
 

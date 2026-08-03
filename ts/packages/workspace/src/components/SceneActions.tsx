@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Check, FileJson, FilePlus2, Save } from 'lucide-react';
-import { InlineNameInput } from '@cuboidy/ui';
+import { FileJson, FilePlus2 } from 'lucide-react';
+import { InlineNameInput, SaveButton, type SaveState } from '@cuboidy/ui';
 
 interface Props {
   // The file this scene came from / was last saved to, relative to the
@@ -10,7 +10,7 @@ interface Props {
   onNew: () => void;
   onSave: (file: string) => void;
   // 'saved' flashes briefly after a write in place.
-  state: 'idle' | 'saving' | 'saved';
+  state: SaveState;
 }
 
 // The document controls, in the header where the editor keeps its own.
@@ -69,28 +69,13 @@ export function SceneActions({ file, dirty, onNew, onSave, state }: Props) {
       >
         <FilePlus2 size={16} />
       </button>
-      <button
-        type="button"
-        className="btn btn-primary"
-        disabled={savingAs || state === 'saving'}
-        // A scene with no file has nothing to write back to, so Save has
-        // to ask where — which is Save as.
+      {/* A scene with no file has nothing to write back to, so Save has
+          to ask where — which is Save as. */}
+      <SaveButton
+        state={state}
+        disabled={savingAs}
         onClick={() => (file === null ? setSavingAs(true) : onSave(file))}
-      >
-        {state === 'saving' ? (
-          'Saving…'
-        ) : state === 'saved' ? (
-          <>
-            <Check size={14} />
-            Saved
-          </>
-        ) : (
-          <>
-            <Save size={14} />
-            Save
-          </>
-        )}
-      </button>
+      />
       <button
         type="button"
         className="btn"

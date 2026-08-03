@@ -8,6 +8,7 @@ import {
   UndoRedoGroup,
   isTextEntryTarget,
   useDockLayout,
+  useSaveFlash,
   type PanelContent,
 } from '@cuboidy/ui';
 import { ModelList } from './components/ModelList.js';
@@ -83,9 +84,13 @@ export function App() {
   // that would not parse. NOT "Saved x." — a write that worked says so on
   // the button and then gets out of the way.
   const [notice, setNotice] = useState<string | null>(null);
-  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>(
-    'idle',
-  );
+  // Save-button state; the 'saved' flash decays inside the hook.
+  const {
+    state: saveState,
+    setSaving,
+    flashSaved,
+    reset: resetSaveState,
+  } = useSaveFlash();
   // Which file the scene came from, and what was in it. Both are the
   // APP's state rather than the document's: a scene does not know its own
   // name, and "has it changed" is a question about the pair.
@@ -288,7 +293,7 @@ export function App() {
     (file: string) => {
       if (library === null) return;
       const written = sourceText;
-      setSaveState('saving');
+      setSaving();
       void saveScene(scene, library, file)
         .then((out) => {
           setSceneFile(out.file);
@@ -297,24 +302,23 @@ export function App() {
             // The button says it and then stops saying it. A banner for
             // something that simply worked is a banner you learn to
             // ignore, which is how the next one gets missed too.
-            setSaveState('saved');
+            flashSaved();
             setNotice(null);
-            window.setTimeout(() => setSaveState('idle'), 2000);
           } else {
             // This one needs doing something about: the browser can only
             // drop a file in Downloads, flat, and it has to be moved.
-            setSaveState('idle');
+            resetSaveState();
             setNotice(
               `Downloaded ${out.downloadedAs ?? out.file} — move it to ${library.name}/${out.file}, beside the models it references.`,
             );
           }
         })
         .catch((e: Error) => {
-          setSaveState('idle');
+          resetSaveState();
           setNotice(`Could not save: ${e.message}`);
         });
     },
-    [scene, library, sourceText],
+    [scene, library, sourceText, setSaving, flashSaved, resetSaveState],
   );
 
   // Put a model in the scene, at wherever the drag resolved to (or the

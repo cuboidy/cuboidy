@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { Check, Save } from 'lucide-react';
+import { SaveButton as SaveButtonUi, useSaveFlash } from '@cuboidy/ui';
 import type { LoadedSource } from '../../lib/types.js';
 import { saveToFolder } from '../../lib/save.js';
 
@@ -11,51 +10,34 @@ interface Props {
 // FSA handle — i.e. Chrome/Edge drop or showDirectoryPicker. On browsers
 // without FSA, the user instead uses Export → Download as .cuboidy.
 //
-// Three visible states: idle ("Save"), saving ("Saving…"), and a brief
-// success flash ("✓ Saved") that decays back to idle after 2s. Errors
-// surface as a window.alert — minimal but loud; future a Toast component
-// could replace this.
+// The three visible states and the success flash live in @cuboidy/ui's
+// SaveButton / useSaveFlash. Errors surface as a window.alert — minimal
+// but loud; a future Toast component could replace this.
 
 export function SaveButton({ source }: Props) {
-  const [state, setState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const flash = useSaveFlash();
 
   // Hidden when there's no writeable handle. Synthetic folders and FF/
   // Safari folder loads fall into this branch — they must use Export.
   if (source.handle === undefined) return null;
 
   const handleSave = async () => {
-    setState('saving');
+    flash.setSaving();
     try {
       await saveToFolder(source);
-      setState('saved');
-      window.setTimeout(() => setState('idle'), 2000);
+      flash.flashSaved();
     } catch (e) {
       // eslint-disable-next-line no-alert
       window.alert(`Save failed: ${(e as Error).message}`);
-      setState('idle');
+      flash.reset();
     }
   };
 
   return (
-    <button
-      type="button"
-      className="btn btn-primary save-btn"
-      onClick={handleSave}
-      disabled={state === 'saving'}
-    >
-      {state === 'saving' ? (
-        'Saving…'
-      ) : state === 'saved' ? (
-        <>
-          <Check size={14} />
-          Saved
-        </>
-      ) : (
-        <>
-          <Save size={14} />
-          Save
-        </>
-      )}
-    </button>
+    <SaveButtonUi
+      state={flash.state}
+      className="save-btn"
+      onClick={() => void handleSave()}
+    />
   );
 }
