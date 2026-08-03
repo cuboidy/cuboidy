@@ -247,10 +247,24 @@ pass. Existing coverage that must stay green: `editor/test/source-ops.test.ts`
   decisions before converging:
   - `renameFileInSource` normalizes EVERY geometry-list entry as a side
     effect; `deleteFileInSource` leaves non-matching entries verbatim.
-  - **Found bug:** `deleteFileInSource` never rewrites a part-level
-    `geometry.path`, so deleting a non-primary geometry file a part
-    points at directly leaves a dangling path (a load error on reopen).
-    Decide: drop the part, inline it, or refuse the delete.
+  - **Found bug — FIXED (decided: drop the parts):** `deleteFileInSource`
+    never rewrote a part-level `geometry.path`, so deleting a geometry
+    file a part pointed at directly left a dangling path (a load error on
+    reopen). Decision: deleting a file deletes the parts it defined —
+    by-name and §6.13 by-path alike (undo is the safety net). Done via
+    `removePartsFromSource` (extracted from `handleDeletePart`, now
+    multi-part with surviving-ancestor re-parenting), which
+    `deleteFileInSource` runs over every part whose resolved
+    `source.file` is the deleted file.
+  - **Follow-up (decided, next):** the editor's "primary geometry" is a
+    concept the SPEC does not have (no `primary` anywhere in SPEC.md; the
+    only fixed filename is `cuboidy.json`, and §6.9 says readers must not
+    demand the default file from a model that does not use it). De-throne
+    it: load must not fail on a missing/broken first geometry file
+    (per-file diagnostics like every other file), the primary becomes
+    deletable (next listed file promotes; none left → all-inline model),
+    and `primaryPath` decays into a mere UI default. Error-slot
+    unification (`geometryParseError` → per-file) is a later cleanup.
 - **R2-e: workspace `App.tsx` (712 → ~150)** — extract `useLibrary()` +
   `<OpenFolderButton>` (118-137, 606-631), `useSceneDocument()` (231-310;
   cleanest cut — four states nothing else reads), `useDeleteKey`

@@ -1,4 +1,4 @@
-import { InlineAnimationSchema, geometryPaths, parseGeometryText, parseManifest, parsePaletteFile, resolvePartGeometry, serializeColor, resolveRefFrom, serializeGeometry, toInlineGeometry, type Geometry, type InlineAnimation, type Manifest, type ManifestPart, type Palette, type Part } from '@cuboidy/core';
+import { InlineAnimationSchema, geometryPaths, parseGeometryText, parseManifest, parsePaletteFile, resolvePartGeometry, serializeColor, resolveRefFrom, serializeGeometry, toInlineGeometry, type Geometry, type InlineAnimation, type Manifest, type ManifestPart, type Palette, type Part, type PublishedSocket } from '@cuboidy/core';
 import { isGeometryPath, normalizePath, resolveProjectRefs, withResolvedPalette } from './load-model.js';
 import type { LoadedSource } from './types.js';
 
@@ -196,6 +196,150 @@ export function rewriteExternalAnims(
   }
   if (anims === null || files === null) return src;
   return { ...src, externalAnims: anims, files };
+}
+
+// SPEC §6.12: rewrite the manifest's published sockets after something they
+// point at changed name or went away. `build` returning null drops the entry.
+// Key order is preserved (a publication is identified by its key, so a
+// rebuild that reordered them would churn the diff for no reason), and an
+// untouched manifest is returned by identity so callers can skip the write.
+export function mapPublishedSockets(
+  m: Manifest,
+  build: (target: PublishedSocket) => PublishedSocket | null,
+): Manifest {
+  if (m.sockets === undefined) return m;
+  const next: Record<string, PublishedSocket> = {};
+  let changed = false;
+  for (const [pub, target] of Object.entries(m.sockets)) {
+    const built = build(target);
+    if (built === null) {
+      changed = true;
+      continue;
+    }
+    next[pub] = built;
+    if (built !== target) changed = true;
+  }
+  if (!changed) return m;
+  // An empty map means "publishes nothing", which the SPEC spells as an
+  // absent field — writing `"sockets": {}` would be a second way to say it.
+  if (Object.keys(next).length === 0) {
+    const { sockets: _drop, ...rest } = m;
+    return rest;
+  }
+  return { ...m, sockets: next };
+}
+
+// Re-key (`to` a name) or drop (`to` null) the track for `from` in one
+// clip's parts map, preserving entry order. Null = clip untouched. The
+// part rename and delete paths, inline AND external (§6.3), all run
+// this one loop — four hand-written copies used to have to stay in step
+// by care alone.
+export function rekeyPartTracks(
+  parts: InlineAnimation['parts'],
+  from: string,
+  to: string | null,
+): InlineAnimation['parts'] | null {
+  if (!Object.hasOwn(parts, from)) return null;
+  const next: InlineAnimation['parts'] = {};
+  for (const [name, track] of Object.entries(parts)) {
+    if (name === from) {
+      if (to !== null) next[to] = track;
+      continue;
+    }
+    next[name] = track;
+  }
+  return next;
+}
+
+// Drop every track in `parts` whose part is in `names`. Returns the input
+// by identity when none is.
+function dropPartTracks(
+  parts: InlineAnimation['parts'],
+  names: ReadonlySet<string>,
+): InlineAnimation['parts'] {
+  let next = parts;
+  for (const name of names) {
+    const rekeyed = rekeyPartTracks(next, name, null);
+    if (rekeyed !== null) next = rekeyed;
+  }
+  return next;
+}
+
+// Remove a set of parts from the model in ONE source patch, following every
+// reference a part delete has to: the geometry-file definitions, the
+// manifest entries (children re-parented to the nearest SURVIVING ancestor,
+// or the root when the whole chain goes), published sockets (§6.12), and
+// the part's animation tracks — inline AND resolved external files (§6.3).
+// Shared by the Parts panel's delete and deleteFileInSource, which dooms
+// every part the deleted file defined; identity when nothing matches.
+export function removePartsFromSource(
+  src: LoadedSource,
+  names: ReadonlySet<string>,
+): LoadedSource {
+  if (names.size === 0) return src;
+  let next = mapGeometryFiles(src, (geometry) =>
+    geometry.parts.some((p) => names.has(p.name))
+      ? { ...geometry, parts: geometry.parts.filter((p) => !names.has(p.name)) }
+      : null,
+  );
+  next = rewriteExternalAnims(next, (anim) => {
+    const parts = dropPartTracks(anim.parts, names);
+    return parts === anim.parts ? null : { ...anim, parts };
+  });
+  const m = next.manifest;
+  if (m === undefined) return next;
+  const parentOf = new Map(m.parts.map((mp) => [mp.name, mp.parent]));
+  const survivingParent = (start: string | undefined): string | undefined => {
+    let cur = start;
+    while (cur !== undefined && names.has(cur)) cur = parentOf.get(cur);
+    return cur;
+  };
+  let partsChanged = false;
+  const nextMParts: ManifestPart[] = [];
+  for (const mp of m.parts) {
+    if (names.has(mp.name)) {
+      partsChanged = true; // drop the deleted part's entry
+      continue;
+    }
+    if (mp.parent !== undefined && names.has(mp.parent)) {
+      partsChanged = true;
+      const anchor = survivingParent(mp.parent);
+      if (anchor !== undefined) {
+        nextMParts.push({ ...mp, parent: anchor });
+      } else {
+        const { parent: _drop, ...rest } = mp; // re-root
+        nextMParts.push(rest);
+      }
+    } else {
+      nextMParts.push(mp);
+    }
+  }
+  let nextManifest = partsChanged ? { ...m, parts: nextMParts } : m;
+  // §6.12: the part is gone, so anything it published goes with it —
+  // leaving the entry would be a cross-file error (§11.6).
+  nextManifest = mapPublishedSockets(nextManifest, (t) =>
+    names.has(t.part) ? null : t,
+  );
+  if (m.animations !== undefined) {
+    const rebuilt: NonNullable<Manifest['animations']> = {};
+    let animChanged = false;
+    for (const [aName, anim] of Object.entries(m.animations)) {
+      if (typeof anim === 'string') {
+        rebuilt[aName] = anim;
+        continue;
+      }
+      const parts = dropPartTracks(anim.parts, names);
+      if (parts === anim.parts) {
+        rebuilt[aName] = anim;
+        continue;
+      }
+      rebuilt[aName] = { ...anim, parts };
+      animChanged = true;
+    }
+    if (animChanged) nextManifest = { ...nextManifest, animations: rebuilt };
+  }
+  if (nextManifest === m) return next;
+  return withManifest(next, nextManifest);
 }
 
 // ── accessors ──────────────────────────────────────────────────────────
@@ -539,13 +683,23 @@ export function moveFolderInSource(
 // Pure single-file delete over the source: drop the file, mark it
 // removed (Save deletes it from disk; undo restores it), and prune every
 // manifest reference to it (geometry list, bound palette + its resolved
-// record, external-anim clips). Returns null if the file is pinned (the
-// anchor or primary geometry) or already gone. Extracted from
+// record, external-anim clips). Deleting a geometry file deletes the
+// PARTS it defined too — by-name and §6.13 by-path alike — with the full
+// part-delete cleanup (entries, children, sockets, tracks): keeping the
+// entries would leave dangling references, and a dangling `geometry.path`
+// was a load error on the next open. Returns null if the file is pinned
+// (the anchor or primary geometry) or already gone. Extracted from
 // handleDeleteFile so a folder delete can fold it over the subtree.
 export function deleteFileInSource(src: LoadedSource, p: string): LoadedSource | null {
   if (src.manifestPath === p) return null; // the anchor
   if (src.primaryPath === p) return null; // primary geometry
   if (!src.files.has(p)) return null;
+  // The parts whose shape this file supplied, under their RIG names (a
+  // §6.13 `part` alias differs from the file's name on purpose).
+  const doomed = new Set<string>();
+  for (const [name, r] of src.parts) {
+    if (r.source !== null && r.source.file === p) doomed.add(name);
+  }
   const files = new Map(src.files);
   files.delete(p);
   const removedFiles = new Set(src.removedFiles ?? []);
@@ -607,6 +761,7 @@ export function deleteFileInSource(src: LoadedSource, p: string): LoadedSource |
     }
     if (changed) next = withManifest(next, m);
   }
+  next = removePartsFromSource(next, doomed);
   // Deleting the palette file itself: the geometry files that pointed at
   // it keep the colors they last resolved, written back out inline.
   if (geometryPaletteRefs(src).has(p)) next = repointPaletteRef(next, p, null);

@@ -366,6 +366,102 @@ describe('deleteFileInSource', () => {
     expect(next!.removedFiles?.has('limbs.json')).toBe(true);
   });
 
+  it('deleting a geometry file deletes the parts it defined', () => {
+    // The file's deletion takes its parts with it — an `arm` entry left in
+    // the manifest would reference a definition that no longer exists.
+    const next = deleteFileInSource(full(), 'limbs.json');
+    expect(next!.manifest?.parts.map((p) => p.name)).toEqual(['body']);
+    expect(next!.parts.has('arm')).toBe(false);
+  });
+
+  it('deleting a §6.13 by-path file deletes the parts bound to it, under their rig names', () => {
+    // `left-arm` reaches `arm` in limbs.json via geometry.path — a rig name
+    // the file itself never mentions. Before the sweep this left a dangling
+    // path, which was a load error on the next open.
+    const src = pkg({
+      [MANIFEST]: manifestJson({
+        name: 'm',
+        geometry: ['body.json'],
+        parts: [
+          { name: 'body' },
+          { name: 'left-arm', parent: 'body', geometry: { path: 'limbs.json', part: 'arm' } },
+        ],
+      }),
+      'body.json': GEO([{ name: 'body', voxels: '0' }], ['#FF0000']),
+      'limbs.json': GEO([{ name: 'arm', voxels: '0' }], ['#00FF00']),
+    }, 'body.json');
+    const next = deleteFileInSource(src, 'limbs.json');
+    expect(next).not.toBeNull();
+    expect(next!.manifest?.parts.map((p) => p.name)).toEqual(['body']);
+    expect(next!.files.get(MANIFEST)).not.toContain('limbs.json');
+  });
+
+  it('a deleted part takes its sockets and tracks along, and its children re-parent', () => {
+    const src = pkg({
+      [MANIFEST]: manifestJson({
+        name: 'm',
+        geometry: ['body.json', 'limbs.json'],
+        parts: [
+          { name: 'body' },
+          { name: 'arm', parent: 'body' },
+          { name: 'hand', parent: 'arm' },
+        ],
+        sockets: {
+          grip: { part: 'arm', socket: 'palm' },
+          top: { part: 'body', socket: 'crown' },
+        },
+        animations: {
+          wave: {
+            duration: 1,
+            loop: true,
+            parts: { arm: { '0': { rot: [0, 0, 0] } }, body: { '0': { rot: [0, 0, 0] } } },
+          },
+          ext: 'anims/wave.json',
+        },
+      }),
+      'body.json': GEO([{ name: 'body', voxels: '0' }, { name: 'hand', voxels: '0' }], ['#FF0000']),
+      'limbs.json': GEO([{ name: 'arm', voxels: '0' }], ['#00FF00']),
+      'anims/wave.json':
+        '{"duration":1,"loop":true,"parts":{"arm":{"0":{"rot":[0,0,0]}},"body":{"0":{"rot":[0,0,0]}}}}',
+    }, 'body.json');
+    const next = deleteFileInSource(src, 'limbs.json');
+    expect(next).not.toBeNull();
+    const m = next!.manifest!;
+    expect(m.parts.map((p) => p.name)).toEqual(['body', 'hand']);
+    // hand's parent (arm) is gone, so it re-parents to arm's own parent.
+    expect(m.parts.find((p) => p.name === 'hand')?.parent).toBe('body');
+    expect(Object.keys(m.sockets ?? {})).toEqual(['top']);
+    const wave = m.animations?.['wave'];
+    expect(typeof wave).toBe('object');
+    expect(Object.keys((wave as { parts: object }).parts)).toEqual(['body']);
+    // The external clip's resolved record AND its file text both lose the track.
+    expect(Object.keys(next!.externalAnims!.get('ext')!.anim.parts)).toEqual(['body']);
+    expect(next!.files.get('anims/wave.json')).not.toContain('"arm"');
+  });
+
+  it('re-parenting walks past a whole deleted chain', () => {
+    // arm and hand both live in limbs.json; finger (elsewhere) hangs off
+    // hand. Deleting the file removes both ancestors, so finger climbs to
+    // the nearest survivor: body.
+    const src = pkg({
+      [MANIFEST]: manifestJson({
+        name: 'm',
+        geometry: ['body.json', 'limbs.json'],
+        parts: [
+          { name: 'body' },
+          { name: 'arm', parent: 'body' },
+          { name: 'hand', parent: 'arm' },
+          { name: 'finger', parent: 'hand' },
+        ],
+      }),
+      'body.json': GEO([{ name: 'body', voxels: '0' }, { name: 'finger', voxels: '0' }], ['#FF0000']),
+      'limbs.json': GEO([{ name: 'arm', voxels: '0' }, { name: 'hand', voxels: '0' }], ['#00FF00']),
+    }, 'body.json');
+    const next = deleteFileInSource(src, 'limbs.json');
+    expect(next!.manifest?.parts.map((p) => p.name)).toEqual(['body', 'finger']);
+    expect(next!.manifest?.parts.find((p) => p.name === 'finger')?.parent).toBe('body');
+  });
+
   it('deleting a palette file inlines the colors into its referrers', () => {
     const next = deleteFileInSource(full(), 'palette.json');
     expect(next).not.toBeNull();

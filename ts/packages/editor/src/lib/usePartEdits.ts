@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { AIR, duplicatePart, isIdentifier, mirrorPart, remapPartPalette, type Axis, type InlineAnimation, type Manifest, type ManifestPart, type Part, type PublishedSocket } from '@cuboidy/core';
 import { normalizePath } from './load-model.js';
-import { isInlinePart, mapGeometryFiles, mergeGeometries, primaryGeometry, rewriteExternalAnims, uniquePartName, withInlinePart, withManifest } from './source-ops.js';
+import { isInlinePart, mapGeometryFiles, mapPublishedSockets, mergeGeometries, primaryGeometry, rekeyPartTracks, removePartsFromSource, rewriteExternalAnims, uniquePartName, withInlinePart, withManifest } from './source-ops.js';
 import type { LoadResult } from './types.js';
 import { usePreviewEdits } from './usePreviewEdits.js';
 import { useSourceMutations } from './useSourceMutations.js';
@@ -29,37 +29,6 @@ interface Params {
   manifestParseError: string | null;
 }
 
-// SPEC §6.12: rewrite the manifest's published sockets after something they
-// point at changed name or went away. `build` returning null drops the entry.
-// Key order is preserved (a publication is identified by its key, so a
-// rebuild that reordered them would churn the diff for no reason), and an
-// untouched manifest is returned by identity so callers can skip the write.
-function mapPublishedSockets(
-  m: Manifest,
-  build: (target: PublishedSocket) => PublishedSocket | null,
-): Manifest {
-  if (m.sockets === undefined) return m;
-  const next: Record<string, PublishedSocket> = {};
-  let changed = false;
-  for (const [pub, target] of Object.entries(m.sockets)) {
-    const built = build(target);
-    if (built === null) {
-      changed = true;
-      continue;
-    }
-    next[pub] = built;
-    if (built !== target) changed = true;
-  }
-  if (!changed) return m;
-  // An empty map means "publishes nothing", which the SPEC spells as an
-  // absent field — writing `"sockets": {}` would be a second way to say it.
-  if (Object.keys(next).length === 0) {
-    const { sockets: _drop, ...rest } = m;
-    return rest;
-  }
-  return { ...m, sockets: next };
-}
-
 // Set `sockets`, keeping SPEC §6.1's field order (before `animations`) even
 // when the field is being ADDED — a bare spread would append it after the
 // animations block. Same tidy-diff reason handleChangeModelVersion re-seats
@@ -73,28 +42,6 @@ function withSockets(
   return animations === undefined
     ? { ...rest, sockets }
     : { ...rest, sockets, animations };
-}
-
-// Re-key (`to` a name) or drop (`to` null) the track for `from` in one
-// clip's parts map, preserving entry order. Null = clip untouched. The
-// part rename and delete paths, inline AND external (§6.3), all run
-// this one loop — four hand-written copies used to have to stay in step
-// by care alone.
-function rekeyPartTracks(
-  parts: InlineAnimation['parts'],
-  from: string,
-  to: string | null,
-): InlineAnimation['parts'] | null {
-  if (!Object.hasOwn(parts, from)) return null;
-  const next: InlineAnimation['parts'] = {};
-  for (const [name, track] of Object.entries(parts)) {
-    if (name === from) {
-      if (to !== null) next[to] = track;
-      continue;
-    }
-    next[name] = track;
-  }
-  return next;
 }
 
 // The published name a given (part, socket) currently goes by, or null.
@@ -574,11 +521,10 @@ export function usePartEdits({
     [mutateSource, editsBlocked],
   );
 
-  // Delete a part, cleaning up its references atomically (one undo). Removes
-  // the geometry part; in the manifest drops its entry, re-parents its children to
-  // its own parent (grandparent, or root if none), and drops its animation
-  // tracks (inline AND resolved external files). No confirmation: undo is the
-  // safety net (same as clip delete).
+  // Delete a part, cleaning up its references atomically (one undo) —
+  // removePartsFromSource follows the geometry definition, the manifest
+  // entry (children re-parented), published sockets and animation tracks.
+  // No confirmation: undo is the safety net (same as clip delete).
   const handleDeletePart = useCallback(
     (name: string) => {
       if (editsBlocked) return;
@@ -586,59 +532,7 @@ export function usePartEdits({
         // Model-wide check (§5): the part may live in any geometry file.
         const allParts = mergeGeometries(src).parts;
         if (!allParts.some((p) => p.name === name)) return null;
-        let nextSrc = mapGeometryFiles(src, (geometry) =>
-          geometry.parts.some((p) => p.name === name)
-            ? { ...geometry, parts: geometry.parts.filter((p) => p.name !== name) }
-            : null,
-        );
-        nextSrc = rewriteExternalAnims(nextSrc, (anim) => {
-          const parts = rekeyPartTracks(anim.parts, name, null);
-          return parts === null ? null : { ...anim, parts };
-        });
-        if (src.manifest !== undefined) {
-          const m = src.manifest;
-          const grandparent = m.parts.find((mp) => mp.name === name)?.parent;
-          const nextMParts: ManifestPart[] = [];
-          for (const mp of m.parts) {
-            if (mp.name === name) continue; // drop the deleted part's entry
-            if (mp.parent === name) {
-              if (grandparent !== undefined) {
-                nextMParts.push({ ...mp, parent: grandparent });
-              } else {
-                const { parent: _drop, ...rest } = mp; // re-root
-                nextMParts.push(rest);
-              }
-            } else {
-              nextMParts.push(mp);
-            }
-          }
-          let nextManifest: Manifest = { ...m, parts: nextMParts };
-          // §6.12: the part is gone, so anything it published goes with it —
-          // leaving the entry would be a cross-file error (§11.6).
-          nextManifest = mapPublishedSockets(nextManifest, (t) =>
-            t.part === name ? null : t,
-          );
-          if (m.animations !== undefined) {
-            const rebuilt: NonNullable<Manifest['animations']> = {};
-            let changed = false;
-            for (const [aName, anim] of Object.entries(m.animations)) {
-              if (typeof anim === 'string') {
-                rebuilt[aName] = anim;
-                continue;
-              }
-              const parts = rekeyPartTracks(anim.parts, name, null);
-              if (parts === null) {
-                rebuilt[aName] = anim;
-                continue;
-              }
-              rebuilt[aName] = { ...anim, parts };
-              changed = true;
-            }
-            if (changed) nextManifest = { ...nextManifest, animations: rebuilt };
-          }
-          return withManifest(nextSrc, nextManifest);
-        }
-        return nextSrc;
+        return removePartsFromSource(src, new Set([name]));
       });
       setSelectedPartName((prev) => (prev === name ? null : prev));
       setHiddenParts((prev) => {
