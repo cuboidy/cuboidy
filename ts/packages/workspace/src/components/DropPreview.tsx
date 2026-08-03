@@ -1,4 +1,9 @@
 import { useEffect, useMemo, useRef } from 'react';
+import {
+  GIZMO_FRAME_COLOR as PREVIEW_COLOR,
+  GIZMO_SOCKET_ACTIVE_COLOR as SOCKET_ACTIVE,
+  noRaycast,
+} from '@cuboidy/ui';
 import { BoxGeometry, EdgesGeometry, type LineSegments } from 'three';
 import type { LibraryModel } from '../lib/library.js';
 import { modelBounds } from '../lib/bounds.js';
@@ -26,14 +31,6 @@ interface Props {
 // screen otherwise carries two identical violet boxes with no way to tell
 // which one is the thing about to happen. Dashed also says the right
 // thing on its own: provisional, not yet real.
-
-const PREVIEW_COLOR = 0x8338ec; // --accent, as the selection frame
-// The editor turns an ACTIVE socket white; the resting ones stay amber.
-// Same convention here, so "the one being targeted" looks the same in
-// both apps.
-const SOCKET_ACTIVE = 0xffffff;
-
-const noRaycast = () => null;
 
 export function DropPreview({ model, target }: Props) {
   const box = useMemo(() => modelBounds(model), [model]);

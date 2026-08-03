@@ -51,6 +51,17 @@ export type { SaveState } from './SaveButton.js';
 
 export { buildRigTree, computeSceneCenter, computeSceneSpan } from './rig.js';
 
+export {
+  AXIS_COLORS,
+  GIZMO_FRAME_COLOR,
+  GIZMO_MARKER_COLOR,
+  GIZMO_SOCKET_ACTIVE_COLOR,
+  GIZMO_SOCKET_COLOR,
+  axisCross,
+  noRaycast,
+  srgbToLinear,
+  srgbToLinearArray,
+} from './scene/gizmo-primitives.js';
 export { RiggedParts } from './scene/RiggedParts.js';
 export type { VoxelStrokeHandlers } from './scene/RiggedParts.js';
 export { PartMesh } from './scene/PartMesh.js';

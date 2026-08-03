@@ -1,11 +1,13 @@
 import { useEffect, useMemo } from 'react';
 import { publishedSocketFrames } from '@cuboidy/core';
 import {
-  BoxGeometry,
-  BufferAttribute,
-  BufferGeometry,
-  EdgesGeometry,
-} from 'three';
+  GIZMO_FRAME_COLOR as FRAME_COLOR,
+  GIZMO_MARKER_COLOR as ORIGIN_COLOR,
+  GIZMO_SOCKET_COLOR as SOCKET_COLOR,
+  axisCross,
+  noRaycast,
+} from '@cuboidy/ui';
+import { BoxGeometry, EdgesGeometry } from 'three';
 import type { LibraryModel } from '../lib/library.js';
 import { modelBounds } from '../lib/bounds.js';
 import type { SceneGizmos } from '../lib/view.js';
@@ -29,26 +31,6 @@ interface Props {
 // Every material skips the depth test: the origin cross sits inside the
 // mesh and the outline lies on its surface, so draw-on-top is the only
 // readable option.
-
-const FRAME_COLOR = 0x8338ec; // --accent, as the editor's part frame
-const ORIGIN_COLOR = 0xf5f3ff;
-const SOCKET_COLOR = 0xffb703;
-
-// Vertex colors bypass three's sRGB→linear conversion, so they are
-// pre-linearized — same as PartGizmos' axis cross.
-function srgbToLinear(c: number): number {
-  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-}
-const AXIS_COLORS = [
-  [0.898, 0.282, 0.302], // x — red
-  [0.275, 0.655, 0.345], // y — green
-  [0.243, 0.388, 0.867], // z — blue
-].map((rgb) => rgb.map(srgbToLinear));
-
-// Overlays never take raycasts: the outline's lines have a raycast
-// threshold of a whole world unit and would swallow clicks aimed at
-// whatever is behind them.
-const noRaycast = () => null;
 
 export function InstanceGizmos({ model, show }: Props) {
   const box = useMemo(() => modelBounds(model), [model]);
@@ -154,21 +136,4 @@ export function InstanceGizmos({ model, show }: Props) {
         ))}
     </>
   );
-}
-
-function axisCross(len: number): BufferGeometry {
-  const positions = new Float32Array([
-    0, 0, 0, len, 0, 0,
-    0, 0, 0, 0, len, 0,
-    0, 0, 0, 0, 0, len,
-  ]);
-  const colors = new Float32Array(18);
-  for (let axis = 0; axis < 3; axis++) {
-    colors.set(AXIS_COLORS[axis]!, axis * 6);
-    colors.set(AXIS_COLORS[axis]!, axis * 6 + 3);
-  }
-  const geom = new BufferGeometry();
-  geom.setAttribute('position', new BufferAttribute(positions, 3));
-  geom.setAttribute('color', new BufferAttribute(colors, 3));
-  return geom;
 }

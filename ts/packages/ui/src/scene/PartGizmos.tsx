@@ -1,14 +1,15 @@
 import { useEffect, useMemo } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
 import { quatFromEulerZXYDeg, type Part } from '@cuboidy/core';
+import { BoxGeometry, EdgesGeometry, Mesh, type Object3D } from 'three';
 import {
-  BoxGeometry,
-  BufferAttribute,
-  BufferGeometry,
-  EdgesGeometry,
-  Mesh,
-  type Object3D,
-} from 'three';
+  GIZMO_FRAME_COLOR as FRAME_COLOR,
+  GIZMO_MARKER_COLOR as PIVOT_COLOR,
+  GIZMO_SOCKET_ACTIVE_COLOR as SOCKET_ACTIVE_COLOR,
+  GIZMO_SOCKET_COLOR as SOCKET_COLOR,
+  axisCross,
+  noRaycast,
+} from './gizmo-primitives.js';
 import type { GizmoVisibility, TransformSubTarget } from '../view-types.js';
 
 // Transform-tool integration, non-null while a transform
@@ -51,32 +52,14 @@ interface Props {
 // through the late render pass where renderOrder layers markers above
 // the frame.
 
-const FRAME_COLOR = 0x8338ec; // --accent
-const PIVOT_COLOR = 0xf5f3ff;
-const PIVOT_ACTIVE_COLOR = 0x8338ec;
-const SOCKET_COLOR = 0xffb703;
-const SOCKET_ACTIVE_COLOR = 0xffffff;
+// An active pivot marker takes the accent, like the frame.
+const PIVOT_ACTIVE_COLOR = FRAME_COLOR;
 
-// With no transform tool active, gizmos are overlay-only: never raycast
-// targets. Without this, the selected part's frame lines (Line raycast
-// threshold is a full world unit) would swallow clicks aimed at parts
-// behind it. With a tool active, the pickable markers switch back to
+// With no transform tool active, gizmos are overlay-only (the shared
+// noRaycast). With a tool active, the pickable markers switch back to
 // the real Mesh raycast explicitly (assigning `undefined` would break
 // it, so both states are explicit functions).
-const noRaycast = () => null;
 const meshRaycast = Mesh.prototype.raycast;
-
-// Axis-cross colors, pre-linearized: vertex-color attributes bypass
-// three's sRGB→linear color management (unlike material.color), same
-// deal as PartMesh's palette conversion.
-function srgbToLinear(c: number): number {
-  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-}
-const AXIS_COLORS = [
-  [0.898, 0.282, 0.302], // x — red   (#e5484d)
-  [0.275, 0.655, 0.345], // y — green (#46a758)
-  [0.243, 0.388, 0.867], // z — blue  (#3e63dd)
-].map((rgb) => rgb.map(srgbToLinear));
 
 export function PartGizmos({ part, show, picking, applyPivotRot }: Props) {
   const { w, h, d } = part.size;
@@ -92,23 +75,7 @@ export function PartGizmos({ part, show, picking, applyPivotRot }: Props) {
   }, [w, h, d]);
   useEffect(() => () => frameGeom.dispose(), [frameGeom]);
 
-  const axesGeom = useMemo(() => {
-    const len = r * 3;
-    const positions = new Float32Array([
-      0, 0, 0, len, 0, 0,
-      0, 0, 0, 0, len, 0,
-      0, 0, 0, 0, 0, len,
-    ]);
-    const colors = new Float32Array(18);
-    for (let axis = 0; axis < 3; axis++) {
-      colors.set(AXIS_COLORS[axis]!, axis * 6);
-      colors.set(AXIS_COLORS[axis]!, axis * 6 + 3);
-    }
-    const geom = new BufferGeometry();
-    geom.setAttribute('position', new BufferAttribute(positions, 3));
-    geom.setAttribute('color', new BufferAttribute(colors, 3));
-    return geom;
-  }, [r]);
+  const axesGeom = useMemo(() => axisCross(r * 3), [r]);
   useEffect(() => () => axesGeom.dispose(), [axesGeom]);
 
   const piv = part.pivot.pos;

@@ -5,6 +5,7 @@ import {
   cameraDir,
   worldTransformsFor,
 } from '@cuboidy/core';
+import { srgbToLinearArray } from '@cuboidy/ui';
 import {
   AmbientLight,
   BufferAttribute,
@@ -169,7 +170,10 @@ function buildModelGroup(model: LibraryModel): Group {
     // buildMesh emits sRGB in 0..1 (SPEC §10); three's vertex-color path
     // bypasses colour management, so the conversion is ours to do — the
     // same conversion PartMesh makes, for the same reason.
-    geom.setAttribute('color', new BufferAttribute(toLinear(mesh.colors), 3));
+    geom.setAttribute(
+      'color',
+      new BufferAttribute(srgbToLinearArray(mesh.colors), 3),
+    );
     geom.setIndex(new BufferAttribute(mesh.indices, 1));
 
     const obj = new Mesh(
@@ -190,15 +194,6 @@ function buildModelGroup(model: LibraryModel): Group {
     group.add(holder);
   }
   return group;
-}
-
-function toLinear(srgb: Float32Array): Float32Array {
-  const out = new Float32Array(srgb.length);
-  for (let i = 0; i < srgb.length; i++) {
-    const c = srgb[i]!;
-    out[i] = c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-  }
-  return out;
 }
 
 function disposeGroup(group: Group): void {
