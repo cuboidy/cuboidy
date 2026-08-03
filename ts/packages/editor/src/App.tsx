@@ -3,7 +3,7 @@ import {
   useMemo,
   useState,
 } from 'react';
-import { type Geometry, type Manifest, type Palette, type Part } from '@cuboidy/core';
+import { type Geometry } from '@cuboidy/core';
 import { ConsolePanel, type ConsoleEntry } from './components/panels/ConsolePanel.js';
 import { lintSource } from './lib/lint.js';
 
@@ -21,9 +21,10 @@ import { SaveButton } from './components/ui/SaveButton.js';
 import { SettingsMenu } from './components/ui/SettingsMenu.js';
 import { SourceEditor } from './components/panels/SourceEditor.js';
 import { TimelinePanel } from './components/panels/TimelinePanel.js';
-import { normalizePath } from './lib/load-model.js';
+import { animManifestOf, clipRefsOf, modelGeometryOf, partPalettesOf, paletteTargetOf, type PaletteTargetInfo } from './lib/derived-model.js';
+import { buildConsoleEntries, buildTreeFileErrors } from './components/panels/console-entries.js';
 
-import { fileText, geometryAt, manifestText, mergeGeometries, modelPalette, pathBasename, primaryGeometry, sharesPalette, withManifest } from './lib/source-ops.js';
+import { fileText, manifestText, mergeGeometries, pathBasename } from './lib/source-ops.js';
 import { useAnimationEdits } from './lib/useAnimationEdits.js';
 import { useFileOps } from './lib/useFileOps.js';
 import { usePaletteEdits } from './lib/usePaletteEdits.js';
@@ -46,22 +47,6 @@ import type {
   ViewMode,
 } from '@cuboidy/ui';
 import type { PanelId } from './lib/panels.js';
-
-// What the Palette panel is pointed at: one geometry file, its resolved
-// colors, and — when those colors live in a shared palette file — the path
-// they came from.
-interface PaletteTargetInfo {
-  // The geometry file whose palette this is. ABSENT means the MANIFEST's
-  // model-level palette (SPEC §6.13) — what a part written inline draws
-  // on, and the only palette an all-inline model has.
-  file?: string;
-  palette: Palette;
-  // The parts whose voxels resolve against this palette, for usage counts.
-  scopeParts: readonly Part[];
-  // The palette is referenced but the referenced file did not load.
-  unresolved: boolean;
-  ref?: string;
-}
 
 export function App() {
   // The document, its undo history, and the parse state that gates
@@ -325,47 +310,24 @@ export function App() {
       : null;
   }, [selectedPartName, merged]);
 
-  // The animation-facing manifest: §6.3 string refs replaced by their
-  // resolved external clips, so the session / viewport / timeline treat
-  // every clip uniformly. Unresolved refs (load errors) stay strings and
-  // are filtered out downstream as before.
-  const animManifest = useMemo(() => {
-    if (source?.manifest === undefined) {
-      return undefined;
-    }
-    const m = source.manifest;
-    if (m.animations === undefined || source.externalAnims === undefined) {
-      return m;
-    }
-    let changed = false;
-    const animations: NonNullable<Manifest['animations']> = {};
-    for (const [name, anim] of Object.entries(m.animations)) {
-      const ext =
-        typeof anim === 'string' ? source.externalAnims.get(name) : undefined;
-      if (ext !== undefined) {
-        animations[name] = ext.anim;
-        changed = true;
-      } else {
-        animations[name] = anim;
-      }
-    }
-    return changed ? { ...m, animations } : m;
-  }, [source]);
+  // The pure derivations live in lib/derived-model; App keeps thin memos.
+  const animManifest = useMemo(
+    () => (source === undefined ? undefined : animManifestOf(source)),
+    [source],
+  );
   // Clip name → external file path, for the timeline's storage label and
   // the Externalize / Inline toggle.
-  const clipRefs = useMemo(() => {
-    const m = new Map<string, string>();
-    if (source?.manifest?.animations !== undefined) {
-      for (const [name, anim] of Object.entries(source.manifest.animations)) {
-        if (typeof anim === 'string') m.set(name, normalizePath(anim));
-      }
-    }
-    return m;
-  }, [source]);
-  const modelGeometry = useMemo((): Geometry | undefined => {
-    if (source === undefined || merged === undefined) return undefined;
-    return { palette: modelPalette(source), parts: merged.parts };
-  }, [source, merged]);
+  const clipRefs = useMemo(
+    () => (source === undefined ? new Map<string, string>() : clipRefsOf(source)),
+    [source],
+  );
+  const modelGeometry = useMemo(
+    (): Geometry | undefined =>
+      source === undefined || merged === undefined
+        ? undefined
+        : modelGeometryOf(source, merged.parts),
+    [source, merged],
+  );
   // What the panels render: the WHOLE model — every geometry file's parts
   // plus every part written inline (SPEC §6.13). This used to fall back to
   // the primary geometry file, which an all-inline model does not have.
@@ -378,84 +340,18 @@ export function App() {
   // inline, where modelGeometry's palette already covers everything. Any
   // inline part makes the map necessary even in a one-file model, because
   // it takes its colors from the manifest rather than from that file.
-  const partPalettes = useMemo(() => {
-    if (source === undefined) return undefined;
-    const inlineCount = [...source.parts.values()].filter(
-      (r) => r.source === null,
-    ).length;
-    if (source.geometries.size <= 1 && inlineCount === 0) {
-      return undefined;
-    }
-    const m = new Map<string, Palette>();
-    for (const [path, g] of source.geometries) {
-      const geometry =
-        path === source.primaryPath ? (primaryGeometry(source) ?? g) : g;
-      for (const part of geometry.parts) {
-        if (!m.has(part.name)) m.set(part.name, geometry.palette);
-      }
-    }
-    // Every resolved part's own colors win: a file-backed one takes its
-    // file's, an inline one whatever §6.13 resolved for it.
-    for (const [name, r] of source.parts) m.set(name, r.palette);
-    return m;
-  }, [source]);
-  // What the Palette panel edits (§7.4): the palette of the geometry file
-  // that DEFINES the selected part — pick a part, edit its colors. With no
-  // selection it falls back to the primary file. `ref` is set when those
-  // colors live in a shared palette file, which is what the panel reports
-  // and what Inline / Externalize toggle.
-  const paletteTarget = useMemo((): PaletteTargetInfo | undefined => {
-    if (source === undefined) return undefined;
-    const file =
-      (effectiveSelectedPart !== null
-        ? partFiles?.get(effectiveSelectedPart)
-        : undefined) ?? source.primaryPath;
-    // SPEC §6.13: a part written inline has no defining file, so its
-    // colors are the MANIFEST's — `file: undefined` is that target, and
-    // the palette panel edits `cuboidy.json` instead of a geometry file.
-    // (`partFiles` deliberately omits inline parts for this reason.)
-    const geometry = file === undefined ? undefined : geometryAt(source, file);
-    if (geometry === undefined) {
-      const modelRef =
-        typeof source.manifest?.palette === 'string'
-          ? normalizePath(source.manifest.palette)
-          : undefined;
-      const palette = modelPalette(source);
-      return {
-        palette,
-        // Every inline part that did not declare colors of its own draws
-        // on this one, so those are its usage scope.
-        scopeParts: [...source.parts.values()]
-          .filter((r) => r.source === null)
-          .map((r) => r.part),
-        unresolved: modelRef !== undefined && palette.length === 0,
-        ...(modelRef !== undefined && { ref: modelRef }),
-      };
-    }
-    const ref =
-      geometry.paletteRef === undefined
+  const partPalettes = useMemo(
+    () => (source === undefined ? undefined : partPalettesOf(source)),
+    [source],
+  );
+  // What the Palette panel edits (§7.4) — see paletteTargetOf.
+  const paletteTarget = useMemo(
+    (): PaletteTargetInfo | undefined =>
+      source === undefined
         ? undefined
-        : normalizePath(geometry.paletteRef);
-    // Usage counts span every file resolving against THIS palette: a shared
-    // one covers all its referrers, an inline one only its own file.
-    const scopeParts =
-      ref === undefined
-        ? geometry.parts
-        : (merged?.parts ?? geometry.parts).filter((part) => {
-            const at = partFiles?.get(part.name) ?? '';
-            const g = geometryAt(source, at);
-            return g !== undefined && sharesPalette(at, g, ref);
-          });
-    return {
-      ...(file !== undefined && { file }),
-      palette: geometry.palette,
-      scopeParts,
-      // A reference that did not resolve shows an empty palette plus a
-      // reason, rather than pretending the file declares no colors.
-      unresolved: ref !== undefined && geometry.palette.length === 0,
-      ...(ref !== undefined && { ref }),
-    };
-  }, [source, effectiveSelectedPart, partFiles, merged]);
+        : paletteTargetOf(source, effectiveSelectedPart, partFiles, merged?.parts),
+    [source, effectiveSelectedPart, partFiles, merged],
+  );
 
   // Geometry files a part can be created in or moved to. Undefined for a
   // single-geometry model, where there is no choice to offer.
@@ -518,84 +414,32 @@ export function App() {
     },
     [loaded, openPanel],
   );
-  // The model's current problems, for the Console panel. Derived, never
-  // stored. fileParseErrors already covers EVERY file including the primary
-  // geometry and the manifest, so it is listed once — the panel used to
-  // push those two separately as well, and reported each of them twice.
-  const consoleEntries = useMemo((): ConsoleEntry[] => {
-    const entries: ConsoleEntry[] = [];
-    if (source === undefined) return entries;
-    for (const [path, msg] of fileParseErrors) {
-      entries.push({
-        severity: 'error',
-        source: path,
-        message: (
-          <>
-            <strong>Error:</strong> {msg}
-          </>
-        ),
-      });
-    }
-    // A load-time manifest error stands until the text is edited, at which
-    // point fileParseErrors takes over reporting it.
-    const manifestPath = source.manifestPath;
-    if (
-      source.manifestError !== undefined &&
-      !fileParseErrors.has(manifestPath)
-    ) {
-      entries.push({
-        severity: 'error',
-        source: manifestPath,
-        message: (
-          <>
-            <strong>Error:</strong> {source.manifestError}
-          </>
-        ),
-      });
-    }
-    for (const pe of source.projectErrors ?? []) {
-      entries.push({ severity: 'error', source: pe.file, message: pe.message });
-    }
-    // Core's lint, on the model as it currently stands. Held back while
-    // anything fails to parse: lint runs on an AST, so a stale one would
-    // report findings about text the author has already replaced.
-    if (fileParseErrors.size === 0 && manifestParseError === null) {
-      for (const { file, diag } of lintDiagnostics) {
-        entries.push({
-          severity: diag.severity,
-          source: file,
-          message: (
-            <>
-              {diag.message}
-              {diag.ruleId !== undefined && (
-                <span className="console-rule"> [{diag.ruleId}]</span>
-              )}
-            </>
+  // Console entries + the Files tree's red names, assembled beside the
+  // panel that shows them (components/panels/console-entries).
+  const consoleEntries = useMemo(
+    (): ConsoleEntry[] =>
+      source === undefined
+        ? []
+        : buildConsoleEntries(
+            source,
+            fileParseErrors,
+            manifestParseError,
+            lintDiagnostics,
           ),
-        });
-      }
-    }
-    return entries;
-  }, [source, fileParseErrors, manifestParseError, lintDiagnostics]);
-
-  // Error per file path (parse errors on live-edited files + load-time
-  // project errors) — red names in the Files tree.
-  const treeFileErrors = useMemo(() => {
-    const m = new Map<string, string>();
-    if (source === undefined) return m;
-    for (const pe of source.projectErrors ?? []) m.set(pe.file, pe.message);
-    for (const [p, msg] of fileParseErrors) m.set(p, msg);
-    const mErr =
-      manifestParseError ??
-      source.manifestError;
-    if (mErr !== undefined && mErr !== null) {
-      m.set(source.manifestPath, mErr);
-    }
-    if (geometryParseError !== null && source.primaryPath !== undefined) {
-      m.set(source.primaryPath, geometryParseError);
-    }
-    return m;
-  }, [source, fileParseErrors, geometryParseError, manifestParseError]);
+    [source, fileParseErrors, manifestParseError, lintDiagnostics],
+  );
+  const treeFileErrors = useMemo(
+    () =>
+      source === undefined
+        ? new Map<string, string>()
+        : buildTreeFileErrors(
+            source,
+            fileParseErrors,
+            manifestParseError,
+            geometryParseError,
+          ),
+    [source, fileParseErrors, geometryParseError, manifestParseError],
+  );
 
   // Shared animation session (active clip, playback time, selected key). Owned
   // here so the Preview viewport and the Timeline panel are separate dock
