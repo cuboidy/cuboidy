@@ -2,6 +2,7 @@ import type { Manifest } from './manifest.js';
 import type { ResolvedPart } from './project.js';
 import {
   computeWorldTransforms,
+  pivotRotsOf,
   quatFromEulerZXYDeg,
   quatMultiply,
   quatRotateVec3,
@@ -27,6 +28,26 @@ export interface SocketFrame {
   quat: QuatTuple;
 }
 
+// parent ∘ child: the child frame carried into the parent's — its offset
+// rotated into the parent's axes, orientations composed. A socket frame
+// in model space carried into an instance's world frame is this; so is
+// a guest's base on a host's socket. The workspace carried two private
+// copies of it before it lived here.
+export function composeFrames(
+  parent: { pos: Vec3Tuple; quat: QuatTuple },
+  child: { pos: Vec3Tuple; quat: QuatTuple },
+): SocketFrame {
+  const off = quatRotateVec3(parent.quat, child.pos);
+  return {
+    pos: [
+      parent.pos[0] + off[0],
+      parent.pos[1] + off[1],
+      parent.pos[2] + off[2],
+    ],
+    quat: quatMultiply(parent.quat, child.quat),
+  };
+}
+
 // The frame of one socket declared on one part, given that part's world
 // transform.
 //
@@ -48,15 +69,14 @@ export function socketFrameOn(
     socket.pos.y - part.pivot.pos.y,
     socket.pos.z - part.pivot.pos.z,
   ];
-  const off = quatRotateVec3(world.quat, local);
   const rot: Vec3Tuple =
     socket.rot === undefined
       ? [0, 0, 0]
       : [socket.rot.x, socket.rot.y, socket.rot.z];
-  return {
-    pos: [world.pos[0] + off[0], world.pos[1] + off[1], world.pos[2] + off[2]],
-    quat: quatMultiply(world.quat, quatFromEulerZXYDeg(rot)),
-  };
+  return composeFrames(world, {
+    pos: local,
+    quat: quatFromEulerZXYDeg(rot),
+  });
 }
 
 // The frame a model offers under a PUBLISHED name (§6.12) — the only name
@@ -114,10 +134,8 @@ export function worldTransformsFor(
   parts: ReadonlyMap<string, ResolvedPart>,
   poses?: ReadonlyMap<string, AnimPose>,
 ): Map<string, WorldTransform> {
-  const pivotRots = new Map<string, Vec3Tuple>();
-  for (const [name, r] of parts) {
-    const rot = r.part.pivot.rot;
-    if (rot !== undefined) pivotRots.set(name, [rot.x, rot.y, rot.z]);
-  }
+  const pivotRots = pivotRotsOf(
+    Array.from(parts, ([name, r]) => [name, r.part] as const),
+  );
   return computeWorldTransforms(manifest.parts, pivotRots, poses);
 }

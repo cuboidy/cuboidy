@@ -1,13 +1,13 @@
 import {
-  QUAT_IDENTITY,
+  buildForest,
   computeRestWorldTransforms,
-  quatRotateVec3,
+  partsWorldBounds,
+  pivotRotsOf,
+  type ForestNode,
   type Geometry,
   type Manifest,
   type ManifestPart,
   type Part,
-  type Vec3Tuple,
-  type WorldTransform,
 } from '@cuboidy/core';
 import type { ViewMode } from './view-types.js';
 
@@ -24,45 +24,21 @@ interface Bounds {
   max: [number, number, number];
 }
 
-// World-space rest bbox of the whole model (rig / anim views). Each part's
-// eight local box corners are pushed through the shared SPEC §7.7 rest
-// transform from @cuboidy/core — rotation-aware, so a part resting at 45°
-// still frames correctly. Parts missing from the manifest fall back to an
-// origin-anchored identity transform. The box always includes the unit
-// cube at the origin (historical behavior: the camera stays anchored near
-// the grid origin even for far-flung models).
+// World-space rest bbox of the whole model (rig / anim views), through
+// core's rotation-aware partsWorldBounds — a part resting at 45° still
+// frames correctly. The seed unions in the unit cube at the origin
+// (historical behavior: the camera stays anchored near the grid origin
+// even for far-flung models).
 function computeWorldBounds(geometry: Geometry, manifest: Manifest): Bounds {
-  const pivotRots = new Map<string, Vec3Tuple>();
-  for (const p of geometry.parts) {
-    const rot = p.pivot.rot;
-    if (rot !== undefined) pivotRots.set(p.name, [rot.x, rot.y, rot.z]);
-  }
-  const transforms = computeRestWorldTransforms(manifest.parts, pivotRots);
-  const fallback: WorldTransform = { pos: [0, 0, 0], quat: QUAT_IDENTITY };
-
-  const min: [number, number, number] = [0, 0, 0];
-  const max: [number, number, number] = [1, 1, 1];
-  for (const p of geometry.parts) {
-    const wt = transforms.get(p.name) ?? fallback;
-    const piv = p.pivot.pos;
-    for (const cx of [0, p.size.w]) {
-      for (const cy of [0, p.size.h]) {
-        for (const cz of [0, p.size.d]) {
-          const r = quatRotateVec3(wt.quat, [
-            cx - piv.x,
-            cy - piv.y,
-            cz - piv.z,
-          ]);
-          for (let i = 0; i < 3; i++) {
-            const w = wt.pos[i]! + r[i]!;
-            if (w < min[i]!) min[i] = w;
-            if (w > max[i]!) max[i] = w;
-          }
-        }
-      }
-    }
-  }
-  return { min, max };
+  const entries = geometry.parts.map((p) => [p.name, p] as const);
+  const transforms = computeRestWorldTransforms(
+    manifest.parts,
+    pivotRotsOf(entries),
+  );
+  return partsWorldBounds(entries, transforms, {
+    min: [0, 0, 0],
+    max: [1, 1, 1],
+  });
 }
 
 export interface Span {
@@ -118,10 +94,11 @@ export interface RigNode {
   children: RigNode[];
 }
 
-// Builds the parent/child forest from the manifest. A part whose manifest
-// `parent` is absent, unknown, self-referential, or would close a cycle is
-// treated as a root — guaranteeing a finite tree the renderer can recurse
-// safely (SPEC declares cycles an error; parseManifest doesn't yet reject
+// Builds the parent/child forest from the manifest, through core's
+// cycle-safe buildForest: a part whose manifest `parent` is absent,
+// unknown, self-referential, or would close a cycle is treated as a
+// root — guaranteeing a finite tree the renderer can recurse safely
+// (SPEC declares cycles an error; parseManifest doesn't yet reject
 // them, so the viewer must not hang on malformed input).
 export function buildRigTree(
   geometry: Geometry,
@@ -131,37 +108,14 @@ export function buildRigTree(
   if (manifest !== undefined) {
     for (const mp of manifest.parts) mpByName.set(mp.name, mp);
   }
-
-  const nodes = new Map<string, RigNode>();
-  for (const p of geometry.parts) {
-    nodes.set(p.name, {
-      part: p,
-      manifestPart: mpByName.get(p.name),
-      children: [],
-    });
-  }
-
-  const effectiveParent = (name: string): string | null => {
-    const par = mpByName.get(name)?.parent;
-    if (par === undefined || par === name || !nodes.has(par)) return null;
-    // Walk up from the proposed parent; if we return to `name`, the edge
-    // would close a cycle — drop it (make `name` a root instead).
-    const seen = new Set<string>([name]);
-    let cur: string | undefined = par;
-    while (cur !== undefined && nodes.has(cur)) {
-      if (seen.has(cur)) return null;
-      seen.add(cur);
-      cur = mpByName.get(cur)?.parent;
-    }
-    return par;
-  };
-
-  const roots: RigNode[] = [];
-  for (const p of geometry.parts) {
-    const node = nodes.get(p.name)!;
-    const par = effectiveParent(p.name);
-    if (par === null) roots.push(node);
-    else nodes.get(par)!.children.push(node);
-  }
-  return roots;
+  const toRig = (n: ForestNode<Part>): RigNode => ({
+    part: n.value,
+    manifestPart: mpByName.get(n.value.name),
+    children: n.children.map(toRig),
+  });
+  return buildForest(
+    geometry.parts,
+    (p) => p.name,
+    (p) => mpByName.get(p.name)?.parent,
+  ).map(toRig);
 }

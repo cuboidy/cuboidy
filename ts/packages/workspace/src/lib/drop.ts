@@ -1,4 +1,4 @@
-import { publishedSocketFrames, quatMultiply, quatRotateVec3 } from '@cuboidy/core';
+import { composeFrames, publishedSocketFrames } from '@cuboidy/core';
 import type { SocketFrame } from '@cuboidy/core';
 import type { PlacedInstance } from './scene.js';
 
@@ -67,19 +67,11 @@ export function socketCandidates(
         socket: name,
         // The socket frame is in the HOST MODEL's space; the instance may
         // be anywhere, so it has to be carried into the world.
-        frame: carry(p.frame, local),
+        frame: composeFrames(p.frame, local),
       });
     }
   }
   return out;
-}
-
-function carry(host: SocketFrame, local: SocketFrame): SocketFrame {
-  const off = quatRotateVec3(host.quat, local.pos);
-  return {
-    pos: [host.pos[0] + off[0], host.pos[1] + off[1], host.pos[2] + off[2]],
-    quat: quatMultiply(host.quat, local.quat),
-  };
 }
 
 // Project a world point to pixels within the canvas, or null when it is

@@ -5,7 +5,7 @@ import { buildSceneFromParts, type OrientedPart, type Scene } from '../render/sc
 import { computeGlobalScale, renderTile } from '../render/snapshot.js';
 import { encodeGif } from '../render/gif.js';
 import { sampleAnimation, type InlineAnimation } from '../animation.js';
-import { computeWorldTransforms, type Vec3Tuple } from '../rig-transform.js';
+import { computeWorldTransforms, pivotRotsOf } from '../rig-transform.js';
 import { loadAndAssemble, type Assembly } from './assemble.js';
 import type { Rgb } from '../render/framebuffer.js';
 
@@ -84,11 +84,9 @@ export function renderGif(
 
   // Geometry-side pivot rotations, rebuilt from the resolved parts so
   // the animated transform chain sees exactly what the rest one does.
-  const pivotRots = new Map<string, Vec3Tuple>();
-  for (const rp of asm.resolvedParts) {
-    const rot = rp.part.pivot.rot;
-    if (rot !== undefined) pivotRots.set(rp.name, [rot.x, rot.y, rot.z]);
-  }
+  const pivotRots = pivotRotsOf(
+    asm.resolvedParts.map((rp) => [rp.name, rp.part] as const),
+  );
 
   const duration = anim?.duration ?? 0;
   // One pass of the clip. A still model has no duration to derive from,

@@ -7,10 +7,7 @@ import { AIR, maxPaletteIndex } from './../geometry/voxel-row.js';
 import { MAX_PALETTE } from '../geometry/palette.js';
 import { round6 } from '../num.js';
 import type { OrientedPart } from '../render/scene.js';
-import {
-  computeRestWorldTransforms,
-  type Vec3Tuple,
-} from '../rig-transform.js';
+import { computeRestWorldTransforms, pivotRotsOf } from '../rig-transform.js';
 import {
   MANIFEST_FILE,
   palettePathsOf,
@@ -316,11 +313,9 @@ function assembleWorld(
   // (the same math the editor renders through). Pivot placement is exact
   // — a child of a rotated parent lands where the rig puts it; only each
   // part's own voxel orientation is approximated below (axis-aligned).
-  const pivotRots = new Map<string, Vec3Tuple>();
-  for (const [name, { part }] of shapesByName) {
-    const rot = part.pivot.rot;
-    if (rot !== undefined) pivotRots.set(name, [rot.x, rot.y, rot.z]);
-  }
+  const pivotRots = pivotRotsOf(
+    Array.from(shapesByName, ([name, { part }]) => [name, part] as const),
+  );
   const transforms = computeRestWorldTransforms(manifest.parts, pivotRots);
 
   const resolvedParts: PlacedPart[] = [];

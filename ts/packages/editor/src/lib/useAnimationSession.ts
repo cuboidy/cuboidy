@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { formatTimeKey, isInlineAnimation, nearestExistingKey, restValue, sampleAnimation, type AttrValue, type Geometry, type InlineAnimation, type KeyAttr, type Keyframe, type Manifest, type Pose } from '@cuboidy/core';
+import { clampToClip, formatTimeKey, isInlineAnimation, nearestExistingKey, restValue, sampleAnimation, type AttrValue, type Geometry, type InlineAnimation, type KeyAttr, type Keyframe, type Manifest, type Pose } from '@cuboidy/core';
 
 import { SNAP_STEP } from '../components/panels/Timeline.js';
 import type { SelectedKey } from '@cuboidy/ui';
@@ -155,11 +155,7 @@ export function useAnimationSession({
     const tick = (ts: number) => {
       if (last !== null) {
         const dt = (ts - last) / 1000;
-        setTime((prev) => {
-          const next = prev + dt;
-          if (loop) return next - Math.floor(next / duration) * duration;
-          return Math.min(next, duration);
-        });
+        setTime((prev) => clampToClip(prev + dt, duration, loop));
       }
       last = ts;
       raf = requestAnimationFrame(tick);

@@ -1,10 +1,13 @@
 import {
   QUAT_IDENTITY,
+  buildForest,
+  composeFrames,
   publishedSocketFrame,
   quatFromEulerZXYDeg,
   quatMultiply,
   quatRotateVec3,
   sampleAnimation,
+  type ForestNode,
   type Pose,
   type SocketFrame,
 } from '@cuboidy/core';
@@ -334,7 +337,10 @@ export function placeScene(
           problem = `'${hostPlaced.model.dir}' does not publish a socket called '${inst.attach.socket}'`;
         } else {
           attachAt = socket;
-          base = carryOnto(hostPlaced.frame, socket);
+          // The socket frame is in the HOST MODEL's own space; carry it
+          // into the host's world frame for the guest's BASE — where its
+          // placement is measured from.
+          base = composeFrames(hostPlaced.frame, socket);
         }
       }
     }
@@ -357,21 +363,6 @@ export function placeScene(
     if (placed !== null) out.push(placed);
   }
   return out;
-}
-
-// The socket frame is computed in the HOST MODEL's own space, so it has to
-// be carried into the host's world frame before a guest sits on it. The
-// result is the guest's BASE — where its placement is measured from.
-function carryOnto(hostFrame: SocketFrame, socket: SocketFrame): SocketFrame {
-  const off = quatRotateVec3(hostFrame.quat, socket.pos);
-  return {
-    pos: [
-      hostFrame.pos[0] + off[0],
-      hostFrame.pos[1] + off[1],
-      hostFrame.pos[2] + off[2],
-    ],
-    quat: quatMultiply(hostFrame.quat, socket.quat),
-  };
 }
 
 // base ∘ placement. Offset first, in the base's axes; the placement's own
@@ -501,41 +492,18 @@ export function drawTree(placed: readonly PlacedInstance[]): SceneNode[] {
   );
 }
 
+// Through core's cycle-safe buildForest. setAttachment refuses a cycle,
+// but a hand-edited scene file is not required to — and a cycle would
+// leave BOTH instances as somebody's child and neither in the roots,
+// i.e. silently absent from the panel and (now that the 3D view nests
+// too) from the screen.
 function buildTree(
   placed: readonly PlacedInstance[],
   hostOf: (p: PlacedInstance) => string | undefined,
 ): SceneNode[] {
-  const nodes = new Map<string, SceneNode>();
-  const hosts = new Map<string, string | undefined>();
-  for (const p of placed) {
-    nodes.set(p.instance.id, { placed: p, children: [] });
-    hosts.set(p.instance.id, hostOf(p));
-  }
-
-  // Walking up from the proposed host must terminate. setAttachment
-  // refuses a cycle, but a hand-edited scene file is not required to —
-  // and a cycle here would leave BOTH instances as somebody's child and
-  // neither in the roots, i.e. silently absent from the panel and, now
-  // that the 3D view nests too, from the screen.
-  const effectiveHost = (id: string): string | undefined => {
-    const host = hosts.get(id);
-    if (host === undefined || host === id || !nodes.has(host)) return undefined;
-    const seen = new Set<string>([id]);
-    let cur: string | undefined = host;
-    while (cur !== undefined && nodes.has(cur)) {
-      if (seen.has(cur)) return undefined; // would close a cycle
-      seen.add(cur);
-      cur = hosts.get(cur);
-    }
-    return host;
-  };
-
-  const roots: SceneNode[] = [];
-  for (const p of placed) {
-    const node = nodes.get(p.instance.id)!;
-    const host = effectiveHost(p.instance.id);
-    if (host === undefined) roots.push(node);
-    else nodes.get(host)!.children.push(node);
-  }
-  return roots;
+  const toNode = (n: ForestNode<PlacedInstance>): SceneNode => ({
+    placed: n.value,
+    children: n.children.map(toNode),
+  });
+  return buildForest(placed, (p) => p.instance.id, hostOf).map(toNode);
 }

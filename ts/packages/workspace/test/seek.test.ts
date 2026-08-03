@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clampToClip } from '../src/lib/clip.js';
+import { clampToClip } from '@cuboidy/core';
 
 // SPEC §6.7: a looping clip wraps, a non-looping one holds its last
 // frame. The scene clock is monotonic — one clock for every actor — so

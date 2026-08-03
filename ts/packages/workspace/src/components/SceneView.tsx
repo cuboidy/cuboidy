@@ -3,7 +3,7 @@ import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { Box, Crosshair, MousePointer2, Move, Plug, Rotate3d } from 'lucide-react';
 import { Vector3, type Camera, type Object3D } from 'three';
-import { quatFromEulerZXYDeg, type Geometry, type Palette } from '@cuboidy/core';
+import { clampToClip, quatFromEulerZXYDeg, type Geometry, type Palette } from '@cuboidy/core';
 import {
   RiggedParts,
   ToggleGroup,
@@ -18,7 +18,6 @@ import {
 } from '@cuboidy/ui';
 import type { LibraryModel } from '../lib/library.js';
 import { drawTree, type PlacedInstance, type SceneNode } from '../lib/scene.js';
-import { clampToClip } from '../lib/clip.js';
 import type { SceneGizmos, SceneTool, SceneViewMode } from '../lib/view.js';
 import {
   dropKey,

@@ -187,3 +187,70 @@ export function computeRestWorldTransforms(
 ): Map<string, WorldTransform> {
   return computeWorldTransforms(parts, pivotRots);
 }
+
+// The slices of a geometry Part the helpers below read. Structural, so
+// this module keeps its single manifest.js dependency.
+interface PartExtent {
+  size: { w: number; h: number; d: number };
+  pivot: {
+    pos: { x: number; y: number; z: number };
+    rot?: { x: number; y: number; z: number } | undefined;
+  };
+}
+
+// The geometry-side pivot.rot map the transform chain takes, keyed by
+// the RIG's name for each part — which §6.13 renaming can make different
+// from the part's own `name`, so callers pass explicit [rigName, part]
+// pairs. Four call sites used to build this map by hand.
+export function pivotRotsOf(
+  parts: Iterable<readonly [string, PartExtent]>,
+): Map<string, Vec3Tuple> {
+  const out = new Map<string, Vec3Tuple>();
+  for (const [name, part] of parts) {
+    const rot = part.pivot.rot;
+    if (rot !== undefined) out.set(name, [rot.x, rot.y, rot.z]);
+  }
+  return out;
+}
+
+// One AABB over every part's eight world-space box corners. A part's
+// world transform places its PIVOT at wt.pos, so each corner goes
+// through (corner − pivot) rotated; a part with no transform falls back
+// to an origin-anchored identity. `seed` is the caller's empty box:
+// camera framing unions in the unit cube at the origin, a selection
+// outline starts at ±Infinity and checks finiteness itself.
+export function partsWorldBounds(
+  parts: Iterable<readonly [string, PartExtent]>,
+  transforms: ReadonlyMap<string, WorldTransform>,
+  seed?: {
+    min: readonly [number, number, number];
+    max: readonly [number, number, number];
+  },
+): { min: [number, number, number]; max: [number, number, number] } {
+  const min: [number, number, number] =
+    seed === undefined ? [Infinity, Infinity, Infinity] : [...seed.min];
+  const max: [number, number, number] =
+    seed === undefined ? [-Infinity, -Infinity, -Infinity] : [...seed.max];
+  const fallback: WorldTransform = { pos: [0, 0, 0], quat: QUAT_IDENTITY };
+  for (const [name, part] of parts) {
+    const wt = transforms.get(name) ?? fallback;
+    const piv = part.pivot.pos;
+    for (const cx of [0, part.size.w]) {
+      for (const cy of [0, part.size.h]) {
+        for (const cz of [0, part.size.d]) {
+          const r = quatRotateVec3(wt.quat, [
+            cx - piv.x,
+            cy - piv.y,
+            cz - piv.z,
+          ]);
+          for (let i = 0; i < 3; i++) {
+            const w = wt.pos[i]! + r[i]!;
+            if (w < min[i]!) min[i] = w;
+            if (w > max[i]!) max[i] = w;
+          }
+        }
+      }
+    }
+  }
+  return { min, max };
+}

@@ -228,6 +228,22 @@ function stepVisible(keys: readonly ResolvedKey[], t: number): boolean {
   return v;
 }
 
+// SPEC §6.7: bring an arbitrary clock time inside a clip — a looping clip
+// wraps (positive modulo, so a negative time lands inside too), a
+// non-looping one holds at its ends. Whatever displays a position in a
+// clip against a monotonic clock applies this, or the scrubber pegs at
+// the end while the model carries on looping.
+export function clampToClip(
+  time: number,
+  duration: number,
+  loop: boolean,
+): number {
+  if (duration <= 0) return 0;
+  if (!loop) return Math.min(Math.max(time, 0), duration);
+  const wrapped = time % duration;
+  return wrapped < 0 ? wrapped + duration : wrapped;
+}
+
 // SPEC §6.7: sample one part's track at `time` (seconds). `rot`/`pos`/`scale`
 // each interpolate along their own easing curve (the OUTGOING key's `ease`
 // entry for that attribute, default linear); `visible` always steps.

@@ -16,6 +16,7 @@ export {
   InlineAnimationSchema,
   AnimationTrackSchema,
   KeyframeSchema,
+  clampToClip,
   isInlineAnimation,
   samplePart,
   sampleAnimation,
@@ -100,6 +101,7 @@ export type {
 } from './project.js';
 
 export {
+  composeFrames,
   publishedSocketFrame,
   publishedSocketFrames,
   socketFrameOn,
@@ -122,6 +124,8 @@ export {
   QUAT_IDENTITY,
   composePartRotation,
   computeRestWorldTransforms,
+  partsWorldBounds,
+  pivotRotsOf,
   quatFromEulerZXYDeg,
   quatMultiply,
   quatRotateVec3,
@@ -137,6 +141,9 @@ export { validateCrossFile, validateProject } from './lint/cross-file.js';
 export type { ProjectInput } from './lint/cross-file.js';
 export { lintGeometry } from './lint/voxel-rules.js';
 export type { Diagnostic, LintRuleId, Severity } from './diagnostic.js';
+
+export { buildForest } from './forest.js';
+export type { ForestNode } from './forest.js';
 
 export { isIdentifier } from './identifier.js';
 
