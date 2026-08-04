@@ -1,6 +1,7 @@
 import { isIdentifier, type Manifest, type Part } from '@cuboidy/core';
 import { Plus } from 'lucide-react';
 import { VisibilityButtons } from '@cuboidy/ui';
+import { FileRefPicker } from '../ui/FileRefPicker.js';
 import { PartTree } from './PartTree.js';
 
 interface Props {
@@ -20,6 +21,11 @@ interface Props {
   // Any file's source text is mid-edit unparseable: creating or renaming a
   // part would re-serialize an AST over it.
   editsBlocked: boolean;
+  // Geometry files in the package the model does NOT reference (§6.9).
+  // Adopting one brings its parts into the rig — which is why the
+  // operation lives here, where parts are, rather than on a file row.
+  unreferencedGeometry: readonly string[];
+  onAddGeometryFile: (path: string) => void;
   onStartCreate: () => void;
   onShowAll: () => void;
   onHideAll: () => void;
@@ -44,6 +50,8 @@ export function PartsPanel({
   selectedPart,
   creating,
   editsBlocked,
+  unreferencedGeometry,
+  onAddGeometryFile,
   onStartCreate,
   onShowAll,
   onHideAll,
@@ -82,6 +90,13 @@ export function PartsPanel({
           anyShown={visibleCount > 0}
           onShowAll={onShowAll}
           onHideAll={onHideAll}
+        />
+        <FileRefPicker
+          label="Use geometry file"
+          files={unreferencedGeometry}
+          disabled={manifest === undefined}
+          title="Add a geometry file already in this package to the model (SPEC §6.9) — its parts join the rig"
+          onPick={onAddGeometryFile}
         />
       </div>
       <div className="parts-scroll">

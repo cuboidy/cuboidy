@@ -16,7 +16,7 @@ import { animManifestOf, clipRefsOf, modelGeometryOf, partPalettesOf, paletteTar
 import { buildConsoleEntries, buildTreeFileErrors } from './components/panels/console-entries.js';
 import { renderEditorPanel } from './components/panels/registry.js';
 
-import { mergeGeometries, paletteFilesIn, pathBasename } from './lib/source-ops.js';
+import { classifyPackageFiles, clipFilesIn, geometryFilesIn, mergeGeometries, paletteFilesIn, pathBasename } from './lib/source-ops.js';
 import { useAnimationEdits } from './lib/useAnimationEdits.js';
 import { useFileOps } from './lib/useFileOps.js';
 import { usePaletteEdits } from './lib/usePaletteEdits.js';
@@ -289,13 +289,26 @@ export function App() {
     [source, effectiveSelectedPart, partFiles, merged],
   );
 
-  // Palette files the package holds (§6.10) — what the Palette panel
-  // offers to bind. Identified by CONTENT, so a palette in a folder or
-  // under any name is found and a geometry file never is.
-  const paletteFiles = useMemo(
-    (): readonly string[] => (source === undefined ? [] : paletteFilesIn(source)),
-    [source],
-  );
+  // What each owning panel offers to bring into the model, identified by
+  // CONTENT — a v0.9 package is all `.json`, so the name settles nothing
+  // (§6.9 / §6.10 / §6.3). A palette may be SHARED, so every palette file
+  // is offered and only the target's current one is filtered out (in the
+  // panel); a clip or a geometry file already in the model is not.
+  const packageRefs = useMemo(() => {
+    if (source === undefined) {
+      return { paletteFiles: [], clips: [], geometry: [] };
+    }
+    const classified = classifyPackageFiles(source);
+    return {
+      paletteFiles: paletteFilesIn(source),
+      clips: clipFilesIn(source).filter(
+        (p) => !classified.referencedNonGeometry.has(p),
+      ),
+      geometry: geometryFilesIn(source).filter(
+        (p) => !classified.loadedGeometry.has(p),
+      ),
+    };
+  }, [source]);
 
   // Geometry files a part can be created in or moved to. Undefined for a
   // single-geometry model, where there is no choice to offer.
@@ -420,7 +433,9 @@ export function App() {
       clipRefs,
       partPalettes,
       paletteTarget,
-      paletteFiles,
+      paletteFiles: packageRefs.paletteFiles,
+      unreferencedClips: packageRefs.clips,
+      unreferencedGeometry: packageRefs.geometry,
       geometryPaths,
       effectiveSelectedPart,
       treeFileErrors,

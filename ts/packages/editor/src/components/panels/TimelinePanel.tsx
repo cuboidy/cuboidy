@@ -16,6 +16,9 @@ interface Props {
   onSetClipDuration: (animName: string, duration: number) => void;
   onSetClipLoop: (animName: string, loop: boolean) => void;
   onCreateClip: () => void;
+  // Unreferenced §6.3 clip files, for the empty state's second way in.
+  clipFiles: readonly string[];
+  onAddClipFile: (path: string) => void;
   onRenameClip: (oldName: string, newName: string) => void;
   onDeleteClip: (name: string) => void;
   // Clip name → external file path (§6.3 string refs). Absent from the
@@ -40,6 +43,8 @@ export function TimelinePanel({
   onSetClipDuration,
   onSetClipLoop,
   onCreateClip,
+  clipFiles,
+  onAddClipFile,
   onRenameClip,
   onDeleteClip,
   clipRefs,
@@ -70,6 +75,8 @@ export function TimelinePanel({
           <NoAnimationsYet
             disabled={manifestEditsDisabled}
             onCreateClip={onCreateClip}
+            clipFiles={clipFiles}
+            onAddClipFile={onAddClipFile}
           />
         ) : (
           <p>Rig this model (create a manifest) to add animations.</p>

@@ -1,4 +1,4 @@
-import { InlineAnimationSchema, geometryPaths, parseGeometryText, parseManifest, parsePaletteFile, resolvePartGeometry, serializeColor, resolveRefFrom, serializeGeometry, toInlineGeometry, type Geometry, type InlineAnimation, type Manifest, type ManifestPart, type Palette, type Part, type PublishedSocket } from '@cuboidy/core';
+import { InlineAnimationSchema, geometryPaths, parseGeometry, parseGeometryText, parseManifest, parsePaletteFile, resolvePartGeometry, serializeColor, resolveRefFrom, serializeGeometry, toInlineGeometry, type Geometry, type InlineAnimation, type Manifest, type ManifestPart, type Palette, type Part, type PublishedSocket } from '@cuboidy/core';
 import { isGeometryPath, normalizePath, resolveProjectRefs, withResolvedPalette } from './load-model.js';
 import type { LoadedSource } from './types.js';
 
@@ -485,24 +485,114 @@ export function classifyPackageFiles(src: LoadedSource): {
   return { loadedGeometry, referencedNonGeometry };
 }
 
+// SPEC §6.13: write the manifest's model-level palette INLINE. Mirrors
+// the inline branch of a geometry file's — colors spelled out in the
+// document that owns them — but the document is cuboidy.json.
+export function withModelPalette(
+  src: LoadedSource,
+  next: Palette,
+): LoadedSource | null {
+  if (src.manifest === undefined) return null;
+  const colors = next.map(serializeColor);
+  // An empty palette is spelled as an ABSENT field (§6.1), the same way a
+  // geometry file omits one it does not have — so clearing every color
+  // round-trips instead of leaving `"palette": []`, which the schema
+  // rejects anyway.
+  let manifest: Manifest;
+  if (colors.length === 0) {
+    const { palette: _drop, ...rest } = src.manifest;
+    manifest = rest;
+  } else {
+    manifest = { ...src.manifest, palette: colors };
+  }
+  return withManifest(src, manifest);
+}
+
+// The colors the manifest's model-level palette currently RESOLVES to,
+// whether it spells them out or names a file (§6.1 allows either).
+// Empty when a reference does not load — there is then nothing to move.
+export function resolvedModelPalette(src: LoadedSource): Palette {
+  const p = src.manifest?.palette;
+  if (typeof p !== 'string') return modelPalette(src);
+  const text = src.files.get(normalizePath(p));
+  if (text === undefined) return [];
+  try {
+    const r = parsePaletteFile(JSON.parse(text));
+    return r.ok ? r.value : [];
+  } catch {
+    return [];
+  }
+}
+
+// Write the model-level palette to wherever it LIVES: cuboidy.json's own
+// `palette` field, or the palette file that field names. The geometry
+// side of this choice has always been made (see handleEditPalette); the
+// manifest side wrote the colors inline unconditionally, so editing one
+// swatch of a REFERENCED model palette silently dropped the reference
+// and copied the colors into the manifest.
+export function writeModelPalette(
+  src: LoadedSource,
+  next: Palette,
+): LoadedSource | null {
+  const p = src.manifest?.palette;
+  if (typeof p === 'string') {
+    return writeFile(src, normalizePath(p), paletteFileText(next));
+  }
+  return withModelPalette(src, next);
+}
+
+// The first free `palette.json` / `palette-N.json` at the package root.
+export function freePalettePath(src: LoadedSource): string {
+  let path = 'palette.json';
+  let n = 2;
+  while (src.files.has(path)) path = `palette-${n++}.json`;
+  return path;
+}
+
 // Every package file whose CONTENT is a §6.10 palette file, sorted.
 //
 // Content decides, not the name. Since v0.9 the manifest, the geometry
 // files, the animation clips and the palettes are all `.json`, so the
 // extension settles nothing — the same reasoning the CLI's W07 scan
 // already applies ("a file is geometry if the geometry reader accepts
-// it"). PaletteFileSchema is `.strict()` on a lone `colors` array, so
-// nothing else in the package can be mistaken for one.
+// it"). The three schemas are strict and structurally disjoint (a lone
+// `colors` array / `duration`+`loop`+`parts` object / `parts` array), so
+// no file answers to two of these.
 export function paletteFilesIn(src: LoadedSource): string[] {
+  return packageFilesOfKind(src, (json) => parsePaletteFile(json).ok);
+}
+
+// Every package file whose CONTENT is a §6.3 external animation clip.
+export function clipFilesIn(src: LoadedSource): string[] {
+  return packageFilesOfKind(
+    src,
+    (json) => InlineAnimationSchema.safeParse(json).success,
+  );
+}
+
+// Every package file whose CONTENT is a §7 geometry file.
+export function geometryFilesIn(src: LoadedSource): string[] {
+  return packageFilesOfKind(src, (json) => parseGeometry(json).ok);
+}
+
+// The shared scan behind the three above: package `.json` files whose
+// parsed contents `accepts`, sorted. The manifest is excluded — it is
+// the anchor, never a candidate for anything else (§3).
+function packageFilesOfKind(
+  src: LoadedSource,
+  accepts: (json: unknown) => boolean,
+): string[] {
   const out: string[] = [];
   for (const [path, text] of src.files) {
     if (path === src.manifestPath) continue;
     if (!path.toLowerCase().endsWith('.json')) continue;
+    let json: unknown;
     try {
-      if (parsePaletteFile(JSON.parse(text)).ok) out.push(path);
+      json = JSON.parse(text);
     } catch {
-      // Not JSON at all — not a palette file either.
+      continue; // Not JSON at all — not any of the kinds.
     }
+    if (accepts(json)) out.push(path);
   }
   return out.sort();
 }

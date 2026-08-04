@@ -45,8 +45,13 @@ export interface EditorPanelContext {
   clipRefs: ReadonlyMap<string, string>;
   partPalettes: Map<string, Palette> | undefined;
   paletteTarget: PaletteTargetInfo | undefined;
-  // Palette files present in the package (§6.10), by content.
+  // Files present in the package but not part of the model, by content —
+  // what each owning panel offers to adopt. Palettes are the exception:
+  // one may be SHARED, so every palette file is a candidate except the
+  // one the current target already uses.
   paletteFiles: readonly string[];
+  unreferencedClips: readonly string[];
+  unreferencedGeometry: readonly string[];
   geometryPaths: readonly string[] | undefined;
   effectiveSelectedPart: string | null;
   treeFileErrors: ReadonlyMap<string, string>;
@@ -145,6 +150,8 @@ export function renderEditorPanel(
             onSelectPart={partEdits.setSelectedPartName}
             onPickColor={ctx.onPickColor}
             onCreateClip={animationEdits.handleCreateAnimationClip}
+            clipFiles={ctx.unreferencedClips}
+            onAddClipFile={animationEdits.handleAddClipFile}
             onMovePart={partEdits.handleGizmoMovePart}
             onRotatePart={partEdits.handleGizmoRotatePart}
             onMovePivot={partEdits.handleGizmoMovePivot}
@@ -173,6 +180,8 @@ export function renderEditorPanel(
             onSetClipDuration={animationEdits.handleSetClipDuration}
             onSetClipLoop={animationEdits.handleSetClipLoop}
             onCreateClip={animationEdits.handleCreateAnimationClip}
+            clipFiles={ctx.unreferencedClips}
+            onAddClipFile={animationEdits.handleAddClipFile}
             onRenameClip={animationEdits.handleRenameClip}
             onDeleteClip={animationEdits.handleDeleteClip}
           />
@@ -255,7 +264,6 @@ export function renderEditorPanel(
             onRenameFolder={ctx.fileOps.handleRenameFolder}
             onDeleteFile={ctx.fileOps.handleDeleteFile}
             onDeleteFolder={ctx.fileOps.handleDeleteFolder}
-            onAddFileToModel={ctx.fileOps.handleAddFileToModel}
           />
         ),
       };
@@ -273,6 +281,8 @@ export function renderEditorPanel(
             selectedPart={ctx.effectiveSelectedPart}
             creating={partEdits.creating}
             editsBlocked={ctx.editsBlocked}
+            unreferencedGeometry={ctx.unreferencedGeometry}
+            onAddGeometryFile={ctx.fileOps.handleAddFileToModel}
             onStartCreate={partEdits.handleStartCreatePart}
             onShowAll={partEdits.handleShowAll}
             onHideAll={partEdits.handleHideAll}
@@ -351,35 +361,35 @@ export function renderEditorPanel(
             disabled={ctx.editsBlocked || target.unresolved}
             disabledReason={
               target.unresolved
-                ? `The palette ${target.file ?? 'cuboidy.json'} points at (${target.ref}) is missing or invalid — fix that file to edit these colors.`
+                ? `The palette ${target.file ?? 'cuboidy.json'} points at (${target.ref}) is missing or invalid — pick another one above, or fix that file.`
                 : undefined
             }
+            // The binding survives an unresolved reference on purpose:
+            // re-pointing is how that state gets fixed. Only a mid-edit
+            // parse error locks it, where a rewrite would clobber text.
+            bindingLocked={ctx.editsBlocked || manifest === undefined}
             onChange={(next, tag) =>
               paletteEdits.handleEditPalette(target.file, next, tag)
             }
             onDeleteColor={(index) =>
               paletteEdits.handleDeletePaletteColor(target.file, index)
             }
+            paletteFiles={ctx.paletteFiles}
+            // The three storage moves, offered only where they mean
+            // something: no "new file" once referenced or with no colors
+            // to write, no "inline" unless a reference resolved.
             onExternalize={
-              target.file !== undefined && !shared && target.palette.length > 0
-                ? () => paletteEdits.handleExternalizePalette(target.file!)
+              !shared && target.palette.length > 0
+                ? () => paletteEdits.handleExternalizePalette(target.file)
                 : undefined
             }
             onInline={
-              target.file !== undefined && shared && !target.unresolved
-                ? () => paletteEdits.handleInlinePalette(target.file!)
+              shared && !target.unresolved
+                ? () => paletteEdits.handleInlinePalette(target.file)
                 : undefined
             }
-            paletteFiles={ctx.paletteFiles}
-            // Gated on editsBlocked ALONE, not on the panel's `disabled`:
-            // an unresolved reference disables the swatches but must
-            // leave this available, since re-pointing is how that state
-            // gets fixed. A parse error still blocks it — a rewrite
-            // would clobber the in-progress text.
-            onUsePaletteFile={
-              ctx.editsBlocked || manifest === undefined
-                ? undefined
-                : (ref) => paletteEdits.handleUsePaletteFile(target.file, ref)
+            onUsePaletteFile={(ref) =>
+              paletteEdits.handleUsePaletteFile(target.file, ref)
             }
           />
         ),

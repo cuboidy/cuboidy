@@ -242,6 +242,35 @@ export function useAnimationEdits({
     onClipCreated();
   }, [editsBlocked, mutateManifest, onClipCreated]);
 
+  // Reference an animation clip FILE that already exists (§6.3) — the
+  // counterpart of Externalize, which writes a new one. It lives here
+  // rather than on a Files-tree row because a clip enters the model as a
+  // NAMED entry in the manifest's animation map, and the name is what a
+  // file row cannot supply: it comes from the file's stem when that is a
+  // legal identifier (§5), else the next free `clipN`.
+  const handleAddClipFile = useCallback(
+    (path: string) => {
+      if (editsBlocked) return;
+      mutateManifest(null, (m, src) => {
+        if (!src.files.has(path)) return null;
+        const existing = m.animations ?? {};
+        const stem = path.slice(path.lastIndexOf('/') + 1).replace(/\.json$/i, '');
+        let name = isIdentifier(stem) ? stem : 'clip1';
+        if (Object.hasOwn(existing, name)) {
+          const base = isIdentifier(stem) ? stem : 'clip';
+          let n = 2;
+          while (Object.hasOwn(existing, `${base}${n}`)) n += 1;
+          name = `${base}${n}`;
+        }
+        return { ...m, animations: { ...existing, [name]: path } };
+      });
+      // Outside the apply closure, like handleCreateAnimationClip: reducer
+      // appliers stay pure and StrictMode double-invokes them.
+      onClipCreated();
+    },
+    [editsBlocked, mutateManifest, onClipCreated],
+  );
+
   // Rename a clip, preserving its position in the animations map (rebuild
   // entries in insertion order, swapping the key) so the JSON diff is one
   // line. Collision checks use Object.hasOwn — `animations['constructor']`
@@ -383,6 +412,7 @@ export function useAnimationEdits({
     handleSetClipDuration,
     handleSetClipLoop,
     handleCreateAnimationClip,
+    handleAddClipFile,
     handleRenameClip,
     handleDeleteClip,
     handleExternalizeClip,

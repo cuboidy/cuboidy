@@ -1,8 +1,9 @@
 import { useCallback } from 'react';
-import { AIR, manifestGeometry, type Geometry, type Manifest, type Part } from '@cuboidy/core';
+import { AIR, manifestGeometry, type Manifest, type Part } from '@cuboidy/core';
 import { serializeGeometry } from '@cuboidy/core';
+import type { NewFileKind } from './file-name-rules.js';
 import { normalizePath } from './load-model.js';
-import { deleteFileInSource, mergeGeometries, moveFolderInSource, pathBasename, pathDirname, renameFileInSource, withManifest } from './source-ops.js';
+import { deleteFileInSource, mergeGeometries, moveFolderInSource, paletteFileText, pathBasename, pathDirname, renameFileInSource, withManifest } from './source-ops.js';
 import type { LoadedSource, LoadResult } from './types.js';
 import { useSourceMutations } from './useSourceMutations.js';
 
@@ -37,6 +38,40 @@ function geometryListToExtend(m: Manifest): string[] {
     : [];
 }
 
+// A new file's starting contents. Each template is a VALID document of
+// its kind, so the file parses the moment it exists and the Console has
+// nothing to report about a file the user just made.
+function newFileText(src: LoadedSource, kind: NewFileKind): string {
+  switch (kind) {
+    case 'geometry': {
+      // One all-air part — valid with or without a palette (§7.4). The
+      // name is unique model-wide (§5) so adopting the file cannot
+      // collide with a part that already exists.
+      const names = new Set(mergeGeometries(src).parts.map((p) => p.name));
+      let n = 1;
+      while (names.has(`part${n}`)) n += 1;
+      const part: Part = {
+        name: `part${n}`,
+        size: { w: 1, h: 1, d: 1 },
+        pivot: { pos: { x: 0.5, y: 0, z: 0.5 } },
+        sockets: [],
+        voxels: [[[AIR]]],
+      };
+      return serializeGeometry({ palette: [], parts: [part] });
+    }
+    // §6.10 requires at least one color, so an empty `colors` array would
+    // be an invalid palette file rather than an empty one.
+    case 'palette':
+      return paletteFileText([{ r: 255, g: 255, b: 255, a: 255 }]);
+    case 'clip':
+      return (
+        JSON.stringify({ duration: 1, loop: true, parts: {} }, null, 2) + '\n'
+      );
+    case 'text':
+      return '';
+  }
+}
+
 export function useFileOps({ dispatchEdit, setFileParseErrors }: Params) {
   // ── File CRUD (Phase D). Folder sources with a files map only; each
   // operation is one dispatchEdit = one atomic undo step. The manifest
@@ -47,67 +82,32 @@ export function useFileOps({ dispatchEdit, setFileParseErrors }: Params) {
   // a mid-edit file, so they stay available while text is unparseable. ──
   const { mutateSource } = useSourceMutations({ dispatchEdit });
 
+  // Create a file of a STATED kind. The kind comes from the tree's draft
+  // row rather than from the name, because the name cannot carry it: a
+  // v0.9 package references geometry, palettes and clips all as `.json`
+  // (§8). Guessing it from `anims/` and `palette.json` conventions meant
+  // a palette named `colors.json` was created as a geometry file, and
+  // the two non-geometry templates were `{}`, which is not a valid file
+  // of either kind.
+  //
+  // Creating does NOT reference the file from the manifest. Writing a
+  // file is a file operation; joining the model is a model edit, and it
+  // belongs to the panel that owns that kind of reference — the same
+  // reason the tree no longer carries a "load" button. A new file shows
+  // up as "not loaded" until adopted there.
   const handleCreateFile = useCallback(
-    (path: string) => {
+    (path: string, kind: NewFileKind) => {
       mutateSource(null, (src) => {
         const norm = normalizePath(path);
         if (norm === '' || norm.startsWith('../')) return null;
         if (src.files.has(norm) || src.manifestPath === norm) {
           return null;
         }
-        // Creating a file used to state its role through the extension: a
-        // `.cvox` name meant geometry, any other `.json` meant a palette or an
-        // animation clip. With one extension for everything that signal is
-        // gone, so fall back to the layout conventions of SPEC §3 — a clip
-        // lives under `anims/`, the palette binding is conventionally
-        // `palette.json` — and treat every other new `.json` as geometry,
-        // which is the only thing this flow ever templated.
-        // TODO: replace with an explicit type picker in the create UI.
-        const lower = norm.toLowerCase();
-        const isGeometry =
-          lower.endsWith('.json') &&
-          !lower.startsWith('anims/') &&
-          !lower.endsWith('/palette.json') &&
-          lower !== 'palette.json';
-        let text: string;
-        let parsed: Geometry | null = null;
-        if (isGeometry) {
-          // Template: one all-air part — valid with or without a palette
-          // (§7.4). Part name unique model-wide (§5).
-          const names = new Set(mergeGeometries(src).parts.map((p) => p.name));
-          let n = 1;
-          while (names.has(`part${n}`)) n += 1;
-          const part: Part = {
-            name: `part${n}`,
-            size: { w: 1, h: 1, d: 1 },
-            pivot: { pos: { x: 0.5, y: 0, z: 0.5 } },
-            sockets: [],
-            voxels: [[[AIR]]],
-          };
-          parsed = { palette: [], parts: [part] };
-          text = serializeGeometry(parsed);
-        } else {
-          text = norm.toLowerCase().endsWith('.json') ? '{}\n' : '';
-        }
         const files = new Map(src.files);
-        files.set(norm, text);
+        files.set(norm, newFileText(src, kind));
         const removedFiles = new Set(src.removedFiles ?? []);
         removedFiles.delete(norm); // re-creating a removed path revives it
-        let next: typeof src = { ...src, files, removedFiles };
-        if (isGeometry && parsed !== null) {
-          const geometries = new Map(src.geometries);
-          geometries.set(norm, parsed);
-          next = { ...next, geometries };
-          // Reference it from the manifest so it's part of the model
-          // (unreferenced files are ignored + lint as W07).
-          if (src.manifest !== undefined) {
-            const geometry = geometryListToExtend(src.manifest);
-            if (!geometry.includes(norm)) geometry.push(norm);
-            const nextManifest: Manifest = { ...src.manifest, geometry };
-            next = withManifest(next, nextManifest);
-          }
-        }
-        return next;
+        return { ...src, files, removedFiles };
       });
     },
     [mutateSource],

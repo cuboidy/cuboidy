@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseGeometryText, parseManifest, type Geometry, type Manifest } from '@cuboidy/core';
 import { resolveProjectRefs } from '../src/lib/load-model.js';
-import { applyFileEdit, deleteFileInSource, mapGeometryFiles, mergeGeometries, moveFolderInSource, paletteFilesIn, relativeRefFrom, renameFileInSource, repointPaletteRef, manifestText, primaryGeometry, uniquePartName, withManifest, withManifestText, writeFile } from '../src/lib/source-ops.js';
+import { applyFileEdit, clipFilesIn, deleteFileInSource, freePalettePath, geometryFilesIn, mapGeometryFiles, mergeGeometries, moveFolderInSource, paletteFilesIn, relativeRefFrom, renameFileInSource, repointPaletteRef, resolvedModelPalette, manifestText, primaryGeometry, uniquePartName, withManifest, withManifestText, writeFile, writeModelPalette } from '../src/lib/source-ops.js';
 import type { LoadedSource } from '../src/lib/types.js';
 
 // These are the operations that keep a package's REFERENCES intact while its
@@ -559,6 +559,112 @@ describe('paletteFilesIn', () => {
       'broken.json': '{ this is not json',
     }, 'body.json');
     expect(paletteFilesIn(src)).toEqual([]);
+  });
+});
+
+describe('clipFilesIn / geometryFilesIn', () => {
+  const mixed = () =>
+    pkg({
+      [MANIFEST]: manifestJson({
+        name: 'm',
+        geometry: ['body.json'],
+        parts: [{ name: 'body' }],
+      }),
+      'body.json': GEO([{ name: 'body', voxels: '0' }], ['#FF0000']),
+      'spare.json': GEO([{ name: 'spare', voxels: '0' }], ['#00FF00']),
+      'anims/wave.json': CLIP,
+      'palette.json': PALETTE,
+    }, 'body.json');
+
+  it('tells the three kinds apart by content, with no overlap', () => {
+    const src = mixed();
+    expect(clipFilesIn(src)).toEqual(['anims/wave.json']);
+    expect(geometryFilesIn(src)).toEqual(['body.json', 'spare.json']);
+    expect(paletteFilesIn(src)).toEqual(['palette.json']);
+  });
+
+  it('never offers the manifest as any kind', () => {
+    // The anchor's own text parses as none of them anyway; excluding it
+    // explicitly means a future schema change cannot make the package's
+    // one fixed file (§3) a candidate for adoption.
+    const all = [
+      ...clipFilesIn(mixed()),
+      ...geometryFilesIn(mixed()),
+      ...paletteFilesIn(mixed()),
+    ];
+    expect(all).not.toContain(MANIFEST);
+  });
+});
+
+describe('writeModelPalette — the manifest palette, wherever it lives', () => {
+  // §6.1 lets cuboidy.json's `palette` be colors OR a reference, exactly
+  // as a geometry file's does (§7.4). The write has to follow the form
+  // in use; it used to always spell the colors out, so editing a single
+  // swatch of a REFERENCED model palette silently dropped the reference.
+  // A geometry file rides along because the fixture helper needs one;
+  // the model palette under test is the manifest's, which the INLINE
+  // part draws on (§6.13).
+  const modelWith = (palette: unknown, extra: Record<string, string> = {}) =>
+    pkg({
+      [MANIFEST]: manifestJson({
+        name: 'm',
+        geometry: ['v.json'],
+        palette,
+        parts: [
+          { name: 'p' },
+          { name: 'orb', geometry: { size: [1, 1, 1], voxels: [['0']] } },
+        ],
+      }),
+      'v.json': GEO([{ name: 'p', voxels: '0' }], ['#FF0000']),
+      ...extra,
+    }, 'v.json');
+
+  const inlineModel = () => modelWith(['#FF0000']);
+  const referencedModel = () =>
+    modelWith('palette.json', { 'palette.json': PALETTE });
+
+  const GREEN = [{ r: 0, g: 255, b: 0, a: 255 }];
+
+  it('spells the colors out when the manifest declares them inline', () => {
+    const next = writeModelPalette(inlineModel(), GREEN);
+    expect(next).not.toBeNull();
+    expect(next!.manifest?.palette).toEqual(['#00FF00']);
+  });
+
+  it('writes the palette FILE when the manifest references one', () => {
+    const next = writeModelPalette(referencedModel(), GREEN);
+    expect(next).not.toBeNull();
+    // The reference survives; the colors land in the file it names.
+    expect(next!.manifest?.palette).toBe('palette.json');
+    expect(next!.files.get('palette.json')).toContain('#00FF00');
+  });
+
+  it('drops the field entirely when the inline palette empties (§6.1)', () => {
+    const next = writeModelPalette(inlineModel(), []);
+    expect(next!.manifest?.palette).toBeUndefined();
+    expect(next!.files.get(MANIFEST)).not.toContain('"palette"');
+  });
+
+  it('resolves a referenced model palette back to its colors', () => {
+    expect(resolvedModelPalette(referencedModel())).toHaveLength(2);
+    // A reference that does not load has nothing to resolve — callers
+    // use the empty result to refuse a move that would lose the colors.
+    expect(resolvedModelPalette(modelWith('gone.json'))).toEqual([]);
+  });
+});
+
+describe('freePalettePath', () => {
+  it('suffixes past the names already taken', () => {
+    const src = pkg({
+      [MANIFEST]: manifestJson({ name: 'm', geometry: ['v.json'], parts: [{ name: 'p' }] }),
+      'v.json': GEO([{ name: 'p', voxels: '0' }], ['#FF0000']),
+    }, 'v.json');
+    expect(freePalettePath(src)).toBe('palette.json');
+    const taken = {
+      ...src,
+      files: new Map([...src.files, ['palette.json', PALETTE]]),
+    };
+    expect(freePalettePath(taken)).toBe('palette-2.json');
   });
 });
 

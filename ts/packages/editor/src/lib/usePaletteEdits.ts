@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
-import { AIR, serializeColor, type Geometry, type Manifest, type Palette, type Part } from '@cuboidy/core';
+import { AIR, type Geometry, type Palette, type Part } from '@cuboidy/core';
 import { normalizePath, withResolvedPalette } from './load-model.js';
-import { geometryAt, mapGeometryFiles, modelPalette, paletteFileText, relativeRefFrom, sharesPalette, withInlinePart, withManifest, writeFile } from './source-ops.js';
+import { freePalettePath, geometryAt, mapGeometryFiles, paletteFileText, relativeRefFrom, resolvedModelPalette, sharesPalette, withInlinePart, withManifest, withModelPalette, writeFile, writeModelPalette } from './source-ops.js';
 import type { LoadResult, LoadedSource } from './types.js';
 import { useSourceMutations } from './useSourceMutations.js';
 
@@ -11,31 +11,6 @@ interface Params {
     apply: (c: LoadResult | null) => LoadResult | null,
   ) => void;
   editsBlocked: boolean;
-}
-
-// SPEC §6.13: write the manifest's model-level palette. Mirrors the inline
-// branch of a geometry file's — colors spelled out in the document that
-// owns them — but the document is cuboidy.json. A palette written as a §8
-// reference is handled by the same `ref` branch the file case uses, so
-// only the spelled-out form lands here.
-function withModelPalette(
-  src: LoadedSource,
-  next: Palette,
-): LoadedSource | null {
-  if (src.manifest === undefined) return null;
-  const colors = next.map(serializeColor);
-  // An empty palette is spelled as an ABSENT field (§6.1), the same way a
-  // geometry file omits one it does not have — so clearing every color
-  // round-trips instead of leaving `"palette": []`, which the schema
-  // rejects anyway.
-  let manifest: Manifest;
-  if (colors.length === 0) {
-    const { palette: _drop, ...rest } = src.manifest;
-    manifest = rest;
-  } else {
-    manifest = { ...src.manifest, palette: colors };
-  }
-  return withManifest(src, manifest);
 }
 
 export function usePaletteEdits({ dispatchEdit, editsBlocked }: Params) {
@@ -60,7 +35,7 @@ export function usePaletteEdits({ dispatchEdit, editsBlocked }: Params) {
   const handleEditPalette = useCallback(
     (file: string | undefined, next: Palette, tag?: string) => {
       mutateSource(tag ?? null, (src) => {
-        if (file === undefined) return withModelPalette(src, next);
+        if (file === undefined) return writeModelPalette(src, next);
         const geometry = geometryAt(src, file);
         if (geometry === undefined) return null;
         if (geometry.paletteRef === undefined) {
@@ -94,7 +69,7 @@ export function usePaletteEdits({ dispatchEdit, editsBlocked }: Params) {
               src.manifest?.parts.find((p) => p.name === name)?.geometry
                 ?.palette === undefined,
           );
-          const palette = modelPalette(src);
+          const palette = resolvedModelPalette(src);
           if (index < 0 || index >= palette.length) return null;
           for (const [, entry] of scope) {
             for (const layer of entry.part.voxels) {
@@ -103,7 +78,7 @@ export function usePaletteEdits({ dispatchEdit, editsBlocked }: Params) {
               }
             }
           }
-          let next = withModelPalette(
+          let next = writeModelPalette(
             src,
             palette.filter((_, i) => i !== index),
           );
@@ -181,18 +156,31 @@ export function usePaletteEdits({ dispatchEdit, editsBlocked }: Params) {
     [mutateSource],
   );
 
-  // Move ONE file's inline palette out to a palette file and point at it.
-  // The colors are unchanged — only where they live. One undo.
+  // Move this palette out to a NEW palette file and point at it. The
+  // colors are unchanged — only where they live. One undo.
+  //
+  // `file` undefined is the manifest's model-level palette (§6.1), which
+  // takes a reference exactly as a geometry file's does. It used to be
+  // excluded, which left an all-inline model unable to share its colors
+  // at all — and made "where does this palette live?" a question with
+  // one answer for some targets and three for others.
   const handleExternalizePalette = useCallback(
-    (file: string) => {
+    (file: string | undefined) => {
       mutateSource(null, (src) => {
+        if (file === undefined) {
+          if (src.manifest === undefined) return null;
+          if (typeof src.manifest.palette === 'string') return null;
+          const palette = resolvedModelPalette(src);
+          if (palette.length === 0) return null;
+          const path = freePalettePath(src);
+          const withFile = writeFile(src, path, paletteFileText(palette));
+          return withManifest(withFile, { ...src.manifest, palette: path });
+        }
         const geometry = geometryAt(src, file);
         if (geometry === undefined) return null;
         if (geometry.paletteRef !== undefined) return null;
         if (geometry.palette.length === 0) return null;
-        let path = 'palette.json';
-        let n = 2;
-        while (src.files.has(path)) path = `palette-${n++}.json`;
+        const path = freePalettePath(src);
         const nextSrc = mapGeometryFiles(src, (g, at) =>
           at === file ? { ...g, paletteRef: path } : null,
         );
@@ -203,11 +191,20 @@ export function usePaletteEdits({ dispatchEdit, editsBlocked }: Params) {
   );
 
   // The reverse: keep the colors, drop the reference so they are written
-  // into the geometry file itself. The palette file stays (it may be shared)
+  // into the document itself. The palette file stays (it may be shared)
   // — delete it from the Files tree if it is truly orphaned.
   const handleInlinePalette = useCallback(
-    (file: string) => {
+    (file: string | undefined) => {
       mutateSource(null, (src) => {
+        if (file === undefined) {
+          if (src.manifest === undefined) return null;
+          if (typeof src.manifest.palette !== 'string') return null;
+          const palette = resolvedModelPalette(src);
+          // An unresolved reference has no colors to keep; inlining it
+          // would silently empty the palette rather than rescue it.
+          if (palette.length === 0) return null;
+          return withModelPalette(src, palette);
+        }
         if (geometryAt(src, file)?.paletteRef === undefined) return null;
         return mapGeometryFiles(src, (g, path) => {
           if (path !== file) return null;

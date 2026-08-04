@@ -238,7 +238,9 @@ pre {
   margin-bottom: 0.4rem;
 }
 
-/* Binding picker (which palette file the manifest points at). */
+/* Where the palette lives (§7.4): inline in this document, an existing
+   palette file, or a new one. One control, because those are three
+   values of one fact — not three separate actions. */
 .palette-binding {
   flex: 1;
   min-width: 0;
@@ -251,15 +253,6 @@ pre {
   font-size: 0.72rem;
 }
 
-.palette-target {
-  font-family: var(--ui);
-  font-size: 0.72rem;
-  color: var(--txt-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .palette-count {
   flex-shrink: 0;
   font-size: 0.72rem;
@@ -267,13 +260,10 @@ pre {
   font-variant-numeric: tabular-nums;
 }
 
-.palette-storage-action {
-  margin-top: 0.75rem;
-}
-
-/* Bind an existing palette file (§7.4). A label + select rather than a
-   button, because the operation needs to name WHICH file. */
-.palette-use-file {
+/* components/ui/FileRefPicker — "use a file already in the package",
+   offered by each panel that owns a kind of reference. A label + select
+   rather than a button, because the operation names WHICH file. */
+.file-ref-picker {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -281,7 +271,7 @@ pre {
   color: var(--txt-2);
 }
 
-.palette-use-file select {
+.file-ref-picker select {
   flex: 1;
   min-width: 0;
 }
@@ -904,36 +894,6 @@ pre {
   opacity: 0.4;
 }
 
-/* "load" action on unreferenced geometry rows — a small text button that
-   adds the file to the manifest geometry list so its parts load. Always
-   shown (it's the call to action paired with the "not loaded" badge);
-   the delete × still reveals on hover to its right. */
-.file-load {
-  margin-left: auto;
-  padding: 0.05rem 0.35rem;
-  color: var(--txt-2);
-  background: var(--bg-3);
-  border-radius: var(--r-1);
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-/* The delete × follows the load button, so it no longer auto-pushes. */
-.file-load + .file-delete {
-  margin-left: 0.3rem;
-}
-
-.file-load:hover:not([aria-disabled='true']) {
-  background: var(--bg-4);
-  color: var(--txt-1);
-}
-
-.file-load[aria-disabled='true'] {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
 /* ─── Parts list ──────────────────────────────────────────────────── */
 
 /* Panel toolbar row (New part / Show all / Hide all; the Files tree
@@ -969,7 +929,8 @@ pre {
    only). Compact sibling of the name input; option text is the full
    package-relative path so same-named files in different folders stay
    distinguishable. */
-.part-tree-draft-file {
+.part-tree-draft-file,
+.tree-draft-kind {
   flex-shrink: 0;
   max-width: 45%;
   background: var(--bg-2);
@@ -1730,7 +1691,8 @@ pre {
 .property-field select,
 .anim-select,
 .anim-inspector-ease select,
-.part-tree-draft-file {
+.part-tree-draft-file,
+.tree-draft-kind {
   appearance: none;
   -webkit-appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239AA3AF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
@@ -1744,7 +1706,8 @@ pre {
 .property-field select:focus,
 .anim-select:focus,
 .anim-inspector-ease select:focus,
-.part-tree-draft-file:focus {
+.part-tree-draft-file:focus,
+.tree-draft-kind:focus {
   outline: none;
   border-color: var(--accent);
 }

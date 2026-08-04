@@ -1,4 +1,4 @@
-import { useMemo, type DragEvent } from 'react';
+import { useMemo, useState, type DragEvent } from 'react';
 import { ChevronDown, ChevronRight, Plus, X } from 'lucide-react';
 import { InlineNameInput } from '@cuboidy/ui';
 import { fileIcon } from '../ui/fileIcon.js';
@@ -6,10 +6,12 @@ import type { DirNode } from '../../lib/fs-tree.js';
 import { useFileTreeState } from '../../lib/useFileTreeState.js';
 import { normalizePath } from '../../lib/load-model.js';
 import {
+  NEW_FILE_KINDS,
   validateNewFolderName,
   validateNewPath as validateNewPathRule,
   validateRenameFolderName,
   validateRenameName,
+  type NewFileKind,
 } from '../../lib/file-name-rules.js';
 import { classifyPackageFiles, pathBasename, pathDirname } from '../../lib/source-ops.js';
 import type { LoadedSource } from '../../lib/types.js';
@@ -20,8 +22,9 @@ interface Props {
   // VS Code-style red filename; the tooltip carries the message.
   fileErrors: ReadonlyMap<string, string>;
   onOpenPath: (path: string) => void;
-  // File CRUD (v0.7 Phase D).
-  onCreateFile: (path: string) => void;
+  // File CRUD (v0.7 Phase D). `kind` is the author's statement of what
+  // the file is — the name cannot carry it (§8: all `.json`).
+  onCreateFile: (path: string, kind: NewFileKind) => void;
   onRenameFile: (oldPath: string, newPath: string) => void;
   // Move a folder (and everything under it) into destDir ('' = root).
   // Drag-and-drop only; folds the per-file rename atomically (one undo).
@@ -32,9 +35,6 @@ interface Props {
   onDeleteFile: (path: string) => void;
   // Delete a folder and every file under it (one undo).
   onDeleteFolder: (dir: string) => void;
-  // Append an unreferenced geometry file to the manifest list so its
-  // parts load (the tree's "not loaded" rows).
-  onAddFileToModel: (path: string) => void;
 }
 
 // The Files sidebar: the WHOLE package as a VS Code Explorer-shaped tree
@@ -49,10 +49,19 @@ interface Props {
 // model is a file map, so an empty folder has no on-disk representation).
 // Double-click renames a file or folder (its name only — moving between
 // folders is drag-and-drop, below); the hover × deletes (a folder ×
-// deletes everything under it). An unreferenced geometry row carries a
-// "load" button that adds it to the manifest geometry list. The manifest
-// anchor is never renamable/deletable; the primary geometry is renamable
-// only when a manifest records it, and never deletable.
+// deletes everything under it). The manifest anchor is never
+// renamable/deletable; it is the package's one fixed name (§3).
+//
+// This tree operates on the FILE namespace and nothing else. It SHOWS
+// which files the model does not account for (the dimmed "not loaded"
+// rows), because that is a fact about the files it lists — but
+// referencing one is not a file operation, and the button that used to
+// do it from here is gone. It edited the manifest's geometry list no
+// matter what the row held, so "loading" a palette declared the palette
+// to BE geometry. Each kind is adopted from the panel that owns it: the
+// Palette panel binds a palette (§7.4), the clip bar a §6.3 animation,
+// the Parts panel a §6.9 geometry file. There the kind is stated by
+// where the user acts, so nothing has to be inferred from a row.
 //
 // Drag-and-drop moves: drag a file onto a folder (or another file, to
 // land in its folder) or drag a whole folder onto another folder /
@@ -68,7 +77,6 @@ export function FileTree({
   onRenameFolder,
   onDeleteFile,
   onDeleteFolder,
-  onAddFileToModel,
 }: Props) {
   // The panel's own state: selection, collapse, drafts, drag
   // (lib/useFileTreeState).
@@ -94,7 +102,8 @@ export function FileTree({
 
   // Which files the model accounts for (lib/source-ops): loaded geometry
   // gets its badge-free row, a stray .json is dimmed "not loaded" (lint
-  // W07) with a hover "+" that references it.
+  // W07). Reporting only — bringing one into the model is the owning
+  // panel's job, not this tree's.
   const classified = useMemo(() => classifyPackageFiles(source), [source]);
   const isUnreferenced = (path: string): boolean => {
     const norm = normalizePath(path);
@@ -116,18 +125,13 @@ export function FileTree({
           : null;
     const deleteReason =
       path === anchor ? "The manifest can't be deleted" : null;
-    const addReason = !isUnreferenced(path)
-      ? 'hidden'
-      : hasManifest
-        ? null
-        : 'Create a manifest first — the geometry list lives in cuboidy.json';
-    return { renameReason, deleteReason, addReason };
+    return { renameReason, deleteReason };
   };
 
   // The pure naming rules live in lib/file-name-rules; these closures
   // bind them to the tree's current path/dir/draft sets.
-  const validateNewPath = (path: string): boolean =>
-    validateNewPathRule(path, allPaths);
+  const validateNewPath = (path: string, kind: NewFileKind): boolean =>
+    validateNewPathRule(path, allPaths, kind);
 
   const validateNewFolderIn =
     (dir: string) =>
@@ -151,9 +155,13 @@ export function FileTree({
           dirs: allDirs,
         }) && filesUnder(dir).every(isMovable);
 
-  const commitCreateFile = (dirPath: string, name: string): void => {
+  const commitCreateFile = (
+    dirPath: string,
+    name: string,
+    kind: NewFileKind,
+  ): void => {
     const path = dirPath === '' ? name : `${dirPath}/${name}`;
-    onCreateFile(path);
+    onCreateFile(path, kind);
     setCreatingIn(null);
     // The folder now has a real file — the draft entry is redundant.
     setDraftDirs((prev) => {
@@ -441,7 +449,6 @@ export function FileTree({
                   folderDeleteReason={folderDeleteReason}
                   onDeleteFolderRow={commitDeleteFolder}
                   onDeleteFile={onDeleteFile}
-                  onAddFileToModel={onAddFileToModel}
                 />
             )}
           </li>
@@ -454,9 +461,6 @@ export function FileTree({
 interface RowOps {
   renameReason: string | null;
   deleteReason: string | null;
-  // Add-to-model "+": 'hidden' (not rendered) unless the file is
-  // unreferenced geometry.
-  addReason: string | null;
 }
 
 // ── directory tree model ─────────────────────────────────────────────
@@ -504,7 +508,7 @@ interface DirChildrenProps {
   isUnreferenced: (path: string) => boolean;
   isGeometry: (path: string) => boolean;
   rowOps: (path: string) => RowOps;
-  validateNewPath: (path: string) => boolean;
+  validateNewPath: (path: string, kind: NewFileKind) => boolean;
   validateNewFolderIn: (dir: string) => (name: string) => boolean;
   validateRename: (oldPath: string) => (name: string) => boolean;
   validateRenameFolder: (dir: string) => (name: string) => boolean;
@@ -514,7 +518,7 @@ interface DirChildrenProps {
   onCommitRenameFolder: (dir: string, name: string) => void;
   onCancelRenameFolder: () => void;
   onSelectFile: (path: string) => void;
-  onCommitCreate: (dirPath: string, name: string) => void;
+  onCommitCreate: (dirPath: string, name: string, kind: NewFileKind) => void;
   onCancelCreate: () => void;
   onCommitCreateFolder: (dirPath: string, name: string) => void;
   onCancelCreateFolder: () => void;
@@ -524,7 +528,6 @@ interface DirChildrenProps {
   folderDeleteReason: (dir: string) => string | null;
   onDeleteFolderRow: (dir: string) => void;
   onDeleteFile: (path: string) => void;
-  onAddFileToModel: (path: string) => void;
 }
 
 function DirChildren(props: DirChildrenProps) {
@@ -654,23 +657,13 @@ function DirChildren(props: DirChildrenProps) {
         </li>
       )}
       {props.creatingIn === dirPath && (
-        <li className="tree-node">
-          <div className="tree-row draft" style={{ paddingLeft: pad }}>
-            <span className="tree-caret-spacer" aria-hidden="true" />
-            <InlineNameInput
-              initial="new.json"
-              leadingIcon={fileIcon}
-              ariaLabel={`New file in ${dirPath === '' ? 'package root' : dirPath}`}
-              validate={(name) =>
-                props.validateNewPath(
-                  dirPath === '' ? name : `${dirPath}/${name}`,
-                )
-              }
-              onCommit={(name) => props.onCommitCreate(dirPath, name)}
-              onCancel={props.onCancelCreate}
-            />
-          </div>
-        </li>
+        <NewFileDraftRow
+          dirPath={dirPath}
+          pad={pad}
+          validateNewPath={props.validateNewPath}
+          onCommit={props.onCommitCreate}
+          onCancel={props.onCancelCreate}
+        />
       )}
       {node.files.map((f) => (
         <FileNode
@@ -704,10 +697,70 @@ function DirChildren(props: DirChildrenProps) {
           onCommitRename={props.onCommitRename}
           onCancelRename={props.onCancelRename}
           onDeleteFile={props.onDeleteFile}
-          onAddFileToModel={props.onAddFileToModel}
         />
       ))}
     </ul>
+  );
+}
+
+// The "New file" draft row: a name field plus the KIND the file will be.
+// Its own component because the kind is draft-local state — it exists
+// only between opening the row and committing it.
+//
+// The kind is asked rather than inferred: every model file in a v0.9
+// package is `.json` (§8), so the name cannot say whether the author
+// means geometry, a palette or a clip. Validation ties the two together
+// — the three model kinds want `.json`, a note wants `.md` / `.txt` —
+// so the row cannot commit a name that contradicts the chosen kind.
+function NewFileDraftRow({
+  dirPath,
+  pad,
+  validateNewPath,
+  onCommit,
+  onCancel,
+}: {
+  dirPath: string;
+  pad: string;
+  validateNewPath: (path: string, kind: NewFileKind) => boolean;
+  onCommit: (dirPath: string, name: string, kind: NewFileKind) => void;
+  onCancel: () => void;
+}) {
+  const [kind, setKind] = useState<NewFileKind>('geometry');
+  const where = dirPath === '' ? 'package root' : dirPath;
+  return (
+    <li className="tree-node">
+      <div className="tree-row draft" style={{ paddingLeft: pad }}>
+        <span className="tree-caret-spacer" aria-hidden="true" />
+        <InlineNameInput
+          initial="new.json"
+          leadingIcon={fileIcon}
+          ariaLabel={`New file in ${where}`}
+          validate={(name) =>
+            validateNewPath(dirPath === '' ? name : `${dirPath}/${name}`, kind)
+          }
+          onCommit={(name) => onCommit(dirPath, name, kind)}
+          onCancel={onCancel}
+          trailing={
+            <select
+              className="tree-draft-kind"
+              value={kind}
+              aria-label="New file kind"
+              title={
+                NEW_FILE_KINDS.find((k) => k.id === kind)?.hint ??
+                'What this file will be'
+              }
+              onChange={(e) => setKind(e.target.value as NewFileKind)}
+            >
+              {NEW_FILE_KINDS.map((k) => (
+                <option key={k.id} value={k.id}>
+                  {k.label}
+                </option>
+              ))}
+            </select>
+          }
+        />
+      </div>
+    </li>
   );
 }
 
@@ -731,7 +784,6 @@ function FileNode({
   onCancelRename,
   onDeleteFile,
   geometry,
-  onAddFileToModel,
 }: {
   path: string;
   name: string;
@@ -758,7 +810,6 @@ function FileNode({
   onCommitRename: (oldPath: string, name: string) => void;
   onCancelRename: () => void;
   onDeleteFile: (path: string) => void;
-  onAddFileToModel: (path: string) => void;
 }) {
   const pad = `${0.5 + depth * 0.9}rem`;
   if (renaming) {
@@ -796,24 +847,6 @@ function FileNode({
         </span>
         <span className="tree-name">{name}</span>
         {isNew === true && <span className="badge">new</span>}
-        {ops.addReason !== 'hidden' && (
-          <span
-            className="file-load"
-            role="button"
-            aria-disabled={ops.addReason !== null}
-            aria-label={`Load ${path} into the model`}
-            title={
-              ops.addReason ??
-              `Load ${path} into the model (adds it to the manifest geometry list)`
-            }
-            onClick={(e) => {
-              e.stopPropagation();
-              if (ops.addReason === null) onAddFileToModel(path);
-            }}
-          >
-            load
-          </span>
-        )}
         <span
           className="file-delete"
           role="button"
