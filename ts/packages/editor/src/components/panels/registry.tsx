@@ -45,12 +45,13 @@ export interface EditorPanelContext {
   clipRefs: ReadonlyMap<string, string>;
   partPalettes: Map<string, Palette> | undefined;
   paletteTarget: PaletteTargetInfo | undefined;
-  // Files present in the package but not part of the model, by content —
-  // what each owning panel offers to adopt. Palettes are the exception:
-  // one may be SHARED, so every palette file is a candidate except the
-  // one the current target already uses.
+  // Package files by KIND, from their content — what each owning panel
+  // offers. Palettes and clips list them ALL, since either may be shared
+  // and the panel filters out the one already in use; geometry lists
+  // only the UNREFERENCED, because adopting one that is already in the
+  // model would be a no-op rather than a re-point.
   paletteFiles: readonly string[];
-  unreferencedClips: readonly string[];
+  clipFiles: readonly string[];
   unreferencedGeometry: readonly string[];
   geometryPaths: readonly string[] | undefined;
   effectiveSelectedPart: string | null;
@@ -150,8 +151,6 @@ export function renderEditorPanel(
             onSelectPart={partEdits.setSelectedPartName}
             onPickColor={ctx.onPickColor}
             onCreateClip={animationEdits.handleCreateAnimationClip}
-            clipFiles={ctx.unreferencedClips}
-            onAddClipFile={animationEdits.handleAddClipFile}
             onMovePart={partEdits.handleGizmoMovePart}
             onRotatePart={partEdits.handleGizmoRotatePart}
             onMovePivot={partEdits.handleGizmoMovePivot}
@@ -174,14 +173,14 @@ export function renderEditorPanel(
             hasManifest={manifest !== undefined}
             manifestEditsDisabled={ctx.manifestParseError !== null}
             clipRefs={ctx.clipRefs}
+            clipFiles={ctx.clipFiles}
             onExternalizeClip={animationEdits.handleExternalizeClip}
             onInlineClip={animationEdits.handleInlineClip}
+            onUseClipFile={animationEdits.handleUseClipFile}
             onTrimClip={animationEdits.handleTrimClip}
             onSetClipDuration={animationEdits.handleSetClipDuration}
             onSetClipLoop={animationEdits.handleSetClipLoop}
             onCreateClip={animationEdits.handleCreateAnimationClip}
-            clipFiles={ctx.unreferencedClips}
-            onAddClipFile={animationEdits.handleAddClipFile}
             onRenameClip={animationEdits.handleRenameClip}
             onDeleteClip={animationEdits.handleDeleteClip}
           />

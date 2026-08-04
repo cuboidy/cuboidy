@@ -16,17 +16,23 @@ interface Props {
   onSetClipDuration: (animName: string, duration: number) => void;
   onSetClipLoop: (animName: string, loop: boolean) => void;
   onCreateClip: () => void;
-  // Unreferenced §6.3 clip files, for the empty state's second way in.
-  clipFiles: readonly string[];
-  onAddClipFile: (path: string) => void;
   onRenameClip: (oldName: string, newName: string) => void;
   onDeleteClip: (name: string) => void;
   // Clip name → external file path (§6.3 string refs). Absent from the
   // map = stored inline in the manifest.
   clipRefs: ReadonlyMap<string, string>;
+  // Animation files present in the package, by content — the storage
+  // select's middle options.
+  clipFiles: readonly string[];
   onExternalizeClip: (name: string) => void;
   onInlineClip: (name: string) => void;
+  onUseClipFile: (name: string, path: string) => void;
 }
+
+// Storage-select sentinels, prefixed with a character §8 forbids in a
+// reference path so they cannot collide with a real one.
+const INLINE_VALUE = ' inline';
+const NEW_FILE_VALUE = ' new';
 
 // The keyframe editor as its own dock panel: the per-clip toolbar (name /
 // duration / loop / trim / delete) over the per-attribute lane timeline.
@@ -43,13 +49,13 @@ export function TimelinePanel({
   onSetClipDuration,
   onSetClipLoop,
   onCreateClip,
-  clipFiles,
-  onAddClipFile,
   onRenameClip,
   onDeleteClip,
   clipRefs,
+  clipFiles,
   onExternalizeClip,
   onInlineClip,
+  onUseClipFile,
 }: Props) {
   const {
     activeName,
@@ -67,6 +73,9 @@ export function TimelinePanel({
     clearPart,
   } = session;
   const animations = manifest?.animations ?? {};
+  // The file this clip reads from, or undefined when it is written
+  // inline in cuboidy.json.
+  const storedIn = clipRefs.get(activeName);
 
   if (inline === undefined) {
     return (
@@ -75,8 +84,6 @@ export function TimelinePanel({
           <NoAnimationsYet
             disabled={manifestEditsDisabled}
             onCreateClip={onCreateClip}
-            clipFiles={clipFiles}
-            onAddClipFile={onAddClipFile}
           />
         ) : (
           <p>Rig this model (create a manifest) to add animations.</p>
@@ -143,31 +150,47 @@ export function TimelinePanel({
           </span>
         )}
         <div className="anim-toolbar-right">
-          {clipRefs.has(activeName) && (
-            <span
-              className="anim-clip-storage"
-              title={`Stored in ${clipRefs.get(activeName)} (SPEC §6.3 external animation)`}
+          {/* Where this clip's keyframes live (§6.3). One control showing
+              the current answer, not a toggle plus a separate picker:
+              inline in the manifest, a clip file already in the package,
+              or a new one written from what is here. */}
+          <label className="anim-clip-storage">
+            <span>stored in</span>
+            <select
+              className="anim-select"
+              value={clipRefs.get(activeName) ?? INLINE_VALUE}
+              disabled={manifestEditsDisabled}
+              aria-label={`Where clip ${activeName} is stored`}
+              title={
+                storedIn === undefined
+                  ? `${activeName} is written inline in cuboidy.json. Pick a file to share it across models.`
+                  : `${activeName} reads from ${storedIn} — editing keyframes writes that file`
+              }
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === (clipRefs.get(activeName) ?? INLINE_VALUE)) return;
+                if (v === INLINE_VALUE) onInlineClip(activeName);
+                else if (v === NEW_FILE_VALUE) onExternalizeClip(activeName);
+                else onUseClipFile(activeName, v);
+              }}
             >
-              {clipRefs.get(activeName)}
-            </span>
-          )}
-          <button
-            type="button"
-            className="btn btn-sm"
-            disabled={manifestEditsDisabled}
-            title={
-              clipRefs.has(activeName)
-                ? 'Copy this clip back into cuboidy.json (the file is kept)'
-                : `Move this clip out to anims/${activeName}.json (shareable across models)`
-            }
-            onClick={() =>
-              clipRefs.has(activeName)
-                ? onInlineClip(activeName)
-                : onExternalizeClip(activeName)
-            }
-          >
-            {clipRefs.has(activeName) ? 'Inline' : 'Externalize'}
-          </button>
+              <option value={INLINE_VALUE}>cuboidy.json (inline)</option>
+              {clipFiles.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+              {/* A reference to a file the package does not hold: keep it
+                  selectable so the control states the truth instead of
+                  snapping to another entry. */}
+              {storedIn !== undefined && !clipFiles.includes(storedIn) && (
+                <option value={storedIn}>{storedIn} (missing)</option>
+              )}
+              {storedIn === undefined && (
+                <option value={NEW_FILE_VALUE}>New clip file…</option>
+              )}
+            </select>
+          </label>
           <button
             type="button"
             className="btn btn-danger btn-sm"

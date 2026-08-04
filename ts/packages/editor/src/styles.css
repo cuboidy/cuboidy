@@ -1249,8 +1249,8 @@ pre {
   flex-shrink: 0;
 }
 
-/* Right-aligned clip actions (storage label + externalize/inline +
-   delete) in the timeline toolbar. */
+/* Right-aligned clip actions (where the clip is stored + delete) in the
+   timeline toolbar. */
 .anim-toolbar-right {
   margin-left: auto;
   display: flex;
@@ -1259,13 +1259,21 @@ pre {
   min-width: 0;
 }
 
+/* Where this clip's keyframes live (§6.3): inline in cuboidy.json, a
+   clip file in the package, or a new one. One control, because those
+   are three values of one fact — not three separate actions. */
 .anim-clip-storage {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
   font-family: var(--ui);
   font-size: 0.7rem;
   color: var(--txt-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.anim-clip-storage select {
+  min-width: 0;
   max-width: 14rem;
 }
 

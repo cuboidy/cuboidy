@@ -3,7 +3,6 @@ import type { Geometry, Manifest, Palette } from '@cuboidy/core';
 import { AnimationViewport } from '../scene/AnimationViewport.js';
 import { PaletteStrip } from '../ui/PaletteStrip.js';
 import { PreviewToolbar } from '../ui/PreviewToolbar.js';
-import { FileRefPicker } from '../ui/FileRefPicker.js';
 import { ViewModeToggle } from '../ui/ViewModeToggle.js';
 import { VoxelScene } from '../scene/VoxelScene.js';
 import type { AnimationSession } from '../../lib/useAnimationSession.js';
@@ -42,10 +41,6 @@ interface Props {
   onSelectPart: (name: string | null) => void;
   onPickColor: (index: number) => void;
   onCreateClip: () => void;
-  // Unreferenced §6.3 clip files in the package, offered beside New clip:
-  // creating one and adopting one are the two ways a clip enters the model.
-  clipFiles: readonly string[];
-  onAddClipFile: (path: string) => void;
   onMovePart: (name: string, position: [number, number, number]) => void;
   onRotatePart: (name: string, rotation: [number, number, number]) => void;
   onMovePivot: (name: string, pos: [number, number, number]) => void;
@@ -91,8 +86,6 @@ export function PreviewPanel({
   onSelectPart,
   onPickColor,
   onCreateClip,
-  clipFiles,
-  onAddClipFile,
   onMovePart,
   onRotatePart,
   onMovePivot,
@@ -178,8 +171,6 @@ export function PreviewPanel({
           onSelectPart={onSelectPart}
           framingKey={framingKey}
           onCreateClip={onCreateClip}
-          clipFiles={clipFiles}
-          onAddClipFile={onAddClipFile}
         />
       ) : (
         <VoxelScene
@@ -250,13 +241,6 @@ export function PreviewPanel({
           <Plus size={13} />
           New clip
         </button>
-        <FileRefPicker
-          label="Use clip file"
-          files={clipFiles}
-          disabled={manifestEditsDisabled}
-          title="Reference an animation file already in this package (SPEC §6.3). It joins the model under a name taken from the filename."
-          onPick={onAddClipFile}
-        />
       </Transport>
     </>
   );

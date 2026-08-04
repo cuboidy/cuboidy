@@ -242,33 +242,24 @@ export function useAnimationEdits({
     onClipCreated();
   }, [editsBlocked, mutateManifest, onClipCreated]);
 
-  // Reference an animation clip FILE that already exists (§6.3) — the
-  // counterpart of Externalize, which writes a new one. It lives here
-  // rather than on a Files-tree row because a clip enters the model as a
-  // NAMED entry in the manifest's animation map, and the name is what a
-  // file row cannot supply: it comes from the file's stem when that is a
-  // legal identifier (§5), else the next free `clipN`.
-  const handleAddClipFile = useCallback(
-    (path: string) => {
-      if (editsBlocked) return;
+  // Point a clip at an animation file that already EXISTS (§6.3) — the
+  // third value of "where does this clip live?", beside inline in
+  // cuboidy.json and a file this editor wrote (Externalize). The clip
+  // keeps its name; what changes is which document holds its keyframes,
+  // so the timeline starts showing that file's.
+  const handleUseClipFile = useCallback(
+    (name: string, path: string) => {
       mutateManifest(null, (m, src) => {
         if (!src.files.has(path)) return null;
-        const existing = m.animations ?? {};
-        const stem = path.slice(path.lastIndexOf('/') + 1).replace(/\.json$/i, '');
-        let name = isIdentifier(stem) ? stem : 'clip1';
-        if (Object.hasOwn(existing, name)) {
-          const base = isIdentifier(stem) ? stem : 'clip';
-          let n = 2;
-          while (Object.hasOwn(existing, `${base}${n}`)) n += 1;
-          name = `${base}${n}`;
+        const animations = m.animations;
+        if (animations === undefined || !Object.hasOwn(animations, name)) {
+          return null;
         }
-        return { ...m, animations: { ...existing, [name]: path } };
+        if (animations[name] === path) return null;
+        return { ...m, animations: { ...animations, [name]: path } };
       });
-      // Outside the apply closure, like handleCreateAnimationClip: reducer
-      // appliers stay pure and StrictMode double-invokes them.
-      onClipCreated();
     },
-    [editsBlocked, mutateManifest, onClipCreated],
+    [mutateManifest],
   );
 
   // Rename a clip, preserving its position in the animations map (rebuild
@@ -412,7 +403,7 @@ export function useAnimationEdits({
     handleSetClipDuration,
     handleSetClipLoop,
     handleCreateAnimationClip,
-    handleAddClipFile,
+    handleUseClipFile,
     handleRenameClip,
     handleDeleteClip,
     handleExternalizeClip,

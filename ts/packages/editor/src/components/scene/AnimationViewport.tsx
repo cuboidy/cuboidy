@@ -23,10 +23,6 @@ interface Props {
   // Camera-framing freeze against edits — see VoxelScene.
   framingKey: number;
   onCreateClip: () => void;
-  // Forwarded to the empty state: a model with no clips may still ship a
-  // §6.3 clip file, and adopting it is the other way to get a first one.
-  clipFiles: readonly string[];
-  onAddClipFile: (path: string) => void;
 }
 
 // The anim viewport: the posed 3D rig plus the transport (play/scrub/time +
@@ -45,8 +41,6 @@ export function AnimationViewport({
   onSelectPart,
   framingKey,
   onCreateClip,
-  clipFiles,
-  onAddClipFile,
 }: Props) {
   const {
     activeName,
@@ -90,8 +84,6 @@ export function AnimationViewport({
         <NoAnimationsYet
           disabled={manifestEditsDisabled}
           onCreateClip={onCreateClip}
-          clipFiles={clipFiles}
-          onAddClipFile={onAddClipFile}
         />
       </div>
     );

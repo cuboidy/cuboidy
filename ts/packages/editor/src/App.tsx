@@ -289,11 +289,12 @@ export function App() {
     [source, effectiveSelectedPart, partFiles, merged],
   );
 
-  // What each owning panel offers to bring into the model, identified by
-  // CONTENT — a v0.9 package is all `.json`, so the name settles nothing
-  // (§6.9 / §6.10 / §6.3). A palette may be SHARED, so every palette file
-  // is offered and only the target's current one is filtered out (in the
-  // panel); a clip or a geometry file already in the model is not.
+  // What each owning panel offers, identified by CONTENT — a v0.9
+  // package is all `.json`, so the name settles nothing (§6.9 / §6.10 /
+  // §6.3). Palettes and clips list every file of their kind, because a
+  // palette may be shared and a clip re-pointed, and the panel drops the
+  // one already in use. Geometry lists only the UNREFERENCED, since the
+  // Parts panel ADDS a file to the model rather than re-pointing one.
   const packageRefs = useMemo(() => {
     if (source === undefined) {
       return { paletteFiles: [], clips: [], geometry: [] };
@@ -301,9 +302,7 @@ export function App() {
     const classified = classifyPackageFiles(source);
     return {
       paletteFiles: paletteFilesIn(source),
-      clips: clipFilesIn(source).filter(
-        (p) => !classified.referencedNonGeometry.has(p),
-      ),
+      clips: clipFilesIn(source),
       geometry: geometryFilesIn(source).filter(
         (p) => !classified.loadedGeometry.has(p),
       ),
@@ -434,7 +433,7 @@ export function App() {
       partPalettes,
       paletteTarget,
       paletteFiles: packageRefs.paletteFiles,
-      unreferencedClips: packageRefs.clips,
+      clipFiles: packageRefs.clips,
       unreferencedGeometry: packageRefs.geometry,
       geometryPaths,
       effectiveSelectedPart,

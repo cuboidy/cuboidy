@@ -1,21 +1,20 @@
 import { Plus } from 'lucide-react';
-import { FileRefPicker } from './FileRefPicker.js';
 
 // The "no animations yet" empty state the anim viewport and the Timeline
 // panel both show — one copy, so the wording and the create affordance
 // cannot drift apart.
+//
+// One way in, deliberately: a model that ships a §6.3 clip file but
+// references none gets that clip by creating one and then pointing its
+// storage select (Timeline) at the file. Offering a second entry point
+// here would mean a picker that fires on selection while showing no
+// state — the shape this panel set just moved away from.
 export function NoAnimationsYet({
   disabled,
   onCreateClip,
-  clipFiles = [],
-  onAddClipFile,
 }: {
   disabled: boolean;
   onCreateClip: () => void;
-  // Unreferenced §6.3 clip files sitting in the package — a model with
-  // no animations may still ship the file that holds one.
-  clipFiles?: readonly string[];
-  onAddClipFile?: ((path: string) => void) | undefined;
 }) {
   return (
     <>
@@ -29,15 +28,6 @@ export function NoAnimationsYet({
         <Plus size={13} />
         Create animation
       </button>
-      {onAddClipFile !== undefined && (
-        <FileRefPicker
-          label="Use clip file"
-          files={clipFiles}
-          disabled={disabled}
-          title="Reference an animation file already in this package (SPEC §6.3). It joins the model under a name taken from the filename."
-          onPick={onAddClipFile}
-        />
-      )}
     </>
   );
 }
