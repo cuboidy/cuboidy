@@ -601,13 +601,11 @@ code {
    Rows, carets, icons and names are @cuboidy/ui/tree.css, including the
    drag states — this app only adds the strip you drop onto to detach,
    which has no counterpart in the editor's part tree because a part
-   always has somewhere to go and an instance can simply be free. */
+   always has somewhere to go and an instance can simply be free.
 
-.scene-tree-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
+   `.scene-tree-panel` has no rule of its own: the container is a
+   `.panel-list` like every other list here, and the tree class is the
+   name the e2e suite addresses it by. */
 
 .tree-row[draggable='true'] {
   cursor: grab;

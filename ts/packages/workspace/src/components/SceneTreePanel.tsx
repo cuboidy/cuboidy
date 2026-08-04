@@ -112,10 +112,19 @@ export function SceneTreePanel({
           onHideAll={onHideAll}
         />
       </div>
+      {/* Only the tree scrolls. The toolbar is a sibling ABOVE this, so
+          a long scene does not scroll it out of view and a wide row does
+          not carry it sideways — which is what happened while the whole
+          panel sat in the dock leaf's own scroller. */}
+      <div className="panel-scroll">
+      {/* `scene-tree-panel` carries no styling — `panel-list` supplies
+          all of it — but it is the hook the e2e suite addresses the tree
+          by, which is a use. */}
+      <div className="panel-list scene-tree-panel">
       {rows.length === 0 ? (
         <p className="empty">Nothing in the scene yet.</p>
       ) : (
-    <div className="scene-tree-panel">
+    <>
       <ul className="tree-list" role="tree">
         {rows.map((r) => (
           <Row
@@ -168,8 +177,10 @@ export function SceneTreePanel({
           Drop here to detach
         </div>
       )}
-    </div>
+    </>
       )}
+      </div>
+      </div>
     </>
   );
 }

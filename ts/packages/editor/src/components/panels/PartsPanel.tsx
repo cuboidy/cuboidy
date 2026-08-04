@@ -99,7 +99,7 @@ export function PartsPanel({
           onPick={onAddGeometryFile}
         />
       </div>
-      <div className="parts-scroll">
+      <div className="panel-scroll">
         <PartTree
           parts={parts}
           partFiles={partFiles}

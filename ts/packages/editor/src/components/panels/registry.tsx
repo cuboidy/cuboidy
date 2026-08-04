@@ -252,6 +252,9 @@ export function renderEditorPanel(
     case 'files':
       return {
         title,
+        // A `fill` panel so the toolbar can sit outside the tree's
+        // scroller — see FileTree.
+        fill: true,
         body: (
           <FileTree
             source={source}

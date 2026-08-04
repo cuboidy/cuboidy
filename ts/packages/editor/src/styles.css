@@ -896,22 +896,21 @@ pre {
 
 /* ─── Parts list ──────────────────────────────────────────────────── */
 
-/* Panel toolbar row (New part / Show all / Hide all; the Files tree
-   reuses it for New file / New folder). In the PARTS panel it sits
-   outside the scroller (fill panel + .parts-scroll below), so sticky is
-   inert there; the FILES tree still scrolls as one unit and relies on
-   it. (TODO: swap these for VS Code-style icons.) */
+/* `.panel-toolbar` (New part / Show all / Hide all, and the Files tree's
+   New file / New folder) and the `.panel-scroll` a toolbar'd panel puts
+   below it are both @cuboidy/ui/chrome.css — the workspace's Instances
+   panel wants the same strip over the same kind of tree, and having
+   them here is what let the two drift. All three trees now use the
+   pair. (TODO: swap these for VS Code-style icons.) */
 
-/* The Parts panel's own scroller, below its pinned toolbar. With the
-   toolbar inside the scroll container, the drag auto-scroll zone at the
-   container's top edge sat behind the sticky toolbar — dragging a part
-   upward only started scrolling once the pointer cleared the toolbar. */
-.parts-scroll {
+/* The Files panel's own column, so its toolbar and scroller stack the
+   way the Parts panel's do (both are `fill` panels). */
+.file-tree {
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-height: 0;
-  overflow: auto;
 }
-
 
 .part-tree {
   /* Generous end-of-list space (VS Code-style): keeps the last row off

@@ -1,8 +1,8 @@
 /* Tree rows.
  *
  * The shape a tree takes in this product: a caret slot (or a spacer, so
- * leaf names line up with expandable siblings'), an icon, a name that
- * ellipsises, and depth carried as inline padding-left on the row.
+ * leaf names line up with expandable siblings'), an icon, a name shown
+ * in full, and depth carried as inline padding-left on the row.
  *
  * Shared so the editor's Parts tree and the workspace's Instances tree
  * are the same tree. They answer the same question — what is inside
@@ -13,6 +13,14 @@
   list-style: none;
   padding: 0;
   margin: 0;
+  /* As wide as its widest row, so every row spans the whole SCROLLABLE
+     width rather than the panel's. Depth is padding-left, so a deep tree
+     overflows to the right; while the rows were only panel-wide their
+     hover and selection bands, and the trailing eye toggle, were cut off
+     at the panel's edge and stayed behind as you scrolled to reach them.
+     Each row is a block-level flex, so it fills this width and they all
+     end together. */
+  min-width: max-content;
 }
 
 .tree-row {
@@ -109,12 +117,15 @@ svg.ficon-json {
   align-items: center;
 }
 
+/* Names are NOT truncated. Ellipsising them made a deep tree unreadable
+   exactly where the nesting mattered, and it was not even buying a
+   fitting layout: depth padding overflows the panel anyway, so there was
+   a horizontal scrollbar AND cut-off names. The row grows to the name
+   instead, and the scrollbar reaches it. */
 .tree-name {
   flex: 1;
   font-family: var(--ui);
   font-size: 0.85rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

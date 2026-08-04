@@ -379,6 +379,10 @@ export function FileTree({
           New folder
         </button>
       </div>
+      {/* Only the tree scrolls: a deep tree is wider than the panel, and
+          with the toolbar inside the scroller it slid away sideways with
+          the rows. Same arrangement as the Parts and Instances panels. */}
+      <div className="panel-scroll">
       <ul className="tree-list">
           <li className="tree-node">
             <div
@@ -453,6 +457,7 @@ export function FileTree({
             )}
           </li>
         </ul>
+      </div>
     </div>
   );
 }

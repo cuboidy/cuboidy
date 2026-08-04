@@ -260,8 +260,12 @@ export function App() {
         case 'tree':
           return {
             title,
+            // A `fill` panel, so its toolbar can sit outside the scroller
+            // — see SceneTreePanel. The list padding moved inside with
+            // the rows, which is what it was ever for.
+            fill: true,
             body: (
-              <div className="panel-list">
+              <>
                 <SceneTreePanel
                   rows={rows}
                   all={placed}
@@ -298,7 +302,7 @@ export function App() {
                     );
                   }}
                 />
-              </div>
+              </>
             ),
           };
         case 'view':

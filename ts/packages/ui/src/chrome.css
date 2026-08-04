@@ -191,6 +191,11 @@ svg.lucide {
   top: 0;
   z-index: 2;
   display: flex;
+  /* Centre, not the flex default of stretch: a toolbar may hold a
+     control taller than a button (the Parts panel's file picker), and
+     stretching made the buttons grow with it — so the same Show all /
+     Hide all pair was a different height in each app. */
+  align-items: center;
   gap: 0.5rem;
   padding: 0.4rem 0.75rem;
   background: var(--bg-1);
@@ -201,4 +206,15 @@ svg.lucide {
 .panel-toolbar button {
   flex: 1;
   white-space: nowrap;
+}
+
+/* The scroller a toolbar'd panel puts BELOW its toolbar. Needs the
+   panel to be a `fill` one, so the leaf is a flex column and this can
+   take the remaining height. Without it the leaf's own scroller carries
+   the toolbar too: the strip scrolls up out of view, and a wide row
+   scrolls it sideways along with the rows. */
+.panel-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
