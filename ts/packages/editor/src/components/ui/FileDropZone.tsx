@@ -1,5 +1,6 @@
 import { useCallback, useState, type ChangeEvent, type DragEvent } from 'react';
 import { Folder } from 'lucide-react';
+import { canUseDirectoryPicker, pickDirectory } from '@cuboidy/ui';
 import type { LoadResult } from '../../lib/types.js';
 import { loadFromDirectoryEntry, loadFromDirectoryHandle, loadFromFileList, loadSingleFile } from '../../lib/load-model.js';
 
@@ -57,10 +58,9 @@ export function FileDropZone({ onLoad }: Props) {
   );
 
   const handleOpenFolderFSA = useCallback(async () => {
-    if (!('showDirectoryPicker' in window)) return;
+    if (!canUseDirectoryPicker()) return;
     try {
-      const handle = await (window as WindowWithFSA).showDirectoryPicker();
-      onLoad(await loadFromDirectoryHandle(handle));
+      onLoad(await loadFromDirectoryHandle(await pickDirectory()));
     } catch (e) {
       // User cancelled — silent. Real errors fall through to console.
       if ((e as Error).name !== 'AbortError') {
@@ -70,7 +70,7 @@ export function FileDropZone({ onLoad }: Props) {
     }
   }, [onLoad]);
 
-  const hasFsa = 'showDirectoryPicker' in window;
+  const hasFsa = canUseDirectoryPicker();
 
   return (
     <div
@@ -155,12 +155,8 @@ async function processDroppedItem(item: DataTransferItem): Promise<LoadResult | 
   return loadSingleFile(file);
 }
 
-// Minimal local type augmentations for APIs not yet in all TS lib.dom
+// Minimal local type augmentation for an API not yet in all TS lib.dom
 // distributions (FSA is shipping but inclusion in lib.dom lags).
-interface WindowWithFSA extends Window {
-  showDirectoryPicker(): Promise<FileSystemDirectoryHandle>;
-}
-
 interface DataTransferItemWithFSA extends DataTransferItem {
   getAsFileSystemHandle(): Promise<FileSystemHandle | null>;
 }

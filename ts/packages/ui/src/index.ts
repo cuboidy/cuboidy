@@ -50,6 +50,21 @@ export { SaveButton, useSaveFlash } from './SaveButton.js';
 export type { SaveState } from './SaveButton.js';
 export { VisibilityButtons } from './VisibilityButtons.js';
 
+export {
+  TEXT_FILE_RE,
+  canUseDirectoryPicker,
+  downloadBlob,
+  downloadText,
+  ensureReadwritePermission,
+  pickDirectory,
+  readDirectoryEntry,
+  readDirectoryHandle,
+  readFileList,
+  removeFileAt,
+  writeTextFileAt,
+} from './fs/browser-fs.js';
+export type { PickedFile } from './fs/browser-fs.js';
+
 export { buildRigTree, computeSceneCenter, computeSceneSpan } from './rig.js';
 
 export {

@@ -1,3 +1,4 @@
+import { downloadText, writeTextFileAt } from '@cuboidy/ui';
 import type { Library } from './library.js';
 import { SCENE_EXT, serializeScene } from './scene-file.js';
 import type { Scene } from './scene-doc.js';
@@ -44,36 +45,13 @@ export async function saveScene(
   const file = sceneFileName(path);
   const text = serializeScene(scene);
   if (library.handle !== undefined) {
-    const segments = file.split('/');
-    const name = segments.pop()!;
-    // Walk into (and create) the subfolders the path names, so saving to
-    // `scenes/armed.scene.json` works on a library that has no `scenes`
-    // folder yet.
-    let dir = library.handle;
-    for (const seg of segments) {
-      if (seg === '' || seg === '.') continue;
-      dir = await dir.getDirectoryHandle(seg, { create: true });
-    }
-    const handle = await dir.getFileHandle(name, { create: true });
-    const writable = await handle.createWritable();
-    await writable.write(text);
-    await writable.close();
+    // writeTextFileAt creates the subfolders the path names, so saving
+    // to `scenes/armed.scene.json` works on a library that has no
+    // `scenes` folder yet.
+    await writeTextFileAt(library.handle, file, text);
     return { kind: 'wrote', file };
   }
   const flat = file.split('/').pop()!;
-  download(flat, text);
+  downloadText(flat, text, 'application/json;charset=utf-8');
   return { kind: 'downloaded', file, downloadedAs: flat };
-}
-
-function download(name: string, text: string): void {
-  const url = URL.createObjectURL(
-    new Blob([text], { type: 'application/json;charset=utf-8' }),
-  );
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  document.body.append(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
 }

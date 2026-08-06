@@ -1,12 +1,11 @@
 import { MANIFEST_FILE, geometryPaths, normalizeRefPath as normalizePath, parseManifest, parsePaletteFile, resolveProject, resolveRefFrom, type Geometry, type InlineAnimation, type Manifest, type ResolvedPart } from '@cuboidy/core';
+import { TEXT_FILE_RE, readDirectoryEntry, readDirectoryHandle, readFileList } from '@cuboidy/ui';
 import { strFromU8, unzipSync } from 'fflate';
 import type { LoadResult, LoadedSource } from './types.js';
 const CUBOIDY_EXT = /\.cuboidy$/i;
-// Package files worth reading as text. Referenced files are only ever
-// .json (SPEC §8); .md/.txt ride along so docs survive a ZIP
-// round-trip. Binary assets (images etc.) are skipped — reading them as
-// text would garble them.
-const TEXT_FILE_RE = /\.(json|md|txt)$/i;
+// Which files are read as text — and the three ways a browser hands over
+// a folder — are @cuboidy/ui/fs: the workspace opens a library the same
+// ways, and had its own copy of each walk.
 
 // Public entry points. Each callsite knows what kind of source it has
 // (single File, FileList from <input webkitdirectory>, FSA directory
@@ -145,28 +144,16 @@ export function isSafeEntryPath(path: string): boolean {
 }
 
 export async function loadFromFileList(files: FileList): Promise<LoadResult> {
-  // <input webkitdirectory> populates File.webkitRelativePath with the
-  // sub-path inside the picked folder, e.g. "wolf/voxels.json". The
-  // first path segment is the folder itself.
+  // <input webkitdirectory> reports each file's sub-path inside the
+  // picked folder ("wolf/voxels.json"); the first segment is the folder.
+  // A file with NO folder segment is still taken: this entry point also
+  // serves a plain multi-file pick, where the package IS the selection.
+  const picked = await readFileList(files);
   const map = new Map<string, string>();
   let folderName = 'folder';
-  for (let i = 0; i < files.length; i++) {
-    const f = files[i]!;
-    // `||`, not `??`: the DOM always DEFINES webkitRelativePath, using the
-    // empty string for a File that did not come from a directory picker.
-    // `??` would pass that "" straight through and every path would then
-    // fail TEXT_FILE_RE, silently collecting nothing.
-    const rel =
-      (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name;
-    const parts = rel.split('/');
-    let inner = rel;
-    if (parts.length > 1) {
-      folderName = parts[0]!;
-      inner = parts.slice(1).join('/');
-    }
-    if (TEXT_FILE_RE.test(inner)) {
-      map.set(normalizePath(inner), await f.text());
-    }
+  for (const f of picked) {
+    if (f.folderName !== undefined) folderName = f.folderName;
+    map.set(normalizePath(f.path), f.text);
   }
   return buildFolderResult(map, folderName);
 }
@@ -174,50 +161,15 @@ export async function loadFromFileList(files: FileList): Promise<LoadResult> {
 export async function loadFromDirectoryHandle(
   handle: FileSystemDirectoryHandle,
 ): Promise<LoadResult> {
-  const map = new Map<string, string>();
-  await collectHandle(handle, '', map);
-  return buildFolderResult(map, handle.name, { handle });
-}
-
-async function collectHandle(
-  dir: FileSystemDirectoryHandle,
-  prefix: string,
-  out: Map<string, string>,
-): Promise<void> {
-  for await (const entry of dir.values()) {
-    const path = prefix === '' ? entry.name : `${prefix}/${entry.name}`;
-    if (entry.kind === 'directory') {
-      await collectHandle(entry as FileSystemDirectoryHandle, path, out);
-    } else if (TEXT_FILE_RE.test(entry.name)) {
-      const file = await (entry as FileSystemFileHandle).getFile();
-      out.set(path, await file.text());
-    }
-  }
+  return buildFolderResult(await readDirectoryHandle(handle), handle.name, {
+    handle,
+  });
 }
 
 export async function loadFromDirectoryEntry(
   entry: FileSystemDirectoryEntry,
 ): Promise<LoadResult> {
-  const map = new Map<string, string>();
-  await collectEntry(entry, '', map);
-  return buildFolderResult(map, entry.name);
-}
-
-async function collectEntry(
-  dir: FileSystemDirectoryEntry,
-  prefix: string,
-  out: Map<string, string>,
-): Promise<void> {
-  const entries = await readAllEntries(dir.createReader());
-  for (const e of entries) {
-    const path = prefix === '' ? e.name : `${prefix}/${e.name}`;
-    if (e.isDirectory) {
-      await collectEntry(e as FileSystemDirectoryEntry, path, out);
-    } else if (e.isFile && TEXT_FILE_RE.test(e.name)) {
-      const file = await fileFromEntry(e as FileSystemFileEntry);
-      out.set(path, await file.text());
-    }
-  }
+  return buildFolderResult(await readDirectoryEntry(entry), entry.name);
 }
 
 // ── shared assembly ──────────────────────────────────────────────────
@@ -437,27 +389,3 @@ function commonTopDir(paths: string[]): string | null {
   return dir;
 }
 
-// FileSystemDirectoryReader returns entries in batches and must be
-// pumped until it returns an empty array. Old API, but Firefox/Safari
-// still use this for drag-drop folders (no FSA equivalent there).
-function readAllEntries(
-  reader: FileSystemDirectoryReader,
-): Promise<FileSystemEntry[]> {
-  return new Promise((resolve, reject) => {
-    const out: FileSystemEntry[] = [];
-    const pump = () => {
-      reader.readEntries((batch) => {
-        if (batch.length === 0) resolve(out);
-        else {
-          out.push(...batch);
-          pump();
-        }
-      }, reject);
-    };
-    pump();
-  });
-}
-
-function fileFromEntry(entry: FileSystemFileEntry): Promise<File> {
-  return new Promise((resolve, reject) => entry.file(resolve, reject));
-}
