@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  clampToClip,
   isInlineAnimation,
   sampleAnimation,
   samplePart,
@@ -278,5 +279,50 @@ describe('animation schema — name validation (SPEC §5)', () => {
 
   it('rejects an animation name that fails the identifier regex', () => {
     expect(parseManifest(withAnimName('1bad')).ok).toBe(false);
+  });
+});
+
+// `clampToClip` is what a scrubber applies to place a monotonic clock inside
+// a clip, and `samplePart` used to carry a second formula for the same rule.
+// They agreed on round numbers and nowhere else, so the two could report
+// different points in the same loop.
+describe('clampToClip', () => {
+  it('holds at the ends when the clip does not loop', () => {
+    expect(clampToClip(-1, 2, false)).toBe(0);
+    expect(clampToClip(0.5, 2, false)).toBe(0.5);
+    expect(clampToClip(3, 2, false)).toBe(2);
+  });
+
+  it('wraps positively, including from negative time', () => {
+    expect(clampToClip(2.5, 1, true)).toBe(0.5);
+    expect(clampToClip(-0.5, 2, true)).toBe(1.5);
+    expect(clampToClip(3, 1.5, true)).toBe(0);
+  });
+
+  it('returns 0 for a degenerate duration', () => {
+    expect(clampToClip(1, 0, true)).toBe(0);
+    expect(clampToClip(1, -1, false)).toBe(0);
+  });
+
+  it('agrees with the sampler on the times the two formulas disagreed', () => {
+    // Each of these lands on a different keyframe under the old
+    // `time - floor(time / duration) * duration`.
+    const track: AnimationTrack = {
+      '0.0': { pos: [0, 0, 0] },
+      '0.05': { pos: [10, 0, 0] },
+    };
+    for (const time of [5, 0.7, 10]) {
+      const duration = time === 10 ? 0.3 : 0.1;
+      const wrapped = clampToClip(time, duration, true);
+      expect(samplePart(track, time, duration, true).pos).toEqual(
+        samplePart(track, wrapped, duration, true).pos,
+      );
+    }
+    // The sharpest case. `%` puts 5s into a 0.1s clip at the very end of the
+    // loop; the subtraction form put it at the start, because 5 / 0.1 rounds
+    // up to exactly 50 and 50 * 0.1 rounds back to exactly 5. A full clip
+    // apart, on the one value the scrubber and the sampler both read.
+    expect(clampToClip(5, 0.1, true)).toBeCloseTo(0.1, 10);
+    expect(5 - Math.floor(5 / 0.1) * 0.1).toBe(0);
   });
 });

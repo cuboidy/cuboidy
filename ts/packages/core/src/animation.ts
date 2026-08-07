@@ -283,13 +283,14 @@ export function samplePart(
   const first = keys[0]!;
   const last = keys[keys.length - 1]!;
 
-  let t: number;
-  if (loop && duration > 0) {
-    // Positive modulo (handles negative time too).
-    t = time - Math.floor(time / duration) * duration;
-  } else {
-    t = Math.max(0, Math.min(time, duration));
-  }
+  // The SAME wrap the scrubber applies. This used to be a second formula,
+  // `time - Math.floor(time / duration) * duration`, which agrees with
+  // clampToClip on round numbers and not otherwise: at time 5 in a 0.1s
+  // clip it returns 0 where clampToClip returns 0.09999999999999973, a full
+  // clip apart, so the UI reported the end of the loop while the model was
+  // posed at the start. `%` is the exact IEEE remainder; the subtraction
+  // form rounds twice, at the divide and at the multiply.
+  const t = clampToClip(time, duration, loop);
 
   let rot: Vec3Tuple;
   let pos: Vec3Tuple;
