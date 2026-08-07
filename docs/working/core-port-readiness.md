@@ -166,7 +166,8 @@ decision is settled here and unimplemented there.
 | D5 duplicate is a resolution failure | `SPEC.md` §11.6 | P2 |
 | D3 socket scale | `SPEC.md` §7.8 | P3 |
 | D4 core owns `scale`/`visible` | `SPEC.md` §7.7, and the scope table in `docs/csharp-implementation.md` | P3 |
-| D1 SPEC is the authority for diagnostic codes | `docs/csharp-implementation.md` — it amends that document's own "TypeScript is right" rule | P1 |
+| D1 SPEC is the authority for diagnostic codes | `docs/csharp-implementation.md` — it amends that document's own "TypeScript is right" rule | P1 ✔ |
+| D6 array bounds against a container | `docs/csharp-implementation.md`, via the pointer at `zod-diagnostic.ts` | P1 ✔ |
 
 Once P4 is done, everything left here is history, and the file goes the way
 `docs/ux-backlog.md` did: deleted, recoverable from git, with a pointer in
@@ -458,7 +459,9 @@ first two are what make the port's translation source trustworthy; the third
 is what lets anyone tell whether the translation succeeded; the fourth is
 cosmetic by comparison and can wait until the C# side is being written.
 
-**P1 — one diagnostic mapping, SPEC-conformant, pinned by fixtures.**
+**P1 — one diagnostic mapping, SPEC-conformant, pinned by fixtures.** *Done —
+`7bae427`, `c3990dc`, `f127994`. D1 and D6 have landed in
+`docs/csharp-implementation.md`; the corpus is 38 files across three kinds.*
 Collapse the three Zod→code ladders into `zod-diagnostic.ts` with
 `resultFromZodError(error, input, opts)` [R3-c], correcting `manifest.ts` to
 SPEC per D1, adding union unwrapping to the manifest's three union sites, and

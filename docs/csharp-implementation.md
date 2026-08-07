@@ -95,10 +95,17 @@ TypeScript side, rather than pulling in a JSON Schema validator.
 
 Every file under `fixtures/` yields the diagnostic code its directory is named
 after: `fixtures/geometry/wrong-arity/row-width.json` reports `wrong-arity`,
-`fixtures/manifest/missing/name.json` reports `missing`, and so on. Twenty
-files today across `geometry/` and `manifest/`. That corpus is the
-cross-implementation contract; passing it is what "a second implementation
-exists" means here.
+`fixtures/manifest/missing/name.json` reports `missing`, and so on. Thirty-
+eight files today across `geometry/`, `manifest/` and `palette/`. That corpus
+is the cross-implementation contract; passing it is what "a second
+implementation exists" means here.
+
+The C# side does not reimplement the mapping from a validation failure to a
+code. `core/src/zod-diagnostic.ts` is the one place that decides, and its
+branches are inference over Zod's issue shape — a hand-written validator
+knows directly what a hand-written validator needs to know. Read §11.2's
+table and that file's comments; port neither the branches nor the three
+readers' older behaviour, which disagreed with the table and with each other.
 
 `models/` is the positive half of the same contract: every shipped model —
 fox, herbalist, knight, koi, owl, sword, windmill — loads clean.
@@ -131,6 +138,16 @@ nobody runs rots faster than one with a narrow audience.
 
 TypeScript stays the reference. Where the two disagree and the spec is silent,
 TypeScript is right and the spec gets the amendment.
+
+Where the spec is **not** silent, the spec is right and TypeScript gets the
+fix — before the port, not after. Left unstated, the rule above reads as
+"TypeScript is right", and a pre-port audit found four classes of diagnostic
+where the manifest reader disagreed with §11.2 while the geometry reader
+agreed with it, plus inline geometry reporting a phase-3 violation ahead of a
+phase-2 one against §11.8's explicit prohibition. Both are fixed. The value
+of a second implementation is that it disagrees out loud; that only works if
+disagreements with the spec are settled in the spec's favour rather than
+inherited.
 
 The C# side is a port, not a reinterpretation: keep the same decomposition and
 the same names wherever C# allows, so that a future spec change can be applied
