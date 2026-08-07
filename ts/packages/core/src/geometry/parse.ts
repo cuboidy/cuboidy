@@ -7,7 +7,8 @@ import { locateJsonPath } from './locate.js';
 import { parseHexColor } from './palette.js';
 import { charToIndex } from './voxel-row.js';
 import type { Color, Geometry, Part, Pivot, Socket, Vec3 } from './types.js';
-import { err, ok, type CuboidyErrorCode, type Result } from '../result.js';
+import { err, ok, type Result } from '../result.js';
+import { resultFromZodError } from '../zod-diagnostic.js';
 
 // SPEC §7: reads a geometry file into the same AST every downstream consumer
 // already expects — lintGeometry, validateProject, buildMesh and the renderers are
@@ -20,20 +21,7 @@ import { err, ok, type CuboidyErrorCode, type Result } from '../result.js';
 
 export function parseGeometry(json: unknown): Result<Geometry> {
   const result = GeometrySchema.safeParse(json);
-  if (!result.success) {
-    const issue = unwrapUnion(result.error.issues[0]!, json);
-    const label = issue.path.length > 0 ? issue.path.join('.') : '<root>';
-    // Zod describes an absent field by the type it wanted ("expected tuple,
-    // received undefined"), which reads as a type error to someone who simply
-    // forgot a line. Say what actually happened.
-    const missing = isMissingAtPath(json, issue.path);
-    const detail = missing ? 'required field is missing' : issue.message;
-    return err(
-      mapIssueToCode(issue, json),
-      `${label}: ${detail}`,
-      issue.path as ReadonlyArray<string | number>,
-    );
-  }
+  if (!result.success) return resultFromZodError(result.error, json);
   return ok(toAst(result.data));
 }
 
@@ -155,91 +143,3 @@ function toRow(row: string): number[] {
   return cells;
 }
 
-// ----- diagnostics ------------------------------------------------------
-
-interface ZodIssueLike {
-  code: string;
-  path: ReadonlyArray<PropertyKey>;
-  message: string;
-}
-
-// §7.4's `palette` is a union — inline colors OR a §8 reference path — and a
-// union failure surfaces as ONE `invalid_union` issue whose own message is a
-// generic "invalid input", with the real diagnoses tucked into one issue list
-// per branch. Report the branch the author was evidently aiming at (an array
-// value → the colors branch, anything else → the reference branch) so both the
-// message and the §11.2 code stay as specific as they were before the union.
-function unwrapUnion(issue: ZodIssueLike, input: unknown): ZodIssueLike {
-  if (issue.code !== 'invalid_union') return issue;
-  const branches = (issue as { errors?: ZodIssueLike[][] }).errors ?? [];
-  if (branches.length === 0) return issue;
-  const wrote = valueAtPath(input, issue.path);
-  const picked =
-    (Array.isArray(wrote) ? branches[0] : branches[branches.length - 1]) ??
-    branches[0]!;
-  const first = picked[0];
-  if (first === undefined) return issue;
-  return { ...first, path: [...issue.path, ...first.path] };
-}
-
-function valueAtPath(input: unknown, path: ReadonlyArray<PropertyKey>): unknown {
-  let cur: unknown = input;
-  for (const key of path) {
-    if (cur === null || typeof cur !== 'object') return undefined;
-    cur = (cur as Record<PropertyKey, unknown>)[key];
-  }
-  return cur;
-}
-
-// Mirrors parseManifest's mapping so both files report the same §11.2
-// structural categories for the same class of mistake.
-function mapIssueToCode(issue: ZodIssueLike, input: unknown): CuboidyErrorCode {
-  const custom = (issue as { params?: { cuboidyCode?: CuboidyErrorCode } }).params
-    ?.cuboidyCode;
-  if (custom !== undefined) return custom;
-
-  if (issue.code === 'unrecognized_keys') return 'unknown';
-
-  // An empty `parts` array reads as "no parts declared", not a bad value.
-  if (
-    issue.path.length === 1 &&
-    issue.path[0] === 'parts' &&
-    issue.code === 'too_small'
-  ) {
-    return 'missing';
-  }
-
-  // A genuinely absent required field. Zod 4 drops `received`, so the only
-  // reliable test is to walk the input — same approach as manifest.ts.
-  if (isMissingAtPath(input, issue.path)) return 'missing';
-
-  // Too many / too few colours is an arity problem (§7.4's 62-colour cap).
-  if (issue.path[0] === 'palette' && (issue.code === 'too_big' || issue.code === 'too_small')) {
-    return 'wrong-arity';
-  }
-
-  // A bound violation reported against a container — `size`, `pos`, `rot` —
-  // means the wrong number of elements. Reported against an element (the last
-  // path segment is an index) it means a bad value: SPEC §7.6 calls a zero or
-  // out-of-range dimension `invalid-value`, not `wrong-arity`.
-  if (issue.code === 'too_small' || issue.code === 'too_big') {
-    const last = issue.path[issue.path.length - 1];
-    return typeof last === 'number' ? 'invalid-value' : 'wrong-arity';
-  }
-  return 'invalid-value';
-}
-
-function isMissingAtPath(input: unknown, path: ReadonlyArray<PropertyKey>): boolean {
-  let cur: unknown = input;
-  for (const key of path) {
-    if (cur === null || typeof cur !== 'object') return true;
-    if (typeof key === 'number') {
-      if (!Array.isArray(cur) || key >= cur.length) return true;
-      cur = cur[key];
-    } else {
-      if (!Object.hasOwn(cur as object, key)) return true;
-      cur = (cur as Record<PropertyKey, unknown>)[key];
-    }
-  }
-  return cur === undefined;
-}

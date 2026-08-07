@@ -135,6 +135,24 @@ removes the question. (Ordering still has to be specified for
 `geometryPaths` — see H6 — so this does not avoid that work, it only removes
 the worst consequence of getting it wrong.)
 
+### D6 — An array bound reported against a container is `wrong-arity`
+
+Taken during P1, where the unified mapping needed one rule for every array
+bound rather than the per-field special cases the three readers each carried.
+
+§11.2 settles most of it directly: an empty `parts` is `missing` ("no `parts`,
+or `parts` present but empty"), an inline palette with 0 or more than 62
+colors is `wrong-arity`, and a `size` dimension outside `[1..1024]` is
+`invalid-value`. The rule that produces all three is *what the bound was
+reported against* — a container means the wrong number of items, an element
+(the last path segment is an index) means that element's value is out of
+range — with `parts` as the single spec-named exception.
+
+The one case SPEC does not name is an empty manifest `geometry` list, which
+the manifest reader called `invalid-value`. It is now `wrong-arity`, the same
+answer an empty palette gets, because the alternative is a special case whose
+only justification is that it is what the code used to do.
+
 ### Where the decisions land
 
 Only these five outlive this file, so each has a home to move to. The move

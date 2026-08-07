@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { MAX_PALETTE, parseHexColor } from './geometry/palette.js';
 import type { Palette } from './geometry/types.js';
 import { err, ok, type Result } from './result.js';
+import { resultFromZodError } from './zod-diagnostic.js';
 
 // SPEC §6.10 (v0.7): external palette file — a shareable palette bound to
 // a model via the manifest's top-level `palette` reference. The color
@@ -20,29 +21,17 @@ export const PaletteFileSchema = z
 
 export function parsePaletteFile(json: unknown): Result<Palette> {
   const parsed = PaletteFileSchema.safeParse(json);
-  if (!parsed.success) {
-    const issue = parsed.error.issues[0]!;
-    const path = issue.path.length > 0 ? issue.path.join('.') : '<root>';
-    const colorsAbsent =
-      issue.path[0] === 'colors' &&
-      json !== null &&
-      typeof json === 'object' &&
-      !Object.hasOwn(json, 'colors');
-    const code =
-      issue.code === 'unrecognized_keys'
-        ? 'unknown'
-        : issue.code === 'too_big' || issue.code === 'too_small'
-          ? 'wrong-arity'
-          : colorsAbsent
-            ? 'missing'
-            : 'invalid-value';
-    return err(code, `${path}: ${issue.message}`);
-  }
+  if (!parsed.success) return resultFromZodError(parsed.error, json);
   const colors = [];
   for (const [i, s] of parsed.data.colors.entries()) {
     const color = parseHexColor(s);
     if (color === null) {
-      return err('invalid-value', `colors.${i}: invalid color '${s}'`);
+      // Carries a path like every other reader's failures, so a caller
+      // holding the text can locate it with `locateJsonPath`.
+      return err('invalid-value', `colors.${i}: invalid color '${s}'`, [
+        'colors',
+        i,
+      ]);
     }
     colors.push(color);
   }

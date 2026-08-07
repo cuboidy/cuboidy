@@ -109,12 +109,15 @@ describe('parseManifest — part rotation (v0.9)', () => {
   });
 
   it('rejects a rotation with the wrong arity', () => {
+    // SPEC §11.2 lists "`size` or a coordinate that is not a triple" under
+    // `wrong-arity`. The manifest reader used to report `invalid-value` here
+    // while the geometry reader reported `wrong-arity` for `pivot.pos`.
     const r = parseManifest({
       name: 'test',
       parts: [{ name: 'body', rotation: [0, 45] }],
     });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('invalid-value');
+    if (!r.ok) expect(r.code).toBe('wrong-arity');
   });
 
   it('rejects a non-numeric rotation component', () => {
@@ -207,9 +210,12 @@ describe('parseManifest — geometry list', () => {
   });
 
   it('rejects an empty geometry list', () => {
+    // An array bound reported against the container is `wrong-arity`, the
+    // same answer an empty inline palette gets (§11.2). SPEC does not name
+    // this case; it is mapped for consistency with the ones it does.
     const r = parseManifest({ ...base, geometry: [] });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('invalid-value');
+    if (!r.ok) expect(r.code).toBe('wrong-arity');
   });
 
   it('rejects a bare extension as a path', () => {
@@ -449,5 +455,146 @@ describe('parseManifest — published sockets (§6.12)', () => {
       const r = parseManifest({ name: 'm', parts: [{ name: 'body' }], sockets });
       expect(r.ok).toBe(false);
     }
+  });
+});
+
+// The manifest reader used to carry its own Zod→code mapping, which
+// disagreed with the geometry reader's about four classes of mistake and, in
+// the `missing` case, with its own message. Both now go through
+// `resultFromZodError`, so these pin the §11.2 answers rather than whichever
+// mapping a given reader happened to hold.
+describe('parseManifest — §11.2 codes', () => {
+  it('missing: an absent required field on a part, not just at the top level', () => {
+    const r = parseManifest({ name: 'm', parts: [{}] });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.code).toBe('missing');
+      // The code and the message used to be computed from different
+      // predicates, so this returned `invalid-value` alongside a message
+      // that said the field was missing.
+      expect(r.message).toBe('parts.0.name: required field is missing');
+    }
+  });
+
+  it('missing: a part naming inline geometry with no `size`', () => {
+    const r = parseManifest({
+      name: 'm',
+      parts: [{ name: 'body', geometry: { voxels: [['0']] } }],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('missing');
+  });
+
+  it('wrong-arity: an inline palette with 0 colors or more than 62', () => {
+    const empty = parseManifest({ name: 'm', parts: [{ name: 'b' }], palette: [] });
+    expect(empty.ok).toBe(false);
+    if (!empty.ok) expect(empty.code).toBe('wrong-arity');
+
+    const tooMany = parseManifest({
+      name: 'm',
+      parts: [{ name: 'b' }],
+      palette: Array.from({ length: 63 }, () => '#000000'),
+    });
+    expect(tooMany.ok).toBe(false);
+    if (!tooMany.ok) expect(tooMany.code).toBe('wrong-arity');
+  });
+
+  it('wrong-arity: a position that is not a triple', () => {
+    const r = parseManifest({
+      name: 'm',
+      parts: [{ name: 'b', position: [0, 0] }],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('wrong-arity');
+  });
+
+  it('invalid-value: a palette entry that is not a color', () => {
+    // The union picks the branch that failed INSIDE the value, so the
+    // diagnosis stays as specific as it was before `palette` grew a
+    // reference form — path and all.
+    const r = parseManifest({
+      name: 'm',
+      parts: [{ name: 'b' }],
+      palette: ['#000000', 1],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.code).toBe('invalid-value');
+      expect(r.message).toMatch(/^palette\.1: /);
+    }
+  });
+});
+
+// SPEC §6.7 keyframe rules reached through the manifest's `animations`
+// union. Every one of these used to collapse into
+// `invalid-value: animations.<name>: Invalid input`, because only the
+// geometry reader unwrapped unions.
+describe('parseManifest — §6.7 through the animations union', () => {
+  const withClip = (clip: unknown) => ({
+    name: 'm',
+    parts: [{ name: 'body' }],
+    animations: { walk: clip },
+  });
+  const track = { body: { '0.0': { rot: [0, 0, 0] } } };
+
+  it('accepts a well-formed inline clip', () => {
+    const r = parseManifest(withClip({ duration: 1, loop: true, parts: track }));
+    expect(r.ok).toBe(true);
+  });
+
+  it('unknown: an unrecognized keyframe field', () => {
+    const r = parseManifest(
+      withClip({
+        duration: 1,
+        loop: true,
+        parts: { body: { '0.0': { zzz: 1 } } },
+      }),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.code).toBe('unknown');
+      expect(r.message).toMatch(/animations\.walk\.parts\.body/);
+    }
+  });
+
+  it('unknown: an ease preset that is not a preset', () => {
+    const r = parseManifest(
+      withClip({
+        duration: 1,
+        loop: true,
+        parts: { body: { '0.0': { rot: [0, 0, 0], ease: { rot: 'nope' } } } },
+      }),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('unknown');
+  });
+
+  it('unknown: an attribute the ease map does not carry', () => {
+    const r = parseManifest(
+      withClip({
+        duration: 1,
+        loop: true,
+        parts: { body: { '0.0': { ease: { visible: 'linear' } } } },
+      }),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('unknown');
+  });
+
+  it('missing: an absent `loop`', () => {
+    const r = parseManifest(withClip({ duration: 1, parts: track }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.code).toBe('missing');
+      expect(r.message).toBe(
+        'animations.walk.loop: required field is missing',
+      );
+    }
+  });
+
+  it('invalid-value: a reference that is not a legal §8 path', () => {
+    const r = parseManifest(withClip('/abs/walk.json'));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 });
