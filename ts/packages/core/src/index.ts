@@ -136,6 +136,7 @@ export type {
   AnimPose,
   QuatTuple,
   Vec3Tuple,
+  Frame,
   WorldTransform,
 } from './rig-transform.js';
 

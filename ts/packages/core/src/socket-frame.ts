@@ -8,6 +8,7 @@ import {
   quatMultiply,
   quatRotateVec3,
   type AnimPose,
+  type Frame,
   type PosedPart,
   type QuatTuple,
   type Vec3Tuple,
@@ -22,13 +23,13 @@ import {
 // point or the two models come apart. `cuboidy-snap --attach` will want
 // exactly this, and a second implementation is how the halves drift.
 
-export interface SocketFrame {
-  // World position of the socket's origin.
-  pos: [number, number, number];
-  // World orientation: the host part's, composed with the socket's own
-  // `rot` (§7.8). A guest's axes align to this.
-  quat: QuatTuple;
-}
+// Where an attachment point IS: `pos` is the socket origin in world space,
+// `quat` the host part's orientation composed with the socket's own `rot`
+// (§7.8), which a guest's axes align to.
+//
+// The same `Frame` a part's `WorldTransform` is — one shape, two names for
+// the two things it places. They used to be two identical declarations.
+export type SocketFrame = Frame;
 
 // parent ∘ child: the child frame carried into the parent's — its offset
 // rotated into the parent's axes, orientations composed. A socket frame

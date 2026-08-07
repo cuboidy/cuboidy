@@ -90,13 +90,21 @@ export function composePartRotation(
   return q;
 }
 
-// World-space rest placement of one part: where its pivot sits and how
-// its local frame is oriented. A part-local point v lands at
-//   v_world = pos + rotate(quat, v − pivot.pos)
-export interface WorldTransform {
+// A rigid placement: where something sits and how it is turned. ONE shape,
+// under the two names the two uses have — `WorldTransform` for a part,
+// `SocketFrame` (socket-frame.ts) for an attachment point. They were two
+// identical declarations, which TypeScript lets you pass interchangeably and
+// C# does not: the port would have shipped two records that cannot be
+// assigned to each other unless someone noticed they are the same thing.
+export interface Frame {
   pos: [number, number, number];
   quat: QuatTuple;
 }
+
+// World-space placement of one part: where its pivot sits and how its local
+// frame is oriented. A part-local point v lands at
+//   v_world = pos + rotate(quat, v − pivot.pos)
+export type WorldTransform = Frame;
 
 // The animated part of a pose, as SPEC §6.5 defines it. `scale` and
 // `visible` are NOT part of the world transform — scale applies to the

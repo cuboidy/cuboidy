@@ -181,6 +181,27 @@ So §7.4 states it. A runtime that only draws needs a defined answer, and a
 conspicuous color is a better one than a crash, a skipped voxel, or an
 out-of-bounds read. Reporting stays an authoring-time concern (§11.6).
 
+### D9 — `render/camera.ts` is not ported
+
+Taken during P4. It reads like a candidate for an exception: pure math,
+depending on nothing but `render/vec.ts`, barrel-exported with a comment
+explaining that it pulls no CLI or Node code into a bundle, and consumed by
+the workspace's thumbnail view. But its `Angle` set is the contact-sheet
+convention `cuboidy-snap` renders — not a format rule — and an engine that
+draws the mesh already has a camera. Dropped with the rest of `render/`,
+now by decision rather than by category.
+
+### D10 — A resolver's diagnostic has no lint rule ID
+
+Also P4. `ProjectDiagnostic` carried a `Diagnostic`, whose `ruleId` is one of
+eleven `W`/`H` identifiers from §11.3/§11.4 — and `project.ts` never set it,
+at any of its eight sites, because resolution has no such vocabulary. The
+port would have carried the enum into a library that has no lint.
+
+`ResolutionDiagnostic` is `Diagnostic` without `ruleId`. Structurally still a
+`Diagnostic`, so every consumer renders these unchanged; the line the port
+plan draws in prose is now drawn in the types.
+
 ### Where the decisions land
 
 Only these five outlive this file, so each has a home to move to. The move
@@ -196,6 +217,8 @@ decision is settled here and unimplemented there.
 | D3 socket scale | `SPEC.md` §7.8 | P3 ✔ |
 | D4 core owns `scale`/`visible` | `SPEC.md` §7.7, and the scope table in `docs/csharp-implementation.md` | P3 ✔ |
 | D8 an unresolved index renders magenta | `SPEC.md` §7.4 | P3 ✔ |
+| D9 `render/camera.ts` is not ported | `docs/csharp-implementation.md` | P4 ✔ |
+| D10 resolvers carry no lint rule ID | `docs/csharp-implementation.md` | P4 ✔ |
 | D1 SPEC is the authority for diagnostic codes | `docs/csharp-implementation.md` — it amends that document's own "TypeScript is right" rule | P1 ✔ |
 | D6 array bounds against a container | `docs/csharp-implementation.md`, via the pointer at `zod-diagnostic.ts` | P1 ✔ |
 
@@ -524,7 +547,9 @@ a subdirectory, **a `pivot.rot` on a part that has children**, and the unused
 easing presets — promoting `ts/testdata/inline` is a candidate. Compare parsed
 doubles with a tolerance, never printed strings.
 
-**P4 — naming and packaging, before the first C# commit.** §6's collisions;
+**P4 — naming and packaging, before the first C# commit.** *Done —
+`3044524`, `9e9f457`, `4718b9d`, plus the `Frame` unification. D9 and D10
+below.* §6's collisions;
 the scope table in `docs/csharp-implementation.md` corrected to nineteen files
 with the five unclassified ones decided; explicit decisions on
 `render/camera.ts` and on splitting the lint vocabulary out of `Diagnostic`;
