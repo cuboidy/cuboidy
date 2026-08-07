@@ -598,3 +598,100 @@ describe('parseManifest — §6.7 through the animations union', () => {
     if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 });
+
+// SPEC §11.8: "a phase runs only if every earlier phase passed… Reporting a
+// violation from a LATER phase than one that is also present is
+// non-conforming." Inline geometry (§6.13) used to break this, because its
+// cross-field checks ran as a refinement on the field itself — during the
+// document's own structural parse — so a phase-3 problem on one part beat a
+// phase-2 problem on the next.
+describe('parseManifest — §11.8 phase precedence for inline geometry', () => {
+  const badRowWidth = {
+    name: 'a',
+    geometry: { size: [2, 1, 1], voxels: [['0']] },
+  };
+
+  it('reports the phase-3 row width when it is the only problem', () => {
+    const r = parseManifest({ name: 'm', parts: [badRowWidth] });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.code).toBe('wrong-arity');
+      expect(r.message).toMatch(/^parts\.0\.geometry\.voxels\.0\.0: /);
+    }
+  });
+
+  it('phase 2 wins: a later part with no `name` outranks it', () => {
+    const r = parseManifest({
+      name: 'm',
+      parts: [badRowWidth, { position: [0, 0, 0] }],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('missing');
+  });
+
+  it('phase 2 wins: a later part with an unknown field outranks it', () => {
+    const r = parseManifest({
+      name: 'm',
+      parts: [badRowWidth, { name: 'b', mystery: true }],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('unknown');
+  });
+
+  it('phase 2 wins: an inline part missing `size` outranks it', () => {
+    const r = parseManifest({
+      name: 'm',
+      parts: [badRowWidth, { name: 'b', geometry: { voxels: [['0']] } }],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('missing');
+  });
+
+  it('still reaches phase 3 for sockets and palette indices', () => {
+    const dupSocket = parseManifest({
+      name: 'm',
+      parts: [
+        {
+          name: 'a',
+          geometry: {
+            size: [1, 1, 1],
+            voxels: [['0']],
+            sockets: [
+              { name: 'g', pos: [0, 0, 0] },
+              { name: 'g', pos: [1, 0, 0] },
+            ],
+          },
+        },
+      ],
+    });
+    expect(dupSocket.ok).toBe(false);
+    if (!dupSocket.ok) expect(dupSocket.code).toBe('duplicate');
+
+    const outOfRange = parseManifest({
+      name: 'm',
+      parts: [
+        {
+          name: 'a',
+          geometry: {
+            size: [1, 1, 1],
+            voxels: [['5']],
+            palette: ['#000000', '#FFFFFF'],
+          },
+        },
+      ],
+    });
+    expect(outOfRange.ok).toBe(false);
+    if (!outOfRange.ok) expect(outOfRange.code).toBe('invalid-value');
+  });
+
+  it('an index against the manifest palette still defers to §11.6', () => {
+    // §11.8 is explicit that this defers even though the colors are an
+    // array in the same document.
+    const r = parseManifest({
+      name: 'm',
+      palette: ['#000000', '#FFFFFF'],
+      parts: [{ name: 'a', geometry: { size: [1, 1, 1], voxels: [['5']] } }],
+    });
+    expect(r.ok).toBe(true);
+  });
+});

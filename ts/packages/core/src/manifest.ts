@@ -65,14 +65,14 @@ export const PartGeometrySchema = GeometryPartSchema
         });
       }
     }
-    if (g.size === undefined || g.voxels === undefined) return;
-    // §11.8 phase 3, by the same code a geometry file's part goes through.
-    // The index range is checked only against a palette written out HERE;
-    // a reference — or the manifest's default — defers to §11.6, so which
-    // phase reports an out-of-range index never depends on where the colors
-    // happen to live.
-    const paletteSize = Array.isArray(g.palette) ? g.palette.length : null;
-    checkPartFields({ ...g, size: g.size, voxels: g.voxels }, [], paletteSize, ctx);
+    // Everything above is §11.8 phase 2 — each field considered on its own.
+    // The cross-field rules for an inline part (voxel arity against `size`,
+    // palette index range, socket-name uniqueness) are phase 3, and a phase
+    // runs only if every earlier one passed. They therefore CANNOT live
+    // here: a refinement on this field runs during the document's own
+    // structural parse, so a bad row width on one part would be reported
+    // ahead of an absent `name` on the next. They run from ManifestSchema's
+    // refinement instead, which Zod reaches only once every part parsed.
   });
 
 export const ManifestPartSchema = z
@@ -140,6 +140,11 @@ export const ManifestSchema = z
   // carries the structural code (§11.2) so parseManifest can map custom
   // issues to `duplicate` where the SPEC calls for it.
   .superRefine((m, ctx) => {
+    // §11.8 phase 3: "parts are examined in document order; within a part"
+    // duplicate name, then the arity levels, then palette indices, then
+    // sockets — which is why the inline-geometry check sits inside this
+    // loop rather than after it, and is the order a geometry file's parts
+    // are already examined in (GeometrySchema's refinement).
     const names = new Set<string>();
     for (const [i, p] of m.parts.entries()) {
       if (names.has(p.name)) {
@@ -151,6 +156,22 @@ export const ManifestSchema = z
         });
       }
       names.add(p.name);
+
+      // SPEC §6.13 inline geometry, by the same code a geometry file's part
+      // goes through. The index range is checked only against a palette
+      // written out HERE; a reference — or the manifest's default — defers
+      // to §11.6 "even when the manifest's palette is an array in the same
+      // document, so that where the colors are written never changes when
+      // an error is reported" (§11.8).
+      const g = p.geometry;
+      if (g !== undefined && g.size !== undefined && g.voxels !== undefined) {
+        checkPartFields(
+          { size: g.size, voxels: g.voxels, sockets: g.sockets },
+          ['parts', i, 'geometry'],
+          Array.isArray(g.palette) ? g.palette.length : null,
+          ctx,
+        );
+      }
     }
     for (const [i, p] of m.parts.entries()) {
       if (p.parent !== undefined && !names.has(p.parent)) {
