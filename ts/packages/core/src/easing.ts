@@ -110,8 +110,21 @@ const EASING_FN: Record<EasingName, (u: number) => number> = {
 };
 
 // Remap normalized segment progress `u` through the named preset. Every
-// preset maps 0 → 0 and 1 → 1 (endpoints are exact so keyed values are
-// always hit exactly at their keyframes).
+// preset maps 0 → 0 and 1 → 1, so a keyed value is hit exactly at its
+// keyframe (SPEC §6.7).
+//
+// The endpoints are clamped rather than trusted, because the formulas do not
+// deliver them: `in-sine(1)` is 0.9999999999999999, `in-back(1)` is
+// 0.9999999999999998, `out-back(0)` is 2.220446049250313e-16, and
+// `in-out-sine(0)` is -0. Five of the twenty presets, all landing exactly
+// where an author placed a value and expects to see it — and each one a
+// place a second implementation's trig could round the other way.
+//
+// Interior values are NOT normalized: they are whatever the formulas below
+// produce, so a port must use the same expressions rather than algebraically
+// equivalent rewrites.
 export function applyEasing(name: EasingName, u: number): number {
+  if (u === 0) return 0; // also normalizes -0
+  if (u === 1) return 1;
   return EASING_FN[name](u);
 }

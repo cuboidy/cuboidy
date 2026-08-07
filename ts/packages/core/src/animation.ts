@@ -238,11 +238,15 @@ function lerp3(a: Vec3Tuple, b: Vec3Tuple, u: number): Vec3Tuple {
 // keyframe whose time is ≤ t takes effect. Before the first key, the first
 // key's value holds (every animated part starts at "0.0" per §6.6, so this
 // only matters defensively).
-const EPS = 1e-9;
+// The comparison is exact, like the segment selection the other three
+// attributes use. It carried a 1e-9 absolute tolerance, which §6.7 does not
+// define, which nothing documented, which no other attribute shared — so
+// `visible` could flip up to a nanosecond before `rot` began moving — and
+// which is meaningless at large `t` anyway, being smaller than the ULP.
 function stepVisible(keys: readonly ResolvedKey[], t: number): boolean {
   let v = keys[0]!.visible;
   for (const k of keys) {
-    if (k.t <= t + EPS) v = k.visible;
+    if (k.t <= t) v = k.visible;
     else break;
   }
   return v;

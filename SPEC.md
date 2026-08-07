@@ -293,13 +293,13 @@ Between consecutive keyframes:
 
 - `rot`, `pos`, `scale` interpolate along the segment's **easing curve** (below); with the default `linear` ease this is plain linear interpolation
 - **Interpolation is component-wise on the stored triple.** For `rot` this means the three Euler angles are interpolated independently — *not* converted to quaternions and slerped. The two agree for small rotations and diverge as they grow, so this is a conformance requirement, not an implementation detail. It is also what makes a full revolution expressible: a segment from `0` to `−360` on one axis is a constant-rate turn under component-wise interpolation, where a slerp would treat the endpoints as the same orientation and produce no motion at all.
-- `visible` uses **step** interpolation: the value at the later keyframe takes effect at that keyframe's time
+- `visible` uses **step** interpolation: the value at the later keyframe takes effect at that keyframe's time. The comparison is exact — `t >= k`, with no tolerance — the same way the segment containing `t` is chosen for the other three attributes
 
 #### Easing
 
 Each attribute's curve over a segment is named by the `ease` map of the segment's **outgoing** keyframe (the earlier of the pair): `"ease": { "rot": "out-elastic" }` shapes **only** `rot`, **only** across the segment leaving that keyframe. There is no carryover (§6.5) and no cross-attribute effect — an attribute absent from the map interpolates linearly, so a curve can never leak onto later segments or onto other attributes that happen to cross the same span. To ease several consecutive segments, name the curve on each of their outgoing keyframes.
 
-An easing is a pure remap `u → u'` of normalized segment progress (`u = 0` at the outgoing keyframe, `u = 1` at the next), applied before linear interpolation of that attribute's values. Every preset maps `0 → 0` and `1 → 1`, so keyed values are always hit exactly at their keyframes. The presets and their formulas follow the de-facto standard set popularized by easings.net:
+An easing is a pure remap `u → u'` of normalized segment progress (`u = 0` at the outgoing keyframe, `u = 1` at the next), applied before linear interpolation of that attribute's values. Every preset maps `0 → 0` and `1 → 1`, so keyed values are always hit exactly at their keyframes — and *exactly* is meant literally: implementations MUST return `0` and `1` for those inputs rather than whatever the formula evaluates to, since several of the formulas below land a rounding step away (`in-sine(1)` is `0.9999999999999999`, `out-back(0)` is `2.220446049250313e-16`) and one returns `-0`. Interior values are not normalized: they are what the formulas produce, so an implementation reproduces them by evaluating the same expressions rather than algebraically equivalent rewrites. The presets and their formulas follow the de-facto standard set popularized by easings.net:
 
 | Preset | Variants | Character |
 |---|---|---|
