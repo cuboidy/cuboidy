@@ -16,9 +16,9 @@ that it had?** Cleanliness that does not affect that question is left to
 
 This file lives under `docs/working/` because most of it is consumed rather
 than kept: the audit is a snapshot that decays as the code moves, and the work
-order shrinks to nothing. The five decisions are the exception — see
-"Where the decisions land" for where each one goes before this file is
-deleted.
+order shrinks to nothing. The decisions are the exception — five were taken
+before the work started and five more fell out of doing it; see "Where the
+decisions land" for where each one goes before this file is deleted.
 
 ## Verdict
 
@@ -53,9 +53,9 @@ What is already right, and should not be disturbed:
 
 ## Decisions taken
 
-These five were open questions where SPEC and the implementation disagreed, or
-where SPEC was silent. They are settled here so the port has one answer to
-translate rather than two to reconcile.
+D1–D5 were open questions where SPEC and the implementation disagreed, or
+where SPEC was silent. D6–D10 came up while doing the work. All are settled
+here so the port has one answer to translate rather than two to reconcile.
 
 ### D1 — SPEC is the authority for diagnostic codes
 
