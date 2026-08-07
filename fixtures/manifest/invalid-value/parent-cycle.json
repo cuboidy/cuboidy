@@ -1,0 +1,4 @@
+{
+  "name": "m",
+  "parts": [{ "name": "a", "parent": "b" }, { "name": "b", "parent": "a" }]
+}

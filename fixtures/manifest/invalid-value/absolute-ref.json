@@ -1,0 +1,5 @@
+{
+  "name": "m",
+  "geometry": ["/etc/body.json"],
+  "parts": [{ "name": "body" }]
+}

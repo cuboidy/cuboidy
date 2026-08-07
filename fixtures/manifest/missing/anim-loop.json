@@ -1,0 +1,7 @@
+{
+  "name": "m",
+  "parts": [{ "name": "body" }],
+  "animations": {
+    "walk": { "duration": 1, "parts": { "body": { "0.0": { "pos": [0, 0, 0] } } } }
+  }
+}
