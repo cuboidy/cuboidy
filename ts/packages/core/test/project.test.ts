@@ -106,3 +106,68 @@ describe('normalizeRefPath', () => {
     expect(normalizeRefPath('../shared/p.json')).toBe('../shared/p.json');
   });
 });
+
+// SPEC §11.6 / §11.8 phase 4: "the same part name defined in more than one
+// file of the `geometry` list". Reported here rather than by lint, because
+// what it breaks is the by-`name` lookup — a runtime with no lint (the C#
+// port) would otherwise bind the name to whichever file it saw first, which
+// is a choice about collection ordering rather than about the model.
+describe('resolveProject — ambiguous part names (§11.6)', () => {
+  const twoFiles = (extra: object = {}) => ({
+    name: 't',
+    geometry: ['a.json', 'b.json'],
+    parts: [{ name: 'body' }],
+    ...extra,
+  });
+  const one = (name: string) => geo([{ name, size: [1, 1, 1], voxels: [['0']] }]);
+  const body = one('body');
+
+  it('refuses to resolve a name defined in two listed files', () => {
+    const p = resolveProject(
+      manifest(twoFiles()),
+      new Map([
+        ['a.json', body],
+        ['b.json', body],
+      ]),
+    );
+    expect(p.complete).toBe(false);
+    const dup = p.diagnostics.find((d) => d.diag.code === 'duplicate');
+    expect(dup?.diag.severity).toBe('error');
+    expect(dup?.diag.message).toContain('a.json');
+    expect(dup?.diag.message).toContain('b.json');
+  });
+
+  it('resolves cleanly when the name is defined once', () => {
+    const p = resolveProject(
+      manifest(twoFiles()),
+      new Map([
+        ['a.json', body],
+        ['b.json', one('tail')],
+      ]),
+    );
+    expect(p.complete).toBe(true);
+    expect(p.parts.get('body')?.source?.file).toBe('a.json');
+  });
+
+  it('a file reached only by geometry.path does not take part', () => {
+    // §11.6 says so explicitly, and the by-name lookup must agree: the
+    // `path` form binds by path, so its own part names are its business.
+    const p = resolveProject(
+      manifest({
+        name: 't',
+        geometry: ['a.json'],
+        parts: [
+          { name: 'body' },
+          { name: 'clone', geometry: { path: 'b.json', part: 'body' } },
+        ],
+      }),
+      new Map([
+        ['a.json', body],
+        ['b.json', body],
+      ]),
+    );
+    expect(p.complete).toBe(true);
+    expect(p.parts.get('body')?.source?.file).toBe('a.json');
+    expect(p.parts.get('clone')?.source?.file).toBe('b.json');
+  });
+});

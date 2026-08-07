@@ -41,22 +41,19 @@ export function validateProject(input: ProjectInput): Diagnostic[] {
   const diags: Diagnostic[] = [];
 
   // Part name → defining file(s). Names are unique across the WHOLE model
-  // (SPEC §5), so a name defined in two geometry files is an error.
+  // (SPEC §5) and the by-name rules below key on that.
+  //
+  // The §11.6 `duplicate` report itself is NOT here: a name in two files
+  // makes the by-`name` lookup ambiguous, so `resolveProject` refuses and
+  // this function never runs (it is gated on `project.complete`). Reporting
+  // it here as well would have been a second copy of the rule, reachable
+  // only when the first one did not fire.
   const definedIn = new Map<string, string[]>();
   for (const { path, geometry } of geometries) {
     for (const part of geometry.parts) {
       const files = definedIn.get(part.name);
       if (files === undefined) definedIn.set(part.name, [path]);
       else files.push(path);
-    }
-  }
-  for (const [name, files] of definedIn) {
-    if (files.length > 1) {
-      diags.push({
-        code: 'duplicate',
-        severity: 'error',
-        message: `part '${name}' is defined in more than one geometry file (${files.join(', ')})`,
-      });
     }
   }
 

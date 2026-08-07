@@ -109,24 +109,9 @@ describe('validateProject (v0.7)', () => {
     palette: Array.from({ length: colors }, (_, i) => ({ r: i, g: 0, b: 0, a: 255 })),
   });
 
-  it('errors on a part name defined in two geometry files', () => {
-    const manifest = manifestOrThrow({
-      name: 't',
-      geometry: ['a.json', 'b.json'],
-      parts: [{ name: 'body' }],
-    });
-    const diags = validateProject({
-      manifest,
-      geometries: [
-        { path: 'a.json', geometry: bodyCvox },
-        { path: 'b.json', geometry: bodyCvox },
-      ],
-    });
-    const dup = diags.find((d) => d.code === 'duplicate');
-    expect(dup?.severity).toBe('error');
-    expect(dup?.message).toContain('a.json');
-    expect(dup?.message).toContain('b.json');
-  });
+  // The §11.6 `duplicate` report moved to `resolveProject`: a name in two
+  // files makes the by-name lookup ambiguous, so resolution refuses and this
+  // function is never reached for such a model. See project.test.ts.
 
   it('errors on a manifest part defined in no geometry file', () => {
     const manifest = manifestOrThrow({

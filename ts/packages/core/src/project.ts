@@ -84,15 +84,30 @@ export function palettePathsOf(
 // dropped in silence.
 export function geometryPaths(manifest: Manifest | null): string[] {
   if (manifest === null) return ['voxels.json'];
-  const out: string[] = [];
-  if (manifest.geometry !== undefined) out.push(...manifest.geometry);
-  else if (manifest.parts.some((p) => p.geometry === undefined)) {
-    out.push(...manifestGeometry(manifest));
-  }
+  const out = listedGeometryPaths(manifest);
   for (const p of manifest.parts) {
-    if (p.geometry?.path !== undefined) out.push(p.geometry.path);
+    if (p.geometry?.path !== undefined) out.push(normalizeRefPath(p.geometry.path));
   }
-  return [...new Set(out.map(normalizeRefPath))];
+  return [...new Set(out)];
+}
+
+// SPEC §6.9: the files the by-`name` lookup searches — the manifest's
+// `geometry` list, with its default applied only when some part actually
+// needs the lookup.
+//
+// A file reached ONLY by an explicit §6.13 `geometry.path` is deliberately
+// not in it. That form binds by path, and §11.6 says such files "do not take
+// part" in the name-uniqueness check — so they must not be searched by name
+// either, or a name they happen to share would bind without ever being
+// checked for being ambiguous.
+function listedGeometryPaths(manifest: Manifest): string[] {
+  if (manifest.geometry !== undefined) {
+    return manifest.geometry.map(normalizeRefPath);
+  }
+  if (manifest.parts.some((p) => p.geometry === undefined)) {
+    return manifestGeometry(manifest).map(normalizeRefPath);
+  }
+  return [];
 }
 
 // The package-relative files a project references. Callers read these
@@ -118,6 +133,14 @@ export function projectFilePaths(manifest: Manifest | null): ProjectPaths {
 export interface UnresolvedPart {
   name: string;
   message: string;
+}
+
+// SPEC §11.6: one part name defined by more than one file of the `geometry`
+// list, which makes the by-`name` lookup ambiguous. Unlike UnresolvedPart
+// this IS a resolution failure — see resolvePartGeometry.
+export interface DuplicatePartName {
+  name: string;
+  files: string[];
 }
 
 // SPEC §6.13: one manifest part's shape, wherever it was written. Every
@@ -158,10 +181,18 @@ export interface ResolvedProject {
   // reference the same file). Only entries that loaded and validated.
   externalAnims: Map<string, { path: string; anim: InlineAnimation }>;
   diagnostics: ProjectDiagnostic[];
-  // True when every referenced file loaded + parsed and reuse fully
-  // resolved. Callers gate downstream validation/assembly on this —
-  // validating a partially-resolved project only piles noise on top of
-  // the diagnostics already reported.
+  // True when `diagnostics` is empty: every referenced file loaded and
+  // parsed, and no part name was ambiguous across the geometry list.
+  // Callers gate downstream validation/assembly on this — validating a
+  // partially-resolved project only piles noise on top of the diagnostics
+  // already reported.
+  //
+  // Deliberately NOT affected by `unresolved`. A part that found no shape
+  // is a fault in the model rather than in loading it, and §11.6 is where
+  // it gets reported — which requires this flag to stay true, or the report
+  // would gate off the reporting. The comment here used to promise "reuse
+  // fully resolved", which is the opposite of what the code does and of
+  // what the design needs.
   complete: boolean;
 }
 
@@ -234,15 +265,41 @@ export function resolvePartGeometry(
   manifest: Manifest,
   geometries: ReadonlyArray<GeometryFile>,
   readPalette: (ref: string) => Palette | null,
-): { parts: Map<string, ResolvedPart>; unresolved: UnresolvedPart[] } {
+): {
+  parts: Map<string, ResolvedPart>;
+  unresolved: UnresolvedPart[];
+  duplicates: DuplicatePartName[];
+} {
   const byPath = new Map(geometries.map((g) => [g.path, g]));
-  // For the by-name lookup: first file wins, matching the pre-§6.13 order.
-  // A name in two files is a separate `duplicate` error (§11.6).
+
+  // SPEC §11.6 / §11.8 phase 4: "the same part name defined in more than one
+  // file of the `geometry` list" is an error, and §5 uniqueness being
+  // model-wide is exactly what makes the by-`name` lookup unambiguous.
+  //
+  // The lookup used to take the first file silently and leave the report to
+  // lint. That left a runtime — which is what the C# port is, and it carries
+  // no lint — binding an ambiguous name to whichever file it happened to see
+  // first, a choice that depends on collection ordering rather than on the
+  // model. Resolution refuses instead: an ambiguous reference has not
+  // resolved, which is this layer's own business.
+  const listed = new Set(listedGeometryPaths(manifest));
   const byName = new Map<string, GeometryFile>();
+  const definedIn = new Map<string, string[]>();
   for (const g of geometries) {
+    if (!listed.has(g.path)) continue;
     for (const p of g.geometry.parts) {
-      if (!byName.has(p.name)) byName.set(p.name, g);
+      const prior = definedIn.get(p.name);
+      if (prior === undefined) {
+        definedIn.set(p.name, [g.path]);
+        byName.set(p.name, g);
+      } else if (!prior.includes(g.path)) {
+        prior.push(g.path);
+      }
     }
+  }
+  const duplicates: DuplicatePartName[] = [];
+  for (const [name, files] of definedIn) {
+    if (files.length > 1) duplicates.push({ name, files });
   }
 
   // The manifest's default palette for inline parts (§6.13), resolved once.
@@ -314,7 +371,7 @@ export function resolvePartGeometry(
       source: { file: file.path, part: found.name },
     });
   }
-  return { parts: out, unresolved };
+  return { parts: out, unresolved, duplicates };
 }
 
 export function resolveProject(
@@ -408,7 +465,11 @@ export function resolveProject(
   // colors from the file it lives in.
   const bound =
     manifest === null
-      ? { parts: new Map<string, ResolvedPart>(), unresolved: [] }
+      ? {
+          parts: new Map<string, ResolvedPart>(),
+          unresolved: [],
+          duplicates: [],
+        }
       : resolvePartGeometry(manifest, parsed, (path) => {
           let p = paletteCache.get(path);
           if (p === undefined) {
@@ -417,6 +478,22 @@ export function resolveProject(
           }
           return p;
         });
+
+  // §11.6's name-uniqueness rule, reported here rather than by lint because
+  // resolution is what the ambiguity breaks (see resolvePartGeometry). It
+  // therefore makes the project incomplete, which gates cross-file
+  // validation off — correct, because every §11.6 answer about a part is
+  // conditional on knowing which file that part came from.
+  for (const dup of bound.duplicates) {
+    diagnostics.push({
+      file: MANIFEST_FILE,
+      diag: {
+        code: 'duplicate',
+        severity: 'error',
+        message: `part '${dup.name}' is defined in more than one geometry file (${dup.files.join(', ')})`,
+      },
+    });
+  }
 
   return {
     geometries: parsed,
