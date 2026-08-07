@@ -51,6 +51,24 @@ export const KeyframeSchema = z
   })
   .strict();
 
+// SPEC §6.6: a time key is a decimal number string and the point is
+// REQUIRED — "1.0", never "1".
+//
+// That is not cosmetic. A JSON object key spelling a canonical non-negative
+// integer is not an ordinary string key in every language's object model:
+// JavaScript hoists it ahead of the others, so
+// `JSON.parse('{"0.0":…,"0.5":…,"1":…}')` yields keys in the order
+// ["1","0.0","0.5"] and the ordering rules below would reject a document
+// that is written in order. C#'s System.Text.Json reads document order and
+// would accept the same file. Requiring the point keeps every legal time key
+// an ordinary string key, so document order and object order agree
+// everywhere and the two implementations agree on what is valid.
+//
+// It also excludes the other spellings a number parser might take —
+// "0x10", "0b11", "1e3", "5.", "+1" — which JavaScript's `Number` accepts
+// and .NET's `double.Parse` does not.
+export const TIME_KEY_RE = /^[0-9]+\.[0-9]+$/;
+
 // SPEC §6.6: a part's keyframe sequence, keyed by decimal-string time keys
 // ("0.0", "0.5", …). Key format / ordering / start-at-0 / ≤ duration are
 // validated on the enclosing InlineAnimationSchema (they need `duration`);
@@ -80,16 +98,18 @@ export const InlineAnimationSchema = z
     for (const [part, track] of Object.entries(anim.parts)) {
       let prev = -Infinity;
       let first = true;
+      // Every legal key matches TIME_KEY_RE, which no canonical integer
+      // does, so this iteration order IS document order (see the regex).
       for (const key of Object.keys(track)) {
-        const t = Number(key);
-        if (key.trim() !== key || key === '' || !Number.isFinite(t)) {
+        if (!TIME_KEY_RE.test(key)) {
           ctx.addIssue({
             code: 'custom',
             path: ['parts', part, key],
-            message: `time key "${key}" is not a decimal number string`,
+            message: `time key "${key}" is not a decimal number string (the point is required: "1.0", not "1")`,
           });
           break;
         }
+        const t = Number(key);
         if (first && t !== 0) {
           ctx.addIssue({
             code: 'custom',

@@ -64,7 +64,10 @@ const TIME_EPS = 5e-4;
 
 // Canonical decimal-string time key. Rounds to a 1e-3 grid (so scrubbing
 // never mints `0.30000000000000004`), and always includes a decimal point
-// so integers read as `"0.0"` / `"1.0"` like the authored fixtures.
+// because SPEC §6.6 requires one — `"1.0"`, never `"1"` (see TIME_KEY_RE).
+// For t >= 0 the output therefore always matches §6.6: the grid's smallest
+// non-integer is 0.001, well above the 1e-6 threshold at which `String`
+// would switch to exponent notation.
 // Guarantees `Number(formatTimeKey(t)) === Math.round(t * 1000) / 1000`.
 export function formatTimeKey(t: number): string {
   const r = Math.round(t * 1000) / 1000;

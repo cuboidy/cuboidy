@@ -695,3 +695,58 @@ describe('parseManifest — §11.8 phase precedence for inline geometry', () => 
     expect(r.ok).toBe(true);
   });
 });
+
+// SPEC §6.6: the decimal point is required. Before it was, validity depended
+// on the host language's object-key ordering — JavaScript hoists canonical
+// integer keys, so a track written in order could be read back out of order.
+describe('parseManifest — §6.6 time key grammar', () => {
+  const withTrack = (track: unknown) => ({
+    name: 'm',
+    parts: [{ name: 'body' }],
+    animations: {
+      walk: { duration: 2, loop: true, parts: { body: track } },
+    },
+  });
+  const key = { pos: [0, 0, 0] };
+
+  it('accepts decimal keys in order', () => {
+    const r = parseManifest(
+      withTrack({ '0.0': key, '0.5': key, '1.0': key, '2.0': key }),
+    );
+    expect(r.ok).toBe(true);
+  });
+
+  it('rejects the bare integer form', () => {
+    const r = parseManifest(withTrack({ '0.0': key, '1': key }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.code).toBe('invalid-value');
+      expect(r.message).toMatch(/the point is required/);
+    }
+  });
+
+  it('rejects a track whose validity used to depend on key ordering', () => {
+    // `JSON.parse` of this object yields ["1","0.0","0.5"] in JavaScript, so
+    // the reference used to reject it as `first time key must be "0.0"`
+    // while an order-preserving reader accepted it. Now both reject it, and
+    // for the reason that is actually true of the document.
+    const r = parseManifest(
+      withTrack({ '0.0': key, '0.5': key, '1': key }),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.message).toMatch(/the point is required/);
+  });
+
+  it('rejects an all-integer track that used to parse', () => {
+    // Integer keys happened to sort correctly, so this was accepted.
+    const r = parseManifest(withTrack({ '0': key, '1': key }));
+    expect(r.ok).toBe(false);
+  });
+
+  it('rejects the spellings a number parser might otherwise take', () => {
+    for (const bad of ['0x10', '0b11', '0o17', '1e3', '5.', '.5', '+1.0', ' 1.0', '-1.0']) {
+      const r = parseManifest(withTrack({ '0.0': key, [bad]: key }));
+      expect(r.ok, bad).toBe(false);
+    }
+  });
+});

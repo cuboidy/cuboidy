@@ -267,11 +267,25 @@ Here `pos`, `scale`, and `visible` are constant across all keyframes (`[0,0,0]`,
 
 ### 6.6 Time keys
 
-- Format: JSON string of a decimal number, e.g., `"0.0"`, `"0.5"`, `"1.25"`
+- Format: JSON string of a decimal number, **with the decimal point
+  required** — `"0.0"`, `"0.5"`, `"1.25"`. Formally `^[0-9]+\.[0-9]+$`, so
+  `"1"` is not a time key and `"1.0"` is. This also excludes the other
+  spellings a language's number parser may accept: `"0x10"`, `"0b11"`,
+  `"1e3"`, `"5."`, `"+1"`, `" 1.0"`
 - Unit: seconds (IEEE 754 double precision)
 - Must start at `"0.0"` for every animated part
 - Must be strictly increasing across the sequence for a given part
 - Maximum time key must be ≤ `duration`
+
+The point is required because a JSON object key that spells a canonical
+non-negative integer is not an ordinary string key in every language's object
+model. JavaScript hoists such keys ahead of the rest, so
+`{"0.0": …, "0.5": …, "1": …}` is read back in the order `"1"`, `"0.0"`,
+`"0.5"` and the ordering rule above rejects a document written in order,
+while a reader over an order-preserving parser accepts it. Requiring the
+point keeps every legal time key an ordinary string key, so implementations
+agree on which documents are valid rather than on which object model they
+were parsed with.
 
 ### 6.7 Interpolation
 
