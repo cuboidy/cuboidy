@@ -115,6 +115,12 @@ export function sortTrackKeys(track: AnimationTrack): AnimationTrack {
   return out;
 }
 
+// A keyframe's coordinate triple, as the DOCUMENT spells it — Zod infers a
+// mutable tuple. `Vec3Tuple` is the sampler's readonly output, a different
+// role on the same three numbers, the way `GeometryDocPart` and `Part` are
+// two shapes of one part.
+type KeyVec = NonNullable<Keyframe['rot']>;
+
 // Set one attribute field on a keyframe immutably, preserving the others.
 // Typed per-attribute so the value shape matches the field.
 function withAttr(entry: Keyframe, attr: KeyAttr, value: AttrValue): Keyframe {
@@ -122,11 +128,11 @@ function withAttr(entry: Keyframe, attr: KeyAttr, value: AttrValue): Keyframe {
     case 'visible':
       return { ...entry, visible: value as boolean };
     case 'rot':
-      return { ...entry, rot: value as Vec3Tuple };
+      return { ...entry, rot: value as KeyVec };
     case 'pos':
-      return { ...entry, pos: value as Vec3Tuple };
+      return { ...entry, pos: value as KeyVec };
     case 'scale':
-      return { ...entry, scale: value as Vec3Tuple };
+      return { ...entry, scale: value as KeyVec };
   }
 }
 

@@ -21,7 +21,10 @@ import {
   type EasingName,
 } from './easing.js';
 
-const Vec3Tuple = z.tuple([z.number(), z.number(), z.number()]);
+// The §4 coordinate triple as a schema. Named apart from the TYPE below
+// because they are different things that C# cannot give one name: a
+// validator and a shape.
+const Vec3Schema = z.tuple([z.number(), z.number(), z.number()]);
 
 // SPEC §6.5: the per-attribute easing map. Each entry names the
 // interpolation curve of the OUTGOING segment (this keyframe → the next,
@@ -43,9 +46,9 @@ export const EaseMapSchema = z
 // `.strict()` rejects typo'd field names (matches the manifest's strictness).
 export const KeyframeSchema = z
   .object({
-    rot: Vec3Tuple.optional(),
-    pos: Vec3Tuple.optional(),
-    scale: Vec3Tuple.optional(),
+    rot: Vec3Schema.optional(),
+    pos: Vec3Schema.optional(),
+    scale: Vec3Schema.optional(),
     visible: z.boolean().optional(),
     ease: EaseMapSchema.optional(),
   })
@@ -159,7 +162,12 @@ export type AnimationTrack = z.infer<typeof AnimationTrackSchema>;
 export type InlineAnimation = z.infer<typeof InlineAnimationSchema>;
 export type Animation = z.infer<typeof AnimationSchema>;
 
-export type Vec3Tuple = [number, number, number];
+// SPEC §4's coordinate triple. `readonly`, and identical to
+// `rig-transform.ts`'s export of the same name — they used to differ in
+// exactly that modifier while both being public, so a port had to decide
+// which one `Pose` and `AnimPose` really meant. C# has no readonly tuple,
+// so the port would have made that decision whether or not anyone took it.
+export type Vec3Tuple = readonly [number, number, number];
 
 // A fully-resolved part pose at one instant. All fields concrete (carryover
 // + interpolation already applied). Units per SPEC §6.5.
