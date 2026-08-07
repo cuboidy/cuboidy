@@ -153,6 +153,22 @@ the manifest reader called `invalid-value`. It is now `wrong-arity`, the same
 answer an empty palette gets, because the alternative is a special case whose
 only justification is that it is what the code used to do.
 
+### D7 — Easing endpoints are clamped, not trusted
+
+Taken during P2. SPEC §6.7 and `easing.ts` both asserted that every preset
+maps 0 → 0 and 1 → 1 "so keyed values are always hit exactly at their
+keyframes". Five of the twenty do not: `in-sine(1)` is 0.9999999999999999,
+`in-back(1)` is 0.9999999999999998, `out-back(0)` is 2.220446049250313e-16,
+and `in-out-sine(0)` is `-0`.
+
+`applyEasing` returns 0 and 1 for those inputs rather than evaluating the
+formula. The endpoints are where an author placed a value and expects to see
+it, and they are where a second implementation's trig is most likely to round
+the other way — so making the guarantee true is worth more than preserving
+five rounding residues. Interior values are deliberately left alone: they are
+what the formulas produce, and a port must evaluate the same expressions
+rather than algebraically equivalent ones.
+
 ### Where the decisions land
 
 Only these five outlive this file, so each has a home to move to. The move
@@ -162,8 +178,9 @@ decision is settled here and unimplemented there.
 
 | decision | destination | with |
 |---|---|---|
-| D2 time-key grammar | `SPEC.md` §6.6 | P2 |
-| D5 duplicate is a resolution failure | `SPEC.md` §11.6 | P2 |
+| D2 time-key grammar | `SPEC.md` §6.6 | P2 ✔ |
+| D5 duplicate is a resolution failure | `SPEC.md` §11.6 | P2 ✔ |
+| D7 easing endpoints are clamped | `SPEC.md` §6.7 | P2 ✔ |
 | D3 socket scale | `SPEC.md` §7.8 | P3 |
 | D4 core owns `scale`/`visible` | `SPEC.md` §7.7, and the scope table in `docs/csharp-implementation.md` | P3 |
 | D1 SPEC is the authority for diagnostic codes | `docs/csharp-implementation.md` — it amends that document's own "TypeScript is right" rule | P1 ✔ |
@@ -473,7 +490,8 @@ rather than hardcode two. *This chunk's output is what the C# side is
 validated against, which is why it is first.* Behavioural: snapshot the
 before/after codes across the corpus.
 
-**P2 — fix the reference implementation.** D2's time-key grammar; one wrap
+**P2 — fix the reference implementation.** *Done — `212e8dc`, `3443d6b`,
+`7c00958`, `b2d36ac`, `1e10f85`. D2, D5 and D7 have landed in `SPEC.md`.* D2's time-key grammar; one wrap
 formula; `complete` honouring `unresolved` (D5 lands here too, since both
 touch the same return); the `easing.ts:112-114` comment and the matching SPEC
 §6.7 sentence corrected; `stepVisible`'s epsilon either documented in SPEC or
