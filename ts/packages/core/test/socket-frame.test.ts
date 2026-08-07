@@ -1,12 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { parseManifest, type Manifest } from '../src/manifest.js';
 import { resolveProject } from '../src/project.js';
-import { publishedSocketFrame } from '../src/socket-frame.js';
+import { publishedSocketFrame, socketFrameOn } from '../src/socket-frame.js';
+import { QUAT_IDENTITY, localPointToWorld } from '../src/rig-transform.js';
 import { geo } from './helpers/geometry.js';
 
 // SPEC §7.8 + §6.12: where a published socket is in world space. This is
 // the point two packages meet at, so it is worth pinning numerically —
 // a host and a guest that disagree here come apart visibly.
+
+function expectVecClose(
+  actual: readonly number[],
+  expected: readonly number[],
+): void {
+  expect(actual.length).toBe(expected.length);
+  for (let i = 0; i < expected.length; i++) {
+    expect(actual[i]).toBeCloseTo(expected[i]!, 10);
+  }
+}
 
 function manifest(json: object): Manifest {
   const r = parseManifest(json);
@@ -149,5 +160,56 @@ describe('publishedSocketFrame', () => {
     });
     const p = resolveProject(m, new Map([['voxels.json', TOWER]]));
     expect(publishedSocketFrame(m, p.parts, 'nope')).toBeNull();
+  });
+});
+
+// SPEC §7.8 was silent about §6.5 `scale`, and the implementation ignored it
+// — a socket on a 3x-lengthened arm stayed where the unscaled arm had put
+// it, a third of the way along. A socket is a point in the part's geometry,
+// so it moves with the voxels around it.
+describe('socketFrameOn — animated scale (§6.5 / §7.8)', () => {
+  const arm = {
+    name: 'arm',
+    size: { w: 1, h: 4, d: 1 },
+    // Pivot at the shoulder; the socket sits at the far tip.
+    pivot: { pos: { x: 0.5, y: 0, z: 0.5 } },
+    sockets: [{ name: 'grip', pos: { x: 0.5, y: 4, z: 0.5 } }],
+    voxels: [[[0]], [[0]], [[0]], [[0]]],
+  };
+  const atOrigin = { pos: [0, 0, 0] as [number, number, number], quat: QUAT_IDENTITY };
+
+  it('leaves the socket where it is at unit scale', () => {
+    const f = socketFrameOn(arm, atOrigin, 'grip');
+    expectVecClose(f!.pos, [0, 4, 0]);
+  });
+
+  it('carries the socket out with the geometry', () => {
+    const f = socketFrameOn(arm, atOrigin, 'grip', [1, 3, 1]);
+    // The tip is 4 above the pivot; tripling the part's length puts it at 12.
+    expectVecClose(f!.pos, [0, 12, 0]);
+  });
+
+  it('scales about the pivot, not the grid origin', () => {
+    // A socket AT the pivot cannot move, whatever the scale.
+    const atPivot = {
+      ...arm,
+      sockets: [{ name: 'grip', pos: { x: 0.5, y: 0, z: 0.5 } }],
+    };
+    const f = socketFrameOn(atPivot, atOrigin, 'grip', [5, 5, 5]);
+    expectVecClose(f!.pos, [0, 0, 0]);
+  });
+
+  it('does not resize the guest — the frame carries no scale', () => {
+    const f = socketFrameOn(arm, atOrigin, 'grip', [1, 3, 1]);
+    expect(Object.keys(f!).sort()).toEqual(['pos', 'quat']);
+  });
+
+  it('agrees with where the rasterizer puts the same local point', () => {
+    // The socket sits at the tip corner; the scene builder maps that exact
+    // local point through the same rule.
+    const scaled: [number, number, number] = [1, 3, 1];
+    const viaSocket = socketFrameOn(arm, atOrigin, 'grip', scaled)!.pos;
+    const viaRule = localPointToWorld([0.5, 4, 0.5], [0.5, 0, 0.5], scaled, atOrigin);
+    expectVecClose(viaSocket, [...viaRule]);
   });
 });

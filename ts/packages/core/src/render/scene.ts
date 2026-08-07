@@ -1,6 +1,10 @@
 import type { Palette, Part } from '../geometry/types.js';
 import { AIR } from '../geometry/voxel-row.js';
-import { quatRotateVec3, type WorldTransform } from '../rig-transform.js';
+import {
+  localPointToWorld,
+  quatRotateVec3,
+  type WorldTransform,
+} from '../rig-transform.js';
 import type { Rgb } from './framebuffer.js';
 import type { Vec3 } from './vec.js';
 
@@ -81,22 +85,12 @@ export function buildSceneFromParts(
     const solid = (x: number, y: number, z: number): boolean =>
       x >= 0 && x < w && y >= 0 && y < h && z >= 0 && z < d &&
       part.voxels[y]![z]![x]! !== AIR;
-    const piv = part.pivot.pos;
-    const [sx, sy, sz] = scale ?? [1, 1, 1];
-    const toWorld = (x: number, y: number, z: number): Vec3 => {
-      // Scale acts on the pivot-relative offset, so the part grows about
-      // its pivot rather than about the grid origin.
-      const r = quatRotateVec3(transform.quat, [
-        (x - piv.x) * sx,
-        (y - piv.y) * sy,
-        (z - piv.z) * sz,
-      ]);
-      return [
-        transform.pos[0] + r[0],
-        transform.pos[1] + r[1],
-        transform.pos[2] + r[2],
-      ];
-    };
+    const piv: Vec3 = [part.pivot.pos.x, part.pivot.pos.y, part.pivot.pos.z];
+    // §7.7 / §6.5, stated once in rig-transform.ts — the same call
+    // socketFrameOn makes, so a socket cannot drift from the voxels it sits
+    // among when the part is scaled.
+    const toWorld = (x: number, y: number, z: number): Vec3 =>
+      localPointToWorld([x, y, z], piv, scale, transform);
 
     for (let y = 0; y < h; y++) {
       const layer = part.voxels[y]!;

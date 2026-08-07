@@ -2,11 +2,13 @@ import type { Manifest } from './manifest.js';
 import type { ResolvedPart } from './project.js';
 import {
   computeWorldTransforms,
+  localPointToWorld,
   pivotRotsOf,
   quatFromEulerZXYDeg,
   quatMultiply,
   quatRotateVec3,
   type AnimPose,
+  type PosedPart,
   type QuatTuple,
   type Vec3Tuple,
   type WorldTransform,
@@ -55,28 +57,38 @@ export function composeFrames(
 // point `v` lands at `world.pos + world.quat · (v − pivot.pos)`. A socket
 // is a point in that same local space (§7.8: "in the host part's local
 // space after the host part's own pivot transform has been applied"), so
-// it goes through the identical mapping — which is the reason to write it
-// once here rather than re-derive it per renderer.
+// it goes through the identical mapping — `localPointToWorld`, the same
+// call the rasterizer makes for every voxel corner.
+//
+// `scale` is the host part's §6.5 animated scale. A socket is a point in the
+// part's geometry, so it moves exactly as the voxels around it do — the
+// socket on a 3×-lengthened arm stays at the arm's tip instead of ending up
+// buried a third of the way along it. The GUEST is not resized: the frame
+// carries position and orientation only, so a held sword travels to the
+// right place at its own size rather than being deformed by whatever the
+// wielder's torso is doing.
 export function socketFrameOn(
   part: ResolvedPart['part'],
   world: WorldTransform,
   socketName: string,
+  scale?: Vec3Tuple,
 ): SocketFrame | null {
   const socket = part.sockets.find((s) => s.name === socketName);
   if (socket === undefined) return null;
-  const local: Vec3Tuple = [
-    socket.pos.x - part.pivot.pos.x,
-    socket.pos.y - part.pivot.pos.y,
-    socket.pos.z - part.pivot.pos.z,
-  ];
+  const pos = localPointToWorld(
+    [socket.pos.x, socket.pos.y, socket.pos.z],
+    [part.pivot.pos.x, part.pivot.pos.y, part.pivot.pos.z],
+    scale,
+    world,
+  );
   const rot: Vec3Tuple =
     socket.rot === undefined
       ? [0, 0, 0]
       : [socket.rot.x, socket.rot.y, socket.rot.z];
-  return composeFrames(world, {
-    pos: local,
-    quat: quatFromEulerZXYDeg(rot),
-  });
+  return {
+    pos: [pos[0], pos[1], pos[2]],
+    quat: quatMultiply(world.quat, quatFromEulerZXYDeg(rot)),
+  };
 }
 
 // The frame a model offers under a PUBLISHED name (§6.12) — the only name
@@ -91,7 +103,7 @@ export function publishedSocketFrame(
   manifest: Manifest,
   parts: ReadonlyMap<string, ResolvedPart>,
   publishedName: string,
-  poses?: ReadonlyMap<string, AnimPose>,
+  poses?: ReadonlyMap<string, PosedPart>,
 ): SocketFrame | null {
   const target = manifest.sockets?.[publishedName];
   if (target === undefined) return null;
@@ -99,7 +111,12 @@ export function publishedSocketFrame(
   if (resolved === undefined) return null;
   const world = worldTransformsFor(manifest, parts, poses).get(target.part);
   if (world === undefined) return null;
-  return socketFrameOn(resolved.part, world, target.socket);
+  return socketFrameOn(
+    resolved.part,
+    world,
+    target.socket,
+    poses?.get(target.part)?.scale,
+  );
 }
 
 // Every frame the model publishes (§6.12), keyed by published name, with
@@ -110,7 +127,7 @@ export function publishedSocketFrame(
 export function publishedSocketFrames(
   manifest: Manifest,
   parts: ReadonlyMap<string, ResolvedPart>,
-  poses?: ReadonlyMap<string, AnimPose>,
+  poses?: ReadonlyMap<string, PosedPart>,
 ): Map<string, SocketFrame> {
   const out = new Map<string, SocketFrame>();
   const published = manifest.sockets;
@@ -121,7 +138,12 @@ export function publishedSocketFrames(
     if (resolved === undefined) continue;
     const wt = world.get(target.part);
     if (wt === undefined) continue;
-    const frame = socketFrameOn(resolved.part, wt, target.socket);
+    const frame = socketFrameOn(
+      resolved.part,
+      wt,
+      target.socket,
+      poses?.get(target.part)?.scale,
+    );
     if (frame !== null) out.set(name, frame);
   }
   return out;

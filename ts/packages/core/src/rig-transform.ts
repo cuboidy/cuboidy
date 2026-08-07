@@ -179,6 +179,43 @@ export function computeWorldTransforms(
   return out;
 }
 
+// An AnimPose plus the part-local scale (§6.5). Socket placement needs it —
+// a socket is a point in the part's geometry, so it moves when that geometry
+// grows — while the world transform chain deliberately does not.
+export interface PosedPart extends AnimPose {
+  scale?: Vec3Tuple;
+}
+
+// SPEC §7.7 / §6.5: where a point written in a part's LOCAL space lands in
+// world space.
+//
+//   world.pos + world.quat · ((v − pivot) ⊙ scale)
+//
+// Scale acts on the pivot-relative offset, so a part grows about its pivot
+// rather than about the grid origin, and it does NOT propagate to children —
+// which is why it is applied here, per part, instead of being folded into
+// WorldTransform.
+//
+// This is the one statement of that rule. It was written three times outside
+// this module — the software rasterizer, the GIF runner and the editor's
+// three.js tree — and a second implementation ports none of them, so `scale`
+// would have arrived in C# as a field of `Pose` with its meaning left in
+// code the port does not have.
+export function localPointToWorld(
+  local: Vec3Tuple,
+  pivot: Vec3Tuple,
+  scale: Vec3Tuple | undefined,
+  world: WorldTransform,
+): Vec3Tuple {
+  const [sx, sy, sz] = scale ?? [1, 1, 1];
+  const r = quatRotateVec3(world.quat, [
+    (local[0] - pivot[0]) * sx,
+    (local[1] - pivot[1]) * sy,
+    (local[2] - pivot[2]) * sz,
+  ]);
+  return [world.pos[0] + r[0], world.pos[1] + r[1], world.pos[2] + r[2]];
+}
+
 // The rest pose: the transform chain with nothing sampled.
 export function computeRestWorldTransforms(
   parts: readonly ManifestPart[],
