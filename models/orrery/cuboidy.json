@@ -1,0 +1,32 @@
+{
+  "version": "0.9",
+  "name": "orrery",
+  "geometry": ["parts/frame.json"],
+  "palette": ["#3B2F2F", "#8A6E4B", "#C9A227"],
+  "parts": [
+    {
+      "name": "base",
+      "geometry": {
+        "size": [5, 1, 5],
+        "voxels": [
+          [
+            "00000",
+            "01110",
+            "01210",
+            "01110",
+            "00000"
+          ]
+        ]
+      }
+    },
+    { "name": "post", "parent": "base", "position": [0, 1, 0] },
+    { "name": "arm", "parent": "post", "position": [0, 6, 0] },
+    { "name": "orb", "parent": "arm", "position": [3, 0, 0] }
+  ],
+  "sockets": {
+    "mount": { "part": "orb", "socket": "top" }
+  },
+  "animations": {
+    "turning": "anims/turning.json"
+  }
+}

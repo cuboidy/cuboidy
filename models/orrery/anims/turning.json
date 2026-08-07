@@ -1,0 +1,28 @@
+{
+  "duration": 2.0,
+  "loop": true,
+  "parts": {
+    "post": {
+      "0.0": { "rot": [0, 0, 0], "ease": { "rot": "in-out-back" } },
+      "1.0": { "rot": [0, 180, 0], "ease": { "rot": "in-back" } },
+      "2.0": { "rot": [0, 360, 0] }
+    },
+    "arm": {
+      "0.0": { "rot": [0, 0, 0], "ease": { "rot": "in-out-elastic" } },
+      "1.0": { "rot": [0, -180, 0], "ease": { "rot": "in-elastic" } },
+      "2.0": { "rot": [0, -360, 0] }
+    },
+    "orb": {
+      "0.0": {
+        "scale": [1, 1, 1],
+        "pos": [0, 0, 0],
+        "visible": true,
+        "ease": { "scale": "in-bounce", "pos": "step" }
+      },
+      "0.5": { "scale": [1.6, 1.6, 1.6], "pos": [0, 1, 0], "ease": { "scale": "in-out-bounce" } },
+      "1.0": { "scale": [1, 1, 1], "pos": [0, 0, 0] },
+      "1.5": { "visible": false },
+      "2.0": { "visible": true }
+    }
+  }
+}

@@ -117,6 +117,13 @@ my-model.cuboidy        packed package (ZIP of the folder above)
 - `models/fox/` — quadruped on a diagonal gait, with a five-segment brush tail
 - `models/windmill/` — manifest `geometry` list + shared `palette.json` (§6.9/§7.4); two constant-rate rotations in one clip
 - `models/herbalist/` — 21 voxels tall, where placement matters more than detail
+- `models/orrery/` — the format's corners, in one small object: a part written
+  inline in the manifest (§6.13) over a manifest-level palette (§6.1), a
+  geometry file in a subdirectory whose palette reference resolves relative to
+  it (§8), a `pivot.rot` on a part that *has children* so the tilt carries down
+  the chain (§7.7), and two palettes merged into one draw call. Its clip
+  reaches for the presets the other models never needed. Pinned by
+  `corpus-coverage.test.ts`, which fails if any of those goes unexercised
 
 ## Inspecting models
 
