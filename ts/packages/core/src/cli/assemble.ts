@@ -1,6 +1,7 @@
 import { join, resolve } from 'node:path';
 import { parseManifest } from '../manifest.js';
 import { isInlineAnimation, type InlineAnimation } from '../animation.js';
+import { resolveHierarchy } from '../forest.js';
 import type { Manifest, ManifestPart } from '../manifest.js';
 import type { Color, Palette, Part, Vec3 } from '../geometry/types.js';
 import { AIR, maxPaletteIndex } from './../geometry/voxel-row.js';
@@ -157,10 +158,18 @@ export async function loadAndAssemble(dir: string): Promise<LoadResult | LoadErr
     };
   }
 
-  const orderResult = topoSortParts(manifest);
-  if ('error' in orderResult) {
-    return { ok: false, message: `${manifestPath}: ${orderResult.error}`, exitCode: 1 };
-  }
+  // Parent-before-child order for the world composition below, from the
+  // shared hierarchy resolution. This used to be a fourth walk with a fourth
+  // failure policy — hard errors on a duplicate name, an unknown parent or a
+  // cycle — restating §11.5 in different words and unreachable behind the
+  // parseManifest above, which rejects all three. Only the ordering was ever
+  // live.
+  const byPartName = new Map(manifest.parts.map((p) => [p.name, p]));
+  const partOrder = resolveHierarchy(
+    manifest.parts,
+    (p) => p.name,
+    (p) => p.parent,
+  ).order.map((name) => byPartName.get(name)!);
 
   const pal = buildEffectivePalette(project.parts);
   if (!pal.ok) {
@@ -172,7 +181,7 @@ export async function loadAndAssemble(dir: string): Promise<LoadResult | LoadErr
     project.parts,
     project.geometries,
     pal.value,
-    orderResult.order,
+    partOrder,
   );
   // §6.3 clips in both forms, flattened to one map so consumers never
   // branch on whether the author wrote the animation inline or pointed
@@ -422,42 +431,3 @@ export function parseCoordKey(key: string): Vec3 {
   return { x: Number(parts[0]), y: Number(parts[1]), z: Number(parts[2]) };
 }
 
-interface TopoOk {
-  order: ManifestPart[];
-}
-
-function topoSortParts(manifest: Manifest): TopoOk | { error: string } {
-  const byName = new Map<string, ManifestPart>();
-  for (const p of manifest.parts) {
-    if (byName.has(p.name)) {
-      return { error: `duplicate part name "${p.name}"` };
-    }
-    byName.set(p.name, p);
-  }
-
-  const visited = new Set<string>();
-  const visiting = new Set<string>();
-  const order: ManifestPart[] = [];
-
-  function visit(name: string): string | null {
-    if (visited.has(name)) return null;
-    if (visiting.has(name)) return `cycle detected involving part "${name}"`;
-    const p = byName.get(name);
-    if (!p) return `unknown part "${name}" referenced as parent`;
-    visiting.add(name);
-    if (p.parent !== undefined) {
-      const e = visit(p.parent);
-      if (e) return e;
-    }
-    visiting.delete(name);
-    visited.add(name);
-    order.push(p);
-    return null;
-  }
-
-  for (const p of manifest.parts) {
-    const e = visit(p.name);
-    if (e) return { error: e };
-  }
-  return { order };
-}

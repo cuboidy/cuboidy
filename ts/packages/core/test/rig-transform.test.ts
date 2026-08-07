@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { buildForest, resolveHierarchy } from '../src/forest.js';
 import type { ManifestPart } from '../src/manifest.js';
 import {
   QUAT_IDENTITY,
@@ -194,5 +195,107 @@ describe('computeRestWorldTransforms', () => {
     );
     expect(wt.get('a')).toBeDefined();
     expect(wt.get('b')).toBeDefined();
+  });
+});
+
+// `computeWorldTransforms` used to carry its own parent walk, which
+// disagreed with the one the rig tree uses (forest.ts) on every malformed
+// shape. Both now go through `resolveHierarchy`, so these pin the policy
+// rather than one function's version of it.
+describe('computeRestWorldTransforms — malformed hierarchies', () => {
+  it('applies a self-parented part exactly once', () => {
+    // The recursive walk cached nothing before recursing, so `a` resolved
+    // through itself and landed at [2,0,0] — its own offset, twice.
+    const wt = computeRestWorldTransforms(
+      [part('a', { parent: 'a', position: [1, 0, 0] })],
+      NO_PIVOT_ROTS,
+    );
+    expectVecClose(wt.get('a')!.pos, [1, 0, 0]);
+  });
+
+  it('returns no entry for a parent that names no part', () => {
+    // The walk used to cache an identity transform under the missing name,
+    // so the returned map held a key the model does not have — visible to
+    // any consumer that enumerates it.
+    const wt = computeRestWorldTransforms(
+      [part('orphan', { parent: 'ghost', position: [1, 0, 0] })],
+      NO_PIVOT_ROTS,
+    );
+    expect([...wt.keys()]).toEqual(['orphan']);
+    expect(wt.has('ghost')).toBe(false);
+  });
+
+  it('makes every member of a cycle a root, symmetrically', () => {
+    const wt = computeRestWorldTransforms(
+      [
+        part('a', { parent: 'b', position: [1, 0, 0] }),
+        part('b', { parent: 'a', position: [0, 1, 0] }),
+      ],
+      NO_PIVOT_ROTS,
+    );
+    expect([...wt.keys()].sort()).toEqual(['a', 'b']);
+    // Each part's own edge is the one that closes the cycle from its point
+    // of view, so both are dropped and both sit at their own offset. The
+    // old walk instead composed one through the other and produced
+    // [3,0,0] / [2,0,0]-style answers that swapped when the parts did.
+    expectVecClose(wt.get('a')!.pos, [1, 0, 0]);
+    expectVecClose(wt.get('b')!.pos, [0, 1, 0]);
+
+    const reversed = computeRestWorldTransforms(
+      [
+        part('b', { parent: 'a', position: [0, 1, 0] }),
+        part('a', { parent: 'b', position: [1, 0, 0] }),
+      ],
+      NO_PIVOT_ROTS,
+    );
+    expectVecClose(reversed.get('a')!.pos, [1, 0, 0]);
+    expectVecClose(reversed.get('b')!.pos, [0, 1, 0]);
+  });
+
+  it('agrees with the rig tree about who is a root', () => {
+    const parts = [
+      part('a', { parent: 'a' }),
+      part('b', { parent: 'ghost' }),
+      part('c', { parent: 'd' }),
+      part('d', { parent: 'c' }),
+      part('e', {}),
+    ];
+    const roots = buildForest(
+      parts,
+      (p) => p.name,
+      (p) => p.parent,
+    ).map((n) => n.value.name);
+    const { parentOf } = resolveHierarchy(
+      parts,
+      (p) => p.name,
+      (p) => p.parent,
+    );
+    expect(roots).toEqual(
+      parts.filter((p) => parentOf.get(p.name) === undefined).map((p) => p.name),
+    );
+    // And every part the transform map holds is a part.
+    const wt = computeRestWorldTransforms(parts, NO_PIVOT_ROTS);
+    expect([...wt.keys()].sort()).toEqual(parts.map((p) => p.name).sort());
+  });
+
+  it('reports why each edge was dropped', () => {
+    const { dropped } = resolveHierarchy(
+      [
+        part('a', { parent: 'a' }),
+        part('b', { parent: 'ghost' }),
+        part('c', { parent: 'd' }),
+        part('d', { parent: 'c' }),
+        part('e', {}),
+      ],
+      (p) => p.name,
+      (p) => p.parent,
+    );
+    expect(dropped.get('a')).toBe('self');
+    expect(dropped.get('b')).toBe('unknown');
+    // Both members of the cycle lose their edge — from each one's point of
+    // view its own parent link is the one that closes the loop.
+    expect(dropped.get('c')).toBe('cycle');
+    expect(dropped.get('d')).toBe('cycle');
+    expect(dropped.has('e')).toBe(false);
   });
 });

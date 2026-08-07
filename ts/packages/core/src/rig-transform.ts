@@ -1,3 +1,4 @@
+import { resolveHierarchy } from './forest.js';
 import type { ManifestPart } from './manifest.js';
 
 // SPEC §7.7 rig transform math, renderer-agnostic. This module is the
@@ -131,19 +132,20 @@ export function computeWorldTransforms(
     if (!byName.has(p.name)) byName.set(p.name, p);
   }
 
+  // The shared lenient policy (forest.ts): a parent that is absent, names
+  // this part, names no part, or would close a cycle makes the part a root.
+  // `order` puts every part after its effective parent, so one pass down the
+  // list composes the whole rig — no recursion, and no way to compose a
+  // part into itself.
+  const { parentOf, order } = resolveHierarchy(
+    parts,
+    (p) => p.name,
+    (p) => p.parent,
+  );
+
   const out = new Map<string, WorldTransform>();
-  const resolve = (
-    name: string,
-    seen: ReadonlySet<string>,
-  ): WorldTransform => {
-    const cached = out.get(name);
-    if (cached !== undefined) return cached;
-    const mp = byName.get(name);
-    if (mp === undefined) {
-      const root: WorldTransform = { pos: [0, 0, 0], quat: QUAT_IDENTITY };
-      out.set(name, root);
-      return root;
-    }
+  for (const name of order) {
+    const mp = byName.get(name)!;
     const base = mp.position ?? [0, 0, 0];
     const pose = poses?.get(name);
     // §6.5: keyframe `pos` is a DELTA on `position`, so it lives in the
@@ -157,26 +159,23 @@ export function computeWorldTransforms(
       pivotRots.get(name),
       pose?.rot,
     );
-    let wt: WorldTransform;
-    if (mp.parent === undefined || seen.has(name)) {
-      wt = { pos: [local[0], local[1], local[2]], quat: localQ };
-    } else {
-      const parent = resolve(mp.parent, new Set(seen).add(name));
-      const off = quatRotateVec3(parent.quat, local);
-      wt = {
-        pos: [
-          parent.pos[0] + off[0],
-          parent.pos[1] + off[1],
-          parent.pos[2] + off[2],
-        ],
-        quat: quatMultiply(parent.quat, localQ),
-      };
-    }
-    out.set(name, wt);
-    return wt;
-  };
 
-  for (const p of parts) resolve(p.name, new Set());
+    const parentName = parentOf.get(name);
+    const parent = parentName === undefined ? undefined : out.get(parentName)!;
+    if (parent === undefined) {
+      out.set(name, { pos: [local[0], local[1], local[2]], quat: localQ });
+      continue;
+    }
+    const off = quatRotateVec3(parent.quat, local);
+    out.set(name, {
+      pos: [
+        parent.pos[0] + off[0],
+        parent.pos[1] + off[1],
+        parent.pos[2] + off[2],
+      ],
+      quat: quatMultiply(parent.quat, localQ),
+    });
+  }
   return out;
 }
 
