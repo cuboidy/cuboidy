@@ -173,18 +173,33 @@ export function validateProject(input: ProjectInput): Diagnostic[] {
     }
   }
 
-  // §6.13: an INLINE part that uses color indices but resolved to no
-  // palette by either of its two routes (its own, or the manifest's). The
-  // loop above covers file-backed parts; an inline one is in no file.
+  // §6.13: an INLINE part's colors, by both of its routes (its own palette
+  // or the manifest's). The loop above covers file-backed parts; an inline
+  // one is in no file.
+  //
+  // §11.8 sends an inline part's index range here whenever the palette is
+  // anything but colors it spells out itself — so this is the ONLY place
+  // that range is checked, and it used to skip the check entirely the
+  // moment a palette resolved (`r.palette.length > 0` was a `continue`).
+  // An inline part using index 5 against a two-color manifest palette
+  // parsed, resolved and linted clean, and reached `buildMesh` as magenta.
   for (const [name, r] of resolved ?? []) {
-    if (r.source !== null || r.palette.length > 0) continue;
+    if (r.source !== null) continue;
     const maxIdx = maxPaletteIndex(r.part);
-    if (maxIdx === AIR) continue;
-    diags.push({
-      code: 'missing',
-      severity: 'error',
-      message: `inline part '${name}' uses color indices but no palette resolved (neither its own nor the manifest's)`,
-    });
+    if (maxIdx === AIR) continue; // all air — no palette needed
+    if (r.palette.length === 0) {
+      diags.push({
+        code: 'missing',
+        severity: 'error',
+        message: `inline part '${name}' uses color indices but no palette resolved (neither its own nor the manifest's)`,
+      });
+    } else if (maxIdx >= r.palette.length) {
+      diags.push({
+        code: 'invalid-value',
+        severity: 'error',
+        message: `inline part '${name}' references palette index ${maxIdx}, but its palette has ${r.palette.length} color(s)`,
+      });
+    }
   }
 
   // W08 — a manifest palette (§6.1) that no inline part falls back to. Its

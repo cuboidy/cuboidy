@@ -103,3 +103,43 @@ describe('buildMesh', () => {
     expect(m.positions[firstNegYVert * 3 + 1]).toBe(0);
   });
 });
+
+// SPEC §7.4: an index no palette entry defines renders as opaque magenta.
+// A runtime carries no validation, so it needs a defined answer rather than
+// an out-of-bounds read — this is the behaviour a port must match instead of
+// indexing its palette and throwing.
+describe('buildMesh — unresolved color', () => {
+  it('paints an out-of-range index magenta', () => {
+    const mesh = buildMesh(
+      {
+        name: 'p',
+        size: { w: 1, h: 1, d: 1 },
+        pivot: { pos: { x: 0, y: 0, z: 0 } },
+        sockets: [],
+        voxels: [[[5]]],
+      },
+      [{ r: 0, g: 0, b: 0, a: 255 }],
+    );
+    // Every vertex of the single cube carries the same unresolved color.
+    for (let i = 0; i < mesh.colors.length; i += 3) {
+      expect([mesh.colors[i], mesh.colors[i + 1], mesh.colors[i + 2]]).toEqual([
+        1, 0, 1,
+      ]);
+    }
+    expect(mesh.colors.length).toBeGreaterThan(0);
+  });
+
+  it('paints an in-range index its palette color', () => {
+    const mesh = buildMesh(
+      {
+        name: 'p',
+        size: { w: 1, h: 1, d: 1 },
+        pivot: { pos: { x: 0, y: 0, z: 0 } },
+        sockets: [],
+        voxels: [[[0]]],
+      },
+      [{ r: 255, g: 0, b: 0, a: 255 }],
+    );
+    expect([mesh.colors[0], mesh.colors[1], mesh.colors[2]]).toEqual([1, 0, 0]);
+  });
+});

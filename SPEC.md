@@ -513,6 +513,8 @@ Position-based indexing: reordering the palette requires rewriting voxel data. T
 
 A file that spells its colors out is range-checked at **parse time** — it is independently well-formed. A file that **references** a palette cannot be: the length is unknown until the referenced file is read, so its index-range check is deferred to cross-file validation (§6.10, §11.6), exactly as a palette-less file's is. Charset (`[.0-9a-zA-Z]`) and row-width checks always apply at parse time.
 
+**An index that no palette entry defines renders as opaque magenta** (`#FF00FF`). Cross-file validation reports it (§11.6), but reporting is an authoring-time concern and a runtime that only draws must still have an answer — so the answer is a defined, deliberately conspicuous color rather than an error, a skipped voxel, or an out-of-bounds read. This applies wherever the index space is short: a palette-less file, a reference that did not resolve, or an inline part whose palette is shorter than the indices it uses.
+
 ### 7.5 Part object
 
 ```json

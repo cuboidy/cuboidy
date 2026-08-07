@@ -58,10 +58,12 @@ export function buildMesh(part: Part, palette: Palette): MeshData {
       for (let x = 0; x < part.size.w; x++) {
         const idx = part.voxels[y]![z]![x]!;
         if (idx === AIR) continue;
-        // Out-of-range index: possible when a shorter manifest-bound
-        // palette (SPEC §6.10) replaces the inline one, or while a
-        // palette-less file awaits its binding. Render magenta — visible
-        // as "unresolved color", never a crash. Cross-file lint flags it.
+        // SPEC §7.4: an index no palette entry defines renders as opaque
+        // magenta. A runtime that only draws still needs an answer, so the
+        // answer is a defined conspicuous color rather than a crash or a
+        // skipped voxel — cross-file validation is what reports it (§11.6),
+        // and a runtime carries no validation. Ports must match this, not
+        // index into their palette and throw.
         const [r, g, b] = paletteSrgb[idx] ?? ([1, 0, 1] as const);
         for (const face of FACES) {
           if (voxelAt(part, x + face.d[0], y + face.d[1], z + face.d[2]) !== AIR) continue;

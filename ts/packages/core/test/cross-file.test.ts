@@ -413,3 +413,56 @@ describe('validateProject — inline geometry (§6.13)', () => {
 function oneVoxelText(): string {
   return geo([{ name: 'body', size: [1, 1, 1], voxels: [['0']] }], ['#FF0000']);
 }
+
+// §11.8 defers an inline part's palette index range to phase 4 whenever the
+// palette is anything but colors the part spells out itself — so this is the
+// only place that range is ever checked. It used to skip the check the
+// moment a palette resolved, leaving both deferred routes unguarded.
+describe('validateProject — inline part palette range (§6.13 / §11.6)', () => {
+  const inlinePart = (cell: string) => ({
+    name: 'body',
+    size: { w: 1, h: 1, d: 1 },
+    pivot: { pos: { x: 0.5, y: 0, z: 0.5 } },
+    sockets: [],
+    voxels: [[[cell === '.' ? -1 : Number(cell)]]],
+  });
+  const twoColors = [
+    { r: 0, g: 0, b: 0, a: 255 },
+    { r: 255, g: 255, b: 255, a: 255 },
+  ];
+  const run = (palette: typeof twoColors, cell: string) =>
+    validateProject({
+      manifest: manifestOrThrow({
+        name: 't',
+        palette: ['#000000', '#FFFFFF'],
+        parts: [{ name: 'body', geometry: { size: [1, 1, 1], voxels: [['0']] } }],
+      }),
+      geometries: [],
+      parts: new Map([
+        ['body', { part: inlinePart(cell), palette, source: null }],
+      ]),
+      unresolved: [],
+    });
+
+  it('errors when an index is past the resolved palette', () => {
+    const d = run(twoColors, '5').find((x) => x.code === 'invalid-value');
+    expect(d?.severity).toBe('error');
+    expect(d?.message).toContain('index 5');
+    expect(d?.message).toContain('2 color');
+  });
+
+  it('accepts an index inside it', () => {
+    expect(run(twoColors, '1').some((x) => x.code === 'invalid-value')).toBe(
+      false,
+    );
+  });
+
+  it('still reports a part that resolved to no palette at all', () => {
+    const d = run([], '1').find((x) => x.code === 'missing');
+    expect(d?.severity).toBe('error');
+  });
+
+  it('says nothing about an all-air part', () => {
+    expect(run([], '.')).toEqual([]);
+  });
+});
