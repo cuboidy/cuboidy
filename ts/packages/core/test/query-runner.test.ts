@@ -280,3 +280,130 @@ describe('runQuery — rest rotations', () => {
     expect(r.text).toMatch(/warning: part "body" has manifest rotation/);
   });
 });
+
+// The acceptance contract for the C# port is numeric parity through this
+// CLI, and until now the only numbers it printed were six bbox values and
+// two range endpoints — everything else was palette characters over an
+// AXIS-ALIGNED grid. Measured against the shipped models, that grid cannot
+// see `pivot.rot` at all (only windmill uses it, on childless blades) nor
+// the §7.7 composition order. These queries print the rig math itself.
+describe('runQuery — --transforms / --sockets', () => {
+  const model = (name: string) => resolve(REPO_ROOT, 'models', name);
+  const lines = (text: string, prefix: string) =>
+    text.split('\n').filter((l) => l.startsWith(prefix));
+
+  it('prints a world transform per part, six decimals', async () => {
+    const r = await runQuery(model('knight'), {
+      queries: [{ kind: 'transforms' }],
+    });
+    expect(r.exitCode).toBe(0);
+    const t = lines(r.text, 'transform ');
+    expect(t.length).toBeGreaterThan(10);
+    for (const line of t) {
+      expect(line).toMatch(
+        /^transform \S+ pos=-?\d+\.\d{6},-?\d+\.\d{6},-?\d+\.\d{6} quat=-?\d+\.\d{6},-?\d+\.\d{6},-?\d+\.\d{6},-?\d+\.\d{6}$/,
+      );
+    }
+  });
+
+  it('never prints -0', async () => {
+    // JavaScript renders it "0" and .NET renders it "-0", so a text
+    // comparison would disagree on a value both agree about.
+    for (const name of ['fox', 'knight', 'windmill', 'koi']) {
+      const r = await runQuery(model(name), {
+        queries: [{ kind: 'transforms' }, { kind: 'sockets' }],
+      });
+      expect(r.text, name).not.toMatch(/=-0\.000000|,-0\.000000/);
+    }
+  });
+
+  it('makes pivot.rot observable — the grid cannot', async () => {
+    // windmill is the only model that uses `pivot.rot`, and its five
+    // bearers are childless leaves, so dropping the field entirely moves
+    // no voxel in any shipped model. It moves these quaternions.
+    const r = await runQuery(model('windmill'), {
+      queries: [{ kind: 'transforms' }],
+    });
+    const fans = lines(r.text, 'transform fan-').filter((l) =>
+      /fan-[1-5] /.test(l),
+    );
+    expect(fans).toHaveLength(5);
+    for (const line of fans) {
+      expect(line).not.toContain('quat=0.000000,0.000000,0.000000,1.000000');
+    }
+    // And they differ from each other — the blades are the same shape at
+    // five different pivot rotations, so a port that ignored the field
+    // would print one identical quaternion five times.
+    const quats = new Set(fans.map((l) => l.split('quat=')[1]));
+    expect(quats.size).toBe(5);
+  });
+
+  it('prints published socket frames as numbers', async () => {
+    const r = await runQuery(model('knight'), {
+      queries: [{ kind: 'sockets' }],
+    });
+    const s = lines(r.text, 'socket ');
+    expect(s.map((l) => l.split(' ')[1])).toEqual(['crest', 'weapon']);
+  });
+
+  it('says so when a model publishes none', async () => {
+    const r = await runQuery(model('koi'), { queries: [{ kind: 'sockets' }] });
+    expect(r.text).toContain('sockets: (model publishes none)');
+  });
+
+  it('samples a clip, moving both transforms and sockets', async () => {
+    const rest = await runQuery(model('knight'), {
+      queries: [{ kind: 'transforms' }, { kind: 'sockets' }],
+    });
+    const posed = await runQuery(model('knight'), {
+      queries: [{ kind: 'transforms' }, { kind: 'sockets' }],
+      anim: 'walk',
+      time: 0.4,
+    });
+    expect(posed.exitCode).toBe(0);
+    expect(posed.text).toContain('anim: walk t=0.400000');
+    expect(lines(posed.text, 'transform ')).not.toEqual(
+      lines(rest.text, 'transform '),
+    );
+    expect(lines(posed.text, 'socket ')).not.toEqual(
+      lines(rest.text, 'socket '),
+    );
+  });
+
+  it('wraps a time past the clip, per §6.7', async () => {
+    const at = async (time: number) =>
+      lines(
+        (
+          await runQuery(model('knight'), {
+            queries: [{ kind: 'transforms' }],
+            anim: 'walk',
+            time,
+          })
+        ).text,
+        'transform ',
+      );
+    // knight/walk is a 1.0s loop, so one full period later is the same
+    // pose — and the wrap is the shared clampToClip, not a second formula.
+    const t0 = await at(0.25);
+    const wrapped = await at(1.25);
+    expect(wrapped).toEqual(t0);
+  });
+
+  it('names the clips it has when asked for one it does not', async () => {
+    const r = await runQuery(model('knight'), {
+      queries: [{ kind: 'transforms' }],
+      anim: 'sprint',
+    });
+    expect(r.exitCode).toBe(2);
+    expect(r.text).toContain('has: walk');
+  });
+
+  it('warns that the voxel grid is rest-only', async () => {
+    const r = await runQuery(model('knight'), {
+      queries: [{ kind: 'at', x: 0, y: 10, z: 0 }],
+      anim: 'walk',
+      time: 0.4,
+    });
+    expect(r.text).toContain('read the rest-pose grid');
+  });
+});

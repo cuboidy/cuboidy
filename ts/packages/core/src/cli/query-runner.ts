@@ -8,6 +8,10 @@ import {
   type Assembly,
 } from './assemble.js';
 import { formatPaletteLine } from './palette-legend.js';
+import { sampleAnimation, type Pose } from '../animation.js';
+import { computeWorldTransforms, pivotRotsOf } from '../rig-transform.js';
+import { publishedSocketFrames } from '../socket-frame.js';
+import { round6 } from '../num.js';
 
 // cuboidy-query: structured, single-line coordinate lookup against an
 // assembled model. Complement to cuboidy-view, designed for LLM
@@ -51,10 +55,32 @@ export interface CoreQuery {
   pin2: { axis: Axis; value: number };
 }
 
-export type Query = AtQuery | CoreQuery;
+// Every part's world transform, as numbers. The grid the two queries
+// above read is an axis-aligned projection — a part's rest rotation moves
+// its pivot but does not turn its cells — so rotation is very nearly
+// invisible through it: dropping `pivot.rot` entirely, or composing
+// q_pivot and q_rotation the wrong way round, does not move a single
+// voxel in any shipped model. This prints the rig math itself, which is
+// what makes those mistakes detectable across implementations.
+export interface TransformsQuery {
+  kind: 'transforms';
+}
+
+// Every frame the model publishes (§6.12), as numbers. `socket-frame.ts`
+// is the join two packages meet at and no CLI printed it before.
+export interface SocketsQuery {
+  kind: 'sockets';
+}
+
+export type Query = AtQuery | CoreQuery | TransformsQuery | SocketsQuery;
 
 export interface QueryOptions {
   queries: readonly Query[];
+  // SPEC §6.3 clip to sample, and the time in seconds to sample it at.
+  // Applies to `transforms` and `sockets`; the voxel grid is rest-only
+  // (see TransformsQuery) and says so rather than pretending otherwise.
+  anim?: string | undefined;
+  time?: number | undefined;
 }
 
 export interface RunResult {
@@ -75,14 +101,38 @@ export async function runQuery(
   }
   const asm = loaded.assembly;
 
+  // Sampled poses, shared by every rig query in this invocation.
+  let poses: ReadonlyMap<string, Pose> = new Map();
+  const warnings: string[] = [];
+  if (opts.anim !== undefined) {
+    const clip = asm.animations.get(opts.anim);
+    if (clip === undefined) {
+      const known = [...asm.animations.keys()].sort().join(', ');
+      return fail(
+        `model has no animation "${opts.anim}"${known === '' ? '' : ` (has: ${known})`}`,
+        2,
+      );
+    }
+    poses = sampleAnimation(clip, opts.time ?? 0);
+    if (opts.queries.some((q) => q.kind === 'at' || q.kind === 'core')) {
+      warnings.push(
+        '--at / --core read the rest-pose grid; --anim applies to --transforms and --sockets only',
+      );
+    }
+  }
+
   const out: string[] = [];
   out.push(`model: ${asm.manifest.name}`);
+  if (opts.anim !== undefined) {
+    out.push(`anim: ${opts.anim} t=${num(opts.time ?? 0)}`);
+  }
   out.push(formatBBox(asm));
   out.push(formatPaletteLine(asm.palette));
   out.push('');
   for (const q of opts.queries) {
-    out.push(executeQuery(asm, q));
+    out.push(executeQuery(asm, q, poses));
   }
+  for (const w of warnings) out.push(`warning: ${w}`);
   for (const w of asm.warnings) out.push(`warning: ${w}`);
   for (const w of gridRotationWarnings(asm)) out.push(`warning: ${w}`);
 
@@ -93,9 +143,65 @@ function fail(message: string, exitCode: 1 | 2): RunResult {
   return { text: `cuboidy-query: ${message}\n`, exitCode };
 }
 
-function executeQuery(asm: Assembly, q: Query): string {
+function executeQuery(
+  asm: Assembly,
+  q: Query,
+  poses: ReadonlyMap<string, Pose>,
+): string {
   if (q.kind === 'at') return executeAt(asm, q);
-  return executeCore(asm, q);
+  if (q.kind === 'core') return executeCore(asm, q);
+  if (q.kind === 'transforms') return formatTransforms(asm, poses);
+  return formatSockets(asm, poses);
+}
+
+// Every printed number goes through here: rounded to the 1e-6 grid the
+// world coordinates already use, with -0 folded to 0 (JavaScript prints it
+// as "0" and .NET as "-0"), and a fixed 6 decimals so the text form never
+// switches to exponent notation. A parity harness should still compare
+// parsed doubles with a tolerance rather than the strings.
+function num(n: number): string {
+  const r = round6(n);
+  return (r === 0 ? 0 : r).toFixed(6);
+}
+
+function formatTransforms(
+  asm: Assembly,
+  poses: ReadonlyMap<string, Pose>,
+): string {
+  const pivotRots = pivotRotsOf(
+    asm.resolvedParts.map((rp) => [rp.name, rp.part] as const),
+  );
+  const world = computeWorldTransforms(asm.manifest.parts, pivotRots, poses);
+  const lines: string[] = [];
+  for (const mp of asm.order) {
+    const wt = world.get(mp.name);
+    if (wt === undefined) continue;
+    lines.push(
+      `transform ${mp.name} pos=${wt.pos.map(num).join(',')} quat=${wt.quat.map(num).join(',')}`,
+    );
+  }
+  return lines.join('\n');
+}
+
+function formatSockets(
+  asm: Assembly,
+  poses: ReadonlyMap<string, Pose>,
+): string {
+  const parts = new Map(
+    asm.resolvedParts.map((rp) => [
+      rp.name,
+      { part: rp.part, palette: asm.palette, source: null },
+    ]),
+  );
+  const frames = publishedSocketFrames(asm.manifest, parts, poses);
+  const names = [...frames.keys()].sort();
+  if (names.length === 0) return 'sockets: (model publishes none)';
+  return names
+    .map((n) => {
+      const f = frames.get(n)!;
+      return `socket ${n} pos=${f.pos.map(num).join(',')} quat=${f.quat.map(num).join(',')}`;
+    })
+    .join('\n');
 }
 
 function executeAt(asm: Assembly, q: AtQuery): string {

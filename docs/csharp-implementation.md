@@ -111,9 +111,28 @@ readers' older behaviour, which disagreed with the table and with each other.
 fox, herbalist, knight, koi, owl, sword, windmill — loads clean.
 
 The runtime half has no fixtures, so it is checked against TypeScript
-numerically instead: `cuboidy-query` prints resolved coordinates, so the same
-model at the same animation time must produce the same numbers from both
-implementations.
+numerically instead:
+
+```
+cuboidy-query <model> --transforms --sockets [--anim=<clip> --time=<s>]
+```
+
+`--transforms` prints every part's world transform and `--sockets` every
+published frame (§6.12), each as `pos=x,y,z` and `quat=x,y,z,w` at six
+decimals with `-0` folded to `0`. Compare **parsed doubles with a
+tolerance**, not the strings: the two runtimes' trig can differ in the last
+bits, and .NET renders negative zero as `-0` where JavaScript renders `0`.
+
+This is what the criterion always meant and did not previously say. Until
+`--transforms` existed, the only numbers the tool printed were six bbox
+values and two range endpoints; everything else was palette characters read
+off an axis-aligned voxel grid, which a part's rotation moves the pivot of
+but does not turn the cells of. Measured against all seven models, a port
+could drop `pivot.rot` entirely, or compose `q_pivot ⊗ q_rotation` the wrong
+way round, without moving a single character of that output. There was also
+no way to ask for a pose at all — `--anim` / `--time` are new, and without
+them `animation.ts`, all twenty easing curves and `socket-frame.ts` sat
+outside the contract completely.
 
 ## The Godot addon lives in a separate repository
 
