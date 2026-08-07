@@ -239,9 +239,14 @@ Open, roughly in the order the work is worth doing:
       symmetry check only recognises `<base>-l` / `<base>-r`, so the
       `leg-fl` style the spec's own examples used gets no check at all. A
       vocabulary would settle both.
-- [ ] **Reference parser (C#).** The shared `fixtures/` corpus exists for
-      exactly this: a second implementation passes when every fixture yields
-      the diagnostic code its directory is named after.
+- [ ] **Second implementation (C#)** — `csharp/`, a reader plus the runtime
+      half (rig, animation sampling, mesh), engine-neutral and shipped as a
+      NuGet package. The shared `fixtures/` corpus exists for exactly this: it
+      passes when every fixture yields the diagnostic code its directory is
+      named after. Plan and rationale: [docs/csharp-implementation.md](docs/csharp-implementation.md).
+- [ ] **Godot addon** — `cuboidy-godot`, a separate repository (the Asset
+      Library requires `addons/` at a repository root). Depends on the C#
+      package; see the plan above for why it is not hosted here.
 
 ## License
 
