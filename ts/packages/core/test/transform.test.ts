@@ -25,8 +25,18 @@ function sample(): Part {
 describe('duplicatePart', () => {
   it('copies geometry under a new name, no reuse reference', () => {
     const d = duplicatePart(sample(), 'hand2');
+    // What `expect(d.from).toBeUndefined()` was reaching for. `Part` has no
+    // `from` field, so that assertion read an absent property and passed for
+    // every possible implementation; this one fails if a duplicate ever
+    // grows a back-reference instead of being a part in its own right.
+    expect(Object.keys(d).sort()).toEqual([
+      'name',
+      'pivot',
+      'size',
+      'sockets',
+      'voxels',
+    ]);
     expect(d.name).toBe('hand2');
-    expect(d.from).toBeUndefined();
     expect(d.voxels).toEqual([[[0, 1]]]);
     expect(d.size).toEqual({ w: 2, h: 1, d: 1 });
     expect(d.pivot).toEqual(sample().pivot);
@@ -38,7 +48,6 @@ describe('mirrorPart', () => {
   it('reflects voxels across the x axis', () => {
     const m = mirrorPart(sample(), 'x', 'hand_r');
     expect(m.name).toBe('hand_r');
-    expect(m.from).toBeUndefined();
     expect(m.voxels).toEqual([[[1, 0]]]);
   });
 

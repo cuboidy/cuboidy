@@ -19,7 +19,11 @@ export const RESERVED_KEYWORDS: readonly string[] = [
   'rot',
 ];
 
-const RESERVED_KEYWORD_SET = new Set(RESERVED_KEYWORDS);
+// Exported because `identifier-schema.ts` built a second one from the same
+// list, in a file that already imports from this one.
+export const RESERVED_KEYWORD_SET: ReadonlySet<string> = new Set(
+  RESERVED_KEYWORDS,
+);
 
 export const IDENTIFIER_RE = /^[a-zA-Z_][a-zA-Z0-9_-]*$/;
 

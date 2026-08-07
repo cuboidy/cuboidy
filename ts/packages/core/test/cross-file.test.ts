@@ -92,7 +92,7 @@ describe('validateProject (v0.7)', () => {
     if (!r.ok) throw new Error(`geometry parse failed: ${r.message}`);
     return r.value;
   }
-  const oneVoxel = (name: string, cell: string, palette?: string[]) =>
+  const oneVoxel = (name: string, cell: string, palette?: string[] | string) =>
     geometryOrThrow(
       geo([{ name, size: [1, 1, 1], voxels: [[cell]] }], palette),
     );

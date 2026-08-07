@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { Identifier } from '../identifier-schema.js';
 import { refPath } from '../ref-path.js';
 import { MAX_PALETTE } from './palette.js';
+import { AIR, charToIndex } from './voxel-row.js';
 
 // SPEC §7: the Zod schema for a geometry file (`voxels.json`). Single source of
 // truth for both the runtime reader and the published JSON Schema artifact, so
@@ -135,8 +136,13 @@ export function checkPartFields(
       // known here — it moves to cross-file validation (§11.6).
       if (paletteSize === null) continue;
       for (const ch of row) {
-        if (ch === '.') continue;
-        const idx = charIndex(ch);
+        // `charToIndex` is the §7.4 alphabet, and it knows about air. This
+        // used to be a second, private mapping that returned -2 for '.' and
+        // was safe only because a `ch === '.'` guard ran first — a
+        // load-bearing guard nothing pointed at, next to the file that
+        // already owns the alphabet.
+        const idx = charToIndex(ch);
+        if (idx === null || idx === AIR) continue;
         if (idx >= paletteSize) {
           ctx.addIssue({
             code: 'custom',
@@ -199,14 +205,6 @@ export const GeometrySchema = z
     }
   });
 
-// The §7.4 alphabet: 0-9 → 0-9, a-z → 10-35, A-Z → 36-61. The row regex has
-// already rejected anything outside it, so this needs no failure case.
-function charIndex(c: string): number {
-  const code = c.charCodeAt(0);
-  if (code <= 57) return code - 48; // '0'-'9'
-  if (code >= 97) return code - 97 + 10; // 'a'-'z'
-  return code - 65 + 36; // 'A'-'Z'
-}
 
 export type GeometryDoc = z.infer<typeof GeometrySchema>;
 export type GeometryDocPart = z.infer<typeof GeometryPartSchema>;

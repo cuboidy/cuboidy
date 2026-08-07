@@ -1,6 +1,5 @@
 import { z } from 'zod';
-import { IDENTIFIER_RE } from './identifier.js';
-import { RESERVED_KEYWORDS } from './identifier.js';
+import { IDENTIFIER_RE, RESERVED_KEYWORD_SET } from './identifier.js';
 
 // SPEC §5: the shared Zod schema for an identifier slot — model / part /
 // socket / animation names. Split into `.regex()` + `.refine()` so the
@@ -12,8 +11,6 @@ import { RESERVED_KEYWORDS } from './identifier.js';
 //
 // Lives in its own leaf module (no manifest/animation imports) so both
 // manifest.ts and animation.ts can use it without an import cycle.
-const RESERVED_KEYWORD_SET = new Set(RESERVED_KEYWORDS);
-
 export const Identifier = z
   .string()
   .regex(

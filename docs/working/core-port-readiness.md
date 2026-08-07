@@ -169,6 +169,18 @@ five rounding residues. Interior values are deliberately left alone: they are
 what the formulas produce, and a port must evaluate the same expressions
 rather than algebraically equivalent ones.
 
+### D8 — An index no palette defines renders as opaque magenta
+
+Taken during P3. The fallback existed — `mesh.ts` returns `[1, 0, 1]` — but
+only as a comment, in a file the port takes, while every layer that *reports*
+the problem is a layer the port drops. A C# reader working from the spec
+alone would index its palette with an out-of-range value and throw, on input
+the reference implementation draws.
+
+So §7.4 states it. A runtime that only draws needs a defined answer, and a
+conspicuous color is a better one than a crash, a skipped voxel, or an
+out-of-bounds read. Reporting stays an authoring-time concern (§11.6).
+
 ### Where the decisions land
 
 Only these five outlive this file, so each has a home to move to. The move
@@ -181,8 +193,9 @@ decision is settled here and unimplemented there.
 | D2 time-key grammar | `SPEC.md` §6.6 | P2 ✔ |
 | D5 duplicate is a resolution failure | `SPEC.md` §11.6 | P2 ✔ |
 | D7 easing endpoints are clamped | `SPEC.md` §6.7 | P2 ✔ |
-| D3 socket scale | `SPEC.md` §7.8 | P3 |
-| D4 core owns `scale`/`visible` | `SPEC.md` §7.7, and the scope table in `docs/csharp-implementation.md` | P3 |
+| D3 socket scale | `SPEC.md` §7.8 | P3 ✔ |
+| D4 core owns `scale`/`visible` | `SPEC.md` §7.7, and the scope table in `docs/csharp-implementation.md` | P3 ✔ |
+| D8 an unresolved index renders magenta | `SPEC.md` §7.4 | P3 ✔ |
 | D1 SPEC is the authority for diagnostic codes | `docs/csharp-implementation.md` — it amends that document's own "TypeScript is right" rule | P1 ✔ |
 | D6 array bounds against a container | `docs/csharp-implementation.md`, via the pointer at `zod-diagnostic.ts` | P1 ✔ |
 
@@ -499,7 +512,9 @@ removed; one `partHierarchy(parts)` replacing the divergent walks so
 `rig-transform.ts` stops double-applying self-parents and emitting phantom map
 keys [R3-e].
 
-**P3 — rules and contract.** Palette index range enforcement moved into
+**P3 — rules and contract.** *Done — `3b0e122`, `b59f8ac`, `1a80292`,
+`5845957`. D3, D4 and D8 have landed in `SPEC.md`; "Done means" is rewritten
+around `--transforms` / `--sockets` / `--anim`.* Palette index range enforcement moved into
 `project.ts`; D3's socket scale; D4's local-transform function with the three
 call sites moved onto it. Then `cuboidy-query` gains `--anim`/`--time` and a
 `--sockets` mode printing socket frames as numbers, and either a

@@ -1,6 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import Ajv2020 from 'ajv/dist/2020.js';
+import Ajv2020Module from 'ajv/dist/2020.js';
+
+// `ajv/dist/2020.js` is CommonJS. Under Node's ESM interop the class arrives
+// as `.default` on the namespace object, and ajv's own typings describe the
+// namespace rather than the constructor — so the default import is not
+// callable as far as tsc is concerned, however well it runs. Only `compile`
+// is used here, so the surface asserted is that.
+type AjvValidator = (data: unknown) => boolean;
+type AjvCtor = new (opts?: { allErrors?: boolean }) => {
+  compile: (schema: object) => AjvValidator;
+};
+const Ajv2020 = (Ajv2020Module as unknown as { default?: AjvCtor }).default ??
+  (Ajv2020Module as unknown as AjvCtor);
 import { buildManifestJsonSchema } from '../src/json-schema.js';
 import { parseManifest } from '../src/manifest.js';
 import { RESERVED_KEYWORDS } from '../src/identifier.js';

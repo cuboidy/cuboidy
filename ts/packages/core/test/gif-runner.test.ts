@@ -81,7 +81,7 @@ function lzw(minCodeSize: number, data: readonly number[]): number[] {
     }
     if (!got || code === end) break;
     if (code === clear) { reset(); prev = null; continue; }
-    const entry =
+    const entry: number[] =
       code < dict.length && dict[code]!.length > 0
         ? dict[code]!
         : [...prev!, prev![0]!];

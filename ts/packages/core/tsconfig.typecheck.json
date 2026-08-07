@@ -1,0 +1,18 @@
+{
+  // `tsconfig.json` is the BUILD config: it emits `dist/`, so its `rootDir`
+  // has to stay `src` or the output tree grows a level. That left `test/`
+  // and `scripts/` unchecked by anything — vitest runs them through esbuild,
+  // which strips types without reading them — including
+  // `fixtures-parity.test.ts`, the file the port plan names as the
+  // cross-implementation contract, and the two `scripts/*` that reach into
+  // `../src/` on paths the package's `exports` map does not publish.
+  //
+  // This one emits nothing, so `rootDir` only scopes what tsc will accept.
+  // `npm run typecheck` uses it; `npm run build` still uses the other.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true
+  },
+  "include": ["src/**/*", "test/**/*", "scripts/**/*"]
+}
