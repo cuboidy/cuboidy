@@ -595,7 +595,7 @@ function GeometryFields({
             />
             <button
               type="button"
-              className="btn btn-icon btn-sm socket-remove"
+              className="icon-btn-dense socket-remove"
               disabled={disabled}
               title="Remove socket"
               aria-label="Remove socket"

@@ -165,10 +165,47 @@
 }
 
 .btn:focus-visible,
-.icon-btn:focus-visible {
+.icon-btn:focus-visible,
+.icon-btn-dense:focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: 1px;
   border-radius: var(--r-1);
+}
+
+/* The DENSE icon button: no padding of its own, and a hover cushion
+   rather than only a brightening glyph. For rows packed tight enough
+   that a button needs to be exactly the size its context gives it — the
+   timeline's per-lane actions, an inspector row's remove — where
+   `.icon-btn`'s padding would push the row apart and a colour-only hover
+   would be too quiet to find among neighbours.
+ *
+ * A sibling of `.icon-btn`, not a replacement: the two are used in
+ * different places for different reasons, and the divergence was never
+ * accidental. What WAS accidental is that this one lived in the editor's
+ * stylesheet, so the workspace could not reach for it. */
+.icon-btn-dense {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: var(--r-1);
+  color: var(--txt-2);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+}
+
+.icon-btn-dense:hover:not(:disabled) {
+  background: var(--bg-3);
+  color: var(--txt-1);
+}
+
+.icon-btn-dense:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 /* Lucide icons: one stroke weight everywhere; colour follows

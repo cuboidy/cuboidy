@@ -347,7 +347,7 @@ const TimelineLanes = memo(function TimelineLanes({
                 {hasTrack && (
                   <button
                     type="button"
-                    className="btn-icon timeline-part-clear"
+                    className="icon-btn-dense timeline-part-clear"
                     disabled={disabled}
                     title={`Clear all ${part} keys in this clip`}
                     onClick={() => onClearPart(part)}
@@ -384,7 +384,7 @@ const TimelineLanes = memo(function TimelineLanes({
                       <span className="timeline-attr-label">{label}</span>
                       <button
                         type="button"
-                        className="btn-icon timeline-add"
+                        className="icon-btn-dense timeline-add"
                         title={`Add ${label} key at playhead`}
                         disabled={disabled}
                         onClick={() => onAddKey(part, key)}

@@ -33,40 +33,12 @@ pre {
 
 /* ─── Buttons & menus ─────────────────────────────────────────────── */
 
-/* The .btn / .btn-sm / .icon-btn primitives live in @cuboidy/ui
-   (chrome.css) — nothing here may redefine them, or the two apps'
-   buttons silently diverge. */
+/* The .btn / .btn-sm / .icon-btn / .icon-btn-dense primitives all live in
+   @cuboidy/ui (chrome.css) — nothing here may redefine them, or the two
+   apps' buttons silently diverge. `.icon-btn-dense` was this file's
+   `.btn-icon` (zero padding, hover cushion) until it moved; it is a
+   sibling of `.icon-btn`, not a replacement, and both are used. */
 
-/* Chrome-less icon button (inspector rows, timeline): just the glyph,
-   brightening on hover — no background or border. Width/height/glyph
-   size come from the context class. Editor-local for now; folding it
-   into ui's .icon-btn is a design decision (padding and hover differ). */
-.btn-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  padding: 0;
-  background: none;
-  border: none;
-  border-radius: var(--r-1);
-  color: var(--txt-2);
-  cursor: pointer;
-  font: inherit;
-  line-height: 1;
-}
-
-.btn-icon:hover:not(:disabled) {
-  background: var(--bg-3);
-  color: var(--txt-1);
-}
-
-.btn-icon:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.btn-icon:focus-visible,
 .menu-item:focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: 1px;
