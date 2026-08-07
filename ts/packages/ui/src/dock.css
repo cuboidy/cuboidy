@@ -280,12 +280,20 @@
 
 /* The dock's own controls.
  *
- * Prefixed and defined HERE rather than reusing an app's `.btn-icon` /
- * `.menu`. Depending on a class the host happens to declare is a hidden
- * requirement: the workspace's close and + buttons rendered as default
- * browser boxes because those rules lived only in the editor's
- * stylesheet. Tokens are a fair thing to expect from a host; class names
- * are not. */
+ * Prefixed and defined HERE rather than reusing a `.menu` or an icon
+ * button from elsewhere. Depending on a class someone else happens to
+ * declare is a hidden requirement: the workspace's close and + buttons
+ * rendered as default browser boxes back when those rules lived only in
+ * the editor's stylesheet. Tokens are a fair thing to expect from a
+ * host; class names are not.
+ *
+ * `.dock-icon-btn` now renders identically to `chrome.css`'s
+ * `.icon-btn-dense` (where the editor's `.btn-icon` ended up) — base,
+ * hover and disabled are the same declarations — and the duplication
+ * stays on purpose: `dock.css` is a separate entry point, so a host may
+ * import it without `chrome.css`. The rule that keeps this file from
+ * leaning on an app's stylesheet keeps it from leaning on its own
+ * package's other stylesheets too. */
 
 .dock-icon-btn {
   display: flex;

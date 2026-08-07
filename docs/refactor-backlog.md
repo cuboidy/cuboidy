@@ -122,11 +122,16 @@ check needed except where noted.
   `geometry/transform.ts:8`.
 - **CSS unification**: delete editor-local `.btn-sm` override and the
   `.btn:disabled` / `.btn:focus-visible` redefinitions (opacity .45 vs
-  ui's .4 — ui now owns `.btn` entirely). Deferred on review:
-  `.btn-icon`→`.icon-btn` is NOT a mechanical rename (padding 0 vs
-  .25rem, hover background vs color-only) — folding them is a design
-  decision for the restyle owner; `tree-node` is an undefined-but-
-  semantic class used by both apps' trees, left as a styling hook.
+  ui's .4 — ui now owns `.btn` entirely). Deferred on review, now DONE:
+  `.btn-icon`→`.icon-btn` was NOT a mechanical rename (padding 0 vs
+  .25rem, hover background vs color-only), so it moved instead of
+  folding — the editor's rule is now `.icon-btn-dense` in ui's
+  `chrome.css`, a sibling of `.icon-btn` rather than a replacement, and
+  the workspace can reach for it. The socket remove also shed the
+  `btn btn-sm` it wore alongside the chrome-less class, where only
+  import order decided which won. Still open: `tree-node` is an
+  undefined-but-semantic class used by both apps' trees, left as a
+  styling hook.
 - **ui barrel trim** — drop internal-only exports: `Logo`,
   `TransformGizmo`, `findLeafPath`, `ToggleGroupItem`, `RigNode`, `Span`,
   `LeafNode`, `SplitDir`, `SplitNode`.
