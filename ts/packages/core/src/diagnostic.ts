@@ -40,3 +40,15 @@ export interface Diagnostic {
   // (SPEC §11.7 prints `[<rule-id>]`); when absent, `code` is.
   ruleId?: LintRuleId;
 }
+
+// What a RESOLVER can say. `LintRuleId` is a vocabulary of authoring-time
+// rules and resolution has none of them — it reports a file it could not
+// read, a reference it could not bind, a name it could not disambiguate,
+// and `project.ts` accordingly never set `ruleId` at any of its sites.
+//
+// Saying so in the type matters for the port: `docs/csharp-implementation.md`
+// draws the line as "resolution is in scope, reporting is not", and without
+// this the C# side would carry an eleven-value enum it can never populate
+// into a library that has no lint. Structurally still a `Diagnostic`, so
+// every consumer that renders lint output renders these unchanged.
+export type ResolutionDiagnostic = Omit<Diagnostic, 'ruleId'>;

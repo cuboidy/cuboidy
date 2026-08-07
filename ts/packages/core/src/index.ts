@@ -142,7 +142,12 @@ export type {
 export { validateCrossFile, validateProject } from './lint/cross-file.js';
 export type { ProjectInput } from './lint/cross-file.js';
 export { lintGeometry } from './lint/voxel-rules.js';
-export type { Diagnostic, LintRuleId, Severity } from './diagnostic.js';
+export type {
+  Diagnostic,
+  LintRuleId,
+  ResolutionDiagnostic,
+  Severity,
+} from './diagnostic.js';
 
 export { buildForest } from './forest.js';
 export type { ForestNode } from './forest.js';

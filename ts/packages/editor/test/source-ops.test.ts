@@ -414,7 +414,7 @@ describe('deleteFileInSource', () => {
           wave: {
             duration: 1,
             loop: true,
-            parts: { arm: { '0': { rot: [0, 0, 0] } }, body: { '0': { rot: [0, 0, 0] } } },
+            parts: { arm: { '0.0': { rot: [0, 0, 0] } }, body: { '0.0': { rot: [0, 0, 0] } } },
           },
           ext: 'anims/wave.json',
         },
@@ -422,7 +422,7 @@ describe('deleteFileInSource', () => {
       'body.json': GEO([{ name: 'body', voxels: '0' }, { name: 'hand', voxels: '0' }], ['#FF0000']),
       'limbs.json': GEO([{ name: 'arm', voxels: '0' }], ['#00FF00']),
       'anims/wave.json':
-        '{"duration":1,"loop":true,"parts":{"arm":{"0":{"rot":[0,0,0]}},"body":{"0":{"rot":[0,0,0]}}}}',
+        '{"duration":1,"loop":true,"parts":{"arm":{"0.0":{"rot":[0,0,0]}},"body":{"0.0":{"rot":[0,0,0]}}}}',
     }, 'body.json');
     const next = deleteFileInSource(src, 'limbs.json');
     expect(next).not.toBeNull();

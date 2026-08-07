@@ -29,10 +29,50 @@ Ported from `ts/packages/core/`:
 | `socket-frame.ts` | where an attachment sits |
 | `mesh.ts` | voxel grid to vertex data |
 
+Those ten are the modules with names worth arguing about. The actual closure
+is **nineteen files**, and the other nine are not optional — an import graph
+over `core/src` finds them reachable from the ten and reachable from nothing
+that is dropped:
+
+| Also required | What it is |
+|---|---|
+| `geometry/types.ts` | the AST every module above produces or consumes |
+| `geometry/palette.ts` | hex → `Color`, and `MAX_PALETTE` |
+| `geometry/voxel-row.ts` | the §7.4 alphabet, `AIR`, `maxPaletteIndex` |
+| `geometry/locate.ts` | a document path back to a line, for `parseGeometryText` |
+| `result.ts`, `diagnostic.ts` | what a reader returns |
+| `identifier.ts`, `identifier-schema.ts` | §5 |
+| `ref-path.ts` | §8 |
+
+And five files the lists above leave unclassified, decided here:
+
+- `forest.ts` — **ported.** `resolveHierarchy` is the one lenient parent
+  policy, and `rig-transform.ts` calls it. It has no other consumer inside
+  core, which is why it read as optional.
+- `num.ts` — **not ported**, with a caveat: `round6` is how `cuboidy-query`
+  quantizes the numbers the parity check compares, so a harness that
+  reimplements it must use `Math.Floor(n * 1e6 + 0.5) / 1e6` — JavaScript's
+  `Math.round` is half-toward-`+∞` and C#'s is banker's.
+- `geometry/transform.ts` — **not ported.** Mirror and duplicate are
+  authoring operations.
+- `json-schema.ts` — **not ported.** It builds a generated artifact for
+  editors and CI; the C# reader validates structurally as it reads.
+- `index.ts` — **not ported.** A barrel is a TypeScript packaging concern.
+  Note that 49 of its 128 exported names have no consumer outside core, ten
+  of them Zod schema objects; do not read it as an API to reproduce.
+
 Deliberately not ported:
 
 - `render/` — a software rasterizer, there to serve `cuboidy-snap` and
   `cuboidy-gif`. An engine brings its own.
+
+  Including `render/camera.ts`, which is worth naming because it is pure
+  math, depends on nothing but `render/vec.ts`, and is exported from the
+  barrel with a comment explaining that it pulls no Node code into a bundle
+  — so it reads like a candidate. It is not one: its `Angle` set is the
+  contact-sheet convention `cuboidy-snap` renders, not a format rule, and an
+  engine that draws the mesh already has a camera. The workspace's thumbnail
+  view keeps using it as a TypeScript app.
 - `cli/` — the inspection CLIs stay TypeScript. They are an author's tools,
   and the author already has Node.
 - `lint/` — W/H warnings and project-level lint are authoring-time checks.
@@ -40,6 +80,17 @@ Deliberately not ported:
   (which geometry file, which palette entry, which part a track targets)
   because it cannot draw without them; it does not need to **report** on them.
   Resolution is in scope, reporting is not.
+
+  That line is drawn in the types as well as in this paragraph:
+  `ProjectDiagnostic` carries a `ResolutionDiagnostic`, which is a
+  `Diagnostic` without `ruleId`. Port the narrow one — the eleven `W`/`H`
+  identifiers are a lint vocabulary, and a library with no lint can never
+  populate them.
+
+  One rule crosses the line and §11.6 says which: a part name defined in two
+  listed geometry files leaves the by-`name` lookup with no answer, so
+  resolution itself fails. Refuse that model rather than binding the name to
+  whichever file was read first.
 - `geometry/serialize.ts`, `animation-edit.ts` — writing and editing. This
   library reads.
 

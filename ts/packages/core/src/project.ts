@@ -1,4 +1,4 @@
-import type { Diagnostic } from './diagnostic.js';
+import type { ResolutionDiagnostic } from './diagnostic.js';
 import { InlineAnimationSchema, type InlineAnimation } from './animation.js';
 import {
   colorsToPalette,
@@ -29,7 +29,7 @@ export interface GeometryFile {
 // same shape lint uses, minus path resolution — callers absolutize).
 export interface ProjectDiagnostic {
   file: string;
-  diag: Diagnostic;
+  diag: ResolutionDiagnostic;
 }
 
 export interface ProjectPaths {
