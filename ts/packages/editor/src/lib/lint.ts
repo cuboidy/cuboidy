@@ -64,6 +64,22 @@ export function lintSource(src: LoadedSource): FileDiagnostic[] {
     }
   });
 
+  // §11.6: a part name defined in two listed geometry files. Resolution is
+  // what refuses it (the by-`name` lookup has no answer), so it comes back
+  // from the call above rather than from validateProject — which the CLI
+  // reaches through `project.complete` and this path does not. Dropping it
+  // here is how the rule went missing from the live panel.
+  for (const dup of bound.duplicates) {
+    out.push({
+      file: CROSS_FILE,
+      diag: {
+        code: 'duplicate',
+        severity: 'error',
+        message: `part '${dup.name}' is defined in more than one geometry file (${dup.files.join(', ')})`,
+      },
+    });
+  }
+
   for (const diag of validateProject({
     manifest: src.manifest,
     geometries,

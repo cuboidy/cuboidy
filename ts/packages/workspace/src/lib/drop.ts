@@ -58,6 +58,12 @@ export function socketCandidates(
 ): SocketCandidate[] {
   const out: SocketCandidate[] = [];
   for (const p of placed) {
+    // At REST, deliberately, the same way InstanceGizmos draws the markers:
+    // a drop target says what the host OFFERS, and that should not slide out
+    // from under the pointer because the scene happens to be playing. The
+    // attachment stores a socket binding, not a position, so the guest
+    // follows the live frame — which since §7.8 grew animated `scale` can be
+    // some way from this one on a scaled host.
     for (const [name, local] of publishedSocketFrames(
       p.model.manifest,
       p.model.parts,

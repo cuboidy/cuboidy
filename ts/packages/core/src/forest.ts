@@ -68,11 +68,21 @@ export function resolveHierarchy<T>(
       dropped.set(id, 'unknown');
       continue;
     }
-    // Walking up from the proposed parent must terminate; revisiting `id`
-    // means this edge closes a cycle, so drop THIS edge and let the item be
-    // a root. Which member of a cycle becomes the root therefore depends on
-    // input order — that is inherent to breaking a cycle, and it is why
-    // validation rejects them rather than leaving it to the renderer.
+    // Walking up from the proposed parent must terminate; revisiting a name
+    // already on the walk means this edge cannot be followed, so drop it and
+    // let the item be a root.
+    //
+    // The walk reads DECLARED parents, never the effective ones decided so
+    // far, which is what makes the answer independent of input order: every
+    // member of a cycle reaches the same verdict about its own edge, so all
+    // of them become roots and reversing the list changes nothing. An
+    // earlier comment here claimed the opposite; the tests
+    // (`rig-transform.test.ts`, "makes every member of a cycle a root,
+    // symmetrically") assert the order-independence directly.
+    //
+    // A chain LEADING INTO a cycle is dropped too, and reported as `cycle`
+    // though its own edge closes nothing — the walk from it never
+    // terminates either. The whole subtree above a bad edge detaches.
     const seen = new Set<string>([id]);
     let cur: string | undefined = parent;
     let closes = false;

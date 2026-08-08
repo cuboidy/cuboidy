@@ -16,6 +16,7 @@ export {
   InlineAnimationSchema,
   AnimationTrackSchema,
   KeyframeSchema,
+  TIME_KEY_RE,
   clampToClip,
   isInlineAnimation,
   samplePart,
@@ -99,6 +100,7 @@ export type {
   ProjectPaths,
   ResolvedPart,
   ResolvedProject,
+  DuplicatePartName,
   UnresolvedPart,
 } from './project.js';
 
@@ -128,15 +130,17 @@ export {
   computeRestWorldTransforms,
   partsWorldBounds,
   pivotRotsOf,
+  localPointToWorld,
   quatFromEulerZXYDeg,
   quatMultiply,
   quatRotateVec3,
 } from './rig-transform.js';
 export type {
   AnimPose,
+  Frame,
+  PosedPart,
   QuatTuple,
   Vec3Tuple,
-  Frame,
   WorldTransform,
 } from './rig-transform.js';
 
@@ -150,7 +154,8 @@ export type {
   Severity,
 } from './diagnostic.js';
 
-export { buildForest } from './forest.js';
+export { buildForest, resolveHierarchy } from './forest.js';
+export type { DroppedEdge, Hierarchy } from './forest.js';
 export type { ForestNode } from './forest.js';
 
 export { isIdentifier } from './identifier.js';

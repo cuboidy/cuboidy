@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { parseManifest, type Manifest } from '../src/manifest.js';
 import { resolveProject } from '../src/project.js';
 import { publishedSocketFrame, socketFrameOn } from '../src/socket-frame.js';
-import { QUAT_IDENTITY, localPointToWorld } from '../src/rig-transform.js';
+import { QUAT_IDENTITY } from '../src/rig-transform.js';
+import { buildSceneFromParts } from '../src/render/scene.js';
 import { geo } from './helpers/geometry.js';
 
 // SPEC §7.8 + §6.12: where a published socket is in world space. This is
@@ -205,11 +206,28 @@ describe('socketFrameOn — animated scale (§6.5 / §7.8)', () => {
   });
 
   it('agrees with where the rasterizer puts the same local point', () => {
-    // The socket sits at the tip corner; the scene builder maps that exact
-    // local point through the same rule.
+    // This used to compare socketFrameOn against localPointToWorld with the
+    // same arguments socketFrameOn passes it — f(x) === f(x), which cannot
+    // fail. The claim is about the RASTERIZER, so ask the rasterizer: the
+    // socket sits on the arm's top face, and a corner of the top voxel is
+    // the same local point.
     const scaled: [number, number, number] = [1, 3, 1];
     const viaSocket = socketFrameOn(arm, atOrigin, 'grip', scaled)!.pos;
-    const viaRule = localPointToWorld([0.5, 4, 0.5], [0.5, 0, 0.5], scaled, atOrigin);
-    expectVecClose(viaSocket, [...viaRule]);
+    const scene = buildSceneFromParts(
+      [{ part: arm, remap: null, transform: atOrigin, scale: scaled }],
+      [{ r: 255, g: 0, b: 0, a: 255 }],
+    );
+    // The socket sits at the centre of the top face, so it is not itself a
+    // corner — but it is in that plane, and the rasterizer's highest corner
+    // is too. If the two rules disagreed about scale, these would part.
+    expect(scene.max[1]).toBeCloseTo(viaSocket[1], 10);
+    // And at unit scale both come back down together.
+    const rest = socketFrameOn(arm, atOrigin, 'grip')!.pos;
+    const restScene = buildSceneFromParts(
+      [{ part: arm, remap: null, transform: atOrigin }],
+      [{ r: 255, g: 0, b: 0, a: 255 }],
+    );
+    expect(restScene.max[1]).toBeCloseTo(rest[1], 10);
+    expect(viaSocket[1]).toBeCloseTo(rest[1] * 3, 10);
   });
 });

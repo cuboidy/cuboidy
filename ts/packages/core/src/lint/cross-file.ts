@@ -44,10 +44,13 @@ export function validateProject(input: ProjectInput): Diagnostic[] {
   // (SPEC §5) and the by-name rules below key on that.
   //
   // The §11.6 `duplicate` report itself is NOT here: a name in two files
-  // makes the by-`name` lookup ambiguous, so `resolveProject` refuses and
-  // this function never runs (it is gated on `project.complete`). Reporting
-  // it here as well would have been a second copy of the rule, reachable
-  // only when the first one did not fire.
+  // makes the by-`name` lookup ambiguous, so `resolveProject` refuses.
+  // Reporting it here as well would be a second copy of the rule.
+  //
+  // The CLI never reaches this function for such a model — `lint-runner`
+  // gates on `project.complete`. The editor's live lint does not gate, and
+  // calls `resolvePartGeometry` directly, so it must read the `duplicates`
+  // that call returns rather than expecting a diagnostic from here.
   const definedIn = new Map<string, string[]>();
   for (const { path, geometry } of geometries) {
     for (const part of geometry.parts) {

@@ -143,8 +143,10 @@ export function computeWorldTransforms(
   // The shared lenient policy (forest.ts): a parent that is absent, names
   // this part, names no part, or would close a cycle makes the part a root.
   // `order` puts every part after its effective parent, so one pass down the
-  // list composes the whole rig — no recursion, and no way to compose a
-  // part into itself.
+  // list composes the whole rig, and there is no way to compose a part into
+  // itself. (The traversal still recurses, inside `resolveHierarchy`'s
+  // ordering pass; a chain some tens of thousands deep overflows there. Both
+  // walks did before, sooner.)
   const { parentOf, order } = resolveHierarchy(
     parts,
     (p) => p.name,
