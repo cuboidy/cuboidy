@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseGeometryText, parseManifest, type Geometry, type Manifest } from '@cuboidy/core';
+import { MATTE, parseGeometryText, parseManifest, type Geometry, type Manifest } from '@cuboidy/core';
 import { resolveProjectRefs } from '../src/lib/load-model.js';
 import { applyFileEdit, clipFilesIn, deleteFileInSource, freePalettePath, geometryFilesIn, mapGeometryFiles, mergeGeometries, moveFolderInSource, paletteFilesIn, relativeRefFrom, renameFileInSource, repointPaletteRef, resolvedModelPalette, manifestText, primaryGeometry, uniquePartName, withManifest, withManifestText, writeFile, writeModelPalette } from '../src/lib/source-ops.js';
 import type { LoadedSource } from '../src/lib/types.js';
@@ -623,7 +623,7 @@ describe('writeModelPalette — the manifest palette, wherever it lives', () => 
   const referencedModel = () =>
     modelWith('palette.json', { 'palette.json': PALETTE });
 
-  const GREEN = [{ r: 0, g: 255, b: 0, a: 255 }];
+  const GREEN = [{ r: 0, g: 255, b: 0, a: 255, ...MATTE }];
 
   it('spells the colors out when the manifest declares them inline', () => {
     const next = writeModelPalette(inlineModel(), GREEN);

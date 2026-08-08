@@ -1,11 +1,15 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "outDir": "dist",
-    // `.` rather than `src` so test/ and e2e/ typecheck too. The package
-    // never emits (noEmit below), so rootDir only scopes what tsc will
-    // accept.
-    "rootDir": ".",
+    // Typecheck against core's SOURCE, matching the vite alias in
+    // vite.config.ts. Without this tsc reads `dist/index.d.ts`, which
+    // only a manual `npm run build -w @cuboidy/core` refreshes — so a
+    // new export in core is invisible here until someone remembers.
+    // The runtime had exactly this problem and it cost a day.
+    "paths": { "@cuboidy/core": ["../core/src/index.ts"] },
+    // No `outDir` / `rootDir`: it constrains emit layout, this package never emits,
+    // and setting it would reject the core sources the `paths` mapping
+    // above deliberately pulls in from a sibling directory.
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
     "types": ["vite/client", "node"],

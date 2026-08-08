@@ -1,4 +1,9 @@
-import { buildMesh, type Palette, type Part } from '@cuboidy/core';
+import {
+  buildMesh,
+  type MeshMaterial,
+  type Palette,
+  type Part,
+} from '@cuboidy/core';
 import { BufferAttribute, BufferGeometry } from 'three';
 import { srgbToLinearArray } from './gizmo-primitives.js';
 
@@ -12,12 +17,17 @@ import { srgbToLinearArray } from './gizmo-primitives.js';
 
 export interface PartGeometry {
   geometry: BufferGeometry;
-  // Index range [0, opaqueIndexCount) is group 0 and wants depth writes;
-  // the rest is group 1 and wants blending. Groups are only added when
-  // there IS a second range — a one-element material array against a
-  // geometry with no groups draws nothing at all.
+  // Boundary between the depth-writing prefix and the blended remainder.
   opaqueIndexCount: number;
   hasTranslucent: boolean;
+  // One per §7.4 material `buildMesh` found, in the order the geometry's
+  // groups reference them. Feed to buildPartMaterials; the resulting array
+  // is what a Mesh's `material` wants.
+  materials: MeshMaterial[];
+  // Material index per translucent QUAD, in buffer order. The sorter needs
+  // it to rebuild group boundaries after a depth sort reshuffles which
+  // material sits where.
+  translucentQuadMaterials: Uint16Array;
 }
 
 export function buildPartGeometry(part: Part, palette: Palette): PartGeometry {
@@ -44,15 +54,36 @@ export function buildPartGeometry(part: Part, palette: Palette): PartGeometry {
   geometry.setAttribute('color', new BufferAttribute(rgba, 4));
   geometry.setIndex(new BufferAttribute(mesh.indices, 1));
 
-  // `buildMesh` orders the indices opaque-first precisely so the two passes
-  // are two ranges of one buffer. Groups keep it that way — one upload, one
-  // draw order, and the translucent material never touches the depth
-  // buffer, so faces behind it survive.
+  // `buildMesh` partitions the index buffer by material, opaque buckets
+  // before translucent ones. Groups mirror that partition exactly — one
+  // upload, one draw order, and the translucent materials never touch the
+  // depth buffer, so faces behind them survive.
+  //
+  // Groups are added only when there is more than one material. A geometry
+  // with a single group and a one-element material ARRAY draws nothing in
+  // three.js, and the single-material case is every model that says nothing
+  // about §7.4 materials — which is most of them.
   const opaqueIndexCount = mesh.opaqueIndexCount;
   const blended = mesh.indices.length - opaqueIndexCount;
-  if (blended > 0) {
-    geometry.addGroup(0, opaqueIndexCount, 0);
-    geometry.addGroup(opaqueIndexCount, blended, 1);
+  if (mesh.materials.length > 1) {
+    for (const g of mesh.groups) geometry.addGroup(g.start, g.count, g.material);
   }
-  return { geometry, opaqueIndexCount, hasTranslucent: blended > 0 };
+
+  // Which material each translucent quad belongs to, flattened out of the
+  // groups so the sorter can permute quads freely and put the boundaries
+  // back afterwards.
+  const quadMaterials = new Uint16Array(blended / 6);
+  for (const g of mesh.groups) {
+    if (g.start < opaqueIndexCount) continue;
+    const from = (g.start - opaqueIndexCount) / 6;
+    quadMaterials.fill(g.material, from, from + g.count / 6);
+  }
+
+  return {
+    geometry,
+    opaqueIndexCount,
+    hasTranslucent: blended > 0,
+    materials: mesh.materials,
+    translucentQuadMaterials: quadMaterials,
+  };
 }

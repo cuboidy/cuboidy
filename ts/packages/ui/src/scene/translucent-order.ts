@@ -38,12 +38,31 @@ export function makeTranslucentSorter(
   object: () => Object3D | null,
   geometry: BufferGeometry,
   opaqueIndexCount: number,
+  // Material index per translucent quad, in buffer order. Omit when the
+  // part has a single translucent material and groups need no rebuilding.
+  quadMaterials?: Uint16Array | undefined,
 ): BeforeRender {
   const index = geometry.getIndex();
   const position = geometry.getAttribute('position');
   if (index === null || position === undefined) return NOTHING_TO_SORT;
   const blended = index.count - opaqueIndexCount;
   if (blended <= 0) return NOTHING_TO_SORT;
+
+  // Depth order and material order are independent, so once TWO translucent
+  // materials share a part the fixed group boundaries stop being usable: a
+  // depth sort interleaves them. The groups get rebuilt per frame in that
+  // case, coalescing the sorted quads into runs of one material. It costs a
+  // few extra draw calls and it is the only way both orderings hold.
+  //
+  // The single-material case — glass, or one glowing colour, which is
+  // almost always what a part has — skips all of it.
+  const opaqueGroups = geometry.groups.filter(
+    (g) => g.start < opaqueIndexCount,
+  );
+  const rebuildGroups =
+    quadMaterials !== undefined &&
+    new Set(quadMaterials).size > 1 &&
+    geometry.groups.length > 0;
 
   const quadCount = blended / INDICES_PER_QUAD;
   const original = new Uint32Array(blended);
@@ -109,5 +128,22 @@ export function makeTranslucentSorter(
       }
     }
     index.needsUpdate = true;
+
+    if (!rebuildGroups) return;
+    // Runs of one material in the NEW order. Opaque groups are untouched —
+    // nothing reorders them.
+    geometry.clearGroups();
+    for (const g of opaqueGroups) geometry.addGroup(g.start, g.count, g.materialIndex);
+    let runStart = 0;
+    for (let k = 1; k <= quadCount; k++) {
+      const ending = k === quadCount || quadMaterials[order[k]!] !== quadMaterials[order[runStart]!];
+      if (!ending) continue;
+      geometry.addGroup(
+        opaqueIndexCount + runStart * INDICES_PER_QUAD,
+        (k - runStart) * INDICES_PER_QUAD,
+        quadMaterials[order[runStart]!]!,
+      );
+      runStart = k;
+    }
   };
 }

@@ -64,7 +64,15 @@ export {
 export { GeometrySchema, GeometryPartSchema } from './geometry/schema.js';
 export type { GeometryDoc, GeometryDocPart } from './geometry/schema.js';
 
-export { parseHexColor, serializeColor } from './geometry/palette.js';
+export {
+  MATTE,
+  isMatte,
+  paletteEntryFrom,
+  parseHexColor,
+  serializeColor,
+  serializePaletteEntry,
+} from './geometry/palette.js';
+export type { PaletteEntryDoc } from './geometry/palette.js';
 export {
   duplicatePart,
   mirrorGeometry,
@@ -77,7 +85,9 @@ export { AIR, indexToChar } from './geometry/voxel-row.js';
 export type {
   Color,
   Geometry,
+  Material,
   Palette,
+  PaletteEntry,
   Part,
   Pivot,
   Size,
@@ -113,8 +123,8 @@ export {
 } from './socket-frame.js';
 export type { SocketFrame } from './socket-frame.js';
 
-export { buildMesh } from './mesh.js';
-export type { MeshData } from './mesh.js';
+export { buildMesh, isMatteOpaque } from './mesh.js';
+export type { MeshData, MeshGroup, MeshMaterial } from './mesh.js';
 
 // The named viewpoints. Exported so a browser app can render a model from
 // the SAME angle cuboidy-snap does rather than inventing its own — a

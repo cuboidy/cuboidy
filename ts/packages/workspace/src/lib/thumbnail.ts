@@ -4,16 +4,21 @@ import {
   cameraDir,
   worldTransformsFor,
 } from '@cuboidy/core';
-import { buildPartGeometry, makeTranslucentSorter } from '@cuboidy/ui';
+import {
+  buildPartGeometry,
+  buildPartMaterials,
+  makeStudioEnvironment,
+  makeTranslucentSorter,
+} from '@cuboidy/ui';
 import {
   AmbientLight,
   DirectionalLight,
   Group,
   Mesh,
-  MeshLambertMaterial,
   OrthographicCamera,
   Quaternion,
   Scene,
+  type Texture,
   Vector3,
   WebGLRenderer,
 } from 'three';
@@ -80,6 +85,19 @@ export async function renderThumbnails(
   }
 }
 
+// Built once per renderer and kept: PMREM generation is the expensive part
+// of drawing a card, and every card shares one renderer already.
+let cachedEnvironment: { renderer: WebGLRenderer; texture: Texture } | null =
+  null;
+
+function environmentFor(renderer: WebGLRenderer): Texture {
+  if (cachedEnvironment?.renderer === renderer) return cachedEnvironment.texture;
+  cachedEnvironment?.texture.dispose();
+  const texture = makeStudioEnvironment(renderer);
+  cachedEnvironment = { renderer, texture };
+  return texture;
+}
+
 function renderOne(renderer: WebGLRenderer, model: LibraryModel): string | null {
   const box = modelBounds(model);
   if (box === null) return null;
@@ -89,6 +107,9 @@ function renderOne(renderer: WebGLRenderer, model: LibraryModel): string | null 
   scene.add(group);
   // Lit the same way the scene view is, so a card is a small version of
   // what dropping it will look like rather than a differently-shaded one.
+  // The environment is not decoration: a §7.4 metal has no diffuse term and
+  // renders black without something to reflect.
+  scene.environment = environmentFor(renderer);
   scene.add(new AmbientLight(0xffffff, 0.75));
   const key = new DirectionalLight(0xffffff, 1.1);
   key.position.set(6, 10, 8);
@@ -158,28 +179,20 @@ function buildModelGroup(model: LibraryModel): Group {
   const transforms = worldTransformsFor(model.manifest, model.parts);
   for (const [name, resolved] of model.parts) {
     const part = resolved.part;
-    // The very same call PartMesh makes, so a card cannot disagree with the
-    // scene view about geometry, colour, or SPEC §7.4 opacity. Lambert
-    // rather than Standard is the one deliberate difference: a thumbnail
-    // wants a cheap, flat, predictable shade.
-    const { geometry, opaqueIndexCount, hasTranslucent } = buildPartGeometry(
-      part,
-      resolved.palette,
-    );
+    // The very same calls PartMesh makes, so a card cannot disagree with
+    // the scene view about geometry, colour, SPEC §7.4 opacity or §7.4
+    // material. This used to build its own Lambert materials and read
+    // neither `alphas` nor the material buckets, which made a translucent
+    // model solid and a polished one matte — under a comment promising the
+    // card could not disagree with the scene view.
+    const built = buildPartGeometry(part, resolved.palette);
+    const { geometry, opaqueIndexCount } = built;
     if (geometry.getIndex()?.count === 0) continue; // all-air draws nothing
 
+    const materials = buildPartMaterials(built.materials);
     const obj = new Mesh(
       geometry,
-      hasTranslucent
-        ? [
-            new MeshLambertMaterial({ vertexColors: true }),
-            new MeshLambertMaterial({
-              vertexColors: true,
-              transparent: true,
-              depthWrite: false,
-            }),
-          ]
-        : new MeshLambertMaterial({ vertexColors: true }),
+      materials.length === 1 ? materials[0]! : materials,
     );
     // Blended faces need to be drawn back to front, and three.js only
     // orders whole objects. One render from a fixed camera, so this fires
@@ -188,6 +201,7 @@ function buildModelGroup(model: LibraryModel): Group {
       () => obj,
       geometry,
       opaqueIndexCount,
+      built.translucentQuadMaterials,
     );
     const wt = transforms.get(name) ?? { pos: [0, 0, 0], quat: QUAT_IDENTITY };
     // A part's world transform places its PIVOT at wt.pos, so the mesh —

@@ -25,10 +25,14 @@ string form whenever the material is the default, so a palette of plain colors
 round-trips byte-identically.
 
 **Material MUST NOT change geometry.** Two models differing only in material
-produce the same mesh — that is the normative part, and it is what a second
-implementation can be held to. How a renderer *shades* those numbers is not
-normative: a flat-shaded contact sheet and a PBR viewport are both conforming.
-Alpha remains the deliberate exception, since it hides faces.
+have the same surfaces, corners and triangles — that is the normative part,
+and it is what a second implementation can be held to. Grouping those
+triangles by material, so one part with three finishes is three draws off one
+buffer, is explicitly allowed and is what `buildMesh` does.
+
+How a renderer *shades* those numbers is not normative: a flat-shaded contact
+sheet and a PBR viewport are both conforming. Alpha remains the deliberate
+exception, since it hides faces.
 
 ### Translucent palette colors
 

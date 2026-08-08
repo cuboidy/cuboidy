@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { Palette, Part } from '@cuboidy/core';
-import { Mesh, MeshStandardMaterial } from 'three';
+import { Mesh } from 'three';
 import { noRaycast } from './gizmo-primitives.js';
 import { buildPartGeometry } from './part-geometry.js';
+import { buildPartMaterials, disposeMaterials } from './part-materials.js';
 import { makeTranslucentSorter } from './translucent-order.js';
 
 interface Props {
@@ -19,10 +20,11 @@ const meshRaycast = Mesh.prototype.raycast;
 
 export function PartMesh({ part, palette, raycastDisabled }: Props) {
   const meshRef = useRef<Mesh>(null);
-  const { geometry, hasTranslucent, opaqueIndexCount } = useMemo(
+  const built = useMemo(
     () => buildPartGeometry(part, palette),
     [part, palette],
   );
+  const { geometry, opaqueIndexCount } = built;
   useEffect(() => () => geometry.dispose(), [geometry]);
 
   // Back-to-front ordering for the blended range. See translucent-order.ts:
@@ -31,8 +33,13 @@ export function PartMesh({ part, palette, raycastDisabled }: Props) {
   // `cuboidy-snap` disagree about the same model.
   const sortTranslucent = useMemo(
     () =>
-      makeTranslucentSorter(() => meshRef.current, geometry, opaqueIndexCount),
-    [geometry, opaqueIndexCount],
+      makeTranslucentSorter(
+        () => meshRef.current,
+        geometry,
+        opaqueIndexCount,
+        built.translucentQuadMaterials,
+      ),
+    [geometry, opaqueIndexCount, built.translucentQuadMaterials],
   );
 
   // Built here rather than declared as children. r3f attaches a material
@@ -43,32 +50,17 @@ export function PartMesh({ part, palette, raycastDisabled }: Props) {
   // help either: an index path needs `material` to already be an array, and
   // a Mesh starts life with a single material.
   //
-  // A single material when nothing is translucent, deliberately, because a
-  // one-element ARRAY would pair with a geometry that has no groups and
-  // three.js would draw nothing at all.
-  const materials = useMemo(
-    () =>
-      hasTranslucent
-        ? [
-            new MeshStandardMaterial({ vertexColors: true }),
-            new MeshStandardMaterial({
-              vertexColors: true,
-              transparent: true,
-              // Depth TEST stays on — a translucent face behind something
-              // opaque must still be rejected. Only the WRITE is off, so
-              // translucent faces do not occlude one another.
-              depthWrite: false,
-            }),
-          ]
-        : new MeshStandardMaterial({ vertexColors: true }),
-    [hasTranslucent],
-  );
+  // One material per §7.4 bucket, and a BARE material rather than a
+  // one-element array when there is only one — an array against a geometry
+  // whose groups were left off draws nothing at all, and the single-bucket
+  // case is every model that says nothing about materials.
+  const materials = useMemo(() => {
+    const list = buildPartMaterials(built.materials);
+    return list.length === 1 ? list[0]! : list;
+  }, [built.materials]);
   useEffect(
-    () => () => {
-      for (const m of Array.isArray(materials) ? materials : [materials]) {
-        m.dispose();
-      }
-    },
+    () => () =>
+      disposeMaterials(Array.isArray(materials) ? materials : [materials]),
     [materials],
   );
 

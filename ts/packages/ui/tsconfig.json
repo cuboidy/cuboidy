@@ -1,7 +1,12 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": ".",
+    // Typecheck against core's SOURCE, matching the vite alias in
+    // vite.config.ts. Without this tsc reads `dist/index.d.ts`, which
+    // only a manual `npm run build -w @cuboidy/core` refreshes — so a
+    // new export in core is invisible here until someone remembers.
+    // The runtime had exactly this problem and it cost a day.
+    "paths": { "@cuboidy/core": ["../core/src/index.ts"] },
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
     "types": ["node"],

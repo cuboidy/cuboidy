@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { AIR, manifestGeometry, type Manifest, type Part } from '@cuboidy/core';
+import { AIR, MATTE, manifestGeometry, type Manifest, type Part } from '@cuboidy/core';
 import { serializeGeometry } from '@cuboidy/core';
 import type { NewFileKind } from './file-name-rules.js';
 import { normalizePath } from './load-model.js';
@@ -62,7 +62,7 @@ function newFileText(src: LoadedSource, kind: NewFileKind): string {
     // §6.10 requires at least one color, so an empty `colors` array would
     // be an invalid palette file rather than an empty one.
     case 'palette':
-      return paletteFileText([{ r: 255, g: 255, b: 255, a: 255 }]);
+      return paletteFileText([{ r: 255, g: 255, b: 255, a: 255, ...MATTE }]);
     case 'clip':
       return (
         JSON.stringify({ duration: 1, loop: true, parts: {} }, null, 2) + '\n'

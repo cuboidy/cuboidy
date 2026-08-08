@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Palette, Part } from '@cuboidy/core';
+import { MATTE, type Palette, type Part } from '@cuboidy/core';
 import { buildPartGeometry, makeTranslucentSorter } from '@cuboidy/ui';
 import { Mesh, PerspectiveCamera, Vector3 } from 'three';
 
@@ -9,8 +9,8 @@ import { Mesh, PerspectiveCamera, Vector3 } from 'three';
 // renderer sorts (render/snapshot.ts), so the editor was disagreeing with
 // the renderer that defines what a model looks like.
 
-const T: Palette[number] = { r: 58, g: 160, b: 255, a: 0x66 };
-const O: Palette[number] = { r: 184, g: 190, b: 198, a: 255 };
+const T: Palette[number] = { r: 58, g: 160, b: 255, a: 0x66, ...MATTE };
+const O: Palette[number] = { r: 184, g: 190, b: 198, a: 255, ...MATTE };
 const PALETTE: Palette = [T, O];
 
 // A column h voxels tall of one palette index, pivot at the origin corner.

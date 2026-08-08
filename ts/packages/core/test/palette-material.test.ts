@@ -151,18 +151,55 @@ describe('material does not change geometry (§7.4, normative)', () => {
     rgba(60, 160, 255, 255, { emissive: 0.8, roughness: 0.4 }),
   ];
 
-  it('emits an identical mesh', () => {
+  // Every triangle, as a comparable string, order-independent. The index
+  // BUFFER order is allowed to differ — partitioning it by material is the
+  // whole point of the buckets — but the set of triangles it describes is
+  // not.
+  function triangles(m: ReturnType<typeof buildMesh>): string[] {
+    const out: string[] = [];
+    for (let i = 0; i < m.indices.length; i += 3) {
+      out.push([0, 1, 2].map((k) => m.indices[i + k]!).join(','));
+    }
+    return out.sort();
+  }
+
+  it('emits the same vertices', () => {
     const a = buildMesh(part, matte);
     const b = buildMesh(part, shiny);
+    // Vertices are pushed in voxel order regardless of which bucket the
+    // face lands in, so these are identical element for element.
     expect(b.positions).toEqual(a.positions);
     expect(b.normals).toEqual(a.normals);
     expect(b.colors).toEqual(a.colors);
     expect(b.alphas).toEqual(a.alphas);
-    expect(b.indices).toEqual(a.indices);
+  });
+
+  it('emits the same triangles', () => {
+    const a = buildMesh(part, matte);
+    const b = buildMesh(part, shiny);
+    expect(triangles(b)).toEqual(triangles(a));
+    expect(b.indices.length).toBe(a.indices.length);
     expect(b.opaqueIndexCount).toBe(a.opaqueIndexCount);
   });
 
-  it('emits identical quads', () => {
+  it('partitions those triangles by material', () => {
+    const a = buildMesh(part, matte);
+    const b = buildMesh(part, shiny);
+    // The one thing material IS allowed to change.
+    expect(a.materials).toHaveLength(1);
+    expect(b.materials).toHaveLength(2);
+    for (const m of [a, b]) {
+      expect(m.groups.reduce((n, g) => n + g.count, 0)).toBe(m.indices.length);
+      // Contiguous and gapless, in order.
+      let at = 0;
+      for (const g of m.groups) {
+        expect(g.start).toBe(at);
+        at += g.count;
+      }
+    }
+  });
+
+  it('emits identical quads apart from the material they carry', () => {
     const scene = (palette: Palette) =>
       buildSceneFromParts(
         [
@@ -174,6 +211,14 @@ describe('material does not change geometry (§7.4, normative)', () => {
         ],
         palette,
       ).quads;
-    expect(scene(shiny)).toEqual(scene(matte));
+    const a = scene(matte);
+    const b = scene(shiny);
+    expect(b).toHaveLength(a.length);
+    // render/scene.ts emits one flat list, so here even the ORDER holds.
+    for (const [i, q] of b.entries()) {
+      const { material: _b, ...bGeom } = q;
+      const { material: _a, ...aGeom } = a[i]!;
+      expect(bGeom).toEqual(aGeom);
+    }
   });
 });

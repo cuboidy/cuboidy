@@ -2,6 +2,7 @@ import { Framebuffer, type Rgb } from './framebuffer.js';
 import { drawText, textHeight, textWidth } from './font.js';
 import { makeProjector, type Angle } from './camera.js';
 import type { Scene } from './scene.js';
+import type { Material } from '../geometry/types.js';
 import { dot, normalize, type Vec3 } from './vec.js';
 
 // Compose scene + camera + framebuffer + font into finished per-angle
@@ -14,6 +15,7 @@ import { dot, normalize, type Vec3 } from './vec.js';
 const AMBIENT = 0.42;
 const KEY = 0.42;
 const FILL = 0.22;
+const SPECULAR = 0.55; // §7.4 gloss highlight, gated by 1 - roughness
 const KEY_DIR = normalize([-0.5, 1, -0.7]); // toward key light
 const FILL_DIR = normalize([0.9, 0.3, 0.3]); // toward fill light
 
@@ -94,7 +96,7 @@ export function renderTile(
     (q) => dot(q.normal, proj.viewDir) < 0, // back-face cull
   );
   const draw = (quad: (typeof visible)[number]): void => {
-    const intensity = shade(quad.normal);
+    const intensity = shade(quad.normal, quad.material);
     const rgb: Rgb = [
       quad.color[0] * intensity,
       quad.color[1] * intensity,
@@ -130,12 +132,32 @@ export function renderTile(
   return tile;
 }
 
-function shade(normal: Vec3): number {
+// SPEC §7.4 is explicit that shading a material is NOT normative — a flat
+// contact sheet and a PBR viewport both conform, and neither has to match
+// the other's pixels. What follows is therefore a legibility choice, not a
+// lighting model: just enough that the six cases in models-test/materials
+// are distinguishable in a still, and cheap and deterministic enough to
+// stay reproducible across implementations that choose to copy it.
+//
+// - metallic dims the ambient floor, since a metal has no diffuse ambient.
+//   Metals read as higher-contrast rather than brighter.
+// - roughness gates a narrow highlight on faces turned toward the key. A
+//   mirror-smooth face gets a strong one, a fully rough face gets none.
+// - emissive lifts the result toward fully lit, so a glowing face keeps its
+//   colour instead of washing to white.
+function shade(normal: Vec3, material: Material): number {
+  const key = Math.max(0, dot(normal, KEY_DIR));
+  const fill = Math.max(0, dot(normal, FILL_DIR));
+  const gloss = 1 - material.roughness;
   const i =
-    AMBIENT +
-    KEY * Math.max(0, dot(normal, KEY_DIR)) +
-    FILL * Math.max(0, dot(normal, FILL_DIR));
-  return Math.min(1, i);
+    AMBIENT * (1 - 0.7 * material.metallic) +
+    KEY * key +
+    FILL * fill +
+    // Squared twice over: once to narrow the lobe, once so `roughness` is
+    // perceptually gradual rather than nearly binary near 0.
+    SPECULAR * gloss * gloss * key * key;
+  const lit = Math.min(1, i);
+  return lit + material.emissive * (1 - lit);
 }
 
 // Outlined label at top-left so it stays readable over any model/bg.

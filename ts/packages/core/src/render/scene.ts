@@ -1,5 +1,6 @@
-import type { Palette, Part } from '../geometry/types.js';
+import type { Material, Palette, Part } from '../geometry/types.js';
 import { AIR } from '../geometry/voxel-row.js';
+import { MATTE } from '../geometry/palette.js';
 import {
   localPointToWorld,
   quatRotateVec3,
@@ -27,6 +28,11 @@ export interface Quad {
   // SPEC §7.4 opacity, 0..1. 1 for every face of an opaque color, so a
   // renderer that ignores it draws what it always did.
   alpha: number;
+  // SPEC §7.4 material. Every face of a palette that says nothing about it
+  // carries MATTE, so a renderer that ignores this field draws what it
+  // always did — which is the point: shading these numbers is explicitly
+  // NOT normative, only that they reach the renderer unchanged.
+  material: Material;
 }
 
 export interface Scene {
@@ -42,7 +48,8 @@ interface FaceDef {
   readonly corners: readonly [Vec3, Vec3, Vec3, Vec3];
 }
 
-// SPEC §7.4's opaque magenta, in the 0..1 sRGB this module carries.
+// SPEC §7.4's opaque magenta, in the 0..1 sRGB this module carries. It has
+// no palette entry to read a material from, so it is matte as well.
 const UNRESOLVED_COLOR: Rgb = [1, 0, 1];
 
 // Face order and winding identical to mesh.ts FACES so renders match the
@@ -82,6 +89,13 @@ export function buildSceneFromParts(
 ): Scene {
   const srgb = palette.map((c) => [c.r / 255, c.g / 255, c.b / 255] as Rgb);
   const alphaOf = palette.map((c) => c.a / 255);
+  const materialOf = palette.map(
+    (c): Material => ({
+      metallic: c.metallic,
+      roughness: c.roughness,
+      emissive: c.emissive,
+    }),
+  );
   const opaque = palette.map((c) => c.a === 255);
 
   const quads: Quad[] = [];
@@ -139,6 +153,7 @@ export function buildSceneFromParts(
               normal: quatRotateVec3(transform.quat, f.normal),
               color,
               alpha,
+              material: materialOf[effIdx] ?? MATTE,
             });
             for (const c of corners) {
               if (c[0] < minX) minX = c[0];
