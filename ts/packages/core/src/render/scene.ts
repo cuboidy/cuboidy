@@ -95,13 +95,17 @@ export function buildSceneFromParts(
         ? part.voxels[y]![z]![x]!
         : AIR;
     // The §7.4 hide rule, identical to mesh.ts's: a neighbour hides a face
-    // when it is opaque or the very same index. Merely being solid is not
-    // enough, or a wall behind glass would lose the face you look at.
+    // when it is opaque, or when both it and this voxel are translucent.
+    // Merely being solid is not enough, or a wall behind glass would lose
+    // the face you look at.
+    const isOpaque = (i: number): boolean => {
+      const eff = remap === null ? i : (remap[i] ?? i);
+      return opaque[eff] ?? true;
+    };
     const hidden = (n: number, self: number): boolean => {
       if (n === AIR) return false;
-      if (n === self) return true;
-      const eff = remap === null ? n : (remap[n] ?? n);
-      return opaque[eff] ?? true;
+      if (isOpaque(n)) return true;
+      return !isOpaque(self);
     };
     const piv: Vec3 = [part.pivot.pos.x, part.pivot.pos.y, part.pivot.pos.z];
     // §7.7 / §6.5, stated once in rig-transform.ts — the same call

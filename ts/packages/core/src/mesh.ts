@@ -54,24 +54,35 @@ function voxelAt(part: Part, x: number, y: number, z: number): number {
   return part.voxels[y]![z]![x]!;
 }
 
-// SPEC §7.4: a face is dropped only when its neighbour HIDES it — the
-// neighbour is opaque, or it is the very same palette index.
+// SPEC §7.4: a face is dropped only when its neighbour HIDES it. A
+// neighbour hides a face when it is OPAQUE, or when both it and this voxel
+// are translucent.
 //
-// Both halves matter and neither is arbitrary. Dropping a face because the
-// neighbour is merely solid is what would put a hole in the wall behind a
-// pane of glass: the wall's face toward the glass would vanish and the glass
-// would look onto nothing. And keeping the faces between two voxels of one
-// translucent color would blend that color once per layer, so a three-deep
-// body of water would read darker than a one-deep one — §7.4 says a run of
-// one color is one surface, whatever its thickness.
+// The opaque half is what keeps a wall visible behind a pane of glass:
+// dropping a face because the neighbour is merely solid would leave the
+// glass looking onto a hole.
+//
+// The translucent half is the same rule as "a run of one colour is one
+// surface, whatever its thickness" — generalised past one colour, because
+// the seam does not care whether the two are the same. Two translucent
+// voxels meeting produce an interface face, a ray crossing it picks up a
+// whole extra coat of tint, and a viewer at an angle sees a distinct band
+// along the join that is darker than either colour. What you see through a
+// translucent body is its outer shell: one coat, from the face you cross.
+//
+// The cost is that a translucent voxel entirely surrounded by other
+// translucent voxels has no faces at all, so a differently-coloured core
+// inside a block of glass does not show. Enclosing it in air, or making it
+// opaque, is how you get it back.
 function hiddenBy(
   neighbour: number,
   self: number,
   opaque: readonly boolean[],
 ): boolean {
   if (neighbour === AIR) return false;
-  if (neighbour === self) return true;
-  return opaque[neighbour] ?? true; // an unresolved index draws opaque magenta
+  // An unresolved index draws opaque magenta, so it hides like one.
+  if (opaque[neighbour] ?? true) return true;
+  return !(opaque[self] ?? true);
 }
 
 export function buildMesh(part: Part, palette: Palette): MeshData {

@@ -13,12 +13,14 @@ down, and every renderer discarded the value. §7.4 defines it, and the two
 rules that make it drawable:
 
 - **A face is dropped only when its neighbour hides it** — the neighbour is
-  opaque, or it is the very same palette index. Being merely solid is not
-  enough; that rule would put a hole in the wall behind a pane of glass.
-- **A run of one translucent color is one surface, whatever its thickness.**
-  Three voxels of water read exactly as one does. Depth is expressed by
-  choosing a denser color, not by stacking, and an implementation MUST NOT
-  blend per layer.
+  opaque, or both it and this voxel are translucent. Being merely solid is
+  not enough; that rule would put a hole in the wall behind a pane of glass.
+- **A translucent body is one surface, whatever its thickness and whatever
+  colors it is made of.** Three voxels of water read exactly as one does, and
+  so does water meeting glass. Depth is expressed by choosing a denser color,
+  not by stacking, and an implementation MUST NOT blend per layer. A
+  translucent voxel enclosed by translucent neighbours therefore has no faces
+  and does not show.
 
 Renderers draw the opaque faces first with depth writes, then the translucent
 ones back to front with the depth test but no write. `buildMesh` orders its
