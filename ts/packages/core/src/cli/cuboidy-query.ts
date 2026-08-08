@@ -69,6 +69,10 @@ function parseArgs(argv: readonly string[]): Args | { help: true } | { error: st
     if (a === '--help' || a === '-h') return { help: true };
     if (a === '--transforms') {
       queries.push({ kind: 'transforms' });
+    } else if (a === '--mesh') {
+      queries.push({ kind: 'mesh', faces: false });
+    } else if (a === '--mesh-faces') {
+      queries.push({ kind: 'mesh', faces: true });
     } else if (a === '--sockets') {
       queries.push({ kind: 'sockets' });
     } else if (a.startsWith('--anim=')) {

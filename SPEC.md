@@ -28,7 +28,7 @@ Cuboidy draws on prior art:
 - **VRM** — named attachment points (planned: standardized rig vocabulary)
 - **glTF** — JSON manifest + relative external references
 
-Cuboidy is **not** a triangle-mesh format. It does not specify skin weights, UV coordinates, materials, or shaders. Voxel parts are rigid; the runtime renders them as flat-shaded cells.
+Cuboidy is **not** a triangle-mesh format. It does not specify skin weights, UV coordinates, textures, or shaders. Voxel parts are rigid. A palette color carries a simple surface material (§7.4 — metal, roughness, glow) and nothing beyond it.
 
 ---
 
@@ -367,12 +367,12 @@ A geometry file may keep its colors in a separate file and point at it, so sever
 The palette file itself is a standard JSON document:
 
 ```json
-{ "colors": ["#1a1a1a", "#f4c9a0", "#RRGGBBAA"] }
+{ "colors": ["#1a1a1a", { "color": "#f4c9a0", "metallic": 1 }, "#RRGGBBAA"] }
 ```
 
 | Field | Required | Type | Notes |
 |---|---|---|---|
-| `colors` | **yes** | array of strings (non-empty) | Same color grammar as §7.4 (`#RGB` / `#RGBA` / `#RRGGBB` / `#RRGGBBAA`, sRGB). Maximum **62** entries; index assignment is positional and identical to §7.4 (`0-9a-zA-Z`) |
+| `colors` | **yes** | array of palette entries (non-empty) | Exactly §7.4's entry grammar: a color string (`#RGB` / `#RGBA` / `#RRGGBB` / `#RRGGBBAA`, sRGB) **or** the object form carrying a material. Maximum **62** entries; index assignment is positional and identical to §7.4 (`0-9a-zA-Z`) |
 
 No other fields are permitted (`unknown`). The object form (rather than a bare array) reserves room for future metadata without a breaking change.
 
@@ -543,7 +543,18 @@ A palette entry may also be an **object**: the same color, plus how it responds 
 - Names follow **glTF 2.0's metal-rough workflow**, which Unity, Godot and three.js consume without translation. glTF's `emissiveFactor` is `color × emissive`.
 - Out of range is `invalid-value`; an unrecognized key is `unknown`; a missing `color` is `missing` (§11.2).
 
-**Material is not normative for shading, and MUST NOT change geometry.** How a renderer turns `metallic` into pixels is its own business — a flat-shaded contact sheet and a PBR viewport are both conforming, and neither is required to reach the other's output. What *is* normative is that these fields change no face and no vertex: two models differing only in material have the same surfaces, the same corners, and the same triangles. A renderer may *group* those triangles by material — that is how one part gets three finishes in three draws — so the order they appear in an index buffer is an implementation's own business too. (Alpha is the deliberate exception: it hides faces, below.)
+**Material is not normative for shading, and MUST NOT change geometry.** How a renderer turns `metallic` into pixels is its own business — a flat-shaded contact sheet and a PBR viewport are both conforming, and neither is required to reach the other's output. What *is* normative is that these fields change no face and no vertex: two models differing only in material have the same surfaces, the same corners, and the same triangles. (Alpha is the deliberate exception: it hides faces, below.)
+
+#### What a mesh must agree on
+
+Two implementations must produce the same **set** of faces for a model — same rectangles, same outward normals, same colors, same alphas, same materials. They need not produce them in the same order.
+
+That is the whole of it, and the freedom is deliberate. Pinning the emission order would make any mesh optimisation — greedy meshing, most obviously, which merges coplanar faces and changes the triangle count outright — a breaking change to the format rather than a change to a renderer. A voxel format should not have to revise its spec to get faster.
+
+Two consequences follow, and both are normative:
+
+- **Comparing implementations is a set comparison.** A conformance check sorts the faces and compares; it does not diff index buffers. `cuboidy-query --mesh` in the reference implementation prints exactly that canonical form.
+- **A material's position in a mesh's material list is derived from its VALUE, not from where it was first seen.** Order the distinct materials by `translucent` (opaque first), then `metallic`, then `roughness`, then `emissive`, each ascending. Grouping faces by material is what lets one part with three finishes be three draws, and a group has to name its material by index — so if that index came from iteration order, two implementations walking the voxel grid differently would hand the same face to different materials while both conformed to everything above.
 
 **Alpha is opacity.** A palette color written `#RGBA` or `#RRGGBBAA` carries an alpha channel, and it means what it says: `FF` is opaque, `00` renders nothing, values between blend the voxel over whatever is behind it. A voxel of a translucent color is still a voxel — it occupies its cell, counts toward the bounding box, and answers a coordinate query — it is simply see-through.
 
@@ -834,6 +845,15 @@ Reference cycles (a → b → a) are an error.
 | Keyframe (subsequent) | any omitted field | inherits from previous keyframe |
 | `voxels.json` | `pivot` | `[W/2, 0, D/2]` (bottom-center) |
 | `voxels.json` | socket rotation | `[0, 0, 0]` |
+| Palette entry | alpha | absent from the hex → `FF` (opaque) |
+| Palette entry | `metallic` | `0` (dielectric) |
+| Palette entry | `roughness` | `1` (fully diffuse) |
+| Palette entry | `emissive` | `0` (not a light source) |
+
+The three material defaults are a plain matte surface, and they are worth
+stating twice: §7.4 borrows glTF 2.0's field NAMES, and glTF's own
+`metallicFactor` defaults to `1.0`. A reader that assumes the glTF default
+renders every matte model as metal.
 
 ---
 

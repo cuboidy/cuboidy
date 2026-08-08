@@ -6,9 +6,14 @@ import type { Material, Palette, Part } from './geometry/types.js';
 // matching the palette's color space (SPEC §7.4). Renderers that need
 // linear values (e.g. three.js vertexColors) must convert at upload time.
 //
-// The output is fully deterministic given (part, palette) — the iteration
-// order, face order, corner winding, and triangulation below ARE the
-// reference for parity with other-language implementations (C# etc.).
+// The output is fully deterministic given (part, palette), but SPEC §7.4 is
+// explicit that only the SET of faces is normative — same rectangles, same
+// outward normals, same colours, alphas and materials — not the order they
+// come out in. This file's y→z→x walk, its face order and its triangulation
+// are therefore one valid choice, not the contract. (They used to claim to
+// BE the contract, which contradicted §7.4 and would have made greedy
+// meshing a spec change.) Compare implementations with a set comparison —
+// `cuboidy-query --mesh` prints the canonical form.
 
 // One draw's worth of surface: a §7.4 material plus whether its faces need
 // the blended pass. `translucent` is not part of the material — it comes
@@ -41,9 +46,13 @@ export interface MeshData {
   // writes off. A model with no translucent color has
   // `opaqueIndexCount === indices.length` and needs no second pass.
   opaqueIndexCount: number;
-  // Distinct materials in first-appearance order, opaque ones before
-  // translucent ones. A model whose palette says nothing about material has
-  // exactly one entry, matte and opaque.
+  // Distinct materials ordered by VALUE (SPEC §7.4): translucent last, then
+  // metallic, roughness, emissive ascending. Not first-appearance order —
+  // that would depend on the voxel walk, and `MeshGroup.material` is an
+  // index into this array, so two implementations walking differently would
+  // hand the same face to different materials while both conforming. A
+  // model whose palette says nothing about material has exactly one entry,
+  // matte and opaque.
   materials: MeshMaterial[];
   // `indices` partitioned by material, in draw order. Ranges are contiguous
   // and cover the whole buffer, so a renderer that ignores materials can
@@ -60,6 +69,15 @@ const MATTE_OPAQUE: MeshMaterial = { ...MATTE, translucent: false };
 
 function materialKey(m: MeshMaterial): string {
   return `${m.metallic},${m.roughness},${m.emissive},${m.translucent}`;
+}
+
+// SPEC §7.4's material ordering. Total, since two materials comparing equal
+// on all four fields are the same material and share a bucket.
+export function compareMaterials(a: MeshMaterial, b: MeshMaterial): number {
+  if (a.translucent !== b.translucent) return a.translucent ? 1 : -1;
+  if (a.metallic !== b.metallic) return a.metallic - b.metallic;
+  if (a.roughness !== b.roughness) return a.roughness - b.roughness;
+  return a.emissive - b.emissive;
 }
 
 
@@ -135,9 +153,10 @@ export function buildMesh(part: Part, palette: Palette): MeshData {
   const alphas: number[] = [];
   let vertCount = 0;
 
-  // One index run per distinct material, in first-appearance order. They are
-  // concatenated at the end with every opaque bucket before every translucent
-  // one, which keeps `opaqueIndexCount` meaning exactly what it always did.
+  // One index run per distinct material. They are sorted by material value
+  // at the end, opaque before translucent, which keeps `opaqueIndexCount`
+  // meaning exactly what it always did and makes the material indices
+  // reproducible without pinning the voxel walk.
   const buckets: Array<{ material: MeshMaterial; idx: number[] }> = [];
   const bucketByKey = new Map<string, number>();
   const bucketFor = (m: MeshMaterial): number[] => {
@@ -205,13 +224,12 @@ export function buildMesh(part: Part, palette: Palette): MeshData {
     }
   }
 
-  // Opaque buckets first, then translucent, each keeping first-appearance
-  // order within its pass. Every bucket holds at least one quad, because
+  // SPEC §7.4's ordering: opaque first, then by metallic, roughness,
+  // emissive ascending. Every bucket holds at least one quad, because
   // `bucketFor` is only reached from a face that survived culling.
-  const ordered = [
-    ...buckets.filter((b) => !b.material.translucent),
-    ...buckets.filter((b) => b.material.translucent),
-  ];
+  const ordered = [...buckets].sort((a, b) =>
+    compareMaterials(a.material, b.material),
+  );
 
   const indices: number[] = [];
   const materials: MeshMaterial[] = [];

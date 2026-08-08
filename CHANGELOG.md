@@ -34,6 +34,33 @@ How a renderer *shades* those numbers is not normative: a flat-shaded contact
 sheet and a PBR viewport are both conforming. Alpha remains the deliberate
 exception, since it hides faces.
 
+### What a mesh must agree on
+
+§7.4 now says which part of a mesh is shared between implementations, because
+the spec and the reference implementation had been claiming opposite things:
+the spec said index order was free, while `mesh.ts` said its own emission
+order WAS the parity reference.
+
+The set of faces is normative; the order is not. Pinning the order would make
+greedy meshing — or any face merging at all — a breaking change to the format
+rather than a change to a renderer, which is the wrong place to put that cost
+for a voxel format.
+
+Two consequences are normative in turn. **Comparing implementations is a set
+comparison**, and `cuboidy-query --mesh` prints that canonical form (sorted
+faces plus a digest). And **a material's index in a mesh's material list is
+derived from its value** — ordered by `translucent`, then `metallic`,
+`roughness`, `emissive` — rather than from first appearance, which would have
+tied it to the voxel walk that §7.4 deliberately leaves free.
+
+Also corrected: §1 still said the format does not specify materials; §6.10's
+palette file still required `colors` to be strings, though a shared palette
+has to be able to say everything an inline one can; and §10's defaults table
+omitted the material fields entirely. That last one was a trap — §7.4 points
+at glTF for the field names, and glTF's own `metallicFactor` defaults to 1.0,
+so a reader who trusted the reference and found no row would render every
+matte model as metal.
+
 ### Translucent palette colors
 
 A palette color's alpha channel now means opacity. `#RGBA` and `#RRGGBBAA`

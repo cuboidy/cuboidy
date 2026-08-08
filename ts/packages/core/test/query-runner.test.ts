@@ -407,3 +407,59 @@ describe('runQuery — --transforms / --sockets', () => {
     expect(r.text).toContain('read the rest-pose grid');
   });
 });
+
+// SPEC §7.4 makes only the SET of faces normative — a mesher may merge or
+// reorder faces without the format changing — so a second implementation
+// cannot be checked by diffing index buffers. `--mesh` prints the form that
+// CAN be compared, and SPEC names it, so it has to keep working.
+describe('runQuery --mesh', () => {
+  const dir = resolve(REPO_ROOT, SINGLE);
+  const MESH: Query = { kind: 'mesh', faces: false };
+  const FACES: Query = { kind: 'mesh', faces: true };
+
+  it('reports a face count and a digest', async () => {
+    const r = await runQuery(dir, { queries: [MESH] });
+    expect(r.exitCode).toBe(0);
+    expect(r.text).toMatch(/^mesh faces=\d+ digest=[0-9a-f]{8}$/m);
+  });
+
+  it('is deterministic', async () => {
+    const a = await runQuery(dir, { queries: [MESH] });
+    const b = await runQuery(dir, { queries: [MESH] });
+    expect(b.text).toBe(a.text);
+  });
+
+  it('prints one sorted line per face, and as many as it counted', async () => {
+    const r = await runQuery(dir, { queries: [FACES] });
+    const faces = r.text.split('\n').filter((l) => l.startsWith('face '));
+    expect(faces.length).toBeGreaterThan(0);
+    expect([...faces].sort()).toEqual(faces);
+    const counted = /mesh faces=(\d+)/.exec(r.text)?.[1];
+    expect(Number(counted)).toBe(faces.length);
+  });
+
+  it('carries the material on every face', async () => {
+    const r = await runQuery(dir, { queries: [FACES] });
+    for (const line of r.text.split('\n').filter((l) => l.startsWith('face '))) {
+      expect(line).toMatch(/metallic=\d/);
+      expect(line).toMatch(/roughness=\d/);
+      expect(line).toMatch(/emissive=\d/);
+      expect(line).toMatch(/a=\d/);
+    }
+  });
+
+  // The digest exists so a parity harness can compare two implementations
+  // in one line. It must therefore change when the SURFACES change.
+  it('changes when the model changes', async () => {
+    const base = await runQuery(dir, { queries: [MESH] });
+    const other = await makeModel({
+      'voxels.json': geo(
+        [{ name: 'p', size: [2, 1, 1], pivot: [0, 0, 0], voxels: [['00']] }],
+        ['#FF0000'],
+      ),
+      'cuboidy.json': JSON.stringify({ name: 'm', parts: [{ name: 'p' }] }),
+    });
+    const r = await runQuery(other, { queries: [MESH] });
+    expect(r.text).not.toBe(base.text);
+  });
+});

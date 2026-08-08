@@ -265,3 +265,51 @@ describe('buckets hold only materials that are actually visible', () => {
     for (const g of mesh.groups) expect(g.count).toBeGreaterThan(0);
   });
 });
+
+// SPEC §7.4: `MeshGroup.material` indexes `MeshData.materials`, so that
+// array's order is part of what two implementations must agree on. Deriving
+// it from first appearance would tie it to the voxel walk — which §7.4
+// explicitly leaves free — and a port iterating x→y→z would hand the same
+// face to a different material while conforming to everything else.
+describe('material order is derived from value, not from the voxel walk', () => {
+  const DULL = rgba(150, 150, 150, 255, { metallic: 1, roughness: 0.7 });
+  const POLISHED = rgba(150, 150, 150, 255, { metallic: 1, roughness: 0.1 });
+  const GLOW = rgba(255, 200, 100, 255, { emissive: 0.8 });
+  const GLASS = rgba(100, 200, 255, 0x80);
+  const P: Palette = [DULL, POLISHED, GLOW, GLASS];
+
+  // Same four materials, two different orders of first appearance.
+  function row(order: readonly number[]): Part {
+    return {
+      name: 'p',
+      size: { w: order.length, h: 1, d: 1 },
+      pivot: { pos: { x: 0, y: 0, z: 0 } },
+      sockets: [],
+      voxels: [[[...order]]],
+    };
+  }
+
+  it('gives the same material list whatever order the voxels appear in', () => {
+    const a = buildMesh(row([0, 1, 2, 3]), P);
+    const b = buildMesh(row([3, 2, 1, 0]), P);
+    expect(b.materials).toEqual(a.materials);
+  });
+
+  it('puts opaque before translucent, then ascending by value', () => {
+    const m = buildMesh(row([3, 2, 1, 0]), P);
+    expect(m.materials.map((x) => x.translucent)).toEqual([
+      false, false, false, true,
+    ]);
+    // Among the opaque three: emissive-only (metallic 0) sorts before the
+    // two metals, and the polished metal before the dull one.
+    expect(m.materials[0]!.emissive).toBeCloseTo(0.8, 6);
+    expect(m.materials[1]!.roughness).toBeCloseTo(0.1, 6);
+    expect(m.materials[2]!.roughness).toBeCloseTo(0.7, 6);
+  });
+
+  it('keeps opaqueIndexCount on a group boundary', () => {
+    const m = buildMesh(row([3, 2, 1, 0]), P);
+    const starts = m.groups.map((g) => g.start);
+    expect(starts).toContain(m.opaqueIndexCount);
+  });
+});

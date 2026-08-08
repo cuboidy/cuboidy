@@ -12,6 +12,7 @@ import { sampleAnimation, type Pose } from '../animation.js';
 import { computeWorldTransforms, pivotRotsOf } from '../rig-transform.js';
 import { publishedSocketFrames } from '../socket-frame.js';
 import { round6 } from '../num.js';
+import { buildSceneFromParts } from '../render/scene.js';
 
 // cuboidy-query: structured, single-line coordinate lookup against an
 // assembled model. Complement to cuboidy-view, designed for LLM
@@ -72,7 +73,24 @@ export interface SocketsQuery {
   kind: 'sockets';
 }
 
-export type Query = AtQuery | CoreQuery | TransformsQuery | SocketsQuery;
+// The mesh, as the canonical SET SPEC §7.4 makes normative. Face ORDER is
+// explicitly free — so that a mesher may merge or reorder faces without the
+// format changing — which means a port cannot be checked by diffing index
+// buffers. This prints the comparable form: one line per face, sorted, with
+// a digest so two runs can be compared at a glance before anyone reads a
+// thousand lines.
+export interface MeshQuery {
+  kind: 'mesh';
+  // Print every face, not just the digest and the counts.
+  faces: boolean;
+}
+
+export type Query =
+  | AtQuery
+  | CoreQuery
+  | TransformsQuery
+  | SocketsQuery
+  | MeshQuery;
 
 export interface QueryOptions {
   queries: readonly Query[];
@@ -151,6 +169,7 @@ function executeQuery(
   if (q.kind === 'at') return executeAt(asm, q);
   if (q.kind === 'core') return executeCore(asm, q);
   if (q.kind === 'transforms') return formatTransforms(asm, poses);
+  if (q.kind === 'mesh') return formatMesh(asm, q);
   return formatSockets(asm, poses);
 }
 
@@ -162,6 +181,61 @@ function executeQuery(
 function num(n: number): string {
   const r = round6(n);
   return (r === 0 ? 0 : r).toFixed(6);
+}
+
+// SPEC §7.4: only the SET of faces is normative, so the comparable form is
+// sorted. Each line is one face — outward normal, four world corners in
+// winding order, colour, alpha, material — and identical output means two
+// implementations agree about the model's surfaces however they enumerated
+// them.
+//
+// Built through render/scene.ts rather than mesh.ts because that is the one
+// that already places faces in WORLD space through the §7.7 rig, which is
+// what makes the comparison independent of how a port splits parts.
+function formatMesh(asm: Assembly, q: MeshQuery): string {
+  const scene = buildSceneFromParts(
+    asm.resolvedParts.map((rp) => ({
+      part: rp.part,
+      remap: rp.remap,
+      transform: rp.transform,
+    })),
+    asm.palette,
+  );
+  const lines = scene.quads
+    .map((f) => {
+      const n = f.normal.map(num).join(',');
+      const corners = f.corners
+        .map((c) => c.map(num).join(','))
+        .join(' ');
+      const rgb = f.color.map((v) => num(v)).join(',');
+      const m = f.material;
+      return (
+        `face n=${n} ${corners} rgb=${rgb} a=${num(f.alpha)} ` +
+        `metallic=${num(m.metallic)} roughness=${num(m.roughness)} ` +
+        `emissive=${num(m.emissive)}`
+      );
+    })
+    .sort();
+
+  const out = [`mesh faces=${lines.length} digest=${digest(lines)}`];
+  if (q.faces) out.push(...lines);
+  return out.join('\n');
+}
+
+// FNV-1a over the sorted face lines, hex. Not cryptographic — a cheap
+// "did these two runs agree" that fits on one line, so a parity harness
+// can diff digests first and only print faces when they differ.
+function digest(lines: readonly string[]): string {
+  let h = 0x811c9dc5;
+  for (const line of lines) {
+    for (let i = 0; i < line.length; i++) {
+      h ^= line.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    h ^= 10;
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, '0');
 }
 
 function formatTransforms(
