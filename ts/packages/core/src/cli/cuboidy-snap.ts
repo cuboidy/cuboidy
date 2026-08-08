@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { resolveAngles, type Angle } from '../render/camera.js';
 import type { Rgb } from '../render/framebuffer.js';
+import { parseBackground, parsePositiveInt } from './args.js';
 import { DEFAULT_ANGLES, DEFAULTS, runSnap, type SnapOptions } from './snap-runner.js';
 
 // CLI shell for `cuboidy-snap <dir> [options]`. All real work lives in
@@ -26,7 +27,8 @@ const HELP_TEXT =
   '  --out=<dir>      output directory (default: <dir>/snapshots)\n' +
   '  --size=<px>      per-angle tile size, square (default: 256)\n' +
   '  --ss=<n>         supersample factor for anti-aliasing (default: 2)\n' +
-  '  --bg=<hex>       background color, #RGB or #RRGGBB (default: #888e94)\n' +
+  '  --bg=<hex>       background color, any §7.4 hex form (default: #888e94)\n' +
+  '                   alpha is accepted and ignored; the `#` is optional\n' +
   '  --cols=<n>       contact-sheet columns (default: 4)\n' +
   '  --no-sheet       skip the combined contact sheet\n' +
   '  --no-individual  skip the per-angle PNGs\n' +
@@ -77,8 +79,11 @@ function parseArgs(argv: readonly string[]): Args | { help: true } | { error: st
       if (n === null) return { error: '--cols must be a positive integer' };
       cols = n;
     } else if (a.startsWith('--bg=')) {
-      const c = parseHexColor(a.slice('--bg='.length));
-      if (c === null) return { error: '--bg must be a hex color like #888 or #8a9099' };
+      const c = parseBackground(a.slice('--bg='.length));
+      if (c === null) return {
+          error:
+            '--bg must be a hex color: #RGB, #RGBA, #RRGGBB or #RRGGBBAA (alpha ignored)',
+        };
       bg = c;
     } else if (a.startsWith('-')) {
       return { error: `unknown flag "${a}"` };
@@ -105,23 +110,6 @@ function parseArgs(argv: readonly string[]): Args | { help: true } | { error: st
     individual,
     outDir: outDir ?? `${dir}/snapshots`,
   };
-}
-
-function parsePositiveInt(s: string): number | null {
-  if (!/^\d+$/.test(s)) return null;
-  const n = Number(s);
-  return n > 0 ? n : null;
-}
-
-function parseHexColor(s: string): Rgb | null {
-  const m = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(s);
-  if (!m) return null;
-  const hex = m[1]!;
-  const full = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex;
-  const r = parseInt(full.slice(0, 2), 16) / 255;
-  const g = parseInt(full.slice(2, 4), 16) / 255;
-  const b = parseInt(full.slice(4, 6), 16) / 255;
-  return [r, g, b];
 }
 
 async function main(): Promise<number> {

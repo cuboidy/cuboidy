@@ -11,16 +11,25 @@ interface Args {
   strict: boolean;
 }
 
-function parseArgs(argv: readonly string[]): Args | { help: true } | null {
+// `{ error }`, not `null`, so a usage mistake is DIAGNOSED. Every other CLI
+// here says what was wrong before printing the help; this one printed the
+// help alone and left you to spot the difference, which is the least useful
+// moment to be terse.
+function parseArgs(
+  argv: readonly string[],
+): Args | { help: true } | { error: string } {
   const positional: string[] = [];
   let strict = false;
   for (const a of argv) {
     if (a === '--help' || a === '-h') return { help: true };
     if (a === '--strict') strict = true;
-    else if (a.startsWith('-')) return null; // unknown flag
+    else if (a.startsWith('-')) return { error: `unknown flag "${a}"` };
     else positional.push(a);
   }
-  if (positional.length !== 1) return null;
+  if (positional.length === 0) return { error: 'expected a model directory' };
+  if (positional.length > 1) {
+    return { error: `expected one directory, got ${positional.length}` };
+  }
   return { dir: positional[0]!, strict };
 }
 
@@ -43,8 +52,10 @@ const HELP_TEXT =
 
 async function main(): Promise<number> {
   const parsed = parseArgs(process.argv.slice(2));
-  if (parsed === null) {
-    process.stderr.write(HELP_TEXT);
+  if ('error' in parsed) {
+    process.stderr.write(`cuboidy-lint: ${parsed.error}
+
+${HELP_TEXT}`);
     return 2;
   }
   if ('help' in parsed) {

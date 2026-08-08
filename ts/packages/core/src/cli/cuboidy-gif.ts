@@ -2,6 +2,7 @@
 import { ANGLES, resolveAngles } from '../render/camera.js';
 import type { Angle } from '../render/camera.js';
 import type { Rgb } from '../render/framebuffer.js';
+import { parseBackground, parsePositiveInt } from './args.js';
 import { DEFAULT_BG, runGif, type GifOptions } from './gif-runner.js';
 
 // CLI shell for `cuboidy-gif <dir> [options]`. All real work lives in
@@ -30,7 +31,12 @@ const HELP_TEXT =
   '                   1 keeps the render inside GIF\'s 256-colour table\n' +
   '                   losslessly and suits voxel art; >1 antialiases and\n' +
   '                   is then quantised\n' +
-  '  --bg=<hex>       background color, #RGB or #RRGGBB (default: #6b7078)\n' +
+  '  --bg=<hex>       background color, any §7.4 hex form (default: #6b7078)\n' +
+  '                   alpha is accepted and ignored; the `#` is optional\n' +
+  '  --bg=none        transparent background instead of a colour\n' +
+  '  --orbit          turn the model on the spot instead of playing a clip\n' +
+  '                   (the only way to render a model that has no animation)\n' +
+  '  --loops=<n>      repeat the clip n times in one GIF (default: 1)\n' +
   '  --out=<file>     output path (default: <dir>/<model>-<clip>.gif)\n' +
   '  --help, -h       show this message\n' +
   '\n' +
@@ -103,8 +109,11 @@ export function parseArgs(
     } else if (a === '--bg=none') {
       transparent = true;
     } else if (a.startsWith('--bg=')) {
-      const c = parseHexColor(a.slice('--bg='.length));
-      if (c === null) return { error: '--bg must be a hex color like #888 or #8a9099' };
+      const c = parseBackground(a.slice('--bg='.length));
+      if (c === null) return {
+          error:
+            '--bg must be a hex color: #RGB, #RGBA, #RRGGBB or #RRGGBBAA (alpha ignored)',
+        };
       bg = c;
     } else if (a.startsWith('-')) {
       return { error: `unknown flag "${a}"` };
@@ -120,24 +129,6 @@ export function parseArgs(
     dir: positional[0]!, angle, size, ss, fps, frames, bg, clip, outFile, orbit,
     loops, transparent,
   };
-}
-
-function parsePositiveInt(s: string): number | null {
-  if (!/^\d+$/.test(s)) return null;
-  const n = Number(s);
-  return n > 0 ? n : null;
-}
-
-function parseHexColor(s: string): Rgb | null {
-  const m = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(s);
-  if (!m) return null;
-  const hex = m[1]!;
-  const full = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex;
-  return [
-    parseInt(full.slice(0, 2), 16) / 255,
-    parseInt(full.slice(2, 4), 16) / 255,
-    parseInt(full.slice(4, 6), 16) / 255,
-  ];
 }
 
 async function main(): Promise<number> {
