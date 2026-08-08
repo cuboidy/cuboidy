@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import type { Geometry, Manifest, Palette } from '@cuboidy/core';
-import { RiggedParts, buildRigTree, computeSceneCenter, computeSceneSpan, StudioLighting, StudioGrid, computeSceneBounds } from '@cuboidy/ui';
+import { RiggedParts, buildRigTree, computeSceneCenter, computeSceneSpan, StudioLighting, StudioGrid, computeSceneBounds, StudioBackground } from '@cuboidy/ui';
 import type { GizmoVisibility } from '@cuboidy/ui';
 import type { AnimationSession } from '../../lib/useAnimationSession.js';
 import { NoAnimationsYet } from '../ui/NoAnimationsYet.js';
@@ -97,6 +97,7 @@ export function AnimationViewport({
       shadows={false}
       onPointerMissed={() => onSelectPart(null)}
     >
+      <StudioBackground />
       <StudioLighting />
       <StudioGrid min={bounds.min} max={bounds.max} visible={showGrid} />
       <RiggedParts

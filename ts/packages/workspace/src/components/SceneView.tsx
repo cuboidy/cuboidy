@@ -11,6 +11,7 @@ import {
   ViewOverlay,
   ViewToggle,
   computeSceneSpan,
+  StudioBackground,
   StudioGrid,
   StudioLighting,
 } from '@cuboidy/ui';
@@ -260,7 +261,7 @@ export function SceneView({
         camera={{ position: [reach * 2, reach * 1.6, reach * 2], fov: 35 }}
         onPointerMissed={() => onSelect(null)}
       >
-        <color attach="background" args={['#14161a']} />
+        <StudioBackground />
         <StudioLighting />
         {/* A scene places models at signed positions, so the grid is
             sized from the reach in every direction rather than from a

@@ -4,7 +4,7 @@ import { Canvas, type ThreeEvent } from '@react-three/fiber';
 import type { Object3D } from 'three';
 import { AIR, quatFromEulerZXYDeg, type Geometry, type Manifest, type Palette, type Part, type QuatTuple } from '@cuboidy/core';
 
-import { PartGizmos, PartMesh, RiggedParts, TransformGizmoHost, buildRigTree, computeSceneCenter, computeSceneSpan, StudioLighting, StudioGrid, computeSceneBounds } from '@cuboidy/ui';
+import { PartGizmos, PartMesh, RiggedParts, TransformGizmoHost, buildRigTree, computeSceneCenter, computeSceneSpan, StudioLighting, StudioGrid, computeSceneBounds, StudioBackground } from '@cuboidy/ui';
 import type { GizmoPicking, GizmoVisibility, PreviewTool, TransformSubTarget, ViewMode, VoxelEdit, VoxelStrokeHandlers } from '@cuboidy/ui';
 
 interface Props {
@@ -546,6 +546,7 @@ export function VoxelScene({
       shadows={false}
       onPointerMissed={() => selectAndResetSub(null)}
     >
+      <StudioBackground />
       <StudioLighting />
       <StudioGrid min={bounds.min} max={bounds.max} visible={showGrid} />
       {rigMode ? (
