@@ -3,7 +3,7 @@ import { parseManifest, type Manifest } from '../src/manifest.js';
 import { resolveProject } from '../src/project.js';
 import { parseGeometryText } from '../src/geometry/parse.js';
 import { geo } from './helpers/geometry.js';
-import { validateCrossFile, validateProject } from '../src/lint/cross-file.js';
+import { validateProject } from '../src/lint/cross-file.js';
 import { readFixtureJson, readFixtureText } from './helpers/fixtures.js';
 import { RIGGED, RIGGED_PARTS, SINGLE } from './helpers/corpus.js';
 import { rgba } from './helpers/palette.js';
@@ -24,15 +24,26 @@ function manifestOrThrow(json: unknown) {
   return r.value;
 }
 
-describe('validateCrossFile', () => {
+// The single-file shape: a manifest and one geometry file, with no
+// per-part binding. Called `validateCrossFile` through a shim until the
+// shim's last non-test caller disappeared; the shape it exercises — the
+// fallback that joins parts to shapes by NAME — is still reachable and
+// still worth covering.
+describe('validateProject — single geometry file', () => {
   it('reports no diagnostics for a rigged corpus model', async () => {
     const { manifest, voxelDef } = await loadModel(RIGGED);
-    expect(validateCrossFile(manifest, voxelDef)).toEqual([]);
+    expect(validateProject({
+      manifest: manifest,
+      geometries: [{ path: 'voxels.json', geometry: voxelDef }],
+    })).toEqual([]);
   });
 
   it('reports no diagnostics for a single-part corpus model', async () => {
     const { manifest, voxelDef } = await loadModel(SINGLE);
-    expect(validateCrossFile(manifest, voxelDef)).toEqual([]);
+    expect(validateProject({
+      manifest: manifest,
+      geometries: [{ path: 'voxels.json', geometry: voxelDef }],
+    })).toEqual([]);
   });
 
   it('X01: error when manifest references a part missing from voxels', async () => {
@@ -46,7 +57,10 @@ describe('validateCrossFile', () => {
         { name: 'tongue', parent: 'head' },
       ],
     });
-    const diags = validateCrossFile(manifest, voxelDef);
+    const diags = validateProject({
+      manifest: manifest,
+      geometries: [{ path: 'voxels.json', geometry: voxelDef }],
+    });
     expect(diags).toHaveLength(1);
     expect(diags[0]?.code).toBe('missing');
     expect(diags[0]?.severity).toBe('error');
@@ -61,7 +75,10 @@ describe('validateCrossFile', () => {
       name: 'rigged',
       parts: RIGGED_PARTS.filter((p) => p.name !== 'tail'),
     });
-    const diags = validateCrossFile(manifest, voxelDef);
+    const diags = validateProject({
+      manifest: manifest,
+      geometries: [{ path: 'voxels.json', geometry: voxelDef }],
+    });
     expect(diags).toHaveLength(1);
     expect(diags[0]?.code).toBe('unknown');
     expect(diags[0]?.severity).toBe('warning');
@@ -79,7 +96,10 @@ describe('validateCrossFile', () => {
         { name: 'wing' },
       ],
     });
-    const diags = validateCrossFile(manifest, voxelDef);
+    const diags = validateProject({
+      manifest: manifest,
+      geometries: [{ path: 'voxels.json', geometry: voxelDef }],
+    });
     const codes = diags.map((d) => d.code).sort();
     expect(codes).toEqual(['missing', 'unknown', 'unknown']);
   });
@@ -261,7 +281,10 @@ describe('validateProject — published sockets (§6.12)', () => {
       part: 'head',
       socket: 'hat',
     });
-    expect(validateCrossFile(manifest, voxelDef)).toEqual([]);
+    expect(validateProject({
+      manifest: manifest,
+      geometries: [{ path: 'voxels.json', geometry: voxelDef }],
+    })).toEqual([]);
   });
 
   it('errors when the host part declares no socket by that name', () => {

@@ -261,18 +261,6 @@ export function validateProject(input: ProjectInput): Diagnostic[] {
   return diags;
 }
 
-// Backwards-compatible single-file entry point (pre-v0.7 shape): one
-// geometry file, no external palette, no package listing.
-export function validateCrossFile(
-  manifest: Manifest,
-  voxelDef: Geometry,
-): Diagnostic[] {
-  return validateProject({
-    manifest,
-    geometries: [{ path: 'voxels.json', geometry: voxelDef }],
-  });
-}
-
 function maxUsedIndex(geometry: Geometry): number {
   let max = AIR;
   for (const part of geometry.parts) {

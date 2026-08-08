@@ -31,7 +31,6 @@ export type {
   InlineAnimation,
   AnimationTrack,
   Keyframe,
-  EaseMap,
   Pose,
 } from './animation.js';
 
@@ -165,7 +164,7 @@ export type {
   WorldTransform,
 } from './rig-transform.js';
 
-export { validateCrossFile, validateProject } from './lint/cross-file.js';
+export { validateProject } from './lint/cross-file.js';
 export type { ProjectInput } from './lint/cross-file.js';
 export { lintGeometry } from './lint/voxel-rules.js';
 export { CROSS_FILE, lintProject } from './lint/project-lint.js';
