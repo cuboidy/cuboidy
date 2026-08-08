@@ -12,11 +12,9 @@ were already legal and already parsed — what they meant was never written
 down, and every renderer discarded the value. §7.4 defines it, and the two
 rules that make it drawable:
 
-- **An opaque neighbour hides a face**, but a translucent one does not hide an
-  opaque face — that rule would put a hole in the wall behind a pane of glass.
-- **Between two translucent voxels exactly ONE face survives**, the lower
-  palette index keeping it. Two coincident quads cannot be ordered, so the
-  winner flips per triangle and the join breaks into shifting wedges.
+- **A face is dropped only when its neighbour hides it** — the neighbour is
+  opaque, or it is the very same palette index. Being merely solid is not
+  enough; that rule would put a hole in the wall behind a pane of glass.
 - **A run of one translucent color is one surface, whatever its thickness.**
   Three voxels of water read exactly as one does. Depth is expressed by
   choosing a denser color, not by stacking, and an implementation MUST NOT
@@ -26,6 +24,18 @@ Renderers draw the opaque faces first with depth writes, then the translucent
 ones back to front with the depth test but no write. `buildMesh` orders its
 indices opaque-first and reports the split so the two passes are two ranges
 of one buffer.
+
+Two clauses of that got spelled out after both were got wrong in this
+repository. **Back to front is per face, not per object** — sorting whole
+meshes and letting the faces inside one draw in emission order fails from
+about half of all viewpoints, and the symptom (wedges of the far color
+surfacing through the near one, one per voxel, sliding as you orbit) reads
+convincingly as stray internal geometry. And **faces are single-sided**:
+corners are wound counter-clockwise seen from outside the voxel, and back
+faces MUST be culled. That is what makes it correct for both voxels to keep
+their face where two translucent colors meet — the shared rectangle carries
+two opposed quads, and culling keeps the one whose color you are looking
+through.
 
 A fully transparent color (`00`) renders nothing, but its voxels are still
 voxels: they occupy their cells, count toward the bounding box, and answer a

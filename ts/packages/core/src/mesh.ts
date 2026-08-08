@@ -54,36 +54,40 @@ function voxelAt(part: Part, x: number, y: number, z: number): number {
   return part.voxels[y]![z]![x]!;
 }
 
-// SPEC §7.4: a face is dropped when its neighbour HIDES it.
+// SPEC §7.4: a face is dropped when its neighbour HIDES it. A neighbour
+// hides a face when it is OPAQUE, or when it is the very same palette index.
 //
-// An OPAQUE neighbour hides it. The reverse does not hold: a translucent
-// neighbour must NOT hide an opaque face, or the wall behind a pane of glass
-// loses the face you look at and the glass opens onto a hole.
+// Merely being solid is not enough: a translucent neighbour must not hide an
+// opaque face, or the wall behind a pane of glass loses the face you look at
+// and the glass opens onto a hole. Same index on both sides means a run of
+// one translucent colour is one surface whatever its thickness — three
+// voxels of water read exactly as one does.
 //
-// Between two TRANSLUCENT voxels exactly ONE face survives, and which one is
-// decided by palette index: the lower index keeps its face, the higher drops
-// it. Two rules fall out of that one.
+// Where two DIFFERENT translucent colours meet, both keep their face. That
+// is two quads on one rectangle at one depth, pointing opposite ways, and it
+// is fine: they are wound CCW-from-outside, so back-face culling leaves
+// exactly one of them standing from any given viewpoint — the near one, the
+// one whose colour you are looking through. Keeping only one (as this
+// function briefly did) makes the boundary visible from one side and gone
+// from the other.
 //
-// Same colour, so same index: both drop, and a run of one translucent colour
-// is one surface whatever its thickness — three voxels of water read as one.
-//
-// Different colours: one face, never two. Emitting both puts two quads on
-// the SAME rectangle, at the same depth, differing only in which way their
-// normals point and how their corners happen to be triangulated. Nothing
-// downstream can order them: the winner flips from triangle to triangle, so
-// the join breaks into wedges with diagonal edges — one per voxel, shifting
-// as the camera moves. Choosing by index is arbitrary but it is stable, and
-// both voxels reach the same answer without consulting anything else.
+// It is worth being blunt about why that experiment happened, because the
+// reasoning looked airtight and was wrong. Wedge-shaped artifacts at such an
+// interface were traced to "ten quads on the plane, unorderable", and the
+// count was real — but a coincident PAIR is never a draw-order problem,
+// since culling has already discarded one before ordering is asked about.
+// The wedges were the editor blending its translucent faces in mesh-emission
+// order instead of back to front, fixed in @cuboidy/ui's translucent-order.
+// Halving the quads changed nothing on screen, which the CLI would have said
+// immediately: it renders this model identically under either rule.
 function hiddenBy(
   neighbour: number,
   self: number,
   opaque: readonly boolean[],
 ): boolean {
   if (neighbour === AIR) return false;
-  // An unresolved index draws opaque magenta, so it hides like one.
-  if (opaque[neighbour] ?? true) return true;
-  if (opaque[self] ?? true) return false;
-  return self >= neighbour;
+  if (neighbour === self) return true;
+  return opaque[neighbour] ?? true;
 }
 
 export function buildMesh(part: Part, palette: Palette): MeshData {

@@ -522,11 +522,16 @@ A file that spells its colors out is range-checked at **parse time** — it is i
 
 Two rules make that drawable, and both are normative because two implementations must agree on the geometry they produce:
 
-- **An opaque neighbour hides a face.** The reverse does not hold: a translucent neighbour must not hide an opaque face, or the wall behind a pane of glass loses the face you look at and the glass opens onto a hole.
-- **Between two translucent voxels exactly ONE face survives, and the lower palette index keeps it.** Never two. Two quads on the same rectangle at the same depth, differing only in which way their normals point, cannot be ordered by anything downstream: the winner flips from triangle to triangle and the join breaks into wedges that shift as the camera moves. The tie break is arbitrary but it is stable, and both voxels reach the same answer without consulting anything else.
-- **A run of one translucent color is therefore one surface, whatever its thickness** — same colour means same index, so both faces drop and three voxels of water read exactly as one does. Thickness is expressed by choosing a denser color, not by stacking. An implementation MUST NOT blend per layer.
+- **A face is dropped only when its neighbour hides it.** A neighbour hides a face when it is opaque, or when it is the very same palette index. Being merely solid is not enough. Drop a wall's face because a pane of glass sits against it and the glass looks onto a hole; keep the faces inside a body of one translucent color and every layer blends again, so three voxels of water read darker than one.
+- **A run of one translucent color is one surface, whatever its thickness.** That is the consequence of the same-index half above, and it is deliberate: thickness is expressed by choosing a denser color, not by stacking. An implementation MUST NOT blend per layer.
 
 Draw the opaque faces first, writing depth; then the translucent ones back to front, testing depth but not writing it. Sorting by mean face depth is sufficient — voxel faces do not interpenetrate.
+
+Two details of that sentence are load-bearing, and both have been got wrong here already.
+
+**"Back to front" is per FACE, not per model or per part.** Sorting whole objects and letting the faces inside one draw in whatever order the mesh builder emitted them is not an approximation of this rule; it is a different rule, and it fails from roughly half of all viewpoints. The symptom is not subtle once you know it: wedge-shaped patches of the far color surfacing through the near one, one per voxel, sliding as the camera orbits. It reads as geometry — as internal faces or shelves inside the block — which sends you looking in the mesh for faces that are not there.
+
+**Faces are single-sided.** A voxel at `(x, y, z)` occupies the unit cube spanning `[x, x+1]` on each axis, and a face's four corners are wound **counter-clockwise seen from outside that cube**. An implementation MUST cull back faces. Where two different translucent colors meet, both voxels keep their face, so the shared rectangle carries two coincident quads pointing opposite ways. Culling resolves them: exactly one survives from any viewpoint, and it is the one whose color you are looking through. Render double-sided and that interface blends twice.
 
 **An index that no palette entry defines renders as opaque magenta** (`#FF00FF`, fully opaque whatever the model's other colors do). Cross-file validation reports it (§11.6), but reporting is an authoring-time concern and a runtime that only draws must still have an answer — so the answer is a defined, deliberately conspicuous color rather than an error, a skipped voxel, or an out-of-bounds read. This applies wherever the index space is short: a palette-less file, a reference that did not resolve, or an inline part whose palette is shorter than the indices it uses.
 

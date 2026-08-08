@@ -97,16 +97,11 @@ export function buildSceneFromParts(
     // The §7.4 hide rule, identical to mesh.ts's: a neighbour hides a face
     // when it is opaque or the very same index. Merely being solid is not
     // enough, or a wall behind glass would lose the face you look at.
-    // Compared on EFFECTIVE indices so the "lower index owns the face" tie
-    // break is the same one mesh.ts makes on the unmapped palette.
-    const eff = (i: number): number => (remap === null ? i : (remap[i] ?? i));
     const hidden = (n: number, self: number): boolean => {
       if (n === AIR) return false;
-      const en = eff(n);
-      const es = eff(self);
-      if (opaque[en] ?? true) return true;
-      if (opaque[es] ?? true) return false;
-      return es >= en;
+      if (n === self) return true;
+      const eff = remap === null ? n : (remap[n] ?? n);
+      return opaque[eff] ?? true;
     };
     const piv: Vec3 = [part.pivot.pos.x, part.pivot.pos.y, part.pivot.pos.z];
     // §7.7 / §6.5, stated once in rig-transform.ts — the same call
