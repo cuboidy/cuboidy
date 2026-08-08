@@ -4,7 +4,11 @@ import type { Geometry, Part } from '../geometry/types.js';
 import { AIR, maxPaletteIndex } from '../geometry/voxel-row.js';
 import type { Manifest } from '../manifest.js';
 import { round6 } from '../num.js';
-import type { ResolvedPart, UnresolvedPart } from '../project.js';
+import type {
+  DuplicatePartName,
+  ResolvedPart,
+  UnresolvedPart,
+} from '../project.js';
 
 // SPEC §11 cross-file validation, v0.7 project shape: a manifest plus one
 // or more geometry files (§6.9) and an optional bound external palette
@@ -31,6 +35,11 @@ export interface ProjectInput {
   // the resolver so that one misnamed part does not gate every other
   // cross-file rule off — see resolvePartGeometry.
   unresolved?: readonly UnresolvedPart[];
+  // §11.6: names defined by more than one file of the `geometry` list, from
+  // resolvePartGeometry. Same reason as `unresolved`: the resolver refuses
+  // to bind them, and the REPORT belongs beside the other cross-file
+  // findings rather than gating them off.
+  duplicates?: readonly DuplicatePartName[];
   // Every geometry path present in the package (for the W07 unreferenced
   // check). Absent → the check is skipped (caller can't enumerate files).
   packageGeometryPaths?: readonly string[];
@@ -43,14 +52,18 @@ export function validateProject(input: ProjectInput): Diagnostic[] {
   // Part name → defining file(s). Names are unique across the WHOLE model
   // (SPEC §5) and the by-name rules below key on that.
   //
-  // The §11.6 `duplicate` report itself is NOT here: a name in two files
-  // makes the by-`name` lookup ambiguous, so `resolveProject` refuses.
-  // Reporting it here as well would be a second copy of the rule.
-  //
-  // The CLI never reaches this function for such a model — `lint-runner`
-  // gates on `project.complete`. The editor's live lint does not gate, and
-  // calls `resolvePartGeometry` directly, so it must read the `duplicates`
-  // that call returns rather than expecting a diagnostic from here.
+  // §11.6: the same part name defined by more than one file of the
+  // `geometry` list. The resolver found it — it is what makes the by-`name`
+  // lookup ambiguous, so the name binds to nothing there — and hands it over
+  // to be reported here, with everything else the model is wrong about.
+  for (const dup of input.duplicates ?? []) {
+    diags.push({
+      code: 'duplicate',
+      severity: 'error',
+      message: `part '${dup.name}' is defined in more than one geometry file (${dup.files.join(', ')})`,
+    });
+  }
+
   const definedIn = new Map<string, string[]>();
   for (const { path, geometry } of geometries) {
     for (const part of geometry.parts) {

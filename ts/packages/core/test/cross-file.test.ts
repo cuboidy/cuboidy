@@ -109,10 +109,6 @@ describe('validateProject (v0.7)', () => {
     palette: Array.from({ length: colors }, (_, i) => ({ r: i, g: 0, b: 0, a: 255 })),
   });
 
-  // The §11.6 `duplicate` report moved to `resolveProject`: a name in two
-  // files makes the by-name lookup ambiguous, so resolution refuses and this
-  // function is never reached for such a model. See project.test.ts.
-
   it('errors on a manifest part defined in no geometry file', () => {
     const manifest = manifestOrThrow({
       name: 't',
@@ -464,5 +460,61 @@ describe('validateProject — inline part palette range (§6.13 / §11.6)', () =
 
   it('says nothing about an all-air part', () => {
     expect(run([], '.')).toEqual([]);
+  });
+});
+
+// §11.6's name-uniqueness rule. Resolution refuses to bind the name (see
+// project.test.ts); the REPORT is here, beside the other cross-file
+// findings, so that one ambiguous name does not hide them. It briefly lived
+// in `resolveProject`'s diagnostics, which set `complete: false` and gated
+// this whole function off.
+describe('validateProject — an ambiguous part name (§11.6)', () => {
+  const geometryOrThrow = (text: string) => {
+    const r = parseGeometryText(text);
+    if (!r.ok) throw new Error(`geometry parse failed: ${r.message}`);
+    return r.value;
+  };
+  const one = (name: string, cell: string, palette?: string[]) =>
+    geometryOrThrow(geo([{ name, size: [1, 1, 1], voxels: [[cell]] }], palette));
+
+  it('reports the duplicate AND everything else wrong with the model', () => {
+    const dupPart = one('body', '0', ['#FF0000']);
+    const diags = validateProject({
+      manifest: manifestOrThrow({
+        name: 't',
+        geometry: ['a.json', 'b.json', 'orphan.json'],
+        parts: [{ name: 'body' }],
+      }),
+      geometries: [
+        { path: 'a.json', geometry: dupPart },
+        { path: 'b.json', geometry: dupPart },
+        { path: 'orphan.json', geometry: one('spare', '0', ['#00FF00']) },
+      ],
+      parts: new Map(),
+      unresolved: [{ name: 'body', message: "part 'body' has no shape" }],
+      duplicates: [{ name: 'body', files: ['a.json', 'b.json'] }],
+    });
+    const dup = diags.find((d) => d.code === 'duplicate');
+    expect(dup?.severity).toBe('error');
+    expect(dup?.message).toContain('a.json');
+    expect(dup?.message).toContain('b.json');
+    // The findings that used to vanish with it.
+    expect(diags.some((d) => d.message.includes("'spare'"))).toBe(true);
+    expect(diags.some((d) => d.message.includes('has no shape'))).toBe(true);
+  });
+
+  it('says nothing when no name is ambiguous', () => {
+    const diags = validateProject({
+      manifest: manifestOrThrow({
+        name: 't',
+        geometry: ['a.json'],
+        parts: [{ name: 'body' }],
+      }),
+      geometries: [{ path: 'a.json', geometry: one('body', '0', ['#FF0000']) }],
+      parts: new Map(),
+      unresolved: [],
+      duplicates: [],
+    });
+    expect(diags.some((d) => d.code === 'duplicate')).toBe(false);
   });
 });

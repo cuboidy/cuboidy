@@ -165,6 +165,7 @@ export async function runLint(
       geometries: project.geometries,
       parts: project.parts,
       unresolved: project.unresolved,
+      duplicates: project.duplicates,
       externalAnims: project.externalAnims,
       packageGeometryPaths: await enumerateGeometryFiles(root),
     })) {

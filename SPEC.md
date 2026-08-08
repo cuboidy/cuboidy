@@ -861,7 +861,7 @@ Items marked "planned" are not yet implemented in the TS reference; the catch-al
 
 Cross-file validation operates on the **project**: the manifest plus its referenced geometry files (§6.9) and any palette files those point at (§6.10, §7.4).
 
-Most of these rules are *reporting*, and an implementation that only needs to draw a model may skip them. The `duplicate` row below is the exception: a part name defined in two listed files leaves the by-`name` lookup with no answer, so **resolution itself fails** and there is nothing to draw. An implementation that resolves references but does not lint MUST still refuse that model. The name binds to **nothing**: returning one of the two candidates would make the answer a fact about the reader collections, not about the model, and two implementations would disagree about which shape the name means.
+Most of these rules are *reporting*, and an implementation that only needs to draw a model may skip them. The `duplicate` row below is the exception: a part name defined in two listed files leaves the by-`name` lookup with no answer, so **resolution itself fails** and there is nothing to draw. An implementation that resolves references but does not lint MUST still refuse to bind it: **the name resolves to nothing**, and the part has no shape. Returning one of the two candidates would make the answer a fact about the reader collections rather than about the model, and two implementations would disagree about which shape the name means. Resolution stops there; reporting the ambiguity is this section's job, alongside every other finding about the model.
 
 | Code | Severity | Rule |
 |---|---|---|

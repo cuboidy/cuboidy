@@ -122,7 +122,7 @@ describe('resolveProject — ambiguous part names (§11.6)', () => {
   const one = (name: string) => geo([{ name, size: [1, 1, 1], voxels: [['0']] }]);
   const body = one('body');
 
-  it('refuses to resolve a name defined in two listed files', () => {
+  it('hands the ambiguity to §11.6 rather than gating it off', () => {
     const p = resolveProject(
       manifest(twoFiles()),
       new Map([
@@ -130,11 +130,15 @@ describe('resolveProject — ambiguous part names (§11.6)', () => {
         ['b.json', body],
       ]),
     );
-    expect(p.complete).toBe(false);
-    const dup = p.diagnostics.find((d) => d.diag.code === 'duplicate');
-    expect(dup?.diag.severity).toBe('error');
-    expect(dup?.diag.message).toContain('a.json');
-    expect(dup?.diag.message).toContain('b.json');
+    expect(p.duplicates).toEqual([
+      { name: 'body', files: ['a.json', 'b.json'] },
+    ]);
+    // Deliberately NOT a resolution diagnostic. Setting `complete: false`
+    // would gate cross-file validation off, so one ambiguous name would
+    // hide every other §11.6 finding for the model — including ones about
+    // unrelated files. Resolution's part is the refusal to bind, below.
+    expect(p.diagnostics).toEqual([]);
+    expect(p.complete).toBe(true);
   });
 
   it('binds the ambiguous name to nothing at all', () => {

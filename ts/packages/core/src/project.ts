@@ -178,6 +178,9 @@ export interface ResolvedProject {
   // Parts that found no shape (§6.13). Reported by validateProject, not
   // here — see resolvePartGeometry for why.
   unresolved: UnresolvedPart[];
+  // §11.6 names defined by more than one listed geometry file. Bound to
+  // nothing, and reported by validateProject for the same reason.
+  duplicates: DuplicatePartName[];
   // Resolved §6.3 external animations, keyed by CLIP name (two clips may
   // reference the same file). Only entries that loaded and validated.
   externalAnims: Map<string, { path: string; anim: InlineAnimation }>;
@@ -499,26 +502,19 @@ export function resolveProject(
           return p;
         });
 
-  // §11.6's name-uniqueness rule, reported here rather than by lint because
-  // resolution is what the ambiguity breaks (see resolvePartGeometry). It
-  // therefore makes the project incomplete, which gates cross-file
-  // validation off — correct, because every §11.6 answer about a part is
-  // conditional on knowing which file that part came from.
-  for (const dup of bound.duplicates) {
-    diagnostics.push({
-      file: MANIFEST_FILE,
-      diag: {
-        code: 'duplicate',
-        severity: 'error',
-        message: `part '${dup.name}' is defined in more than one geometry file (${dup.files.join(', ')})`,
-      },
-    });
-  }
+  // §11.6's name-uniqueness rule is NOT a diagnostic here. Resolution's part
+  // in it is the refusal to bind (see resolvePartGeometry), and that is
+  // already done. Reporting it here too would set `complete: false`, which
+  // gates cross-file validation off entirely — so one ambiguous name would
+  // hide every other §11.6 finding for the model, including ones about
+  // unrelated files. The report belongs with its peers: `validateProject`
+  // takes `duplicates` and says it there.
 
   return {
     geometries: parsed,
     parts: bound.parts,
     unresolved: bound.unresolved,
+    duplicates: bound.duplicates,
     externalAnims,
     diagnostics,
     complete: diagnostics.length === 0,
