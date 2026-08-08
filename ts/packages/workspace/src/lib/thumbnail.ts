@@ -110,7 +110,7 @@ function renderOne(renderer: WebGLRenderer, model: LibraryModel): string | null 
   // The environment is not decoration: a §7.4 metal has no diffuse term and
   // renders black without something to reflect.
   scene.environment = environmentFor(renderer);
-  scene.add(new AmbientLight(0xffffff, 0.75));
+  scene.add(new AmbientLight(0xffffff, 0.12));
   const key = new DirectionalLight(0xffffff, 1.1);
   key.position.set(6, 10, 8);
   scene.add(key);

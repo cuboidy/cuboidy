@@ -541,7 +541,14 @@ export function VoxelScene({
       onPointerMissed={() => selectAndResetSub(null)}
     >
       <StudioEnvironment />
-      <ambientLight intensity={0.8} />
+      {/* Ambient was 0.8 before §7.4 materials. The environment (needed at
+          all because a metal has nothing to reflect without one) supplies
+          diffuse fill of its own and supplies MORE of it than this did, so
+          leaving 0.8 lit every matte surface noticeably brighter — a silent
+          restyle of every model that uses no materials. Tuned against a
+          before/after of a plain grey block: the total lands where it was,
+          and the fill now comes from above rather than from nowhere. */}
+      <ambientLight intensity={0.12} />
       <directionalLight position={[10, 20, 10]} intensity={1.0} />
       <gridHelper
         args={[gridSize, gridSize]}

@@ -96,7 +96,13 @@ export function AnimationViewport({
       onPointerMissed={() => onSelectPart(null)}
     >
       <StudioEnvironment />
-      <ambientLight intensity={0.8} />
+      {/* Ambient was 0.8 before the environment existed. The environment
+          supplies diffuse fill of its own, so leaving it there lit every
+          matte surface about a third brighter — a silent restyle of every
+          model that uses no materials at all. Lowered to keep the total
+          roughly where it was; the difference is that the fill now comes
+          from above rather than from nowhere. */}
+      <ambientLight intensity={0.12} />
       <directionalLight position={[10, 20, 10]} intensity={1.0} />
       <gridHelper
         args={[gridSize, gridSize]}
