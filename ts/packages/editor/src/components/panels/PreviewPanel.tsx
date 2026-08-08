@@ -1,4 +1,4 @@
-import { Box, Crosshair, Plug, Plus } from 'lucide-react';
+import { Box, Crosshair, Plug, Plus, Grid3x3 } from 'lucide-react';
 import type { Geometry, Manifest, Palette } from '@cuboidy/core';
 import { AnimationViewport } from '../scene/AnimationViewport.js';
 import { PaletteStrip } from '../ui/PaletteStrip.js';
@@ -28,6 +28,7 @@ interface Props {
   tool: PreviewTool;
   toolDisabled: Partial<Record<PreviewTool, string>>;
   gizmos: GizmoVisibility;
+  showGrid: boolean;
   hiddenParts: ReadonlySet<string>;
   selectedPart: string | null;
   manifestEditsDisabled: boolean;
@@ -37,6 +38,7 @@ interface Props {
   framingKey: number;
   onSetTool: (tool: PreviewTool) => void;
   onToggleGizmo: (kind: keyof GizmoVisibility) => void;
+  onToggleGrid: () => void;
   onChangeViewMode: (mode: ViewMode) => void;
   onSelectPart: (name: string | null) => void;
   onPickColor: (index: number) => void;
@@ -75,6 +77,7 @@ export function PreviewPanel({
   tool,
   toolDisabled,
   gizmos,
+  showGrid,
   hiddenParts,
   selectedPart,
   manifestEditsDisabled,
@@ -82,6 +85,7 @@ export function PreviewPanel({
   framingKey,
   onSetTool,
   onToggleGizmo,
+  onToggleGrid,
   onChangeViewMode,
   onSelectPart,
   onPickColor,
@@ -151,6 +155,21 @@ export function PreviewPanel({
           ]}
           onToggle={onToggleGizmo}
         />
+        {/* Its own group. The three above are the SELECTED PART's gizmos;
+            the grid is scene furniture and belongs to the view, not to a
+            selection. */}
+        <ToggleGroup
+          label="Scene"
+          items={[
+            {
+              id: 'grid',
+              icon: Grid3x3,
+              label: 'Show the ground grid',
+              on: showGrid,
+            },
+          ]}
+          onToggle={onToggleGrid}
+        />
         <ViewModeToggle
           mode={viewMode}
           rigAvailable={rigAvailable}
@@ -160,6 +179,7 @@ export function PreviewPanel({
       </ViewOverlay>
       {viewMode === 'anim' && animManifest !== undefined ? (
         <AnimationViewport
+          showGrid={showGrid}
           geometry={geometry}
           manifest={animManifest}
           hiddenParts={hiddenParts}
@@ -174,6 +194,7 @@ export function PreviewPanel({
         />
       ) : (
         <VoxelScene
+          showGrid={showGrid}
           geometry={geometry}
           manifest={manifest}
           viewMode={viewMode}

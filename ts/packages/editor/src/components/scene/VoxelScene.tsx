@@ -4,7 +4,7 @@ import { Canvas, type ThreeEvent } from '@react-three/fiber';
 import type { Object3D } from 'three';
 import { AIR, quatFromEulerZXYDeg, type Geometry, type Manifest, type Palette, type Part, type QuatTuple } from '@cuboidy/core';
 
-import { PartGizmos, PartMesh, RiggedParts, TransformGizmoHost, buildRigTree, computeSceneCenter, computeSceneSpan, StudioLighting } from '@cuboidy/ui';
+import { PartGizmos, PartMesh, RiggedParts, TransformGizmoHost, buildRigTree, computeSceneCenter, computeSceneSpan, StudioLighting, StudioGrid, computeSceneBounds } from '@cuboidy/ui';
 import type { GizmoPicking, GizmoVisibility, PreviewTool, TransformSubTarget, ViewMode, VoxelEdit, VoxelStrokeHandlers } from '@cuboidy/ui';
 
 interface Props {
@@ -22,6 +22,8 @@ interface Props {
   // Selection gizmos (pivot / sockets / frame) for the selected part.
   selectedPart: string | null;
   gizmos: GizmoVisibility;
+  // Ground grid on/off, a view preference owned by the App.
+  showGrid: boolean;
   // Click-to-select: a part click selects it; a click that hits nothing
   // (r3f fires onPointerMissed only for non-drag clicks) deselects.
   onSelectPart: (name: string | null) => void;
@@ -83,6 +85,7 @@ const ghostNoRaycast = () => null;
 // below.
 
 export function VoxelScene({
+  showGrid,
   geometry,
   manifest,
   viewMode,
@@ -444,13 +447,13 @@ export function VoxelScene({
   }, [framingKey, viewMode]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
-  const gridSize = useMemo(() => {
-    const raw = Math.max(
-      20,
-      Math.ceil(Math.max(...geometry.parts.map((p) => Math.max(p.size.w, p.size.d)))) + 4,
-    );
-    return raw + (raw % 2);
-  }, [geometry]);
+  // The grid's extent comes from the model's WORLD bounds, not from the
+  // largest part's own size: rig positions are signed, and the old formula
+  // could not grow past its floor of 20 however far a model reached.
+  const bounds = useMemo(
+    () => computeSceneBounds(geometry, manifest, viewMode),
+    [geometry, manifest, viewMode],
+  );
 
   // Which gizmo host to mount for the current sub-target. Part-body
   // transforms exist only in rig view; pivot / socket
@@ -544,10 +547,7 @@ export function VoxelScene({
       onPointerMissed={() => selectAndResetSub(null)}
     >
       <StudioLighting />
-      <gridHelper
-        args={[gridSize, gridSize]}
-        position={[gridSize / 2, 0, gridSize / 2]}
-      />
+      <StudioGrid min={bounds.min} max={bounds.max} visible={showGrid} />
       {rigMode ? (
         <RiggedParts
           roots={roots}

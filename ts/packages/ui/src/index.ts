@@ -65,7 +65,12 @@ export {
 } from './fs/browser-fs.js';
 export type { PickedFile } from './fs/browser-fs.js';
 
-export { buildRigTree, computeSceneCenter, computeSceneSpan } from './rig.js';
+export {
+  buildRigTree,
+  computeSceneBounds,
+  computeSceneCenter,
+  computeSceneSpan,
+} from './rig.js';
 export { treeIndent } from './tree.js';
 
 export {
@@ -88,6 +93,8 @@ export { buildPartMaterials, disposeMaterials } from './scene/part-materials.js'
 export { makeStudioEnvironment } from './scene/environment.js';
 export type { StudioEnvironment } from './scene/environment.js';
 export { StudioLighting, addStudioLighting } from './scene/StudioLighting.js';
+export { StudioGrid, studioGridSpec } from './scene/StudioGrid.js';
+export type { StudioGridSpec } from './scene/StudioGrid.js';
 export { makeTranslucentSorter } from './scene/translucent-order.js';
 export type { SortTranslucent } from './scene/translucent-order.js';
 export { PartGizmos } from './scene/PartGizmos.js';

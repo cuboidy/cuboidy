@@ -29,6 +29,30 @@ interface Bounds {
 // frames correctly. The seed unions in the unit cube at the origin
 // (historical behavior: the camera stays anchored near the grid origin
 // even for far-flung models).
+// The same bounds `computeSceneSpan` and `computeSceneCenter` are derived
+// from. Exported because the ground grid needs the extremes themselves, not
+// a span: a grid centred on the origin has to reach whichever direction the
+// model actually goes, and rig positions are signed.
+export function computeSceneBounds(
+  geometry: Geometry,
+  manifest: Manifest | undefined,
+  viewMode: ViewMode,
+): Bounds {
+  if (viewMode === 'geometry' || manifest === undefined) {
+    // Geometry view stacks every part at the origin, so the model occupies
+    // 0..size on each axis — the one case where nothing is negative.
+    return {
+      min: [0, 0, 0],
+      max: [
+        Math.max(1, ...geometry.parts.map((p) => p.size.w)),
+        Math.max(1, ...geometry.parts.map((p) => p.size.h)),
+        Math.max(1, ...geometry.parts.map((p) => p.size.d)),
+      ],
+    };
+  }
+  return computeWorldBounds(geometry, manifest);
+}
+
 function computeWorldBounds(geometry: Geometry, manifest: Manifest): Bounds {
   const entries = geometry.parts.map((p) => [p.name, p] as const);
   const transforms = computeRestWorldTransforms(

@@ -69,6 +69,12 @@ export function App() {
     sockets: true,
     frame: true,
   });
+  // The ground grid. A viewer preference like the gizmo flags above, and
+  // deliberately NOT persisted — that is its own decision, not a rider on
+  // this one.
+  const [showGrid, setShowGrid] = useState(true);
+  const handleToggleGrid = useCallback(() => setShowGrid((v) => !v), []);
+
   const handleToggleGizmo = useCallback((kind: keyof GizmoVisibility) => {
     setGizmoVis((v) => ({ ...v, [kind]: !v[kind] }));
   }, []);
@@ -445,10 +451,12 @@ export function App() {
       effectivePreviewTool,
       previewToolDisabled,
       gizmoVis,
+      showGrid,
       framingKey,
       activeColorIndex,
       onSetPreviewTool: setPreviewTool,
       onToggleGizmo: handleToggleGizmo,
+      onToggleGrid: handleToggleGrid,
       onChangeViewMode: handleViewModeChange,
       onPickColor: setActiveColorIndex,
       onOpenPath: handleOpenPath,

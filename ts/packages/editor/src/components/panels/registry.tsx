@@ -64,10 +64,12 @@ export interface EditorPanelContext {
   effectivePreviewTool: PreviewTool;
   previewToolDisabled: Partial<Record<PreviewTool, string>>;
   gizmoVis: GizmoVisibility;
+  showGrid: boolean;
   framingKey: number;
   activeColorIndex: number;
   onSetPreviewTool: (tool: PreviewTool) => void;
   onToggleGizmo: (kind: keyof GizmoVisibility) => void;
+  onToggleGrid: () => void;
   onChangeViewMode: (mode: ViewMode) => void;
   onPickColor: (index: number) => void;
   onOpenPath: (path: string) => void;
@@ -140,6 +142,7 @@ export function renderEditorPanel(
             tool={ctx.effectivePreviewTool}
             toolDisabled={ctx.previewToolDisabled}
             gizmos={ctx.gizmoVis}
+            showGrid={ctx.showGrid}
             hiddenParts={partEdits.hiddenParts}
             selectedPart={ctx.effectiveSelectedPart}
             manifestEditsDisabled={ctx.manifestParseError !== null}
@@ -147,6 +150,7 @@ export function renderEditorPanel(
             framingKey={ctx.framingKey}
             onSetTool={ctx.onSetPreviewTool}
             onToggleGizmo={ctx.onToggleGizmo}
+            onToggleGrid={ctx.onToggleGrid}
             onChangeViewMode={ctx.onChangeViewMode}
             onSelectPart={partEdits.setSelectedPartName}
             onPickColor={ctx.onPickColor}

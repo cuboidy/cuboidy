@@ -2,12 +2,14 @@ import { useMemo } from 'react';
 import { OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import type { Geometry, Manifest, Palette } from '@cuboidy/core';
-import { RiggedParts, buildRigTree, computeSceneCenter, computeSceneSpan, StudioLighting } from '@cuboidy/ui';
+import { RiggedParts, buildRigTree, computeSceneCenter, computeSceneSpan, StudioLighting, StudioGrid, computeSceneBounds } from '@cuboidy/ui';
 import type { GizmoVisibility } from '@cuboidy/ui';
 import type { AnimationSession } from '../../lib/useAnimationSession.js';
 import { NoAnimationsYet } from '../ui/NoAnimationsYet.js';
 
 interface Props {
+  // Ground grid on/off, a view preference owned by the App.
+  showGrid: boolean;
   geometry: Geometry;
   manifest: Manifest;
   hiddenParts: ReadonlySet<string>;
@@ -30,6 +32,7 @@ interface Props {
 // keyframe lanes live in the separate Timeline panel. When the model has no
 // clip yet, it shows the create-first-animation prompt in place of the scene.
 export function AnimationViewport({
+  showGrid,
   geometry,
   manifest,
   hiddenParts,
@@ -69,14 +72,13 @@ export function AnimationViewport({
     return Math.max(span.w, span.h, span.d) * 1.8;
   }, [framingKey]);
   /* eslint-enable react-hooks/exhaustive-deps */
-  const gridSize = useMemo(() => {
-    const raw = Math.max(
-      20,
-      Math.ceil(Math.max(...geometry.parts.map((p) => Math.max(p.size.w, p.size.d)))) +
-        4,
-    );
-    return raw + (raw % 2);
-  }, [geometry]);
+  // World bounds, not the largest part's own size — see StudioGrid. The
+  // animation view is always the rig, so a posed part reaching into
+  // negative X or Z is the normal case, not the exception.
+  const bounds = useMemo(
+    () => computeSceneBounds(geometry, manifest, 'rig'),
+    [geometry, manifest],
+  );
 
   if (inline === undefined) {
     return (
@@ -96,10 +98,7 @@ export function AnimationViewport({
       onPointerMissed={() => onSelectPart(null)}
     >
       <StudioLighting />
-      <gridHelper
-        args={[gridSize, gridSize]}
-        position={[gridSize / 2, 0, gridSize / 2]}
-      />
+      <StudioGrid min={bounds.min} max={bounds.max} visible={showGrid} />
       <RiggedParts
         roots={roots}
         palette={geometry.palette}

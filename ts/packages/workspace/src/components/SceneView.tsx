@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
-import { Box, Crosshair, MousePointer2, Move, Plug, Rotate3d } from 'lucide-react';
+import { Box, Crosshair, Grid3x3, MousePointer2, Move, Plug, Rotate3d } from 'lucide-react';
 import type { Object3D } from 'three';
 import {
   ToggleGroup,
@@ -10,7 +10,10 @@ import {
   TransformGizmoHost,
   ViewOverlay,
   ViewToggle,
-  computeSceneSpan, StudioLighting } from '@cuboidy/ui';
+  computeSceneSpan,
+  StudioGrid,
+  StudioLighting,
+} from '@cuboidy/ui';
 import type { LibraryModel } from '../lib/library.js';
 import { viewGeometry } from '../lib/model-view.js';
 import {
@@ -96,6 +99,10 @@ export function SceneView({
   onSetAnim,
   onSeek,
 }: Props) {
+  // Local to the view, like the editor's: a preference, not scene state,
+  // and deliberately not persisted.
+  const [showGrid, setShowGrid] = useState(true);
+
   const reach = useMemo(() => {
     let max = 8;
     for (const p of placed) {
@@ -214,6 +221,21 @@ export function SceneView({
           ]}
           onToggle={onToggleGizmo}
         />
+        {/* Its own group. The three above are the SELECTED INSTANCE's
+            gizmos; the grid is scene furniture and belongs to the view.
+            Same arrangement as the editor's preview overlay. */}
+        <ToggleGroup
+          label="Scene"
+          items={[
+            {
+              id: 'grid',
+              icon: Grid3x3,
+              label: 'Show the ground grid',
+              on: showGrid,
+            },
+          ]}
+          onToggle={() => setShowGrid((v) => !v)}
+        />
         <ViewToggle
           value={viewMode}
           label="View mode"
@@ -240,7 +262,14 @@ export function SceneView({
       >
         <color attach="background" args={['#14161a']} />
         <StudioLighting />
-        <gridHelper args={[reach * 4, 16, '#2a2f38', '#20242b']} />
+        {/* A scene places models at signed positions, so the grid is
+            sized from the reach in every direction rather than from a
+            multiple of the largest model. */}
+        <StudioGrid
+          min={[-reach, 0, -reach]}
+          max={[reach, 0, reach]}
+          visible={showGrid}
+        />
         <FrameCamera reach={reach} />
         <CaptureCamera into={drop.cameraRef} />
         {dragModel !== null && drop.target !== null && (
