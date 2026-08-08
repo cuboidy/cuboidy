@@ -106,6 +106,11 @@ function mapIssueToCode(
   // ("a `size` dimension outside [1..1024]").
   if (issue.code === 'too_small' || issue.code === 'too_big') {
     const last = issue.path[issue.path.length - 1];
+    // A bound on a NUMBER is never an arity — nothing was counted. §7.4's
+    // `metallic` / `roughness` / `emissive` are the first named fields to
+    // carry a numeric range, and `metallic: 2` reporting `wrong-arity` said
+    // the palette had the wrong number of entries, which it did not.
+    if (originOf(issue) === 'number') return 'invalid-value';
     // §11.5 groups "duplicate or empty `geometry` list" under
     // `invalid-value`, where §11.2 puts a palette's 0-or-over-62 under
     // `wrong-arity`. Two arrays spelled the same way, coded differently, so

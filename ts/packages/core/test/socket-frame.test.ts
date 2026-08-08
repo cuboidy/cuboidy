@@ -5,6 +5,7 @@ import { publishedSocketFrame, socketFrameOn } from '../src/socket-frame.js';
 import { QUAT_IDENTITY } from '../src/rig-transform.js';
 import { buildSceneFromParts } from '../src/render/scene.js';
 import { geo } from './helpers/geometry.js';
+import { rgba } from './helpers/palette.js';
 
 // SPEC §7.8 + §6.12: where a published socket is in world space. This is
 // the point two packages meet at, so it is worth pinning numerically —
@@ -215,7 +216,7 @@ describe('socketFrameOn — animated scale (§6.5 / §7.8)', () => {
     const viaSocket = socketFrameOn(arm, atOrigin, 'grip', scaled)!.pos;
     const scene = buildSceneFromParts(
       [{ part: arm, remap: null, transform: atOrigin, scale: scaled }],
-      [{ r: 255, g: 0, b: 0, a: 255 }],
+      [rgba(255, 0, 0, 255)],
     );
     // The socket sits at the centre of the top face, so it is not itself a
     // corner — but it is in that plane, and the rasterizer's highest corner
@@ -225,7 +226,7 @@ describe('socketFrameOn — animated scale (§6.5 / §7.8)', () => {
     const rest = socketFrameOn(arm, atOrigin, 'grip')!.pos;
     const restScene = buildSceneFromParts(
       [{ part: arm, remap: null, transform: atOrigin }],
-      [{ r: 255, g: 0, b: 0, a: 255 }],
+      [rgba(255, 0, 0, 255)],
     );
     expect(restScene.max[1]).toBeCloseTo(rest[1], 10);
     expect(viaSocket[1]).toBeCloseTo(rest[1] * 3, 10);

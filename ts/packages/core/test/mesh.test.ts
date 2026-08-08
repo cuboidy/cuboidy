@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { AIR } from '../src/geometry/voxel-row.js';
 import { buildMesh } from '../src/mesh.js';
-import type { Color, Part } from '../src/geometry/types.js';
+import type { PaletteEntry, Part } from '../src/geometry/types.js';
+import { rgba } from './helpers/palette.js';
 
-const RED: Color = { r: 255, g: 0, b: 0, a: 255 };
-const GREEN: Color = { r: 0, g: 255, b: 0, a: 255 };
+const RED: PaletteEntry = rgba(255, 0, 0, 255);
+const GREEN: PaletteEntry = rgba(0, 255, 0, 255);
 // Palette index 0 is AIR by convention; first real color sits at 1.
-const PALETTE = [{ r: 0, g: 0, b: 0, a: 0 }, RED, GREEN] as const;
+const PALETTE = [rgba(0, 0, 0, 0), RED, GREEN] as const;
 
 function makePart(
   w: number,
@@ -118,7 +119,7 @@ describe('buildMesh — unresolved color', () => {
         sockets: [],
         voxels: [[[5]]],
       },
-      [{ r: 0, g: 0, b: 0, a: 255 }],
+      [rgba(0, 0, 0, 255)],
     );
     // Every vertex of the single cube carries the same unresolved color.
     for (let i = 0; i < mesh.colors.length; i += 3) {
@@ -138,7 +139,7 @@ describe('buildMesh — unresolved color', () => {
         sockets: [],
         voxels: [[[0]]],
       },
-      [{ r: 255, g: 0, b: 0, a: 255 }],
+      [rgba(255, 0, 0, 255)],
     );
     expect([mesh.colors[0], mesh.colors[1], mesh.colors[2]]).toEqual([1, 0, 0]);
   });
@@ -147,9 +148,9 @@ describe('buildMesh — unresolved color', () => {
 // SPEC §7.4: alpha on a palette entry is opacity, and it changes which
 // faces exist — a face survives unless its neighbour HIDES it.
 describe('buildMesh — translucent palette entries (§7.4)', () => {
-  const OPAQUE = { r: 200, g: 80, b: 40, a: 255 };
-  const GLASS = { r: 60, g: 160, b: 255, a: 0x55 };
-  const GLASS2 = { r: 60, g: 255, b: 160, a: 0x55 };
+  const OPAQUE = rgba(200, 80, 40, 255);
+  const GLASS = rgba(60, 160, 255, 0x55);
+  const GLASS2 = rgba(60, 255, 160, 0x55);
 
   // voxels are [Y][Z][X]; every part here is one row deep and one tall.
   const strip = (cells: number[]) => ({

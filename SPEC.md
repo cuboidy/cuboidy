@@ -501,7 +501,7 @@ separate parser path.
 "palette": "palette.json"                       // …or a shared palette (§6.10)
 ```
 
-- **One field, two forms** — an array of colors, or a §8 reference path ending in `.json`. A file cannot do both, so no precedence rule is needed and nothing can shadow anything. (The manifest's `animations` values take the same either/or shape, §6.3.)
+- **One field, two forms** — an array of entries, or a §8 reference path ending in `.json`. A file cannot do both, so no precedence rule is needed and nothing can shadow anything. (The manifest's `animations` values take the same either/or shape, §6.3.)
 - **At most one** palette per file — it is a single field, so duplication is structurally impossible
 - Each color in hex: `#RGB`, `#RGBA`, `#RRGGBB`, or `#RRGGBBAA`
 - Color space: **sRGB**
@@ -517,6 +517,33 @@ Position-based indexing: reordering the palette requires rewriting voxel data. T
 **A geometry file's palette is always its own.** The manifest's top-level `palette` (§6.1) does not reach into a file — it is the default for geometry written *inline in the manifest* (§6.13) and nothing else. A file loaded through a `geometry` list or a part's `geometry.path` means the same thing to every reader, whatever manifest points at it.
 
 A file that spells its colors out is range-checked at **parse time** — it is independently well-formed. A file that **references** a palette cannot be: the length is unknown until the referenced file is read, so its index-range check is deferred to cross-file validation (§6.10, §11.6), exactly as a palette-less file's is. Charset (`[.0-9a-zA-Z]`) and row-width checks always apply at parse time.
+
+#### Material
+
+A palette entry may also be an **object**: the same color, plus how it responds to light.
+
+```json
+"palette": [
+  "#B8BEC6",
+  { "color": "#C0C4CC", "metallic": 1, "roughness": 0.25 },
+  { "color": "#FF6A3A", "emissive": 0.9 }
+]
+```
+
+| field | range | default | meaning |
+|---|---|---|---|
+| `color` | hex, as above | *(required)* | the entry's color |
+| `metallic` | `0..1` | `0` | 0 = dielectric, 1 = metal |
+| `roughness` | `0..1` | `1` | 0 = mirror, 1 = fully diffuse |
+| `emissive` | `0..1` | `0` | scales `color` as self-illumination |
+
+- **The two forms are the same entry.** `"#B8BEC6"` and `{ "color": "#B8BEC6" }` decode identically, and both occupy one palette index. The 62-entry maximum counts entries, not forms.
+- **The defaults are a plain matte surface** — exactly how a palette rendered before this field existed. A file that says nothing about material means what it always meant.
+- **Canonical output writes the string form when the material is the default**, and omits default-valued keys otherwise. So a palette of plain colors round-trips byte-identically, and `{ "color": "#C0C4CC", "metallic": 1 }` does not grow two keys it never had.
+- Names follow **glTF 2.0's metal-rough workflow**, which Unity, Godot and three.js consume without translation. glTF's `emissiveFactor` is `color × emissive`.
+- Out of range is `invalid-value`; an unrecognized key is `unknown`; a missing `color` is `missing` (§11.2).
+
+**Material is not normative for shading, and MUST NOT change geometry.** How a renderer turns `metallic` into pixels is its own business — a flat-shaded contact sheet and a PBR viewport are both conforming, and neither is required to reach the other's output. What *is* normative is that these fields change no face, no vertex and no index: two models differing only in material produce the same mesh. (Alpha is the deliberate exception — it hides faces, below.)
 
 **Alpha is opacity.** A palette color written `#RGBA` or `#RRGGBBAA` carries an alpha channel, and it means what it says: `FF` is opaque, `00` renders nothing, values between blend the voxel over whatever is behind it. A voxel of a translucent color is still a voxel — it occupies its cell, counts toward the bounding box, and answers a coordinate query — it is simply see-through.
 

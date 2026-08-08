@@ -8,6 +8,7 @@ import {
   stringifyCoord,
 } from '../src/cli/assemble.js';
 import { geo } from './helpers/geometry.js';
+import { rgba } from './helpers/palette.js';
 
 // SPEC §6.10 through the inspection-CLI assembly layer: manifest geometry
 // lists and per-file palette references — the same project resolution lint
@@ -91,8 +92,8 @@ describe('loadAndAssemble — §7.4 referenced palette', () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.assembly.palette).toEqual([
-      { r: 0x11, g: 0x22, b: 0x33, a: 0xff },
-      { r: 0x44, g: 0x55, b: 0x66, a: 0xff },
+      rgba(0x11, 0x22, 0x33, 0xff),
+      rgba(0x44, 0x55, 0x66, 0xff),
     ]);
     expect(r.assembly.grid.get(stringifyCoord(1, 0, 0))).toBe(1);
   });

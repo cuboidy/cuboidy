@@ -4,9 +4,16 @@ import {
   type GeometryDocPart,
 } from './schema.js';
 import { locateJsonPath } from './locate.js';
-import { parseHexColor } from './palette.js';
+import { paletteEntryFrom, type PaletteEntryDoc } from './palette.js';
 import { charToIndex } from './voxel-row.js';
-import type { Color, Geometry, Part, Pivot, Socket, Vec3 } from './types.js';
+import type {
+  Geometry,
+  PaletteEntry,
+  Part,
+  Pivot,
+  Socket,
+  Vec3,
+} from './types.js';
 import { err, ok, type Result } from '../result.js';
 import { resultFromZodError } from '../zod-diagnostic.js';
 
@@ -59,11 +66,14 @@ export function inlinePartToAst(
   return toPart({ ...doc, name });
 }
 
-// §7.4 colors → the runtime palette. Exported for the same reason: inline
-// geometry and the manifest's default palette (§6.13) are hex strings that
-// have to become Colors by exactly the route a file's palette takes.
-export function colorsToPalette(colors: readonly string[]): Color[] {
-  return colors.map(toColor);
+// §7.4 palette entries → the runtime palette. Exported for the same reason:
+// inline geometry and the manifest's default palette (§6.13) offer the
+// identical field and must become entries by exactly the route a geometry
+// file's own palette takes.
+export function colorsToPalette(
+  entries: readonly (string | PaletteEntryDoc)[],
+): PaletteEntry[] {
+  return entries.map(toEntry);
 }
 
 // ----- AST construction -------------------------------------------------
@@ -73,7 +83,7 @@ function toAst(doc: GeometryDoc): Geometry {
     // An absent palette is an EMPTY array in the AST, not a missing field:
     // length 0 is the unambiguous "declared none" signal the rest of the
     // codebase already keys on (§7.4), and it round-trips back to absent.
-    palette: Array.isArray(doc.palette) ? doc.palette.map(toColor) : [],
+    palette: Array.isArray(doc.palette) ? doc.palette.map(toEntry) : [],
     parts: doc.parts.map(toPart),
   };
   // A reference stays UNRESOLVED here — parsing one file cannot see the
@@ -84,13 +94,16 @@ function toAst(doc: GeometryDoc): Geometry {
   return geometry;
 }
 
-function toColor(hex: string): Color {
+function toEntry(doc: string | PaletteEntryDoc): PaletteEntry {
   // The schema's regex has already accepted only well-formed hex, so the
   // parser cannot fail here; the throw documents the invariant rather than
   // guarding a reachable path.
-  const color = parseHexColor(hex);
-  if (color === null) throw new Error(`unreachable: schema accepted bad color ${hex}`);
-  return color;
+  const entry = paletteEntryFrom(doc);
+  if (entry === null) {
+    const hex = typeof doc === 'string' ? doc : doc.color;
+    throw new Error(`unreachable: schema accepted bad color ${hex}`);
+  }
+  return entry;
 }
 
 function toPart(part: GeometryDoc['parts'][number]): Part {

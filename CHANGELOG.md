@@ -5,6 +5,31 @@ the spec as it stands now.
 
 ## v0.9 (draft — current)
 
+### Palette materials
+
+A palette entry may now be an object instead of a bare color string, carrying
+`metallic`, `roughness` and `emissive` alongside it (§7.4):
+
+```json
+"palette": ["#B8BEC6", { "color": "#C0C4CC", "metallic": 1, "roughness": 0.25 }]
+```
+
+The names are glTF 2.0's metal-rough workflow, so Unity, Godot and three.js
+take them without translation, and `emissive` scales the entry's own color
+rather than carrying a second one.
+
+Purely additive. Both forms are the same entry and occupy one index; the
+defaults (`0`, `1`, `0`) are a plain matte surface, which is exactly what a
+palette rendered as before the field existed; and canonical output writes the
+string form whenever the material is the default, so a palette of plain colors
+round-trips byte-identically.
+
+**Material MUST NOT change geometry.** Two models differing only in material
+produce the same mesh — that is the normative part, and it is what a second
+implementation can be held to. How a renderer *shades* those numbers is not
+normative: a flat-shaded contact sheet and a PBR viewport are both conforming.
+Alpha remains the deliberate exception, since it hides faces.
+
 ### Translucent palette colors
 
 A palette color's alpha channel now means opacity. `#RGBA` and `#RRGGBBAA`

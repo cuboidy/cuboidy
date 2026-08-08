@@ -3,6 +3,7 @@ import { buildMesh } from '../src/mesh.js';
 import { buildSceneFromParts, type Quad } from '../src/render/scene.js';
 import { QUAT_IDENTITY } from '../src/rig-transform.js';
 import type { Palette, Part } from '../src/geometry/types.js';
+import { rgba } from './helpers/palette.js';
 
 // mesh.ts feeds the editor and the workspace; render/scene.ts feeds
 // cuboidy-snap, cuboidy-view and cuboidy-gif. They implement the SAME SPEC
@@ -20,9 +21,9 @@ import type { Palette, Part } from '../src/geometry/types.js';
 // set of faces. It cannot catch a stale build (a vite alias handles that),
 // but it does catch the two rules drifting apart again.
 
-const A: Palette[number] = { r: 58, g: 160, b: 255, a: 0x66 }; // translucent
-const B: Palette[number] = { r: 255, g: 106, b: 58, a: 0x66 }; // translucent
-const O: Palette[number] = { r: 184, g: 190, b: 198, a: 255 }; // opaque
+const A: Palette[number] = rgba(58, 160, 255, 0x66); // translucent
+const B: Palette[number] = rgba(255, 106, 58, 0x66); // translucent
+const O: Palette[number] = rgba(184, 190, 198, 255); // opaque
 const PALETTE: Palette = [A, B, O];
 
 // Voxels are indexed [y][z][x]; each case below is one row along x.

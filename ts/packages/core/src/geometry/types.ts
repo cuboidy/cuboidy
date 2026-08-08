@@ -4,7 +4,8 @@
 // writer consumes them, and lint / mesh / render / the editor only ever see
 // this shape.
 //
-// Hierarchy: Vec3 → {Color/Palette, Size, Pivot, Socket} → Part → Geometry.
+// Hierarchy: Vec3 → {Color/Material/PaletteEntry/Palette, Size, Pivot,
+// Socket} → Part → Geometry.
 
 export interface Vec3 {
   x: number;
@@ -19,7 +20,31 @@ export interface Color {
   a: number;
 }
 
-export type Palette = readonly Color[];
+// SPEC §7.4 surface response — how a color reacts to light, as opposed to
+// what colour it is. One set per palette entry.
+//
+// Names follow glTF 2.0's metal-rough workflow, which Unity, Godot and
+// three.js all consume without translation. `emissive` scales the entry's
+// OWN colour instead of carrying a second one: a voxel that glows a
+// different colour than its surface is rare enough to leave for later, and
+// a second colour would double what an author has to write for the common
+// case. glTF's `emissiveFactor` is then `color × emissive`.
+//
+// Every field is required rather than optional. An optional field in a
+// cross-implementation contract is a second chance to disagree about the
+// default, and the reader fills these in from ONE place (paletteEntryFrom).
+export interface Material {
+  metallic: number; // 0..1, 0 = dielectric, 1 = metal
+  roughness: number; // 0..1, 0 = mirror, 1 = fully diffuse
+  emissive: number; // 0..1, scales `color` as self-illumination
+}
+
+// A palette slot: the colour, and how it responds to light. Extends Color so
+// the hex codec (parseHexColor / serializeColor) keeps dealing in colours
+// only — the material rides alongside, it is not part of the colour value.
+export interface PaletteEntry extends Color, Material {}
+
+export type Palette = readonly PaletteEntry[];
 
 export interface Size {
   w: number;

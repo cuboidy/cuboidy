@@ -6,6 +6,7 @@ import { geo } from './helpers/geometry.js';
 import { validateCrossFile, validateProject } from '../src/lint/cross-file.js';
 import { readFixtureJson, readFixtureText } from './helpers/fixtures.js';
 import { RIGGED, RIGGED_PARTS, SINGLE } from './helpers/corpus.js';
+import { rgba } from './helpers/palette.js';
 
 async function loadModel(folder: string) {
   const manifestR = parseManifest(
@@ -106,7 +107,7 @@ describe('validateProject (v0.7)', () => {
   // before validateProject sees it, so these fixtures do that by hand.
   const resolved = (name: string, cell: string, colors: number) => ({
     ...oneVoxel(name, cell, 'palette.json'),
-    palette: Array.from({ length: colors }, (_, i) => ({ r: i, g: 0, b: 0, a: 255 })),
+    palette: Array.from({ length: colors }, (_, i) => (rgba(i, 0, 0, 255))),
   });
 
   it('errors on a manifest part defined in no geometry file', () => {
@@ -423,8 +424,8 @@ describe('validateProject — inline part palette range (§6.13 / §11.6)', () =
     voxels: [[[cell === '.' ? -1 : Number(cell)]]],
   });
   const twoColors = [
-    { r: 0, g: 0, b: 0, a: 255 },
-    { r: 255, g: 255, b: 255, a: 255 },
+    rgba(0, 0, 0, 255),
+    rgba(255, 255, 255, 255),
   ];
   const run = (palette: typeof twoColors, cell: string) =>
     validateProject({

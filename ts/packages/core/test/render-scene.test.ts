@@ -4,10 +4,11 @@ import { Framebuffer } from '../src/render/framebuffer.js';
 import { QUAT_IDENTITY, quatFromEulerZXYDeg } from '../src/rig-transform.js';
 import { AIR } from '../src/geometry/voxel-row.js';
 import type { Palette, Part } from '../src/geometry/types.js';
+import { rgba } from './helpers/palette.js';
 
 const PALETTE: Palette = [
-  { r: 255, g: 0, b: 0, a: 255 },
-  { r: 0, g: 255, b: 0, a: 255 },
+  rgba(255, 0, 0, 255),
+  rgba(0, 255, 0, 255),
 ];
 
 // A w×1×1 bar of palette-index-0 voxels with pivot at the origin corner.
@@ -121,7 +122,7 @@ describe('buildSceneFromParts — unresolved color (§7.4)', () => {
 
   it('paints an index past the palette magenta, never undefined', () => {
     const scene = buildSceneFromParts([onePart(5)], [
-      { r: 0, g: 0, b: 0, a: 255 },
+      rgba(0, 0, 0, 255),
     ]);
     expect(scene.quads).toHaveLength(6);
     for (const q of scene.quads) expect(q.color).toEqual([1, 0, 1]);
@@ -130,14 +131,14 @@ describe('buildSceneFromParts — unresolved color (§7.4)', () => {
   it('survives a remap that does not cover the index', () => {
     const scene = buildSceneFromParts(
       [{ ...onePart(3), remap: [0] }],
-      [{ r: 255, g: 0, b: 0, a: 255 }],
+      [rgba(255, 0, 0, 255)],
     );
     for (const q of scene.quads) expect(q.color).toEqual([1, 0, 1]);
   });
 
   it('still paints an in-range index its own color', () => {
     const scene = buildSceneFromParts([onePart(0)], [
-      { r: 255, g: 0, b: 0, a: 255 },
+      rgba(255, 0, 0, 255),
     ]);
     for (const q of scene.quads) expect(q.color).toEqual([1, 0, 0]);
   });
@@ -146,8 +147,8 @@ describe('buildSceneFromParts — unresolved color (§7.4)', () => {
 // SPEC §7.4: alpha rides the palette entry, and it decides which faces
 // exist as well as how they are drawn.
 describe('buildSceneFromParts — translucency (§7.4)', () => {
-  const OPAQUE = { r: 200, g: 80, b: 40, a: 255 };
-  const GLASS = { r: 60, g: 160, b: 255, a: 0x55 };
+  const OPAQUE = rgba(200, 80, 40, 255);
+  const GLASS = rgba(60, 160, 255, 0x55);
   const flat = { pos: [0, 0, 0] as [number, number, number], quat: [0, 0, 0, 1] as [number, number, number, number] };
   const strip = (cells: number[]) => ({
     part: {

@@ -1,0 +1,68 @@
+{
+  "version": "0.9",
+  "name": "materials",
+  "palette": [
+    "#B8BEC6",
+    { "color": "#C0C4CC", "metallic": 1, "roughness": 0.08 },
+    { "color": "#C0C4CC", "metallic": 1, "roughness": 0.55 },
+    { "color": "#FF8A3A", "emissive": 0.9 },
+    { "color": "#3AA0FF66", "emissive": 0.6 },
+    { "color": "#8A6A3A", "metallic": 1, "roughness": 0.3 }
+  ],
+  "parts": [
+    {
+      "name": "matte",
+      "position": [0, 0, 0],
+      "geometry": {
+        "size": [2, 5, 2],
+        "pivot": { "pos": [0, 0, 0] },
+        "voxels": [["00", "00"], ["00", "00"], ["00", "00"], ["00", "00"], ["00", "00"]]
+      }
+    },
+    {
+      "name": "metal-polished",
+      "position": [3, 0, 0],
+      "geometry": {
+        "size": [2, 5, 2],
+        "pivot": { "pos": [0, 0, 0] },
+        "voxels": [["11", "11"], ["11", "11"], ["11", "11"], ["11", "11"], ["11", "11"]]
+      }
+    },
+    {
+      "name": "metal-brushed",
+      "position": [6, 0, 0],
+      "geometry": {
+        "size": [2, 5, 2],
+        "pivot": { "pos": [0, 0, 0] },
+        "voxels": [["22", "22"], ["22", "22"], ["22", "22"], ["22", "22"], ["22", "22"]]
+      }
+    },
+    {
+      "name": "glow",
+      "position": [9, 0, 0],
+      "geometry": {
+        "size": [2, 5, 2],
+        "pivot": { "pos": [0, 0, 0] },
+        "voxels": [["33", "33"], ["33", "33"], ["33", "33"], ["33", "33"], ["33", "33"]]
+      }
+    },
+    {
+      "name": "glow-translucent",
+      "position": [12, 0, 0],
+      "geometry": {
+        "size": [2, 5, 2],
+        "pivot": { "pos": [0, 0, 0] },
+        "voxels": [["44", "44"], ["44", "44"], ["44", "44"], ["44", "44"], ["44", "44"]]
+      }
+    },
+    {
+      "name": "mixed",
+      "position": [15, 0, 0],
+      "geometry": {
+        "size": [2, 5, 2],
+        "pivot": { "pos": [0, 0, 0] },
+        "voxels": [["50", "05"], ["05", "50"], ["50", "05"], ["05", "50"], ["50", "05"]]
+      }
+    }
+  ]
+}

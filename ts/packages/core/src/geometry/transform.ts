@@ -1,4 +1,12 @@
-import type { Color, Palette, Part, Pivot, Size, Socket, Vec3 } from './types.js';
+import type {
+  PaletteEntry,
+  Palette,
+  Part,
+  Pivot,
+  Size,
+  Socket,
+  Vec3,
+} from './types.js';
 
 // Pure part-geometry transforms: mirror, duplicate and cross-file palette
 // remap. These produce CONCRETE parts (no `from` reference) — the building
@@ -100,13 +108,24 @@ export function duplicatePart(part: Part, name: string): Part {
   };
 }
 
-function sameColor(a: Color, b: Color): boolean {
-  return a.r === b.r && a.g === b.g && a.b === b.b && a.a === b.a;
+// Entries share a slot only when they agree on everything a slot carries,
+// material included. The same rgb polished and unpolished are two entries —
+// merging them would repaint one of the parts on the way in.
+function sameEntry(a: PaletteEntry, b: PaletteEntry): boolean {
+  return (
+    a.r === b.r &&
+    a.g === b.g &&
+    a.b === b.b &&
+    a.a === b.a &&
+    a.metallic === b.metallic &&
+    a.roughness === b.roughness &&
+    a.emissive === b.emissive
+  );
 }
 
 // Re-express a part's voxel indices from the `from` palette into the `to`
-// palette, appending colors `to` lacks (matched by exact rgba). Used when a
-// part is copied into a file whose inline palette differs, so the moved
+// palette, appending entries `to` lacks (matched on rgba AND material). Used when
+// a part is copied into a file whose inline palette differs, so the moved
 // voxels keep their colors (§6.10). AIR and out-of-range indices pass
 // through unchanged. Returns the (possibly extended) target palette and the
 // remapped part — or the inputs untouched when no remap is needed.
@@ -122,7 +141,7 @@ export function remapPartPalette(
       for (const v of row) {
         if (v < 0 || v >= from.length || map.has(v)) continue;
         const c = from[v]!;
-        let j = palette.findIndex((t) => sameColor(t, c));
+        let j = palette.findIndex((t) => sameEntry(t, c));
         if (j === -1) {
           j = palette.length;
           palette.push(c);

@@ -70,6 +70,29 @@ export const GeometryPartSchema = z
   })
   .strict();
 
+// SPEC §7.4: a palette entry is EITHER a bare colour, OR an object carrying
+// that colour plus how it responds to light. The object form is additive —
+// every palette written before materials existed is still the string form,
+// and a matte entry is written back as a string.
+//
+// `metallic` / `roughness` / `emissive` are named for glTF 2.0's metal-rough
+// workflow. Absent means the §7.4 default (see MATTE), which is why they are
+// optional HERE and required in the runtime `Material`: the file may leave
+// them out, the decoded value may not.
+export const Unit = z.number().min(0).max(1);
+
+export const PaletteEntrySchema = z.union([
+  HexColor,
+  z
+    .object({
+      color: HexColor,
+      metallic: Unit.optional(),
+      roughness: Unit.optional(),
+      emissive: Unit.optional(),
+    })
+    .strict(),
+]);
+
 // SPEC §7.4: EITHER a spelled-out list of colors, OR a §8 reference to a
 // palette file (§6.10) shared with other geometry. One field with two forms —
 // the same shape the manifest's `animations` values already use (§6.3) — so
@@ -77,7 +100,7 @@ export const GeometryPartSchema = z
 // geometry offers the identical field, and two definitions of "a palette
 // field" would be two chances to drift.
 export const PaletteFieldSchema = z.union([
-  z.array(HexColor).min(1).max(MAX_PALETTE),
+  z.array(PaletteEntrySchema).min(1).max(MAX_PALETTE),
   refPath('.json'),
 ]);
 

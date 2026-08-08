@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parsePaletteFile } from '../src/palette-file.js';
 import { parseHexColor, serializeColor } from '../src/geometry/palette.js';
+import { rgba } from './helpers/palette.js';
 
 // SPEC §6.10 (v0.7): external palette file — same color grammar and
 // 62-color cap as the inline geometry palette, wrapped in { "colors": [...] }.
@@ -12,10 +13,10 @@ describe('parsePaletteFile', () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.value).toHaveLength(4);
-    expect(r.value[0]).toEqual({ r: 0x1a, g: 0x2b, b: 0x3c, a: 0xff });
-    expect(r.value[1]).toEqual({ r: 0xff, g: 0, b: 0, a: 0xff });
-    expect(r.value[2]).toEqual({ r: 0x12, g: 0x34, b: 0x56, a: 0x78 });
-    expect(r.value[3]).toEqual({ r: 0, g: 0xff, b: 0, a: 0x88 });
+    expect(r.value[0]).toEqual(rgba(0x1a, 0x2b, 0x3c, 0xff));
+    expect(r.value[1]).toEqual(rgba(0xff, 0, 0, 0xff));
+    expect(r.value[2]).toEqual(rgba(0x12, 0x34, 0x56, 0x78));
+    expect(r.value[3]).toEqual(rgba(0, 0xff, 0, 0x88));
   });
 
   it('rejects a missing colors field as missing', () => {
@@ -49,8 +50,45 @@ describe('parsePaletteFile', () => {
     if (!r.ok) {
       expect(r.code).toBe('invalid-value');
       expect(r.message).toContain('colors.1');
-      expect(r.message).toContain('#GGHHII');
+      expect(r.path).toEqual(['colors', 1]);
     }
+  });
+
+  // §7.4 material. The entry grammar is shared with an inline palette, so a
+  // palette FILE can say everything a geometry file's own palette can.
+  it('reads the object form and its material', () => {
+    const r = parsePaletteFile({
+      colors: ['#fff', { color: '#C0C4CC', metallic: 1, roughness: 0.25 }],
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value[0]).toEqual(rgba(0xff, 0xff, 0xff));
+      expect(r.value[1]).toEqual(
+        rgba(0xc0, 0xc4, 0xcc, 255, { metallic: 1, roughness: 0.25 }),
+      );
+    }
+  });
+
+  it('rejects a material value outside 0..1 as invalid-value', () => {
+    const r = parsePaletteFile({ colors: [{ color: '#fff', metallic: 2 }] });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      // Not `wrong-arity`: a bound on a number counts nothing.
+      expect(r.code).toBe('invalid-value');
+      expect(r.path).toEqual(['colors', 0, 'metallic']);
+    }
+  });
+
+  it('rejects an unknown material key as unknown', () => {
+    const r = parsePaletteFile({ colors: [{ color: '#fff', shiny: 1 }] });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('unknown');
+  });
+
+  it('rejects an entry object with no color as missing', () => {
+    const r = parsePaletteFile({ colors: [{ metallic: 1 }] });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('missing');
   });
 
   it('rejects a non-object root as invalid-value', () => {
@@ -65,9 +103,9 @@ describe('parsePaletteFile', () => {
 // out and read in again.
 describe('palette alpha round-trip (§7.4)', () => {
   it('writes the short form for an opaque color and the long one otherwise', () => {
-    expect(serializeColor({ r: 0x3a, g: 0xa0, b: 0xff, a: 255 })).toBe('#3AA0FF');
-    expect(serializeColor({ r: 0x3a, g: 0xa0, b: 0xff, a: 0x55 })).toBe('#3AA0FF55');
-    expect(serializeColor({ r: 0, g: 0, b: 0, a: 0 })).toBe('#00000000');
+    expect(serializeColor(rgba(0x3a, 0xa0, 0xff, 255))).toBe('#3AA0FF');
+    expect(serializeColor(rgba(0x3a, 0xa0, 0xff, 0x55))).toBe('#3AA0FF55');
+    expect(serializeColor(rgba(0, 0, 0, 0))).toBe('#00000000');
   });
 
   it('survives parse → serialize → parse for every alpha', () => {

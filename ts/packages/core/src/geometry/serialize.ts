@@ -1,4 +1,4 @@
-import { serializeColor } from './palette.js';
+import { serializePaletteEntry } from './palette.js';
 import { indexToChar } from './voxel-row.js';
 import type { Geometry, Part, Pivot, Size, Socket, Vec3 } from './types.js';
 import type { GeometryDoc } from './schema.js';
@@ -23,7 +23,7 @@ export function toGeometryDoc(geometry: Geometry): GeometryDoc {
   if (geometry.paletteRef !== undefined) {
     doc.palette = geometry.paletteRef;
   } else if (geometry.palette.length > 0) {
-    doc.palette = geometry.palette.map(serializeColor);
+    doc.palette = geometry.palette.map(serializePaletteEntry);
   }
   // An empty palette with no reference means the file declared none (§7.4);
   // absence must round-trip.

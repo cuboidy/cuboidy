@@ -4,11 +4,12 @@ import {
   mirrorPart,
   remapPartPalette,
 } from '../src/geometry/transform.js';
-import type { Color, Part } from '../src/geometry/types.js';
+import type { PaletteEntry, Part } from '../src/geometry/types.js';
+import { rgba } from './helpers/palette.js';
 
-const RED: Color = { r: 255, g: 0, b: 0, a: 255 };
-const BLUE: Color = { r: 0, g: 0, b: 255, a: 255 };
-const GREEN: Color = { r: 0, g: 255, b: 0, a: 255 };
+const RED: PaletteEntry = rgba(255, 0, 0, 255);
+const BLUE: PaletteEntry = rgba(0, 0, 255, 255);
+const GREEN: PaletteEntry = rgba(0, 255, 0, 255);
 
 // 2×1×1 part, one row [0,1], asymmetric so a mirror is observable. A socket
 // and a rotated pivot exercise the position/rotation reflection.

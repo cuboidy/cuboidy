@@ -23,4 +23,22 @@ editor's Parts panel can hide them one at a time:
 
 Look from below at a shallow angle — the interface plane is edge-on from the
 front and from directly above, so the artifact only appears when a line of
-sight crosses it.
+sight crosses it. `cuboidy-snap --angles=unders` renders exactly that.
+
+## `materials/`
+
+Six columns, one per §7.4 material case, so a renderer can be checked
+against every branch at once without hunting for a model that happens to
+use one.
+
+| part | what it isolates |
+|---|---|
+| `matte` | the default material. Must look exactly as it did before §7.4 grew materials |
+| `metal-polished` | `metallic: 1, roughness: 0.08` |
+| `metal-brushed` | the SAME colour at `roughness: 0.55` — the two are indistinguishable in any tool that prints only hex |
+| `glow` | `emissive: 0.9`, opaque |
+| `glow-translucent` | emissive AND alpha together, the one combination whose passes interact |
+| `mixed` | two entries checkerboarded in one part, so the mesh has to carry more than one material |
+
+Palette entries 1 and 2 are deliberately the same `#C0C4CC`: if a legend, a
+diff or a palette merge treats them as one slot, that is the bug.

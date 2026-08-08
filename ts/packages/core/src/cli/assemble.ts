@@ -3,7 +3,7 @@ import { parseManifest } from '../manifest.js';
 import { isInlineAnimation, type InlineAnimation } from '../animation.js';
 import { resolveHierarchy } from '../forest.js';
 import type { Manifest, ManifestPart } from '../manifest.js';
-import type { Color, Palette, Part, Vec3 } from '../geometry/types.js';
+import type { PaletteEntry, Palette, Part, Vec3 } from '../geometry/types.js';
 import { AIR, maxPaletteIndex } from './../geometry/voxel-row.js';
 import { MAX_PALETTE } from '../geometry/palette.js';
 import { round6 } from '../num.js';
@@ -219,7 +219,7 @@ function buildEffectivePalette(
   parts: ReadonlyMap<string, ProjectPart>,
 ): PaletteResult {
   const warnings: string[] = [];
-  const merged: Color[] = [];
+  const merged: PaletteEntry[] = [];
   const byKey = new Map<string, number>();
   const remap = new Map<string, readonly number[] | null>();
   // Parts sharing one palette object (the common case — a whole file's
@@ -263,7 +263,7 @@ function buildEffectivePalette(
       // First palette-bearing part: identity mapping, palette verbatim.
       for (const [i, c] of palette.entries()) {
         merged.push(c);
-        const key = colorKey(c);
+        const key = entryKey(c);
         if (!byKey.has(key)) byKey.set(key, i);
       }
       remap.set(name, null);
@@ -273,7 +273,7 @@ function buildEffectivePalette(
     }
     const table: number[] = [];
     for (const c of palette) {
-      const key = colorKey(c);
+      const key = entryKey(c);
       let idx = byKey.get(key);
       if (idx === undefined) {
         idx = merged.length;
@@ -293,8 +293,12 @@ function buildEffectivePalette(
   return { ok: true, value: { palette: merged, remap, warnings } };
 }
 
-function colorKey(c: Color): string {
-  return `${c.r},${c.g},${c.b},${c.a}`;
+// Two entries share a merged slot only when they agree on EVERYTHING a slot
+// carries. The material belongs in the key for the same reason alpha does:
+// the same rgb polished and unpolished are two different palette entries,
+// and folding them together would silently repaint one of the parts.
+function entryKey(e: PaletteEntry): string {
+  return `${e.r},${e.g},${e.b},${e.a},${e.metallic},${e.roughness},${e.emissive}`;
 }
 
 function assembleWorld(

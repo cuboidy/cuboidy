@@ -1,9 +1,26 @@
-import type { Color } from './types.js';
+import type { Color, Material, PaletteEntry } from './types.js';
 
 // SPEC §7.4: the colour codec, shared by a geometry file's own palette and the
 // external palette file (§6.10) — both use the same grammar and the same
 // 62-slot index space.
 export const MAX_PALETTE = 62;
+
+// The material an entry has when it says nothing: a plain matte dielectric.
+// These exact numbers are what every model rendered as before §7.4 gained
+// materials, and they are three.js MeshStandardMaterial's own defaults, so
+// "said nothing" and "said the defaults" are the same pixels.
+export const MATTE: Material = { metallic: 0, roughness: 1, emissive: 0 };
+
+// The object form of a palette entry, as it appears in a file. Structural
+// rather than inferred from Zod so this module stays free of the schema —
+// schema.ts already imports MAX_PALETTE from here, and the reverse would
+// close the loop.
+export interface PaletteEntryDoc {
+  color: string;
+  metallic?: number | undefined;
+  roughness?: number | undefined;
+  emissive?: number | undefined;
+}
 
 const HEX_RE = /^#([0-9a-fA-F]+)$/;
 
@@ -51,6 +68,56 @@ export function parseHexColor(s: string): Color | null {
 export function serializeColor(c: Color): string {
   const rgb = `#${hex2(c.r)}${hex2(c.g)}${hex2(c.b)}`;
   return c.a === 0xff ? rgb : `${rgb}${hex2(c.a)}`;
+}
+
+export function isMatte(m: Material): boolean {
+  return (
+    m.metallic === MATTE.metallic &&
+    m.roughness === MATTE.roughness &&
+    m.emissive === MATTE.emissive
+  );
+}
+
+// A validated entry from a file → the runtime shape. The single place the
+// §7.4 material defaults are applied, so no caller has to know them.
+//
+// Returns null only for a malformed colour. Range and key checks belong to
+// the schema, which has already run and can report a path.
+export function paletteEntryFrom(
+  doc: string | PaletteEntryDoc,
+): PaletteEntry | null {
+  const hex = typeof doc === 'string' ? doc : doc.color;
+  const color = parseHexColor(hex);
+  if (color === null) return null;
+  if (typeof doc === 'string') return { ...color, ...MATTE };
+  return {
+    ...color,
+    metallic: doc.metallic ?? MATTE.metallic,
+    roughness: doc.roughness ?? MATTE.roughness,
+    emissive: doc.emissive ?? MATTE.emissive,
+  };
+}
+
+// Canonical entry form: the bare hex STRING when the material is the
+// default, the object otherwise, with default-valued keys left out.
+//
+// A matte entry writing itself as a string is what keeps every model that
+// predates materials byte-identical through a round trip — and keeps a
+// palette readable, since most entries are matte in practice.
+//
+// Key order is fixed (colour, then metallic, roughness, emissive) because
+// `JSON.stringify` preserves insertion order and canonical output must have
+// exactly one representation.
+export function serializePaletteEntry(
+  e: PaletteEntry,
+): string | PaletteEntryDoc {
+  const color = serializeColor(e);
+  if (isMatte(e)) return color;
+  const out: PaletteEntryDoc = { color };
+  if (e.metallic !== MATTE.metallic) out.metallic = e.metallic;
+  if (e.roughness !== MATTE.roughness) out.roughness = e.roughness;
+  if (e.emissive !== MATTE.emissive) out.emissive = e.emissive;
+  return out;
 }
 
 function dup(hex: string, i: number): number {
