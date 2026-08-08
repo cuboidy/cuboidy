@@ -18,12 +18,19 @@ export class Framebuffer {
   readonly height: number;
   readonly color: Uint8Array; // RGBA, row-major, length w*h*4
   readonly depth: Float32Array; // length w*h, +Infinity = empty
+  // 1 where geometry painted this pixel, opaque or blended. Separate from
+  // `depth` because a translucent fill deliberately leaves depth alone
+  // (SPEC §7.4) — deriving coverage from depth therefore reported a glass
+  // model as entirely uncovered, and `cuboidy-gif --bg=none` wrote it out
+  // as a fully transparent GIF.
+  readonly covered: Uint8Array; // length w*h
 
   constructor(width: number, height: number, bg: Rgb) {
     this.width = width;
     this.height = height;
     this.color = new Uint8Array(width * height * 4);
     this.depth = new Float32Array(width * height).fill(Infinity);
+    this.covered = new Uint8Array(width * height);
     const r = to8(bg[0]);
     const g = to8(bg[1]);
     const b = to8(bg[2]);
@@ -110,6 +117,10 @@ export class Framebuffer {
         const i = y * this.width + x;
         if (d >= this.depth[i]!) continue;
         const o = i * 4;
+        // Above the opaque fast path's `continue`, so BOTH kinds of fill
+        // record it. Depth cannot stand in for this: the translucent branch
+        // below deliberately leaves depth alone.
+        this.covered[i] = 1;
         if (alpha >= 1) {
           this.depth[i] = d;
           this.color[o] = r;
@@ -225,18 +236,22 @@ export class Framebuffer {
         out.color[o + 1] = Math.round(g / n);
         out.color[o + 2] = Math.round(b / n);
         out.color[o + 3] = 255;
-        // Coverage survives the downsample so callers that need a mask
-        // (GIF transparency) still have one. A block counts as covered
-        // if ANY subpixel was: eroding the silhouette instead would eat
-        // exactly the antialiased edge the supersampling was for.
+        // Coverage and depth both survive the downsample so callers that
+        // need a mask (GIF transparency) still have one. A block counts as
+        // covered if ANY subpixel was: eroding the silhouette instead would
+        // eat exactly the antialiased edge the supersampling was for.
         let near = Infinity;
+        let hit = 0;
         for (let sy = 0; sy < factor; sy++) {
           for (let sx = 0; sx < factor; sx++) {
-            const d = this.depth[(y * factor + sy) * this.width + (x * factor + sx)]!;
+            const at = (y * factor + sy) * this.width + (x * factor + sx);
+            const d = this.depth[at]!;
             if (d < near) near = d;
+            if (this.covered[at] === 1) hit = 1;
           }
         }
         out.depth[y * w + x] = near;
+        out.covered[y * w + x] = hit;
       }
     }
     return out;
@@ -246,15 +261,12 @@ export class Framebuffer {
     return this.color;
   }
 
-  // Which pixels geometry actually covered, from the depth buffer rather
-  // than by matching the background colour — a model containing the
-  // background colour would otherwise punch holes in itself. 1 = drawn.
+  // Which pixels geometry actually covered — recorded as it is painted,
+  // not matched against the background colour (a model containing the
+  // background colour would punch holes in itself) and not derived from
+  // the depth buffer (a translucent face writes no depth). 1 = drawn.
   coverage(): Uint8Array {
-    const out = new Uint8Array(this.width * this.height);
-    for (let i = 0; i < out.length; i++) {
-      out[i] = Number.isFinite(this.depth[i]!) ? 1 : 0;
-    }
-    return out;
+    return this.covered;
   }
 }
 

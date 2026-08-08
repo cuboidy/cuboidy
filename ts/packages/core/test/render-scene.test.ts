@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildSceneFromParts, type OrientedPart } from '../src/render/scene.js';
-import { Framebuffer } from '../src/render/framebuffer.js';
+import { Framebuffer, type Rgb } from '../src/render/framebuffer.js';
+import { computeGlobalScale, renderTile } from '../src/render/snapshot.js';
 import { QUAT_IDENTITY, quatFromEulerZXYDeg } from '../src/rig-transform.js';
 import { AIR } from '../src/geometry/voxel-row.js';
 import type { Palette, Part } from '../src/geometry/types.js';
@@ -281,5 +282,60 @@ describe('Framebuffer.fillTriangle — shared edges (§7.4)', () => {
     const at = (fb: Framebuffer) => fb.color[(4 * fb.width + 4) * 4];
     expect(at(a)).toBe(at(b));
     expect(at(a)).toBe(128);
+  });
+});
+
+// `coverage()` is what `cuboidy-gif --bg=none` uses to decide which pixels
+// become the transparent index. It used to read the DEPTH buffer, which a
+// translucent face deliberately never writes (SPEC §7.4) — so a glass model
+// reported zero covered pixels and the GIF came out entirely transparent.
+describe('Framebuffer.coverage — translucent faces count as drawn', () => {
+  const GLASS: Palette = [rgba(0, 128, 255, 0x80)];
+  const SOLID: Palette = [rgba(0, 128, 255, 255)];
+
+  function render(palette: Palette, ss: number) {
+    const part: Part = {
+      name: 'g',
+      size: { w: 2, h: 2, d: 2 },
+      pivot: { pos: { x: 0, y: 0, z: 0 } },
+      sockets: [],
+      voxels: [[[0, 0], [0, 0]], [[0, 0], [0, 0]]],
+    };
+    const scene = buildSceneFromParts([oriented(part)], palette);
+    const angle = { id: 'x', label: 'X', az: 45, el: 30 };
+    const opts = { tileSize: 48, ss, bg: [0.5, 0.5, 0.5] as Rgb, overlay: false };
+    const fb = renderTile(scene, angle, computeGlobalScale(scene, [angle], opts), opts);
+    const cov = fb.coverage();
+    let painted = 0;
+    let covered = 0;
+    for (let i = 0; i < cov.length; i++) {
+      const o = i * 4;
+      if (fb.color[o] !== 128 || fb.color[o + 1] !== 128 || fb.color[o + 2] !== 128) {
+        painted++;
+      }
+      if (cov[i] === 1) covered++;
+    }
+    return { painted, covered };
+  }
+
+  it('reports a translucent-only model as covered', () => {
+    const { painted, covered } = render(GLASS, 1);
+    expect(painted).toBeGreaterThan(0);
+    expect(covered).toBe(painted);
+  });
+
+  it('still reports an opaque model as covered', () => {
+    const { painted, covered } = render(SOLID, 1);
+    expect(painted).toBeGreaterThan(0);
+    expect(covered).toBe(painted);
+  });
+
+  it('carries coverage through the supersample downsample', () => {
+    const { painted, covered } = render(GLASS, 3);
+    expect(painted).toBeGreaterThan(0);
+    // A block counts as covered if ANY subpixel was, so coverage is a
+    // superset of the pixels that differ from the background — an edge
+    // block can average back to the background colour and still be drawn.
+    expect(covered).toBeGreaterThanOrEqual(painted);
   });
 });

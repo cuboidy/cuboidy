@@ -285,10 +285,21 @@ function buildEffectivePalette(
     remap.set(name, table);
     tableByPalette.set(palette, table);
   }
+  // An ERROR, not a warning. SPEC §7.4 caps a palette at 62 because that is
+  // how many single characters the voxel alphabet has, so a merged palette
+  // of 80 is not a cuboidy palette and cannot be written, printed or
+  // indexed. It was a warning — pushed onto a list the runners print at the
+  // END of their output — and every consumer reached `indexToChar` first
+  // and died with a RangeError, so the advice arrived after the crash it
+  // was meant to prevent. Nothing downstream survives it: the legend, the
+  // ASCII grids and the query output all spell indices as characters.
   if (merged.length > MAX_PALETTE) {
-    warnings.push(
-      `merged palettes hold ${merged.length} colors (max ${MAX_PALETTE}) — consider pointing the geometry files at one shared palette file`,
-    );
+    return {
+      ok: false,
+      message:
+        `merged palettes hold ${merged.length} colors (max ${MAX_PALETTE}) — ` +
+        'point the geometry files at one shared palette file, or reduce the colors they define',
+    };
   }
   return { ok: true, value: { palette: merged, remap, warnings } };
 }

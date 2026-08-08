@@ -151,6 +151,39 @@ describe('loadAndAssemble — merged inline palettes', () => {
     expect(r.assembly.grid.get(stringifyCoord(0, 5, 0))).toBe(2); // blue
     expect(r.assembly.grid.get(stringifyCoord(1, 5, 0))).toBe(0); // red
   });
+
+  // SPEC §7.4 caps a palette at 62 — that is how many characters the voxel
+  // alphabet has — so a merged palette above it is not a cuboidy palette and
+  // cannot be written, printed or indexed. This used to be a WARNING pushed
+  // onto a list the runners print at the end, and every consumer reached
+  // `indexToChar` first and died with a RangeError, so the advice arrived
+  // after the crash it existed to prevent.
+  it('refuses a merge over 62 colors instead of crashing downstream', async () => {
+    const forty = (base: number) =>
+      Array.from({ length: 40 }, (_, i) =>
+        `#${(((base + i) * 2654435761) % 0x1000000).toString(16).padStart(6, '0').toUpperCase()}`,
+      );
+    const dir = await makeModel({
+      'a.json': geo(
+        [{ name: 'p', size: [1, 1, 1], pivot: [0, 0, 0], voxels: [['0']] }],
+        forty(1),
+      ),
+      'b.json': geo(
+        [{ name: 'q', size: [1, 1, 1], pivot: [0, 0, 0], voxels: [['0']] }],
+        forty(900),
+      ),
+      'cuboidy.json': JSON.stringify({
+        name: 'm',
+        geometry: ['a.json', 'b.json'],
+        parts: [{ name: 'p' }, { name: 'q', parent: 'p' }],
+      }),
+    });
+    const r = await loadAndAssemble(dir);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.message).toContain('80');
+    expect(r.message).toContain('62');
+  });
 });
 
 // SPEC §6.2 / §7.7 rest rotations through the shared rig-transform layer:
