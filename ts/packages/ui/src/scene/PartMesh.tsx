@@ -1,6 +1,11 @@
 import { useEffect, useMemo } from 'react';
 import { buildMesh, type Palette, type Part } from '@cuboidy/core';
-import { BufferAttribute, BufferGeometry, Mesh } from 'three';
+import {
+  BufferAttribute,
+  BufferGeometry,
+  Mesh,
+  MeshStandardMaterial,
+} from 'three';
 import { noRaycast, srgbToLinearArray } from './gizmo-primitives.js';
 
 interface Props {
@@ -51,15 +56,49 @@ export function PartMesh({ part, palette, raycastDisabled }: Props) {
     return { geometry: geom, hasTranslucent: blended > 0 };
   }, [part, palette]);
   useEffect(() => () => geometry.dispose(), [geometry]);
+
+  // Built here rather than declared as children. r3f attaches a material
+  // child to `material`, so TWO of them means the second REPLACES the first
+  // — the mesh keeps only the translucent one, every face draws with depth
+  // writes off, opaque geometry stops occluding anything, and translucent
+  // faces behind it come through in front. `attach="material-0"` does not
+  // help either: an index path needs `material` to already be an array, and
+  // a Mesh starts life with a single material.
+  //
+  // A single material when nothing is translucent, deliberately, because a
+  // one-element ARRAY would pair with a geometry that has no groups and
+  // three.js would draw nothing at all.
+  const materials = useMemo(
+    () =>
+      hasTranslucent
+        ? [
+            new MeshStandardMaterial({ vertexColors: true }),
+            new MeshStandardMaterial({
+              vertexColors: true,
+              transparent: true,
+              // Depth TEST stays on — a translucent face behind something
+              // opaque must still be rejected. Only the WRITE is off, so
+              // translucent faces do not occlude one another.
+              depthWrite: false,
+            }),
+          ]
+        : new MeshStandardMaterial({ vertexColors: true }),
+    [hasTranslucent],
+  );
+  useEffect(
+    () => () => {
+      for (const m of Array.isArray(materials) ? materials : [materials]) {
+        m.dispose();
+      }
+    },
+    [materials],
+  );
+
   return (
     <mesh
       geometry={geometry}
+      material={materials}
       raycast={raycastDisabled === true ? noRaycast : meshRaycast}
-    >
-      <meshStandardMaterial vertexColors />
-      {hasTranslucent ? (
-        <meshStandardMaterial vertexColors transparent depthWrite={false} />
-      ) : null}
-    </mesh>
+    />
   );
 }
