@@ -1751,3 +1751,75 @@ input[type='checkbox']:disabled {
   color: var(--txt-3);
   font-family: var(--mono);
 }
+
+/* SPEC §7.4 translucency in the palette panel. `<input type="color">` has
+   no alpha channel, so opacity is a separate control, and the swatch needs
+   a checkerboard behind the fill or a half-transparent entry would read as
+   a paler opaque one. */
+.palette-swatch {
+  background-image:
+    linear-gradient(45deg, var(--bg-3) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--bg-3) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--bg-3) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--bg-3) 75%);
+  background-size: 10px 10px;
+  background-position: 0 0, 0 5px, 5px -5px, -5px 0;
+}
+
+.swatch-fill {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.swatch-alpha {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 12px;
+  margin: 0;
+  padding: 0;
+  /* Above the full-tile colour picker, or the drag would open the dialog. */
+  z-index: 1;
+  cursor: ew-resize;
+  appearance: none;
+  background: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0.55),
+    rgba(255, 255, 255, 0.55)
+  );
+  border-top: 1px solid rgba(0, 0, 0, 0.35);
+}
+
+.swatch-alpha::-webkit-slider-thumb {
+  appearance: none;
+  width: 4px;
+  height: 12px;
+  border: none;
+  border-radius: 0;
+  background: var(--txt-1);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+  cursor: ew-resize;
+}
+
+.swatch-alpha::-moz-range-thumb {
+  width: 4px;
+  height: 12px;
+  border: none;
+  border-radius: 0;
+  background: var(--txt-1);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+  cursor: ew-resize;
+}
+
+.swatch-alpha:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+/* Clear of the slider. */
+.swatch-usage {
+  bottom: 0.85rem;
+}
