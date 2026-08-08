@@ -8,6 +8,7 @@ import {
 import type { Geometry, Palette, Part } from './geometry/types.js';
 import { manifestGeometry, type Manifest } from './manifest.js';
 import { parsePaletteFile } from './palette-file.js';
+import { resultFromZodError } from './zod-diagnostic.js';
 
 // Shared project-resolution layer (SPEC §6.10): manifest → geometry files
 // → external palette. Pure — the caller supplies file TEXTS (from fs, a
@@ -445,14 +446,19 @@ export function resolveProject(
     }
     const parsedAnim = InlineAnimationSchema.safeParse(json);
     if (!parsedAnim.success) {
-      const issue = parsedAnim.error.issues[0]!;
-      const at = issue.path.length > 0 ? issue.path.join('.') : '<root>';
+      // Through the SAME mapping an inline clip goes through. This used to
+      // hand-build the diagnostic with the code hardcoded to
+      // `invalid-value`, so the identical mistake reported one code written
+      // in the manifest and another written in a file beside it: an absent
+      // `loop` was `missing` inline and `invalid-value` here, a misspelled
+      // ease preset `unknown` inline and `invalid-value` here.
+      const r = resultFromZodError<never>(parsedAnim.error, json);
       diagnostics.push({
         file: path,
         diag: {
-          code: 'invalid-value',
+          code: r.ok ? 'invalid-value' : r.code,
           severity: 'error',
-          message: `animation '${clip}': ${at}: ${issue.message}`,
+          message: `animation '${clip}': ${r.ok ? '' : r.message}`,
         },
       });
       continue;

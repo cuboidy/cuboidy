@@ -1,6 +1,6 @@
 {
   "name": "m",
   "parts": [
-    { "name": "body", "geometry": { "size": [2, 1, 1], "voxels": [["0"]] } }
+    { "name": "body", "geometry": { "size": [2, 1, 1], "voxels": [["."]] } }
   ]
 }

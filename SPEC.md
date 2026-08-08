@@ -293,7 +293,8 @@ Between consecutive keyframes:
 
 - `rot`, `pos`, `scale` interpolate along the segment's **easing curve** (below); with the default `linear` ease this is plain linear interpolation
 - **Interpolation is component-wise on the stored triple.** For `rot` this means the three Euler angles are interpolated independently — *not* converted to quaternions and slerped. The two agree for small rotations and diverge as they grow, so this is a conformance requirement, not an implementation detail. It is also what makes a full revolution expressible: a segment from `0` to `−360` on one axis is a constant-rate turn under component-wise interpolation, where a slerp would treat the endpoints as the same orientation and produce no motion at all.
-- `visible` uses **step** interpolation: the value at the later keyframe takes effect at that keyframe's time. The comparison is exact — `t >= k`, with no tolerance — the same way the segment containing `t` is chosen for the other three attributes
+- `visible` uses **step** interpolation: the value at the later keyframe takes effect at that keyframe's time
+- **A sample time within a small tolerance of a keyframe is AT that keyframe**, and the same tolerance applies to every attribute. This is not a nicety. Wrapping is the exact IEEE remainder, and that is not the arithmetic one, because the dividend is not the number the author wrote: the double nearest `12.7` is `12.699999999999999289…`, so its remainder in a 6-second loop is `0.6999999999999993` and no formula recovers `0.7`. Compared exactly, the interpolating attributes then sit at `u = 0.99999999999999905` — at the keyframe for any purpose — while a step attribute reads "not yet", and the two disagree about the same instant. Snap once, before any attribute is read, so all four answer the same question. A tolerance of `max(|time|, duration) × 1e-12` is orders above the wrap error and orders below any spacing a §6.6 decimal key can express
 
 #### Easing
 

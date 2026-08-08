@@ -210,12 +210,17 @@ describe('parseManifest — geometry list', () => {
   });
 
   it('rejects an empty geometry list', () => {
-    // An array bound reported against the container is `wrong-arity`, the
-    // same answer an empty inline palette gets (§11.2). SPEC does not name
-    // this case; it is mapped for consistency with the ones it does.
+    // §11.5 files "duplicate or empty `geometry` list" under `invalid-value`
+    // — the two halves of one row, so they must answer alike. (§11.2 puts a
+    // palette's 0-or-over-62 under `wrong-arity`; two arrays spelled the
+    // same way, coded differently, and the spec is explicit about both.)
     const r = parseManifest({ ...base, geometry: [] });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe('wrong-arity');
+    if (!r.ok) expect(r.code).toBe('invalid-value');
+
+    const dup = parseManifest({ ...base, geometry: ['a.json', 'a.json'] });
+    expect(dup.ok).toBe(false);
+    if (!dup.ok) expect(dup.code).toBe('invalid-value');
   });
 
   it('rejects a bare extension as a path', () => {
@@ -748,5 +753,54 @@ describe('parseManifest — §6.6 time key grammar', () => {
       const r = parseManifest(withTrack({ '0.0': key, [bad]: key }));
       expect(r.ok, bad).toBe(false);
     }
+  });
+});
+
+// A second review found four ways the unified mapping still disagreed with
+// §11.2/§11.5, all of them in shapes no fixture reached.
+describe('parseManifest — §11.2 corners the first pass missed', () => {
+  const clip = (body: unknown) => ({
+    name: 'm',
+    parts: [{ name: 'a' }],
+    animations: { walk: body },
+  });
+  const track = { a: { '0.0': { rot: [0, 0, 0] } } };
+
+  it('invalid-value: a wrong-TYPE value in an enum slot, not unknown', () => {
+    // Zod reports any enum miss as `invalid_value`. Only a STRING outside
+    // the twenty is an unrecognized NAME (§11.2 `unknown`); a number is "a
+    // value of the wrong JSON type for its field" (§11.2 `invalid-value`).
+    for (const bad of [123, null, true, ['in-sine'], {}]) {
+      const r = parseManifest(
+        clip({
+          duration: 1,
+          loop: true,
+          parts: { a: { '0.0': { rot: [0, 0, 0], ease: { rot: bad } } } },
+        }),
+      );
+      expect(r.ok, JSON.stringify(bad)).toBe(false);
+      if (!r.ok) expect(r.code, JSON.stringify(bad)).toBe('invalid-value');
+    }
+  });
+
+  it('unknown: an extra key on an otherwise-complete inline clip', () => {
+    // Every required field present, so the inline branch's only complaint
+    // was `unrecognized_keys` at its own root — which the branch picker read
+    // as "this branch rejected the value" and answered with the reference
+    // branch's "expected string, received object".
+    const r = parseManifest(
+      clip({ duration: 1, loop: true, parts: track, speed: 2 }),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.code).toBe('unknown');
+      expect(r.message).toMatch(/speed/);
+    }
+  });
+
+  it('still reports the reference form when the value is neither', () => {
+    const r = parseManifest(clip(42));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 });

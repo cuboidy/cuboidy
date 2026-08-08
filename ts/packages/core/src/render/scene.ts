@@ -39,6 +39,9 @@ interface FaceDef {
   readonly corners: readonly [Vec3, Vec3, Vec3, Vec3];
 }
 
+// SPEC §7.4's opaque magenta, in the 0..1 sRGB this module carries.
+const UNRESOLVED_COLOR: Rgb = [1, 0, 1];
+
 // Face order and winding identical to mesh.ts FACES so renders match the
 // editor's geometry. +X, −X, +Y, −Y, +Z, −Z.
 const FACES: readonly FaceDef[] = [
@@ -99,8 +102,16 @@ export function buildSceneFromParts(
         for (let x = 0; x < w; x++) {
           const idx = row[x]!;
           if (idx === AIR) continue;
-          const effIdx = remap === null ? idx : remap[idx]!;
-          const color = srgb[effIdx]!;
+          // SPEC §7.4: an index no palette entry defines renders as opaque
+          // magenta, the same answer `mesh.ts` gives. The two non-null
+          // assertions that used to stand here were both false for a short
+          // palette: `remap[idx]` and `srgb[effIdx]` each returned
+          // `undefined`, and `snapshot.ts` then multiplied it by a light
+          // intensity. The CLI happens to reject such a model upstream, so
+          // the renderer was defended by its caller — which is the shape
+          // §7.4 exists to forbid, since a port's caller may not.
+          const effIdx = remap === null ? idx : (remap[idx] ?? idx);
+          const color = srgb[effIdx] ?? UNRESOLVED_COLOR;
           for (const f of FACES) {
             if (solid(x + f.d[0], y + f.d[1], z + f.d[2])) continue;
             const corners = f.corners.map((c) =>

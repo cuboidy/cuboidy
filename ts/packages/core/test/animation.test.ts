@@ -326,3 +326,39 @@ describe('clampToClip', () => {
     expect(5 - Math.floor(5 / 0.1) * 0.1).toBe(0);
   });
 });
+
+// SPEC §6.7: a wrapped time within a tolerance of a keyframe is that
+// keyframe's time, for every attribute at once. The wrap is the exact IEEE
+// remainder, and the double nearest `12.7` is 12.699999999999999289…, so a
+// 6 s clip wraps it to 0.6999999999999993 — a few ULPs below the "0.7" key.
+// Read exactly, `visible` said "not yet" while rot/pos were at u ≈ 1.
+describe('samplePart — a wrap that lands just short of a keyframe', () => {
+  const track: AnimationTrack = {
+    '0.0': { pos: [0, 0, 0], visible: false },
+    '0.7': { pos: [0, 0, 0], visible: true },
+    '5.1': { pos: [0, 22, 0], visible: false },
+  };
+
+  it('holds one answer for the same phase of every loop', () => {
+    // models/windmill's `sack` vanished from t = 12.7 onward.
+    const seen = [0.7, 6.7, 12.7, 18.7, 24.7, 30.7].map(
+      (t) => samplePart(track, t, 6, true).visible,
+    );
+    expect(seen).toEqual([true, true, true, true, true, true]);
+  });
+
+  it('keeps visible agreeing with the interpolating attributes', () => {
+    // At the raw wrapped time the pos segment is at u ≈ 0.99999999999999905,
+    // i.e. at the key. `visible` must read the same instant the same way.
+    for (const t of [12.7, 18.7, 24.7]) {
+      const p = samplePart(track, t, 6, true);
+      expect(p.visible, `t=${t}`).toBe(true);
+      expect(p.pos, `t=${t}`).toEqual([0, 0, 0]);
+    }
+  });
+
+  it('still distinguishes a time genuinely before the key', () => {
+    expect(samplePart(track, 0.69, 6, true).visible).toBe(false);
+    expect(samplePart(track, 0.6999, 6, true).visible).toBe(false);
+  });
+});

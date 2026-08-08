@@ -5,7 +5,7 @@
       "name": "body",
       "geometry": {
         "size": [1, 1, 1],
-        "voxels": [["0"]],
+        "voxels": [["."]],
         "sockets": [
           { "name": "grip", "pos": [0, 0, 0] },
           { "name": "grip", "pos": [1, 0, 0] }

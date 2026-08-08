@@ -99,3 +99,45 @@ describe('buildSceneFromParts', () => {
     expect(scene.center).toEqual([0, 0, 0]);
   });
 });
+
+// SPEC §7.4: an index no palette entry defines renders as opaque magenta.
+// The rasterizer used to assert its way past this with two non-null
+// assertions and emit `color: undefined`, which `snapshot.ts` then
+// multiplied by a light intensity. It was unreachable only because the CLI
+// rejects such a model first — a renderer defended by its caller.
+describe('buildSceneFromParts — unresolved color (§7.4)', () => {
+  const onePart = (voxel: number) => ({
+    part: {
+      name: 'p',
+      size: { w: 1, h: 1, d: 1 },
+      pivot: { pos: { x: 0, y: 0, z: 0 } },
+      sockets: [],
+      voxels: [[[voxel]]],
+    },
+    remap: null,
+    transform: { pos: [0, 0, 0] as [number, number, number], quat: [0, 0, 0, 1] as [number, number, number, number] },
+  });
+
+  it('paints an index past the palette magenta, never undefined', () => {
+    const scene = buildSceneFromParts([onePart(5)], [
+      { r: 0, g: 0, b: 0, a: 255 },
+    ]);
+    expect(scene.quads).toHaveLength(6);
+    for (const q of scene.quads) expect(q.color).toEqual([1, 0, 1]);
+  });
+
+  it('survives a remap that does not cover the index', () => {
+    const scene = buildSceneFromParts(
+      [{ ...onePart(3), remap: [0] }],
+      [{ r: 255, g: 0, b: 0, a: 255 }],
+    );
+    for (const q of scene.quads) expect(q.color).toEqual([1, 0, 1]);
+  });
+
+  it('still paints an in-range index its own color', () => {
+    const scene = buildSceneFromParts([onePart(0)], [
+      { r: 255, g: 0, b: 0, a: 255 },
+    ]);
+    for (const q of scene.quads) expect(q.color).toEqual([1, 0, 0]);
+  });
+});

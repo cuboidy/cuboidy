@@ -246,11 +246,9 @@ function lerp3(a: Vec3Tuple, b: Vec3Tuple, u: number): Vec3Tuple {
 // keyframe whose time is ≤ t takes effect. Before the first key, the first
 // key's value holds (every animated part starts at "0.0" per §6.6, so this
 // only matters defensively).
+//
 // The comparison is exact, like the segment selection the other three
-// attributes use. It carried a 1e-9 absolute tolerance, which §6.7 does not
-// define, which nothing documented, which no other attribute shared — so
-// `visible` could flip up to a nanosecond before `rot` began moving — and
-// which is meaningless at large `t` anyway, being smaller than the ULP.
+// attributes use — `snapToKey` below is what makes that safe.
 function stepVisible(keys: readonly ResolvedKey[], t: number): boolean {
   let v = keys[0]!.visible;
   for (const k of keys) {
@@ -258,6 +256,41 @@ function stepVisible(keys: readonly ResolvedKey[], t: number): boolean {
     else break;
   }
   return v;
+}
+
+// SPEC §6.7: a wrapped time within a tolerance of a keyframe IS that
+// keyframe's time, for every attribute at once.
+//
+// The wrap is the exact IEEE remainder, and that is not the same as the
+// arithmetic one, because the dividend is not the number the author wrote:
+// the double nearest `12.7` is 12.699999999999999289…, so its remainder mod
+// a 6 s clip is 0.6999999999999993 and no formula recovers 0.7. In
+// `models/windmill` that lands a few ULPs below the `"0.7"` key on every
+// loop after the second. Read exactly, the interpolating attributes see
+// u = 0.99999999999999905 — at the key for any purpose — while `visible`
+// sees "not yet", so the sack vanished at t = 12.7, 18.7, 24.7 …
+//
+// So the tolerance is not a nicety, and it belongs HERE rather than inside
+// one attribute's comparison: applied once, before anything reads `t`, it
+// is what guarantees the four attributes answer the same question. (A 1e-9
+// absolute tolerance used to sit inside `stepVisible` alone, undocumented,
+// which is why removing it looked safe.)
+//
+// Scaled to the larger of the clock and the clip, because the error comes
+// from the dividend's magnitude, not the remainder's. 1e-12 of that is
+// orders above the error and orders below any spacing a §6.6 decimal key
+// can express.
+function snapToKey(
+  keys: readonly ResolvedKey[],
+  t: number,
+  time: number,
+  duration: number,
+): number {
+  const eps = Math.max(Math.abs(time), duration) * 1e-12;
+  for (const k of keys) {
+    if (Math.abs(k.t - t) <= eps) return k.t;
+  }
+  return t;
 }
 
 // SPEC §6.7: bring an arbitrary clock time inside a clip — a looping clip
@@ -302,7 +335,7 @@ export function samplePart(
   // clip apart, so the UI reported the end of the loop while the model was
   // posed at the start. `%` is the exact IEEE remainder; the subtraction
   // form rounds twice, at the divide and at the multiply.
-  const t = clampToClip(time, duration, loop);
+  const t = snapToKey(keys, clampToClip(time, duration, loop), time, duration);
 
   let rot: Vec3Tuple;
   let pos: Vec3Tuple;

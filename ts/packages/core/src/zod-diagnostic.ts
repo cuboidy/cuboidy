@@ -43,7 +43,7 @@ export function resultFromZodError<T>(
   const missing = isMissingAtPath(input, issue.path);
   const detail = missing ? 'required field is missing' : issue.message;
   return err(
-    mapIssueToCode(issue, missing),
+    mapIssueToCode(issue, missing, input),
     `${label}: ${detail}`,
     issue.path as ReadonlyArray<string | number>,
   );
@@ -54,6 +54,7 @@ export function resultFromZodError<T>(
 function mapIssueToCode(
   issue: ZodIssueLike,
   missing: boolean,
+  input: unknown,
 ): CuboidyErrorCode {
   // A rule expressed in a superRefine names its own code. This is the only
   // explicit channel; everything below is inference over Zod's issue shape,
@@ -64,11 +65,19 @@ function mapIssueToCode(
   if (custom !== undefined) return custom;
 
   // §11.2 `unknown`: "an unrecognized name appears where the spec defines a
-  // closed set". Two shapes reach here — a key no schema field claims
-  // (`.strict()`), and a value outside an enum, which is how an ease preset
-  // name (§6.5) is spelled. Both are unrecognized NAMES, not bad values.
+  // closed set" — a key no schema field claims (`.strict()`), and a STRING
+  // outside an enum, which is how an ease preset name (§6.7) is spelled.
+  //
+  // Zod emits `invalid_value` for anything an enum rejects, including `123`
+  // and `null`, and those are not unrecognized names — §11.2 files "a value
+  // of the wrong JSON type for its field" under `invalid-value`. So the
+  // value has to be looked at, not just the issue.
   if (issue.code === 'unrecognized_keys') return 'unknown';
-  if (issue.code === 'invalid_value') return 'unknown';
+  if (issue.code === 'invalid_value') {
+    return typeof valueAtPath(input, issue.path) === 'string'
+      ? 'unknown'
+      : 'invalid-value';
+  }
 
   // §11.2 `missing`, at any depth. The manifest used to gate this on a
   // top-level `name` or `parts`, which is what made a part with no `name`
@@ -97,6 +106,13 @@ function mapIssueToCode(
   // ("a `size` dimension outside [1..1024]").
   if (issue.code === 'too_small' || issue.code === 'too_big') {
     const last = issue.path[issue.path.length - 1];
+    // §11.5 groups "duplicate or empty `geometry` list" under
+    // `invalid-value`, where §11.2 puts a palette's 0-or-over-62 under
+    // `wrong-arity`. Two arrays spelled the same way, coded differently, so
+    // the list is named here rather than derived — and its duplicate half
+    // already answers `invalid-value` through a superRefine, which is how
+    // the pair came to be split when this rule was first written.
+    if (last === 'geometry') return 'invalid-value';
     return typeof last === 'number' ? 'invalid-value' : 'wrong-arity';
   }
 
@@ -118,13 +134,21 @@ function originOf(issue: ZodIssueLike): string | undefined {
 // both the message and the §11.2 code stay as specific as they were before
 // the field grew a second form.
 //
-// "Aiming at" is decided by where the branch gave up: a branch whose first
-// complaint carries a path failed INSIDE the value the author wrote, so it
-// accepted the shape and objected to the contents. A branch that complains
-// at the root rejected the value outright and has nothing useful to say. If
-// every branch rejected it outright the value matches no form at all, and
-// the last branch is reported — for §7.4's palette that is the reference
-// form, whose "expected string" is the more legible half of the pair.
+// "Aiming at" is decided by whether the branch rejected the value's TYPE.
+// A root-level `invalid_type` means the branch wanted a different kind of
+// value entirely and has nothing useful to say. Anything else means the
+// branch accepted the shape and objected to the contents — a failure deeper
+// in, or an unrecognized key on an object it otherwise took. If EVERY branch
+// rejected the type the value matches no form at all, and the last branch is
+// reported: for §7.4's palette that is the reference form, whose "expected
+// string" is the more legible half of the pair.
+//
+// The type test is what distinguishes a branch that got as far as reading
+// keys from one that never started. Testing only for a non-empty path
+// missed an extra key on an otherwise-complete inline clip — every required
+// field present, so Zod's one complaint was `unrecognized_keys` at the
+// branch root — and reported "expected string, received object" at an
+// author who had correctly written an object.
 //
 // Only `parseGeometry` did this before, which is why every §6.7 keyframe
 // mistake — an unrecognized field, a misspelled ease preset, an absent
@@ -134,7 +158,11 @@ function unwrapUnion(issue: ZodIssueLike, depth = 0): ZodIssueLike {
   if (issue.code !== 'invalid_union' || depth > 4) return issue;
   const branches = (issue as { errors?: ZodIssueLike[][] }).errors ?? [];
   if (branches.length === 0) return issue;
-  const aimed = branches.find((b) => b[0] !== undefined && b[0].path.length > 0);
+  const aimed = branches.find((b) => {
+    const first = b[0];
+    if (first === undefined) return false;
+    return first.path.length > 0 || first.code !== 'invalid_type';
+  });
   const picked = aimed ?? branches[branches.length - 1]!;
   const first = picked[0];
   if (first === undefined) return issue;
@@ -142,6 +170,18 @@ function unwrapUnion(issue: ZodIssueLike, depth = 0): ZodIssueLike {
     { ...first, path: [...issue.path, ...first.path] },
     depth + 1,
   );
+}
+
+// The value Zod was complaining about, or undefined when the path does not
+// lead anywhere. Needed because some Zod issue codes cover more than one
+// §11.2 category and only the value tells them apart.
+function valueAtPath(input: unknown, path: ReadonlyArray<PropertyKey>): unknown {
+  let cur: unknown = input;
+  for (const key of path) {
+    if (cur === null || typeof cur !== 'object') return undefined;
+    cur = (cur as Record<PropertyKey, unknown>)[key];
+  }
+  return cur;
 }
 
 // ----- absence ----------------------------------------------------------
