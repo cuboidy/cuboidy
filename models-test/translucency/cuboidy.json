@@ -1,0 +1,43 @@
+{
+  "version": "0.9",
+  "name": "translucency",
+  "palette": ["#3AA0FF66", "#FF6A3A66", "#B8BEC6"],
+  "parts": [
+    {
+      "name": "single-A",
+      "position": [0, 0, 0],
+      "geometry": {
+        "size": [1, 5, 1],
+        "pivot": { "pos": [0, 0, 0] },
+        "voxels": [["0"], ["0"], ["0"], ["0"], ["0"]]
+      }
+    },
+    {
+      "name": "pair-same-AA",
+      "position": [3, 0, 0],
+      "geometry": {
+        "size": [2, 5, 1],
+        "pivot": { "pos": [0, 0, 0] },
+        "voxels": [["00"], ["00"], ["00"], ["00"], ["00"]]
+      }
+    },
+    {
+      "name": "pair-diff-AB",
+      "position": [7, 0, 0],
+      "geometry": {
+        "size": [2, 5, 1],
+        "pivot": { "pos": [0, 0, 0] },
+        "voxels": [["01"], ["01"], ["01"], ["01"], ["01"]]
+      }
+    },
+    {
+      "name": "opaque-ref",
+      "position": [11, 0, 0],
+      "geometry": {
+        "size": [1, 5, 1],
+        "pivot": { "pos": [0, 0, 0] },
+        "voxels": [["2"], ["2"], ["2"], ["2"], ["2"]]
+      }
+    }
+  ]
+}
