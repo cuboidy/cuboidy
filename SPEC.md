@@ -522,10 +522,8 @@ A file that spells its colors out is range-checked at **parse time** — it is i
 
 Two rules make that drawable, and both are normative because two implementations must agree on the geometry they produce:
 
-- **A face is dropped only when its neighbour hides it.** A neighbour hides a face when it is **opaque**, or when **both it and this voxel are translucent**. Being merely solid is not enough: drop a wall's face because a pane of glass sits against it and the glass looks onto a hole.
-- **A translucent body is one surface, whatever its thickness and whatever colors it is made of.** Three voxels of water read exactly as one does, and so does water meeting glass. Keep the interface faces and every crossing blends again — a viewer at an angle sees a distinct band along the join, darker than either color, tracing the voxel grid. Depth is expressed by choosing a denser color, not by stacking. An implementation MUST NOT blend per layer.
-
-  The cost is stated rather than worked around: a translucent voxel whose neighbours are all translucent has no faces, so a differently-colored core inside a block of glass does not show. Surround it with air, or make it opaque.
+- **A face is dropped only when its neighbour hides it.** A neighbour hides a face when it is opaque, or when it is the very same palette index. Being merely solid is not enough. Drop a wall's face because a pane of glass sits against it and the glass looks onto a hole; keep the faces inside a body of one translucent color and every layer blends again, so three voxels of water read darker than one.
+- **A run of one translucent color is one surface, whatever its thickness.** That is the consequence of the same-index half above, and it is deliberate: thickness is expressed by choosing a denser color, not by stacking. An implementation MUST NOT blend per layer.
 
 Draw the opaque faces first, writing depth; then the translucent ones back to front, testing depth but not writing it. Sorting by mean face depth is sufficient — voxel faces do not interpenetrate.
 

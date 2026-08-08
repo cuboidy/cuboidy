@@ -178,22 +178,10 @@ describe('buildMesh — translucent palette entries (§7.4)', () => {
     expect(three.indices.length).toBe(one.indices.length * 3 - 4 * 6);
   });
 
-  it('drops the faces between two DIFFERENT translucent colors too', () => {
-    // The same rule as the same-colour run, generalised: an interface face
-    // between two translucent voxels puts a whole extra coat of tint on any
-    // ray that crosses it, and a viewer at an angle reads that as a band
-    // along the join, darker than either colour.
-    const one = buildMesh(strip([0]), [GLASS, GLASS2]);
+  it('keeps the faces between two DIFFERENT translucent colors', () => {
     const pair = buildMesh(strip([0, 1]), [GLASS, GLASS2]);
-    expect(pair.indices.length).toBe(one.indices.length * 2 - 2 * 6);
-  });
-
-  it('a translucent voxel enclosed by translucent neighbours has no faces', () => {
-    // The stated cost of the rule above: a differently-coloured core inside
-    // a block of glass does not show.
-    const line = buildMesh(strip([0, 1, 0]), [GLASS, GLASS2]);
-    const solid = buildMesh(strip([0, 0, 0]), [GLASS]);
-    expect(line.indices.length).toBe(solid.indices.length);
+    const solo = buildMesh(strip([0]), [GLASS]);
+    expect(pair.indices.length).toBe(solo.indices.length * 2);
   });
 
   it('orders indices opaque-first and reports the split', () => {

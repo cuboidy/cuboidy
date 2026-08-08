@@ -180,13 +180,6 @@ describe('buildSceneFromParts — translucency (§7.4)', () => {
     expect(three.quads.length).toBe(one.quads.length * 3 - 4);
   });
 
-  it('drops them between two different translucent colors as well', () => {
-    const GLASS2 = { r: 60, g: 255, b: 160, a: 0x55 };
-    const same = buildSceneFromParts([strip([0, 0])], [GLASS, GLASS2]);
-    const mixed = buildSceneFromParts([strip([0, 1])], [GLASS, GLASS2]);
-    expect(mixed.quads.length).toBe(same.quads.length);
-  });
-
   it('leaves an opaque model at alpha 1', () => {
     const s = buildSceneFromParts([strip([0, 0])], [OPAQUE]);
     expect(s.quads.every((q) => q.alpha === 1)).toBe(true);
