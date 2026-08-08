@@ -7,7 +7,7 @@ import {
 } from './geometry/parse.js';
 import type { Geometry, Palette, Part } from './geometry/types.js';
 import { manifestGeometry, type Manifest } from './manifest.js';
-import { parsePaletteFile } from './palette-file.js';
+import { parsePaletteFileText } from './palette-file.js';
 import { resultFromZodError } from './zod-diagnostic.js';
 
 // Shared project-resolution layer (SPEC §6.10): manifest → geometry files
@@ -538,21 +538,7 @@ function readPalette(
     });
     return null;
   }
-  let json: unknown;
-  try {
-    json = JSON.parse(text);
-  } catch (e) {
-    diagnostics.push({
-      file: path,
-      diag: {
-        code: 'invalid-value',
-        severity: 'error',
-        message: `JSON parse: ${(e as Error).message}`,
-      },
-    });
-    return null;
-  }
-  const pR = parsePaletteFile(json);
+  const pR = parsePaletteFileText(text);
   if (pR.ok) return pR.value;
   diagnostics.push({
     file: path,

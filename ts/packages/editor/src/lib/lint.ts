@@ -1,4 +1,4 @@
-import { CROSS_FILE, lintProject, parseGeometry, parsePaletteFile, resolvePartGeometry, type FileDiagnostic } from '@cuboidy/core';
+import { CROSS_FILE, lintProject, parseGeometry, parsePaletteFileText, resolvePartGeometry, type FileDiagnostic } from '@cuboidy/core';
 import { normalizePath } from './load-model.js';
 import type { LoadedSource } from './types.js';
 
@@ -46,12 +46,8 @@ export function lintSource(src: LoadedSource): FileDiagnostic[] {
   const bound = resolvePartGeometry(src.manifest, geometries, (ref) => {
     const text = src.files.get(normalizePath(ref));
     if (text === undefined) return null;
-    try {
-      const r = parsePaletteFile(JSON.parse(text));
-      return r.ok ? r.value : null;
-    } catch {
-      return null;
-    }
+    const r = parsePaletteFileText(text);
+    return r.ok ? r.value : null;
   });
 
   return lintProject({

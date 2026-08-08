@@ -1,4 +1,4 @@
-import { InlineAnimationSchema, geometryPaths, parseGeometry, parseGeometryText, parseManifest, parsePaletteFile, resolvePartGeometry, serializePaletteEntry, resolveRefFrom, serializeGeometry, toInlineGeometry, type Geometry, type InlineAnimation, type Manifest, type ManifestPart, type Palette, type Part, type PublishedSocket } from '@cuboidy/core';
+import { InlineAnimationSchema, geometryPaths, parseGeometry, parseGeometryText, parseManifest, parsePaletteFile, parsePaletteFileText, resolvePartGeometry, serializePaletteEntry, resolveRefFrom, serializeGeometry, toInlineGeometry, type Geometry, type InlineAnimation, type Manifest, type ManifestPart, type Palette, type Part, type PublishedSocket } from '@cuboidy/core';
 import { isGeometryPath, normalizePath, resolveProjectRefs, withResolvedPalette } from './load-model.js';
 import type { LoadedSource } from './types.js';
 
@@ -162,12 +162,8 @@ function withRebuiltParts(src: LoadedSource): LoadedSource {
     (ref) => {
       const text = src.files.get(normalizePath(ref));
       if (text === undefined) return null;
-      try {
-        const r = parsePaletteFile(JSON.parse(text));
-        return r.ok ? r.value : null;
-      } catch {
-        return null;
-      }
+      const r = parsePaletteFileText(text);
+      return r.ok ? r.value : null;
     },
   );
   return { ...src, parts };
@@ -526,12 +522,8 @@ export function resolvedModelPalette(src: LoadedSource): Palette {
   if (typeof p !== 'string') return modelPalette(src);
   const text = src.files.get(normalizePath(p));
   if (text === undefined) return [];
-  try {
-    const r = parsePaletteFile(JSON.parse(text));
-    return r.ok ? r.value : [];
-  } catch {
-    return [];
-  }
+  const r = parsePaletteFileText(text);
+  return r.ok ? r.value : [];
 }
 
 // Write the model-level palette to wherever it LIVES: cuboidy.json's own

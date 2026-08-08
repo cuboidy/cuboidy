@@ -7,7 +7,11 @@ export {
 } from './manifest.js';
 export type { Manifest, ManifestPart, PublishedSocket } from './manifest.js';
 
-export { PaletteFileSchema, parsePaletteFile } from './palette-file.js';
+export {
+  PaletteFileSchema,
+  parsePaletteFile,
+  parsePaletteFileText,
+} from './palette-file.js';
 export { MAX_PALETTE } from './geometry/palette.js';
 
 export {

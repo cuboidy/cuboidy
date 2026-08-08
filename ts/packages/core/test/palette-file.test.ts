@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parsePaletteFile } from '../src/palette-file.js';
+import { parsePaletteFile, parsePaletteFileText } from '../src/palette-file.js';
 import { parseHexColor, serializeColor } from '../src/geometry/palette.js';
 import { rgba } from './helpers/palette.js';
 
@@ -121,5 +121,42 @@ describe('palette alpha round-trip (§7.4)', () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.value.map((e) => e.color.a)).toEqual([0x88, 255, 255]);
+  });
+});
+
+// Five call sites had each wrapped `parsePaletteFile` in their own
+// `JSON.parse` + try/catch, and every one of them collapsed a malformed
+// document to a bare `null` — indistinguishable at the call site from "no
+// such file", so none could report what was actually wrong.
+describe('parsePaletteFileText', () => {
+  it('reads a well-formed file', () => {
+    const r = parsePaletteFileText('{"colors":["#FF0000"]}');
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value).toEqual([rgba(0xff, 0, 0)]);
+  });
+
+  it('reports malformed JSON as invalid-value, with the reason', () => {
+    const r = parsePaletteFileText('{ not json');
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.code).toBe('invalid-value');
+      expect(r.message).toMatch(/^JSON parse:/);
+    }
+  });
+
+  it('passes a schema failure straight through', () => {
+    const r = parsePaletteFileText('{"colors":[]}');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('wrong-arity');
+  });
+
+  it('carries a §7.4 material through', () => {
+    const r = parsePaletteFileText(
+      '{"colors":[{"color":"#C0C4CC","metallic":1}]}',
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value[0]).toEqual(rgba(0xc0, 0xc4, 0xcc, 255, { metallic: 1 }));
+    }
   });
 });

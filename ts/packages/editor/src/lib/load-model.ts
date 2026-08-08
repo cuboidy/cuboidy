@@ -1,4 +1,4 @@
-import { MANIFEST_FILE, geometryPaths, normalizeRefPath as normalizePath, parseManifest, parsePaletteFile, resolveProject, resolveRefFrom, type Geometry, type InlineAnimation, type Manifest, type ResolvedPart } from '@cuboidy/core';
+import { MANIFEST_FILE, geometryPaths, normalizeRefPath as normalizePath, parseManifest, parsePaletteFileText, resolveProject, resolveRefFrom, type Geometry, type InlineAnimation, type Manifest, type ResolvedPart } from '@cuboidy/core';
 import { TEXT_FILE_RE, readDirectoryEntry, readDirectoryHandle, readFileList } from '@cuboidy/ui';
 import { strFromU8, unzipSync } from 'fflate';
 import type { LoadResult, LoadedSource } from './types.js';
@@ -291,13 +291,14 @@ export function withResolvedPalette(
   if (geometry.paletteRef === undefined) return geometry;
   const text = getText(resolveRefFrom(fromFile, geometry.paletteRef));
   if (text === undefined) return geometry;
-  try {
-    const r = parsePaletteFile(JSON.parse(text));
-    if (r.ok) return { ...geometry, palette: r.value };
-  } catch {
-    // Unresolvable — the palette stays empty and the Console explains why.
-  }
-  return geometry;
+  const r = parsePaletteFileText(text);
+  // A broken palette leaves the geometry pointing at it with no colors, the
+  // same state the loader produces — and the Console shows the reason,
+  // because `resolveProjectRefs` re-runs on every file edit and reports it
+  // through `projectErrors`. This function is the LIVE re-parse path and
+  // deliberately has nowhere to put a diagnostic of its own; two reports of
+  // one broken file would be worse than one.
+  return r.ok ? { ...geometry, palette: r.value } : geometry;
 }
 
 // Resolve the manifest's references — geometry list, §6.10 palette

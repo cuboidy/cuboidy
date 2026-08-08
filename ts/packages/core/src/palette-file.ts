@@ -45,3 +45,25 @@ export function parsePaletteFile(json: unknown): Result<Palette> {
   }
   return ok(entries);
 }
+
+// The same thing from TEXT. Three callers had each wrapped `parsePaletteFile`
+// in their own `JSON.parse` + try/catch, and all three swallowed a malformed
+// document into a bare `null` — which is indistinguishable from "no such
+// file" at the call site, so none of them could report what was actually
+// wrong. Returning a Result lets each caller decide, and the reason survives
+// as far as whoever wants to print it.
+export function parsePaletteFileText(text: string): Result<Palette> {
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch (e) {
+    // Wording preserved from the reader in project.ts that this replaced —
+    // it is what the CLIs have always printed, and a diagnostic's text is
+    // user-facing whether or not anything parses it.
+    return err(
+      'invalid-value',
+      `JSON parse: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+  return parsePaletteFile(json);
+}
