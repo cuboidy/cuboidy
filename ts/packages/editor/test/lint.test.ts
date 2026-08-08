@@ -62,6 +62,10 @@ function pkg(files: Record<string, string>, primary = 'voxels.json'): LoadedSour
     geometries,
     parts: refs.parts,
     ...(refs.externalAnims !== undefined && { externalAnims: refs.externalAnims }),
+    // The real loader carries these, and lintSource gates cross-file rules
+    // on them being empty. A helper that dropped them would test a state
+    // the editor never actually reaches.
+    ...(refs.projectErrors.length > 0 && { projectErrors: refs.projectErrors }),
   };
 }
 
@@ -273,5 +277,66 @@ describe('lintSource — the shipped models', () => {
     expect(
       notHints.map((f) => `${f.file}: ${f.diag.ruleId ?? f.diag.code} ${f.diag.message}`),
     ).toEqual([]);
+  });
+});
+
+// `cuboidy-lint` runs the cross-file rules only when resolution came back
+// clean; the editor used to run them unconditionally, because its loader
+// never surfaced the flag. One missing geometry file then produced a wall of
+// findings ABOUT the failure — W07 on files the missing one references, and
+// a missing-part report for every part it was supposed to define — with the
+// actual cause somewhere in the middle.
+describe('lintSource — cross-file rules wait for a resolvable project', () => {
+  const broken = () =>
+    pkg({
+      [MANIFEST]: JSON.stringify({
+        name: 'm',
+        geometry: ['voxels.json', 'gone.json'],
+        parts: [{ name: 'body' }, { name: 'arm' }],
+      }),
+      'voxels.json': GEO([{ name: 'body' }]),
+      // `gone.json` is listed and absent: resolution reports it, and `arm`
+      // never finds a shape.
+    });
+
+  it('the fixture really is unresolvable', () => {
+    expect(broken().projectErrors ?? []).not.toHaveLength(0);
+  });
+
+  it('says nothing about the project while a referenced file is missing', () => {
+    const found = lintSource(broken()).filter((d) => d.file === CROSS_FILE);
+    expect(found).toHaveLength(0);
+  });
+
+  it('still runs the PER-FILE rules on what did load', () => {
+    // Per-file lint does not depend on the project resolving, so a broken
+    // reference must not silence the file you are editing.
+    const src = pkg({
+      [MANIFEST]: JSON.stringify({
+        name: 'm',
+        geometry: ['voxels.json', 'gone.json'],
+        parts: [{ name: 'body' }],
+      }),
+      // Pivot far outside the grid — a per-file rule.
+      'voxels.json': GEO([{ name: 'body', pivot: [99, 0, 0] }]),
+    });
+    const perFile = lintSource(src).filter((d) => d.file !== CROSS_FILE);
+    expect(perFile.length).toBeGreaterThan(0);
+  });
+
+  it('reports cross-file findings again once the file is there', () => {
+    const src = pkg({
+      [MANIFEST]: JSON.stringify({
+        name: 'm',
+        geometry: ['voxels.json'],
+        parts: [{ name: 'body' }],
+      }),
+      'voxels.json': GEO([{ name: 'body' }]),
+      // Present, parses as geometry, referenced by nothing: W07.
+      'orphan.json': GEO([{ name: 'stray' }]),
+    });
+    expect(src.projectErrors ?? []).toHaveLength(0);
+    const cross = lintSource(src).filter((d) => d.file === CROSS_FILE);
+    expect(cross.map((d) => d.diag.ruleId)).toContain('W07');
   });
 });

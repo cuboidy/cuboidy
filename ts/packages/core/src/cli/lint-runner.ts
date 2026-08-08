@@ -10,8 +10,7 @@ import {
   resolveProject,
 } from '../project.js';
 import { tryReadText } from './fs.js';
-import { validateProject } from '../lint/cross-file.js';
-import { lintGeometry } from '../lint/voxel-rules.js';
+import { CROSS_FILE, lintProject } from '../lint/project-lint.js';
 import { parseGeometryText } from '../geometry/parse.js';
 import type { Diagnostic } from '../diagnostic.js';
 
@@ -59,7 +58,6 @@ export interface RunResult {
 // Pseudo-file label for diagnostics that span files (cross-file lint).
 // Cross-file rules don't belong to a single source location, so we tag
 // them with a sentinel rather than picking one file arbitrarily.
-const CROSS_FILE_LABEL = '<cross-file>';
 
 export async function runLint(
   dir: string,
@@ -150,27 +148,23 @@ export async function runLint(
   for (const d of project.diagnostics) {
     diagnostics.push({ file: join(root, d.file), diag: d.diag });
   }
-  for (const g of project.geometries) {
-    for (const d of lintGeometry(g.geometry)) {
-      diagnostics.push({ file: join(root, g.path), diag: d });
-    }
-  }
-
-  // Cross-file validation runs only when every input loaded, parsed and
-  // resolved cleanly — running it on partially-resolved projects would
-  // just emit noise on top of the existing diagnostics.
-  if (manifest !== null && project.complete) {
-    for (const d of validateProject({
-      manifest,
-      geometries: project.geometries,
-      parts: project.parts,
-      unresolved: project.unresolved,
-      duplicates: project.duplicates,
-      externalAnims: project.externalAnims,
-      packageGeometryPaths: await enumerateGeometryFiles(root),
-    })) {
-      diagnostics.push({ file: CROSS_FILE_LABEL, diag: d });
-    }
+  // Per-file and cross-file both come from the shared composition, so the
+  // editor cannot drift from this — it had, by having no `complete` gate.
+  // Paths come back package-relative; only the file ones take the root.
+  for (const d of lintProject({
+    manifest,
+    geometries: project.geometries,
+    parts: project.parts,
+    unresolved: project.unresolved,
+    duplicates: project.duplicates,
+    externalAnims: project.externalAnims,
+    packageGeometryPaths: await enumerateGeometryFiles(root),
+    complete: project.complete,
+  })) {
+    diagnostics.push({
+      file: d.file === CROSS_FILE ? CROSS_FILE : join(root, d.file),
+      diag: d.diag,
+    });
   }
 
   return { diagnostics, exitCode: computeExitCode(diagnostics, opts) };

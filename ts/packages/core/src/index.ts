@@ -164,6 +164,8 @@ export type {
 export { validateCrossFile, validateProject } from './lint/cross-file.js';
 export type { ProjectInput } from './lint/cross-file.js';
 export { lintGeometry } from './lint/voxel-rules.js';
+export { CROSS_FILE, lintProject } from './lint/project-lint.js';
+export type { FileDiagnostic, ProjectLintInput } from './lint/project-lint.js';
 export type {
   Diagnostic,
   LintRuleId,
