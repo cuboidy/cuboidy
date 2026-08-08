@@ -84,9 +84,16 @@ export function renderTile(
     return { x: cx + pr.sx * s, y: cy - pr.sy * s, depth: pr.depth };
   };
 
-  for (const quad of scene.quads) {
-    // Back-face cull: keep faces whose normal points toward the camera.
-    if (dot(quad.normal, proj.viewDir) >= 0) continue;
+  // SPEC §7.4: opaque first with depth writes, then the translucent faces
+  // back to front with depth test only. Sorting by the mean corner depth is
+  // exact here — an orthographic camera over axis-aligned voxel faces gives
+  // no interpenetration to get wrong within a part, and parts meet at their
+  // surfaces. Doing it the other way round would let a near pane of glass
+  // occlude the wall behind it before the wall was drawn.
+  const visible = scene.quads.filter(
+    (q) => dot(q.normal, proj.viewDir) < 0, // back-face cull
+  );
+  const draw = (quad: (typeof visible)[number]): void => {
     const intensity = shade(quad.normal);
     const rgb: Rgb = [
       quad.color[0] * intensity,
@@ -99,8 +106,20 @@ export function renderTile(
       { x: number; y: number; depth: number },
       { x: number; y: number; depth: number },
     ];
-    fb.fillTriangle(v[0], v[1], v[2], rgb);
-    fb.fillTriangle(v[0], v[2], v[3], rgb);
+    fb.fillTriangle(v[0], v[1], v[2], rgb, quad.alpha);
+    fb.fillTriangle(v[0], v[2], v[3], rgb, quad.alpha);
+  };
+
+  for (const quad of visible) if (quad.alpha >= 1) draw(quad);
+
+  const translucent = visible.filter((q) => q.alpha < 1);
+  if (translucent.length > 0) {
+    const depthOf = (q: (typeof visible)[number]): number =>
+      q.corners.reduce((sum, c) => sum + proj.project(c).depth, 0) / 4;
+    translucent
+      .map((q) => ({ q, d: depthOf(q) }))
+      .sort((a, b) => b.d - a.d) // farthest first
+      .forEach(({ q }) => draw(q));
   }
 
   const tile = fb.downsample(opts.ss);

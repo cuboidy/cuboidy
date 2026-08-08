@@ -5,6 +5,30 @@ the spec as it stands now.
 
 ## v0.9 (draft — current)
 
+### Translucent palette colors
+
+A palette color's alpha channel now means opacity. `#RGBA` and `#RRGGBBAA`
+were already legal and already parsed — what they meant was never written
+down, and every renderer discarded the value. §7.4 defines it, and the two
+rules that make it drawable:
+
+- **A face is dropped only when its neighbour hides it** — the neighbour is
+  opaque, or it is the very same palette index. Being merely solid is not
+  enough; that rule would put a hole in the wall behind a pane of glass.
+- **A run of one translucent color is one surface, whatever its thickness.**
+  Three voxels of water read exactly as one does. Depth is expressed by
+  choosing a denser color, not by stacking, and an implementation MUST NOT
+  blend per layer.
+
+Renderers draw the opaque faces first with depth writes, then the translucent
+ones back to front with the depth test but no write. `buildMesh` orders its
+indices opaque-first and reports the split so the two passes are two ranges
+of one buffer.
+
+A fully transparent color (`00`) renders nothing, but its voxels are still
+voxels: they occupy their cells, count toward the bounding box, and answer a
+coordinate query. Use `.` for air.
+
 ### Rules tightened ahead of the second implementation
 
 A pre-port audit of the reference implementation found several places where

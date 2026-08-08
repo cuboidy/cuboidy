@@ -39,7 +39,19 @@ export class Framebuffer {
   // sampled at their centers (x+0.5, y+0.5). Depth is interpolated with
   // screen-space barycentrics — adequate for orthographic projection,
   // where depth is linear in screen space.
-  fillTriangle(a: ScreenVert, b: ScreenVert, c: ScreenVert, rgb: Rgb): void {
+  // `alpha` < 1 blends over what is already there and leaves the depth
+  // buffer alone (SPEC §7.4): a translucent surface must not occlude the
+  // ones behind it, which have not been drawn yet. The caller is
+  // responsible for drawing those first — opaque pass, then translucent
+  // faces back to front.
+  fillTriangle(
+    a: ScreenVert,
+    b: ScreenVert,
+    c: ScreenVert,
+    rgb: Rgb,
+    alpha = 1,
+  ): void {
+    if (alpha <= 0) return;
     const minX = Math.max(0, Math.floor(Math.min(a.x, b.x, c.x)));
     const maxX = Math.min(this.width - 1, Math.ceil(Math.max(a.x, b.x, c.x)));
     const minY = Math.max(0, Math.floor(Math.min(a.y, b.y, c.y)));
@@ -71,14 +83,21 @@ export class Framebuffer {
         }
         const d = w0 * a.depth + w1 * b.depth + w2 * c.depth;
         const i = y * this.width + x;
-        if (d < this.depth[i]!) {
+        if (d >= this.depth[i]!) continue;
+        const o = i * 4;
+        if (alpha >= 1) {
           this.depth[i] = d;
-          const o = i * 4;
           this.color[o] = r;
           this.color[o + 1] = g;
           this.color[o + 2] = bch;
           this.color[o + 3] = 255;
+          continue;
         }
+        // Source-over, and no depth write — see the note on the signature.
+        this.color[o] = blend8(this.color[o]!, r, alpha);
+        this.color[o + 1] = blend8(this.color[o + 1]!, g, alpha);
+        this.color[o + 2] = blend8(this.color[o + 2]!, bch, alpha);
+        this.color[o + 3] = 255;
       }
     }
   }
@@ -224,4 +243,9 @@ function to8(c: number): number {
   if (c <= 0) return 0;
   if (c >= 1) return 255;
   return Math.round(c * 255);
+}
+
+// One channel of source-over, on 0..255 bytes.
+function blend8(dst: number, src: number, alpha: number): number {
+  return Math.round(dst + (src - dst) * alpha);
 }

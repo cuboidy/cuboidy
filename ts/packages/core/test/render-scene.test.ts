@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildSceneFromParts, type OrientedPart } from '../src/render/scene.js';
+import { Framebuffer } from '../src/render/framebuffer.js';
 import { QUAT_IDENTITY, quatFromEulerZXYDeg } from '../src/rig-transform.js';
 import { AIR } from '../src/geometry/voxel-row.js';
 import type { Palette, Part } from '../src/geometry/types.js';
@@ -139,5 +140,93 @@ describe('buildSceneFromParts — unresolved color (§7.4)', () => {
       { r: 255, g: 0, b: 0, a: 255 },
     ]);
     for (const q of scene.quads) expect(q.color).toEqual([1, 0, 0]);
+  });
+});
+
+// SPEC §7.4: alpha rides the palette entry, and it decides which faces
+// exist as well as how they are drawn.
+describe('buildSceneFromParts — translucency (§7.4)', () => {
+  const OPAQUE = { r: 200, g: 80, b: 40, a: 255 };
+  const GLASS = { r: 60, g: 160, b: 255, a: 0x55 };
+  const flat = { pos: [0, 0, 0] as [number, number, number], quat: [0, 0, 0, 1] as [number, number, number, number] };
+  const strip = (cells: number[]) => ({
+    part: {
+      name: 'p',
+      size: { w: cells.length, h: 1, d: 1 },
+      pivot: { pos: { x: 0, y: 0, z: 0 } },
+      sockets: [],
+      voxels: [[cells]],
+    },
+    remap: null,
+    transform: flat,
+  });
+
+  it('carries the palette entry alpha onto every quad', () => {
+    const s = buildSceneFromParts([strip([0, 1])], [OPAQUE, GLASS]);
+    const alphas = new Set(s.quads.map((q) => q.alpha));
+    expect([...alphas].sort()).toEqual([0x55 / 255, 1]);
+  });
+
+  it('keeps an opaque face a translucent neighbour would have hidden', () => {
+    // The whole point: the wall behind the glass must still have a face.
+    const withGlass = buildSceneFromParts([strip([0, 1])], [OPAQUE, GLASS]);
+    const bothOpaque = buildSceneFromParts([strip([0, 1])], [OPAQUE, OPAQUE]);
+    expect(withGlass.quads.length).toBeGreaterThan(bothOpaque.quads.length);
+  });
+
+  it('drops the faces inside a run of one translucent color', () => {
+    const one = buildSceneFromParts([strip([0])], [GLASS]);
+    const three = buildSceneFromParts([strip([0, 0, 0])], [GLASS]);
+    expect(three.quads.length).toBe(one.quads.length * 3 - 4);
+  });
+
+  it('leaves an opaque model at alpha 1', () => {
+    const s = buildSceneFromParts([strip([0, 0])], [OPAQUE]);
+    expect(s.quads.every((q) => q.alpha === 1)).toBe(true);
+  });
+});
+
+// The blend itself, and the depth rule that makes back-to-front work.
+describe('Framebuffer.fillTriangle — alpha (§7.4)', () => {
+  const tri = (fb: Framebuffer, depth: number, rgb: [number, number, number], alpha?: number) => {
+    const v = (x: number, y: number) => ({ x, y, depth });
+    fb.fillTriangle(v(0, 0), v(8, 0), v(0, 8), rgb, alpha);
+    fb.fillTriangle(v(8, 0), v(8, 8), v(0, 8), rgb, alpha);
+  };
+  const pixel = (fb: Framebuffer) => {
+    const o = (2 * fb.width + 2) * 4;
+    return [fb.color[o], fb.color[o + 1], fb.color[o + 2]];
+  };
+
+  it('blends source-over instead of replacing', () => {
+    const fb = new Framebuffer(8, 8, [0, 0, 0]);
+    tri(fb, 0.9, [1, 0, 0]); // opaque red behind
+    tri(fb, 0.5, [0, 0, 1], 0.5); // half blue in front
+    expect(pixel(fb)).toEqual([128, 0, 128]);
+  });
+
+  it('does not write depth, so a farther face still draws after it', () => {
+    // Exactly what the back-to-front pass relies on: two translucent
+    // sheets both land, whatever order the depth buffer would have
+    // allowed.
+    const fb = new Framebuffer(8, 8, [0, 0, 0]);
+    tri(fb, 0.9, [1, 0, 0], 0.5);
+    tri(fb, 0.5, [0, 0, 1], 0.5);
+    const [r, , b] = pixel(fb);
+    expect(r).toBeGreaterThan(0);
+    expect(b).toBeGreaterThan(0);
+  });
+
+  it('an opaque face still occludes what comes after it', () => {
+    const fb = new Framebuffer(8, 8, [0, 0, 0]);
+    tri(fb, 0.5, [1, 0, 0]); // near, opaque
+    tri(fb, 0.9, [0, 0, 1], 0.5); // farther — depth-rejected
+    expect(pixel(fb)).toEqual([255, 0, 0]);
+  });
+
+  it('alpha 0 draws nothing at all', () => {
+    const fb = new Framebuffer(8, 8, [0, 0, 0]);
+    tri(fb, 0.5, [1, 1, 1], 0);
+    expect(pixel(fb)).toEqual([0, 0, 0]);
   });
 });

@@ -75,3 +75,4 @@ describe('encodePng', () => {
     expect(encodePng(4, 4, rgba).equals(encodePng(4, 4, rgba))).toBe(true);
   });
 });
+

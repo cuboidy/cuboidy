@@ -143,3 +143,73 @@ describe('buildMesh — unresolved color', () => {
     expect([mesh.colors[0], mesh.colors[1], mesh.colors[2]]).toEqual([1, 0, 0]);
   });
 });
+
+// SPEC §7.4: alpha on a palette entry is opacity, and it changes which
+// faces exist — a face survives unless its neighbour HIDES it.
+describe('buildMesh — translucent palette entries (§7.4)', () => {
+  const OPAQUE = { r: 200, g: 80, b: 40, a: 255 };
+  const GLASS = { r: 60, g: 160, b: 255, a: 0x55 };
+  const GLASS2 = { r: 60, g: 255, b: 160, a: 0x55 };
+
+  // voxels are [Y][Z][X]; every part here is one row deep and one tall.
+  const strip = (cells: number[]) => ({
+    name: 'p',
+    size: { w: cells.length, h: 1, d: 1 },
+    pivot: { pos: { x: 0, y: 0, z: 0 } },
+    sockets: [],
+    voxels: [[cells]],
+  });
+
+  it('keeps the opaque face a translucent neighbour would have hidden', () => {
+    // [opaque][glass]. Six faces each, minus the two the OLD rule dropped
+    // for merely being adjacent. The opaque one must survive, or the wall
+    // behind the glass has a hole in it.
+    const solo = buildMesh(strip([0]), [OPAQUE]);
+    const pair = buildMesh(strip([0, 1]), [OPAQUE, GLASS]);
+    // 6 + 6 faces, less the ONE the glass drops toward the opaque block.
+    expect(pair.indices.length).toBe(solo.indices.length * 2 - 6);
+  });
+
+  it('drops both faces between two voxels of one translucent color', () => {
+    // A run of one color is one surface, whatever its thickness — so this
+    // has exactly the face count of a single glass voxel widened.
+    const one = buildMesh(strip([0]), [GLASS]);
+    const three = buildMesh(strip([0, 0, 0]), [GLASS]);
+    expect(three.indices.length).toBe(one.indices.length * 3 - 4 * 6);
+  });
+
+  it('keeps the faces between two DIFFERENT translucent colors', () => {
+    const pair = buildMesh(strip([0, 1]), [GLASS, GLASS2]);
+    const solo = buildMesh(strip([0]), [GLASS]);
+    expect(pair.indices.length).toBe(solo.indices.length * 2);
+  });
+
+  it('orders indices opaque-first and reports the split', () => {
+    const m = buildMesh(strip([0, 1]), [OPAQUE, GLASS]);
+    expect(m.opaqueIndexCount).toBeGreaterThan(0);
+    expect(m.opaqueIndexCount).toBeLessThan(m.indices.length);
+    // Every vertex the opaque range touches is fully opaque, and every one
+    // the remainder touches is not — that is what makes the two passes two
+    // ranges of one buffer.
+    for (let i = 0; i < m.opaqueIndexCount; i++) {
+      expect(m.alphas[m.indices[i]!]).toBe(1);
+    }
+    for (let i = m.opaqueIndexCount; i < m.indices.length; i++) {
+      expect(m.alphas[m.indices[i]!]).toBeLessThan(1);
+    }
+  });
+
+  it('leaves a fully opaque model with one pass and alpha 1', () => {
+    const m = buildMesh(strip([0, 0]), [OPAQUE]);
+    expect(m.opaqueIndexCount).toBe(m.indices.length);
+    expect([...m.alphas].every((a) => a === 1)).toBe(true);
+  });
+
+  it('treats an unresolved index as opaque magenta', () => {
+    const m = buildMesh(strip([5]), [GLASS]);
+    expect(m.opaqueIndexCount).toBe(m.indices.length);
+    expect(m.colors[0]).toBe(1);
+    expect(m.colors[1]).toBe(0);
+    expect(m.colors[2]).toBe(1);
+  });
+});

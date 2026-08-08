@@ -24,6 +24,9 @@ export interface Quad {
   corners: readonly [Vec3, Vec3, Vec3, Vec3];
   normal: Vec3;
   color: Rgb; // base sRGB color, 0..1
+  // SPEC §7.4 opacity, 0..1. 1 for every face of an opaque color, so a
+  // renderer that ignores it draws what it always did.
+  alpha: number;
 }
 
 export interface Scene {
@@ -78,6 +81,8 @@ export function buildSceneFromParts(
   palette: Palette,
 ): Scene {
   const srgb = palette.map((c) => [c.r / 255, c.g / 255, c.b / 255] as Rgb);
+  const alphaOf = palette.map((c) => c.a / 255);
+  const opaque = palette.map((c) => c.a === 255);
 
   const quads: Quad[] = [];
   let minX = Infinity, minY = Infinity, minZ = Infinity;
@@ -85,9 +90,19 @@ export function buildSceneFromParts(
 
   for (const { part, remap, transform, scale } of parts) {
     const { w, h, d } = part.size;
-    const solid = (x: number, y: number, z: number): boolean =>
-      x >= 0 && x < w && y >= 0 && y < h && z >= 0 && z < d &&
-      part.voxels[y]![z]![x]! !== AIR;
+    const at = (x: number, y: number, z: number): number =>
+      x >= 0 && x < w && y >= 0 && y < h && z >= 0 && z < d
+        ? part.voxels[y]![z]![x]!
+        : AIR;
+    // The §7.4 hide rule, identical to mesh.ts's: a neighbour hides a face
+    // when it is opaque or the very same index. Merely being solid is not
+    // enough, or a wall behind glass would lose the face you look at.
+    const hidden = (n: number, self: number): boolean => {
+      if (n === AIR) return false;
+      if (n === self) return true;
+      const eff = remap === null ? n : (remap[n] ?? n);
+      return opaque[eff] ?? true;
+    };
     const piv: Vec3 = [part.pivot.pos.x, part.pivot.pos.y, part.pivot.pos.z];
     // §7.7 / §6.5, stated once in rig-transform.ts — the same call
     // socketFrameOn makes, so a socket cannot drift from the voxels it sits
@@ -112,8 +127,10 @@ export function buildSceneFromParts(
           // §7.4 exists to forbid, since a port's caller may not.
           const effIdx = remap === null ? idx : (remap[idx] ?? idx);
           const color = srgb[effIdx] ?? UNRESOLVED_COLOR;
+          // An unresolved index is opaque magenta, so opaque here too.
+          const alpha = alphaOf[effIdx] ?? 1;
           for (const f of FACES) {
-            if (solid(x + f.d[0], y + f.d[1], z + f.d[2])) continue;
+            if (hidden(at(x + f.d[0], y + f.d[1], z + f.d[2]), idx)) continue;
             const corners = f.corners.map((c) =>
               toWorld(x + c[0], y + c[1], z + c[2]),
             ) as [Vec3, Vec3, Vec3, Vec3];
@@ -121,6 +138,7 @@ export function buildSceneFromParts(
               corners,
               normal: quatRotateVec3(transform.quat, f.normal),
               color,
+              alpha,
             });
             for (const c of corners) {
               if (c[0] < minX) minX = c[0];

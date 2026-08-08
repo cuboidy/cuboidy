@@ -12,7 +12,17 @@ export interface MeshData {
   positions: Float32Array;
   normals: Float32Array;
   colors: Float32Array;
+  // SPEC §7.4 opacity, 0..1, one per vertex. Constant across a face, since
+  // it comes from the voxel's palette entry. Kept beside `colors` rather
+  // than folded into it so a consumer that only draws opaque models can
+  // ignore it and keep its three-float stride.
+  alphas: Float32Array;
   indices: Uint16Array | Uint32Array;
+  // Indices are ordered OPAQUE FIRST: draw `[0, opaqueIndexCount)` with
+  // depth writes on, then the remainder blended, back to front, with depth
+  // writes off. A model with no translucent color has
+  // `opaqueIndexCount === indices.length` and needs no second pass.
+  opaqueIndexCount: number;
 }
 
 interface FaceDef {
@@ -44,14 +54,39 @@ function voxelAt(part: Part, x: number, y: number, z: number): number {
   return part.voxels[y]![z]![x]!;
 }
 
+// SPEC §7.4: a face is dropped only when its neighbour HIDES it — the
+// neighbour is opaque, or it is the very same palette index.
+//
+// Both halves matter and neither is arbitrary. Dropping a face because the
+// neighbour is merely solid is what would put a hole in the wall behind a
+// pane of glass: the wall's face toward the glass would vanish and the glass
+// would look onto nothing. And keeping the faces between two voxels of one
+// translucent color would blend that color once per layer, so a three-deep
+// body of water would read darker than a one-deep one — §7.4 says a run of
+// one color is one surface, whatever its thickness.
+function hiddenBy(
+  neighbour: number,
+  self: number,
+  opaque: readonly boolean[],
+): boolean {
+  if (neighbour === AIR) return false;
+  if (neighbour === self) return true;
+  return opaque[neighbour] ?? true; // an unresolved index draws opaque magenta
+}
+
 export function buildMesh(part: Part, palette: Palette): MeshData {
   const positions: number[] = [];
   const normals: number[] = [];
   const colors: number[] = [];
-  const indices: number[] = [];
+  const alphas: number[] = [];
+  // Two index runs, concatenated at the end so the opaque pass is a prefix.
+  const opaqueIdx: number[] = [];
+  const blendIdx: number[] = [];
   let vertCount = 0;
 
   const paletteSrgb = palette.map((c) => [c.r / 255, c.g / 255, c.b / 255] as const);
+  const paletteAlpha = palette.map((c) => c.a / 255);
+  const paletteOpaque = palette.map((c) => c.a === 255);
 
   for (let y = 0; y < part.size.h; y++) {
     for (let z = 0; z < part.size.d; z++) {
@@ -65,14 +100,19 @@ export function buildMesh(part: Part, palette: Palette): MeshData {
         // and a runtime carries no validation. Ports must match this, not
         // index into their palette and throw.
         const [r, g, b] = paletteSrgb[idx] ?? ([1, 0, 1] as const);
+        // An unresolved index is opaque magenta, so it is fully opaque too.
+        const a = paletteAlpha[idx] ?? 1;
+        const into = a < 1 ? blendIdx : opaqueIdx;
         for (const face of FACES) {
-          if (voxelAt(part, x + face.d[0], y + face.d[1], z + face.d[2]) !== AIR) continue;
+          const n = voxelAt(part, x + face.d[0], y + face.d[1], z + face.d[2]);
+          if (hiddenBy(n, idx, paletteOpaque)) continue;
           for (const corner of face.corners) {
             positions.push(x + corner[0], y + corner[1], z + corner[2]);
             normals.push(face.normal[0], face.normal[1], face.normal[2]);
             colors.push(r, g, b);
+            alphas.push(a);
           }
-          indices.push(
+          into.push(
             vertCount, vertCount + 1, vertCount + 2,
             vertCount, vertCount + 2, vertCount + 3,
           );
@@ -82,10 +122,13 @@ export function buildMesh(part: Part, palette: Palette): MeshData {
     }
   }
 
+  const indices = [...opaqueIdx, ...blendIdx];
   return {
     positions: new Float32Array(positions),
     normals: new Float32Array(normals),
     colors: new Float32Array(colors),
+    alphas: new Float32Array(alphas),
     indices: vertCount > 65535 ? new Uint32Array(indices) : new Uint16Array(indices),
+    opaqueIndexCount: opaqueIdx.length,
   };
 }
