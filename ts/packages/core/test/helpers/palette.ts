@@ -14,5 +14,5 @@ export function rgba(
   a = 255,
   material: Partial<Material> = {},
 ): PaletteEntry {
-  return { r, g, b, a, ...MATTE, ...material };
+  return { color: { r, g, b, a }, material: { ...MATTE, ...material } };
 }

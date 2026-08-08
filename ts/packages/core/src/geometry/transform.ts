@@ -113,13 +113,13 @@ export function duplicatePart(part: Part, name: string): Part {
 // merging them would repaint one of the parts on the way in.
 function sameEntry(a: PaletteEntry, b: PaletteEntry): boolean {
   return (
-    a.r === b.r &&
-    a.g === b.g &&
-    a.b === b.b &&
-    a.a === b.a &&
-    a.metallic === b.metallic &&
-    a.roughness === b.roughness &&
-    a.emissive === b.emissive
+    a.color.r === b.color.r &&
+    a.color.g === b.color.g &&
+    a.color.b === b.color.b &&
+    a.color.a === b.color.a &&
+    a.material.metallic === b.material.metallic &&
+    a.material.roughness === b.material.roughness &&
+    a.material.emissive === b.material.emissive
   );
 }
 

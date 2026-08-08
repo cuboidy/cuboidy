@@ -34,7 +34,7 @@ function geometryWith(palette: string): string {
 describe('palette entry codec', () => {
   it('defaults a bare colour to matte', () => {
     expect(paletteEntryFrom('#3AA0FF')).toEqual(rgba(0x3a, 0xa0, 0xff));
-    expect(isMatte(paletteEntryFrom('#3AA0FF')!)).toBe(true);
+    expect(isMatte(paletteEntryFrom('#3AA0FF')!.material)).toBe(true);
   });
 
   it('matches three.js MeshStandardMaterial defaults', () => {
@@ -51,8 +51,8 @@ describe('palette entry codec', () => {
 
   it('keeps alpha and material independent', () => {
     const e = paletteEntryFrom({ color: '#3AA0FF66', emissive: 0.5 })!;
-    expect(e.a).toBe(0x66);
-    expect(e.emissive).toBe(0.5);
+    expect(e.color.a).toBe(0x66);
+    expect(e.material.emissive).toBe(0.5);
   });
 
   it('writes a matte entry back as a bare string', () => {

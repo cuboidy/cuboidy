@@ -9,8 +9,8 @@ import { Mesh, PerspectiveCamera, Vector3 } from 'three';
 // renderer sorts (render/snapshot.ts), so the editor was disagreeing with
 // the renderer that defines what a model looks like.
 
-const T: Palette[number] = { r: 58, g: 160, b: 255, a: 0x66, ...MATTE };
-const O: Palette[number] = { r: 184, g: 190, b: 198, a: 255, ...MATTE };
+const T: Palette[number] = { color: { r: 58, g: 160, b: 255, a: 0x66 }, material: MATTE };
+const O: Palette[number] = { color: { r: 184, g: 190, b: 198, a: 255 }, material: MATTE };
 const PALETTE: Palette = [T, O];
 
 // A column h voxels tall of one palette index, pivot at the origin corner.
@@ -146,10 +146,12 @@ describe('makeTranslucentSorter — two translucent materials in one part', () =
   // depth sort interleaves them and the fixed group boundaries stop
   // describing the buffer.
   const GLASS_A: Palette[number] = {
-    r: 58, g: 160, b: 255, a: 0x66, ...MATTE,
+    color: { r: 58, g: 160, b: 255, a: 0x66 },
+    material: MATTE,
   };
   const GLASS_B: Palette[number] = {
-    r: 58, g: 160, b: 255, a: 0x66, ...MATTE, emissive: 0.7,
+    color: { r: 58, g: 160, b: 255, a: 0x66 },
+    material: { ...MATTE, emissive: 0.7 },
   };
   const TWO: Palette = [GLASS_A, GLASS_B];
 

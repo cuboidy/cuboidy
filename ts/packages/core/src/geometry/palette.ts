@@ -89,12 +89,14 @@ export function paletteEntryFrom(
   const hex = typeof doc === 'string' ? doc : doc.color;
   const color = parseHexColor(hex);
   if (color === null) return null;
-  if (typeof doc === 'string') return { ...color, ...MATTE };
+  if (typeof doc === 'string') return { color, material: MATTE };
   return {
-    ...color,
-    metallic: doc.metallic ?? MATTE.metallic,
-    roughness: doc.roughness ?? MATTE.roughness,
-    emissive: doc.emissive ?? MATTE.emissive,
+    color,
+    material: {
+      metallic: doc.metallic ?? MATTE.metallic,
+      roughness: doc.roughness ?? MATTE.roughness,
+      emissive: doc.emissive ?? MATTE.emissive,
+    },
   };
 }
 
@@ -111,12 +113,13 @@ export function paletteEntryFrom(
 export function serializePaletteEntry(
   e: PaletteEntry,
 ): string | PaletteEntryDoc {
-  const color = serializeColor(e);
-  if (isMatte(e)) return color;
+  const color = serializeColor(e.color);
+  const m = e.material;
+  if (isMatte(m)) return color;
   const out: PaletteEntryDoc = { color };
-  if (e.metallic !== MATTE.metallic) out.metallic = e.metallic;
-  if (e.roughness !== MATTE.roughness) out.roughness = e.roughness;
-  if (e.emissive !== MATTE.emissive) out.emissive = e.emissive;
+  if (m.metallic !== MATTE.metallic) out.metallic = m.metallic;
+  if (m.roughness !== MATTE.roughness) out.roughness = m.roughness;
+  if (m.emissive !== MATTE.emissive) out.emissive = m.emissive;
   return out;
 }
 

@@ -14,10 +14,11 @@ import { indexToChar } from '../geometry/voxel-row.js';
 
 // `metallic=1 roughness=0.08`, or '' for a plain matte entry.
 function materialOf(e: PaletteEntry): string {
+  const m = e.material;
   const parts: string[] = [];
-  if (e.metallic !== MATTE.metallic) parts.push(`metallic=${e.metallic}`);
-  if (e.roughness !== MATTE.roughness) parts.push(`roughness=${e.roughness}`);
-  if (e.emissive !== MATTE.emissive) parts.push(`emissive=${e.emissive}`);
+  if (m.metallic !== MATTE.metallic) parts.push(`metallic=${m.metallic}`);
+  if (m.roughness !== MATTE.roughness) parts.push(`roughness=${m.roughness}`);
+  if (m.emissive !== MATTE.emissive) parts.push(`emissive=${m.emissive}`);
   return parts.join(' ');
 }
 
@@ -26,8 +27,8 @@ function entries(
 ): Array<{ char: string; hex: string; material: string }> {
   return palette.map((c, i) => ({
     char: indexToChar(i),
-    hex: serializeColor(c),
-    material: isMatte(c) ? '' : materialOf(c),
+    hex: serializeColor(c.color),
+    material: isMatte(c.material) ? '' : materialOf(c),
   }));
 }
 

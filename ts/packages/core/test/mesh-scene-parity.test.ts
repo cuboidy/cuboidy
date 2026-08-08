@@ -135,6 +135,6 @@ describe('mesh.ts and render/scene.ts emit the same faces', () => {
     // Each side carries its OWN colour, which is what makes culling pick the
     // colour you are looking through rather than the one behind it.
     const plusX = onPlane.find((q) => q.normal[0] === 1)!;
-    expect(plusX.color[2]).toBeCloseTo(A.b / 255, 6); // blue keeps +X
+    expect(plusX.color[2]).toBeCloseTo(A.color.b / 255, 6); // blue keeps +X
   });
 });

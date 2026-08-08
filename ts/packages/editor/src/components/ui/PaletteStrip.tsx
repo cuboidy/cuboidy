@@ -31,7 +31,7 @@ export function PaletteStrip({ palette, active, onPick }: Props) {
           aria-selected={i === active}
           className={`strip-swatch${i === active ? ' active' : ''}`}
           style={{
-            backgroundColor: `rgba(${c.r}, ${c.g}, ${c.b}, ${c.a / 255})`,
+            backgroundColor: `rgba(${c.color.r}, ${c.color.g}, ${c.color.b}, ${c.color.a / 255})`,
           }}
           title={`Color ${i}`}
           onClick={() => onPick(i)}

@@ -623,7 +623,7 @@ describe('writeModelPalette — the manifest palette, wherever it lives', () => 
   const referencedModel = () =>
     modelWith('palette.json', { 'palette.json': PALETTE });
 
-  const GREEN = [{ r: 0, g: 255, b: 0, a: 255, ...MATTE }];
+  const GREEN = [{ color: { r: 0, g: 255, b: 0, a: 255 }, material: MATTE }];
 
   it('spells the colors out when the manifest declares them inline', () => {
     const next = writeModelPalette(inlineModel(), GREEN);
@@ -644,7 +644,10 @@ describe('writeModelPalette — the manifest palette, wherever it lives', () => 
   // save reset the palette to matte — and because the panel re-reads what
   // it just wrote, it looked like the material SLIDER was broken.
   const POLISHED = [
-    { r: 0xc0, g: 0xc4, b: 0xcc, a: 255, ...MATTE, metallic: 1, roughness: 0.08 },
+    {
+      color: { r: 0xc0, g: 0xc4, b: 0xcc, a: 255 },
+      material: { ...MATTE, metallic: 1, roughness: 0.08 },
+    },
   ];
 
   it('keeps the material when the manifest declares colors inline', () => {
@@ -801,7 +804,7 @@ describe('writeFile — text and derived state move together', () => {
     );
     for (const path of ['body.json', 'limbs.json']) {
       expect(next.geometries.get(path)?.palette).toHaveLength(3);
-      expect(next.geometries.get(path)?.palette[0]).toMatchObject({ r: 0x11 });
+      expect(next.geometries.get(path)?.palette[0]?.color).toMatchObject({ r: 0x11 });
     }
   });
 

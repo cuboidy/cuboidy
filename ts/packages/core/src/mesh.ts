@@ -170,15 +170,15 @@ export function buildMesh(part: Part, palette: Palette): MeshData {
     return buckets[at]!.idx;
   };
 
-  const paletteSrgb = palette.map((c) => [c.r / 255, c.g / 255, c.b / 255] as const);
-  const paletteAlpha = palette.map((c) => c.a / 255);
-  const paletteOpaque = palette.map((c) => c.a === 255);
+  const paletteSrgb = palette.map(
+    (e) => [e.color.r / 255, e.color.g / 255, e.color.b / 255] as const,
+  );
+  const paletteAlpha = palette.map((e) => e.color.a / 255);
+  const paletteOpaque = palette.map((e) => e.color.a === 255);
   const paletteMaterial = palette.map(
-    (c): MeshMaterial => ({
-      metallic: c.metallic,
-      roughness: c.roughness,
-      emissive: c.emissive,
-      translucent: c.a < 255,
+    (e): MeshMaterial => ({
+      ...e.material,
+      translucent: e.color.a < 255,
     }),
   );
 

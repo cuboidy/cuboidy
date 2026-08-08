@@ -39,10 +39,22 @@ export interface Material {
   emissive: number; // 0..1, scales `color` as self-illumination
 }
 
-// A palette slot: the colour, and how it responds to light. Extends Color so
-// the hex codec (parseHexColor / serializeColor) keeps dealing in colours
-// only — the material rides alongside, it is not part of the colour value.
-export interface PaletteEntry extends Color, Material {}
+// A palette slot: the colour, and how it responds to light.
+//
+// COMPOSED, not flattened. Two reasons, and the second is the one that
+// settled it. A flat record mixes units — r/g/b/a are 0..255 integers,
+// metallic/roughness/emissive are 0..1 floats — and nothing in the type says
+// which is which. And the C# port is meant to be readable ALONGSIDE this
+// one; a `record PaletteEntry(Color Color, Material Material)` maps across
+// unchanged, where flattening leaves each implementation to invent its own
+// shape and the two stop being comparable line for line.
+//
+// It also makes the hex codec's boundary real: parseHexColor and
+// serializeColor deal in `Color` and never see a material.
+export interface PaletteEntry {
+  color: Color;
+  material: Material;
+}
 
 export type Palette = readonly PaletteEntry[];
 

@@ -209,7 +209,9 @@ export function VoxelScene({
     const pal = partPalettes?.get(selectedPart) ?? geometry.palette;
     const c = pal[activeColorIndex];
     const color =
-      c === undefined ? 0xffffff : (c.r << 16) | (c.g << 8) | c.b;
+      c === undefined
+        ? 0xffffff
+        : (c.color.r << 16) | (c.color.g << 8) | c.color.b;
     return { cells, color };
   }, [
     tool,

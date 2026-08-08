@@ -103,9 +103,9 @@ describe('parsePaletteFile', () => {
 // out and read in again.
 describe('palette alpha round-trip (§7.4)', () => {
   it('writes the short form for an opaque color and the long one otherwise', () => {
-    expect(serializeColor(rgba(0x3a, 0xa0, 0xff, 255))).toBe('#3AA0FF');
-    expect(serializeColor(rgba(0x3a, 0xa0, 0xff, 0x55))).toBe('#3AA0FF55');
-    expect(serializeColor(rgba(0, 0, 0, 0))).toBe('#00000000');
+    expect(serializeColor(rgba(0x3a, 0xa0, 0xff, 255).color)).toBe('#3AA0FF');
+    expect(serializeColor(rgba(0x3a, 0xa0, 0xff, 0x55).color)).toBe('#3AA0FF55');
+    expect(serializeColor(rgba(0, 0, 0, 0).color)).toBe('#00000000');
   });
 
   it('survives parse → serialize → parse for every alpha', () => {
@@ -120,6 +120,6 @@ describe('palette alpha round-trip (§7.4)', () => {
     const r = parsePaletteFile({ colors: ['#8AF8', '#1A1A1AFF', '#CCC'] });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.value.map((c) => c.a)).toEqual([0x88, 255, 255]);
+    expect(r.value.map((e) => e.color.a)).toEqual([0x88, 255, 255]);
   });
 });

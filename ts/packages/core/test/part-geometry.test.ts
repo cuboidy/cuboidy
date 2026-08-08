@@ -143,7 +143,7 @@ describe('resolvePartGeometry — palette scoping (§6.13)', () => {
     });
     const r = resolveProject(m, new Map([['shapes.json', cell('body', [GREEN])]]));
     expect(r.parts.get('body')?.palette).toHaveLength(1);
-    expect(r.parts.get('body')?.palette[0]).toMatchObject({ r: 0, g: 255, b: 0 });
+    expect(r.parts.get('body')?.palette[0]?.color).toMatchObject({ r: 0, g: 255, b: 0 });
   });
 
   it('resolves a manifest palette written as a §8 reference', () => {

@@ -87,16 +87,12 @@ export function buildSceneFromParts(
   parts: readonly OrientedPart[],
   palette: Palette,
 ): Scene {
-  const srgb = palette.map((c) => [c.r / 255, c.g / 255, c.b / 255] as Rgb);
-  const alphaOf = palette.map((c) => c.a / 255);
-  const materialOf = palette.map(
-    (c): Material => ({
-      metallic: c.metallic,
-      roughness: c.roughness,
-      emissive: c.emissive,
-    }),
+  const srgb = palette.map(
+    (e) => [e.color.r / 255, e.color.g / 255, e.color.b / 255] as Rgb,
   );
-  const opaque = palette.map((c) => c.a === 255);
+  const alphaOf = palette.map((e) => e.color.a / 255);
+  const materialOf = palette.map((e): Material => e.material);
+  const opaque = palette.map((e) => e.color.a === 255);
 
   const quads: Quad[] = [];
   let minX = Infinity, minY = Infinity, minZ = Infinity;

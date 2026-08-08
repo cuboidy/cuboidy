@@ -309,7 +309,8 @@ function buildEffectivePalette(
 // the same rgb polished and unpolished are two different palette entries,
 // and folding them together would silently repaint one of the parts.
 function entryKey(e: PaletteEntry): string {
-  return `${e.r},${e.g},${e.b},${e.a},${e.metallic},${e.roughness},${e.emissive}`;
+  const { color: c, material: m } = e;
+  return `${c.r},${c.g},${c.b},${c.a},${m.metallic},${m.roughness},${m.emissive}`;
 }
 
 function assembleWorld(

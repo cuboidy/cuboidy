@@ -191,7 +191,7 @@ describe('resolveProjectRefs — palette references', () => {
     );
     const g = refs.geometries.get('voxels.json');
     expect(g?.palette).toHaveLength(2);
-    expect(g?.palette[0]).toMatchObject({ r: 0x11, g: 0x22, b: 0x33 });
+    expect(g?.palette[0]?.color).toMatchObject({ r: 0x11, g: 0x22, b: 0x33 });
     expect(g?.paletteRef).toBe('palette.json');
     expect(refs.projectErrors).toEqual([]);
   });

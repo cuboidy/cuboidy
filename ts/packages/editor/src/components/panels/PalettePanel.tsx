@@ -128,7 +128,11 @@ export function PalettePanel({
     onChange(
       // The picker only knows rgb, so alpha AND the §7.4 material stay as
       // they were — recolouring a slot must not silently unpolish it.
-      palette.map((c, i) => (i === index ? { ...c, ...picked, a: c.a } : c)),
+      palette.map((c, i) =>
+        i === index
+          ? { ...c, color: { ...picked, a: c.color.a } }
+          : c,
+      ),
       `palette:color:${index}`,
     );
   };
@@ -136,7 +140,9 @@ export function PalettePanel({
   const handleEditAlpha = (index: number, a: number) => {
     if (disabled) return;
     onChange(
-      palette.map((c, i) => (i === index ? { ...c, a } : c)),
+      palette.map((c, i) =>
+        i === index ? { ...c, color: { ...c.color, a } } : c,
+      ),
       // Its own coalescing key, so a drag along the slider collapses into
       // one undo step and does not merge with a colour change beside it.
       `palette:alpha:${index}`,
@@ -146,7 +152,11 @@ export function PalettePanel({
   const handleEditMaterial = (index: number, patch: Partial<Material>) => {
     if (disabled) return;
     onChange(
-      palette.map((c, i) => (i === index ? { ...c, ...patch } : c)),
+      palette.map((c, i) =>
+        i === index
+          ? { ...c, material: { ...c.material, ...patch } }
+          : c,
+      ),
       // One key for the whole material, not one per field: dragging
       // roughness then metallic on the same swatch is one adjustment, and
       // undo should treat it that way.
@@ -157,7 +167,10 @@ export function PalettePanel({
   const handleAddColor = () => {
     if (disabled) return;
     if (palette.length >= MAX_PALETTE) return;
-    onChange([...palette, { r: 255, g: 255, b: 255, a: 255, ...MATTE }]);
+    onChange([
+      ...palette,
+      { color: { r: 255, g: 255, b: 255, a: 255 }, material: MATTE },
+    ]);
   };
 
   // Deleting a swatch renumbers everything above it, so an open drawer can
@@ -292,7 +305,7 @@ function MaterialDrawer({
         <button
           type="button"
           className="palette-material-reset"
-          disabled={disabled || isMatte(entry)}
+          disabled={disabled || isMatte(entry.material)}
           onClick={() => onChange(MATTE)}
           title="Back to a plain matte surface — the §7.4 default, written as a bare colour"
         >
@@ -315,14 +328,14 @@ function MaterialDrawer({
             min={0}
             max={1}
             step={0.01}
-            value={entry[key]}
+            value={entry.material[key]}
             disabled={disabled}
             onChange={(e) => onChange({ [key]: Number(e.target.value) })}
             title={hint}
             aria-label={`${label} of palette index ${index}`}
           />
           <span className="palette-material-value">
-            {entry[key].toFixed(2)}
+            {entry.material[key].toFixed(2)}
           </span>
         </label>
       ))}
@@ -347,11 +360,12 @@ interface SwatchProps {
 // roughness — models-test/materials does exactly that — so a swatch showing
 // colour alone is ambiguous by construction.
 function materialSummary(e: PaletteEntry): string {
-  if (isMatte(e)) return 'Matte — set metallic / roughness / emissive';
+  const m = e.material;
+  if (isMatte(m)) return 'Matte — set metallic / roughness / emissive';
   const parts: string[] = [];
-  if (e.metallic !== MATTE.metallic) parts.push(`metallic ${e.metallic}`);
-  if (e.roughness !== MATTE.roughness) parts.push(`roughness ${e.roughness}`);
-  if (e.emissive !== MATTE.emissive) parts.push(`emissive ${e.emissive}`);
+  if (m.metallic !== MATTE.metallic) parts.push(`metallic ${m.metallic}`);
+  if (m.roughness !== MATTE.roughness) parts.push(`roughness ${m.roughness}`);
+  if (m.emissive !== MATTE.emissive) parts.push(`emissive ${m.emissive}`);
   return parts.join(' · ');
 }
 
@@ -384,7 +398,7 @@ function PaletteSwatch({
   const hex = colorToHex(color);
   const label = indexToChar(index);
   const fg = contrastText(hex);
-  const pct = Math.round((color.a / 255) * 100);
+  const pct = Math.round((color.color.a / 255) * 100);
   const inUse = usage > 0;
   // Delete is disabled either by global panel disable (parse error) or
   // because this index is referenced by voxels. Showing two reasons in
@@ -398,7 +412,9 @@ function PaletteSwatch({
     <div className="palette-swatch">
       <span
         className="swatch-fill"
-        style={{ backgroundColor: `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a / 255})` }}
+        style={{
+          backgroundColor: `rgba(${color.color.r}, ${color.color.g}, ${color.color.b}, ${color.color.a / 255})`,
+        }}
       />
       <input
         type="color"
@@ -438,7 +454,7 @@ function PaletteSwatch({
           as it did. Above the picker in z-order, like the alpha strip. */}
       <button
         type="button"
-        className={`swatch-material${isMatte(color) ? '' : ' set'}${materialOpen ? ' open' : ''}`}
+        className={`swatch-material${isMatte(color.material) ? '' : ' set'}${materialOpen ? ' open' : ''}`}
         onClick={(e) => {
           e.stopPropagation();
           onToggleMaterial();
@@ -459,10 +475,10 @@ function PaletteSwatch({
         min={0}
         max={255}
         step={1}
-        value={color.a}
+        value={color.color.a}
         disabled={disabled}
         onChange={(e) => onEditAlpha(Number(e.target.value))}
-        title={`Opacity ${pct}% (alpha ${color.a}/255)`}
+        title={`Opacity ${pct}% (alpha ${color.color.a}/255)`}
         aria-label={`Opacity of index ${index}`}
       />
     </div>
@@ -472,7 +488,7 @@ function PaletteSwatch({
 // The <input type="color"> value: #rrggbb, alpha dropped (the input
 // cannot represent it — core's serializeColor would emit #RRGGBBAA).
 function colorToHex(c: PaletteEntry): string {
-  return `#${hex2(c.r)}${hex2(c.g)}${hex2(c.b)}`;
+  return `#${hex2(c.color.r)}${hex2(c.color.g)}${hex2(c.color.b)}`;
 }
 
 function hex2(n: number): string {
