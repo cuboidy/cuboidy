@@ -137,6 +137,38 @@ describe('resolveProject — ambiguous part names (§11.6)', () => {
     expect(dup?.diag.message).toContain('b.json');
   });
 
+  it('binds the ambiguous name to nothing at all', () => {
+    // Reporting the ambiguity while still returning the first file's part
+    // would leave exactly the non-determinism the refusal exists to remove:
+    // "first" is a fact about the loader's collections, and JS Maps preserve
+    // insertion order where C#'s Dictionary does not.
+    const p = resolveProject(
+      manifest(twoFiles()),
+      new Map([
+        ['a.json', body],
+        ['b.json', body],
+      ]),
+    );
+    expect(p.parts.has('body')).toBe(false);
+    expect(p.unresolved.map((u) => u.name)).toEqual(['body']);
+    expect(p.unresolved[0]?.message).toContain('more than one geometry file');
+  });
+
+  it('does not depend on which file is listed first', () => {
+    const flipped = resolveProject(
+      manifest({
+        name: 't',
+        geometry: ['b.json', 'a.json'],
+        parts: [{ name: 'body' }],
+      }),
+      new Map([
+        ['a.json', body],
+        ['b.json', body],
+      ]),
+    );
+    expect(flipped.parts.has('body')).toBe(false);
+  });
+
   it('resolves cleanly when the name is defined once', () => {
     const p = resolveProject(
       manifest(twoFiles()),

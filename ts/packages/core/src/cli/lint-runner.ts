@@ -120,7 +120,18 @@ export async function runLint(
   // use, so lint agrees with them about what the model contains.
   // Unreadable files stay OUT of the map; resolveProject reports them as
   // `missing` diagnostics.
-  const paths = projectFilePaths(manifest);
+  //
+  // Nothing is read when the manifest itself did not parse. §11.8 runs
+  // validation in phases and forbids reporting a later one over an earlier
+  // one, and `geometryPaths(null)` returns the §6.9 default — so a manifest
+  // with an unknown top-level field used to be reported alongside a phase-4
+  // `cannot read voxels.json`, for a file §6.9 says a reader "MUST NOT
+  // demand" from a model that does not use it. There is no model here to
+  // ask what it references.
+  const paths =
+    manifest === null
+      ? { geometry: [], animations: [] }
+      : projectFilePaths(manifest);
   const files = new Map<string, string>();
   for (const ref of [...paths.geometry, ...paths.animations]) {
     const text = await tryReadText(join(root, ref));

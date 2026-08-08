@@ -300,7 +300,17 @@ export function resolvePartGeometry(
   }
   const duplicates: DuplicatePartName[] = [];
   for (const [name, files] of definedIn) {
-    if (files.length > 1) duplicates.push({ name, files });
+    if (files.length > 1) {
+      duplicates.push({ name, files });
+      // And the name binds to NOTHING. Reporting the ambiguity while still
+      // handing back the first file's part would leave the very
+      // non-determinism the refusal exists to remove: which file is "first"
+      // is a fact about the loader's collections, and JS Maps preserve
+      // insertion order where `Dictionary` does not. Two implementations
+      // must not disagree about which shape a name means — so neither of
+      // them gets to answer.
+      byName.delete(name);
+    }
   }
 
   // The manifest's default palette for inline parts (§6.13), resolved once.
@@ -347,9 +357,13 @@ export function resolvePartGeometry(
       // An unreadable or unparsable path already has its own `missing` from
       // resolveGeometries; saying it twice helps nobody.
       if (g?.path === undefined) {
+        const ambiguous = definedIn.get(mp.name);
         unresolved.push({
           name: mp.name,
-          message: `part '${mp.name}' is in the manifest but defined in no geometry file`,
+          message:
+            ambiguous !== undefined && ambiguous.length > 1
+              ? `part '${mp.name}' is defined in more than one geometry file (${ambiguous.join(', ')}), so the by-name lookup has no answer`
+              : `part '${mp.name}' is in the manifest but defined in no geometry file`,
         });
       }
       continue;
