@@ -22,6 +22,7 @@ const HELP_TEXT =
   '  --anim=<name>    clip to render (default: the model\'s first clip)\n' +
   '  --angle=<id>     camera angle (default: fr-up)\n' +
   '                   front back side left top bottom fr-up fl-up br-up bl-up\n' +
+  '                   fr-dn fl-dn br-dn bl-dn, or a custom az<deg>el<deg>\n' +
   '  --size=<px>      square output size (default: 240)\n' +
   '  --fps=<n>        frames per second (default: 20)\n' +
   '  --frames=<n>     exact frame count (default: duration x fps)\n' +

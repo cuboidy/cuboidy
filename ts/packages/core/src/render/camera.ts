@@ -39,6 +39,15 @@ export const STANDARD_IDS = [
 
 export const CARDINAL_IDS = ['front', 'back', 'side', 'left', 'top', 'bottom'] as const;
 export const CORNER_IDS = ['fr-up', 'fl-up', 'br-up', 'bl-up'] as const;
+// The same four corners from BELOW. Worth having as a named group: every
+// preset used to look down or dead level, and `bottom` looks straight up,
+// where a vertical plane is edge-on and contributes nothing. So a whole
+// class of artifact — anything you only see when a line of sight crosses a
+// near-vertical surface from underneath — could not appear in ANY snapshot.
+// A translucency bug lived in exactly that blind spot: plainly visible when
+// the editor was orbited below the model, invisible in every rendered
+// angle, which read as the editor and the CLI disagreeing.
+export const UNDER_IDS = ['fr-dn', 'fl-dn', 'br-dn', 'bl-dn'] as const;
 
 const EL = 30; // three-quarter elevation
 
@@ -53,7 +62,30 @@ export const ANGLES: Readonly<Record<string, Angle>> = {
   'fl-up': { id: 'fl-up', label: 'FL-UP', az: 315, el: EL },
   'br-up': { id: 'br-up', label: 'BR-UP', az: 135, el: EL },
   'bl-up': { id: 'bl-up', label: 'BL-UP', az: 225, el: EL },
+  'fr-dn': { id: 'fr-dn', label: 'FR-DN', az: 45, el: -EL },
+  'fl-dn': { id: 'fl-dn', label: 'FL-DN', az: 315, el: -EL },
+  'br-dn': { id: 'br-dn', label: 'BR-DN', az: 135, el: -EL },
+  'bl-dn': { id: 'bl-dn', label: 'BL-DN', az: 225, el: -EL },
 };
+
+// An arbitrary view, spelled `az<deg>el<deg>` (e.g. `az20el-15`). The named
+// presets are for comparable contact sheets; this is for aiming at
+// something specific, which a fixed list cannot do however long it gets.
+const CUSTOM_RE = /^az(-?\d+(?:\.\d+)?)el(-?\d+(?:\.\d+)?)$/i;
+
+function parseCustomAngle(spec: string): Angle | null {
+  const m = CUSTOM_RE.exec(spec);
+  if (m === null) return null;
+  const az = Number(m[1]);
+  const el = Number(m[2]);
+  // Elevation past the poles is the same view as its mirror with a flipped
+  // azimuth, so reject it rather than silently render something else.
+  if (!Number.isFinite(az) || !Number.isFinite(el)) return null;
+  if (el < -90 || el > 90) return null;
+  // Renders already get "AZ<az> EL<el>" stamped on them, so a label
+  // repeating the numbers would read "AZ20EL-25 AZ20 EL-25".
+  return { id: `az${az}el${el}`, label: 'CUSTOM', az, el };
+}
 
 const WORLD_UP: Vec3 = [0, 1, 0];
 
@@ -114,38 +146,51 @@ export function makeProjector(angle: Angle, center: Vec3): Projector {
   };
 }
 
-// Resolve a comma-separated id list (or a group keyword) into angles.
-// Returns an error string for unknown ids so the CLI can report usage.
+// Resolve a comma-separated list of ids, group keywords, and `az<d>el<d>`
+// custom views into angles. Returns an error string for anything
+// unrecognised so the CLI can report usage.
 export function resolveAngles(spec: string): Angle[] | { error: string } {
   const groups: Record<string, readonly string[]> = {
     standard: STANDARD_IDS,
     cardinal: CARDINAL_IDS,
     corners: CORNER_IDS,
+    unders: UNDER_IDS,
     all: Object.keys(ANGLES),
   };
-  const ids: string[] = [];
+  const picked: Angle[] = [];
   for (const raw of spec.split(',')) {
     const t = raw.trim();
     if (t === '') continue;
     const group = groups[t];
     if (group) {
-      ids.push(...group);
-    } else if (ANGLES[t]) {
-      ids.push(t);
-    } else {
-      return {
-        error: `unknown angle "${t}" (choices: ${Object.keys(ANGLES).join(', ')}; groups: ${Object.keys(groups).join(', ')})`,
-      };
+      for (const id of group) picked.push(ANGLES[id]!);
+      continue;
     }
+    const named = ANGLES[t];
+    if (named) {
+      picked.push(named);
+      continue;
+    }
+    const custom = parseCustomAngle(t);
+    if (custom !== null) {
+      picked.push(custom);
+      continue;
+    }
+    return {
+      error:
+        `unknown angle "${t}" (choices: ${Object.keys(ANGLES).join(', ')}; ` +
+        `groups: ${Object.keys(groups).join(', ')}; ` +
+        `or a custom view like az45el-30, elevation −90..90)`,
+    };
   }
-  if (ids.length === 0) return { error: 'no angles selected' };
+  if (picked.length === 0) return { error: 'no angles selected' };
   // De-duplicate while preserving first-seen order.
   const seen = new Set<string>();
   const out: Angle[] = [];
-  for (const id of ids) {
-    if (seen.has(id)) continue;
-    seen.add(id);
-    out.push(ANGLES[id]!);
+  for (const angle of picked) {
+    if (seen.has(angle.id)) continue;
+    seen.add(angle.id);
+    out.push(angle);
   }
   return out;
 }

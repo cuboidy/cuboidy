@@ -20,7 +20,9 @@ const HELP_TEXT =
   '  --angles=<list>  comma-separated angle ids or groups (default: standard)\n' +
   '                   ids:    front back side left top bottom\n' +
   '                           fr-up fl-up br-up bl-up\n' +
-  '                   groups: standard cardinal corners all\n' +
+  '                           fr-dn fl-dn br-dn bl-dn  (the corners, from below)\n' +
+  '                   groups: standard cardinal corners unders all\n' +
+  '                   custom: az<deg>el<deg>, e.g. az20el-25 (elevation -90..90)\n' +
   '  --out=<dir>      output directory (default: <dir>/snapshots)\n' +
   '  --size=<px>      per-angle tile size, square (default: 256)\n' +
   '  --ss=<n>         supersample factor for anti-aliasing (default: 2)\n' +

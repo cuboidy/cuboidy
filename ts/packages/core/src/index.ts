@@ -121,7 +121,14 @@ export type { MeshData } from './mesh.js';
 // library thumbnail and a contact sheet showing the model differently
 // would be two products. Pure math (camera.ts depends only on vec.ts), so
 // this pulls no CLI or Node code into a bundle.
-export { ANGLES, CARDINAL_IDS, CORNER_IDS, STANDARD_IDS, cameraDir } from './render/camera.js';
+export {
+  ANGLES,
+  CARDINAL_IDS,
+  CORNER_IDS,
+  STANDARD_IDS,
+  UNDER_IDS,
+  cameraDir,
+} from './render/camera.js';
 export type { Angle } from './render/camera.js';
 
 export {
