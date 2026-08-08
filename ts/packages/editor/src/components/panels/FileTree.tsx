@@ -1,6 +1,6 @@
 import { useMemo, useState, type DragEvent } from 'react';
 import { ChevronDown, ChevronRight, Plus, X } from 'lucide-react';
-import { InlineNameInput } from '@cuboidy/ui';
+import { InlineNameInput, treeIndent } from '@cuboidy/ui';
 import { fileIcon } from '../ui/fileIcon.js';
 import type { DirNode } from '../../lib/fs-tree.js';
 import { useFileTreeState } from '../../lib/useFileTreeState.js';
@@ -383,8 +383,13 @@ export function FileTree({
           with the toolbar inside the scroller it slid away sideways with
           the rows. Same arrangement as the Parts and Instances panels. */}
       <div className="panel-scroll">
-      <ul className="tree-list">
-          <li className="tree-node">
+      {/* The Parts and Scene trees carried `role="tree"` and this one
+          carried none, so a screen reader read the file tree as a plain
+          list — no level, no expanded state, no branch/leaf distinction.
+          All three share tree.css; they may as well share the semantics
+          the styling implies. */}
+      <ul className="tree-list" role="tree">
+          <li role="treeitem">
             <div
               className={`tree-row${selectedDirForHighlight === '' ? ' selected' : ''}${dropTarget?.kind === 'dir' && dropTarget.path === '' ? ' drop-target' : ''}${dragging?.kind === 'dir' && dragging.path === '' ? ' dragging' : ''}`}
               style={{ paddingLeft: '0.5rem' }}
@@ -537,14 +542,14 @@ interface DirChildrenProps {
 
 function DirChildren(props: DirChildrenProps) {
   const { node, dirPath, depth } = props;
-  const pad = `${0.5 + depth * 0.9}rem`;
+  const pad = treeIndent(depth);
   return (
-    <ul className="tree-list">
+    <ul className="tree-list" role="group">
       {[...node.dirs.entries()].map(([name, child]) => {
         const childPath = dirPath === '' ? name : `${dirPath}/${name}`;
         if (props.renamingDir === childPath) {
           return (
-            <li className="tree-node" key={name}>
+            <li key={name} role="treeitem">
               <div className="tree-row draft" style={{ paddingLeft: pad }}>
                 <span className="tree-caret-spacer" aria-hidden="true" />
                   <InlineNameInput
@@ -578,7 +583,13 @@ function DirChildren(props: DirChildrenProps) {
           props.creatingFolderIn === childPath;
         const expanded = !props.collapsed.has(childPath);
         return (
-          <li className="tree-node" key={name}>
+          <li
+            key={name}
+            role="treeitem"
+            // Only on a branch: on a leaf it would announce a collapsed
+            // subtree that does not exist.
+            aria-expanded={expandable ? expanded : undefined}
+          >
             <div
               className={`tree-row${props.selectedDir === childPath ? ' selected' : ''}${dropOnDir ? ' drop-target' : ''}${
                 props.dragging?.kind === 'dir' &&
@@ -648,7 +659,7 @@ function DirChildren(props: DirChildrenProps) {
         );
       })}
       {props.creatingFolderIn === dirPath && (
-        <li className="tree-node">
+        <li role="treeitem">
           <div className="tree-row draft" style={{ paddingLeft: pad }}>
             <span className="tree-caret-spacer" aria-hidden="true" />
             <InlineNameInput
@@ -733,7 +744,7 @@ function NewFileDraftRow({
   const [kind, setKind] = useState<NewFileKind>('geometry');
   const where = dirPath === '' ? 'package root' : dirPath;
   return (
-    <li className="tree-node">
+    <li role="treeitem">
       <div className="tree-row draft" style={{ paddingLeft: pad }}>
         <span className="tree-caret-spacer" aria-hidden="true" />
         <InlineNameInput
@@ -816,10 +827,10 @@ function FileNode({
   onCancelRename: () => void;
   onDeleteFile: (path: string) => void;
 }) {
-  const pad = `${0.5 + depth * 0.9}rem`;
+  const pad = treeIndent(depth);
   if (renaming) {
     return (
-      <li className="tree-node">
+      <li role="treeitem">
         <div className="tree-row draft" style={{ paddingLeft: pad }}>
           <span className="tree-caret-spacer" aria-hidden="true" />
           <InlineNameInput
@@ -835,7 +846,7 @@ function FileNode({
     );
   }
   return (
-    <li className="tree-node">
+    <li role="treeitem">
       <div
         className={`tree-row${selected === true ? ' selected' : ''}${error !== undefined ? ' error' : ''}${unreferenced === true ? ' unreferenced' : ''}${dragging ? ' dragging' : ''}${dropActive ? ' drop-target' : ''}`}
         style={{ paddingLeft: pad }}

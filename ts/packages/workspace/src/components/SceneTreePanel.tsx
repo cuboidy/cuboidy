@@ -8,7 +8,7 @@ import {
   EyeOff,
   Plug,
 } from 'lucide-react';
-import { InlineNameInput, VisibilityButtons } from '@cuboidy/ui';
+import { InlineNameInput, VisibilityButtons, treeIndent } from '@cuboidy/ui';
 import type { PlacedInstance } from '../lib/scene-resolve.js';
 import type { PanelRow } from '../lib/scene-tree.js';
 
@@ -157,26 +157,35 @@ export function SceneTreePanel({
           />
         ))}
       </ul>
-      {dragging !== null && (
-        <div
-          className={`scene-detach-zone${dropTarget === 'root' ? ' active' : ''}`}
-          onDragOver={(e) => {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-            setDropTarget('root');
-          }}
-          onDragLeave={() => {
-            if (dropTarget === 'root') setDropTarget(null);
-          }}
-          onDrop={(e) => {
-            e.preventDefault();
-            onAttach(dragging, null);
-            end();
-          }}
-        >
-          Drop here to detach
-        </div>
-      )}
+      {/* Always mounted, shown by class — NOT conditionally rendered.
+          Chrome aborts a native drag whose source element moves during the
+          dragstart frame, and an in-flow strip appearing at dragstart grows
+          the list and shifts every row below it, so the bottom rows simply
+          could not be dragged. The editor's part tree hit this and its CSS
+          documents the fix; this one was still the broken arrangement, so
+          it now uses the same one: out of flow, in reserved padding. */}
+      <div
+        className={`scene-detach-zone${dragging !== null ? ' visible' : ''}${
+          dropTarget === 'root' ? ' active' : ''
+        }`}
+        onDragOver={(e) => {
+          if (dragging === null) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          setDropTarget('root');
+        }}
+        onDragLeave={() => {
+          if (dropTarget === 'root') setDropTarget(null);
+        }}
+        onDrop={(e) => {
+          if (dragging === null) return;
+          e.preventDefault();
+          onAttach(dragging, null);
+          end();
+        }}
+      >
+        Drop here to detach
+      </div>
     </>
       )}
       </div>
@@ -230,7 +239,6 @@ function Row(props: RowProps) {
 
   return (
     <li
-      className="tree-node"
       role="treeitem"
       aria-expanded={hasChildren ? open : undefined}
     >
@@ -293,7 +301,7 @@ function InstanceRow({
   return (
     <div
       className={cls}
-      style={{ paddingLeft: `${0.5 + depth * 0.9}rem` }}
+      style={{ paddingLeft: treeIndent(depth) }}
       draggable={!isRenaming}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
@@ -396,7 +404,7 @@ function SocketRow({
   return (
     <div
       className={cls}
-      style={{ paddingLeft: `${0.5 + depth * 0.9}rem` }}
+      style={{ paddingLeft: treeIndent(depth) }}
       onDragOver={onDragOver}
       onDrop={onDrop}
     >

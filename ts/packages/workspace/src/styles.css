@@ -611,16 +611,37 @@ code {
   cursor: grab;
 }
 
-/* Not a row — a strip. It keeps the side inset the container no longer
-   supplies, so it does not run to the panel edges. */
+/* Not a row — a strip, and out of flow on purpose, twice over. As in-flow
+   content its appearance at dragstart grew the list and shifted the rows
+   below, and Chrome aborts a native drag whose source element moves during
+   the dragstart frame — the "bottom item can't be dragged" bug the editor's
+   part tree hit first (see .part-tree-root-dropzone in the editor's
+   styles.css). Pinned to the panel bottom instead it would cover real rows
+   and eat their dragover events. In the reserved strip it can do neither.
+
+   `display: none` rather than conditional mounting for the same reason:
+   the element must already exist when the drag starts. */
+.scene-tree-panel {
+  position: relative;
+  padding-bottom: 2.25rem;
+}
+
 .scene-detach-zone {
-  margin: 0 0.5rem;
+  display: none;
+  position: absolute;
+  left: 0.5rem;
+  right: 0.5rem;
+  bottom: 0.5rem;
   padding: 0.35rem;
   border: 1px dashed var(--line-2);
   border-radius: var(--r-1);
   color: var(--txt-3);
   font-size: 0.72rem;
   text-align: center;
+}
+
+.scene-detach-zone.visible {
+  display: block;
 }
 
 .scene-detach-zone.active {

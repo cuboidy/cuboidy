@@ -66,6 +66,7 @@ export {
 export type { PickedFile } from './fs/browser-fs.js';
 
 export { buildRigTree, computeSceneCenter, computeSceneSpan } from './rig.js';
+export { treeIndent } from './tree.js';
 
 export {
   AXIS_COLORS,

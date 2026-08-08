@@ -6,7 +6,7 @@ import {
   type DragEvent,
 } from 'react';
 import { ChevronDown, ChevronRight, Eye, EyeOff } from 'lucide-react';
-import { InlineNameInput } from '@cuboidy/ui';
+import { InlineNameInput, treeIndent } from '@cuboidy/ui';
 import { buildPartTree, descendantNames, type PartTreeNode } from '../../lib/part-tree.js';
 import { pathBasename } from '../../lib/source-ops.js';
 import type { Manifest, Part } from '@cuboidy/core';
@@ -330,10 +330,14 @@ function PartTreeBranch(props: BranchProps) {
   const isRenaming = renaming === node.name;
 
   return (
-    <li className="tree-node" role="treeitem">
+    // `aria-expanded` only on a row that HAS children — on a leaf it would
+    // announce a collapsed subtree that does not exist. The workspace's
+    // scene tree already did this; these two did not, so a screen reader
+    // could not tell an open branch from a closed one.
+    <li role="treeitem" aria-expanded={hasChildren ? expanded : undefined}>
       <div
         className={rowClass}
-        style={{ paddingLeft: `${0.5 + depth * 0.9}rem` }}
+        style={{ paddingLeft: treeIndent(depth) }}
         draggable={dndEnabled && !isRenaming}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
@@ -455,10 +459,10 @@ function DraftPartRow({
   const [file, setFile] = useState(defaultFile);
 
   return (
-    <li className="tree-node" role="treeitem">
+    <li role="treeitem">
       <div
         className="tree-row draft"
-        style={{ paddingLeft: `${0.5 + depth * 0.9}rem` }}
+        style={{ paddingLeft: treeIndent(depth) }}
         onClick={(e) => e.stopPropagation()}
       >
         <span className="tree-caret-spacer" aria-hidden="true" />
