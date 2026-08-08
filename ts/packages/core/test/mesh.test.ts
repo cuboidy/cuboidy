@@ -6,7 +6,10 @@ import { rgba } from './helpers/palette.js';
 
 const RED: PaletteEntry = rgba(255, 0, 0, 255);
 const GREEN: PaletteEntry = rgba(0, 255, 0, 255);
-// Palette index 0 is AIR by convention; first real color sits at 1.
+// Slot 0 is a fully TRANSPARENT colour, deliberately: §7.4 says `00`
+// renders nothing while its voxels still occupy their cells. Index 0 is an
+// ordinary palette entry — air is `.`, which is AIR = -1 and is not in the
+// palette at all.
 const PALETTE = [rgba(0, 0, 0, 0), RED, GREEN] as const;
 
 function makePart(

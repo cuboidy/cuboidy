@@ -94,8 +94,9 @@ describe('mesh.ts and render/scene.ts emit the same faces', () => {
     ['a lone translucent voxel', [0]],
     ['two of ONE translucent colour', [0, 0]],
     ['two DIFFERENT translucent colours', [0, 1]],
-    // Order matters to a tie-break that reads palette indices, so run it
-    // both ways: the higher index must drop its face from either side.
+    // Run the pair both ways: neither index may lose its face, whichever
+    // is written first. (An earlier rule DID drop one by palette index; it
+    // was reverted, and this case is what would catch its return.)
     ['the same pair, reversed', [1, 0]],
     ['translucent against opaque', [0, 2]],
     ['opaque against translucent', [2, 0]],

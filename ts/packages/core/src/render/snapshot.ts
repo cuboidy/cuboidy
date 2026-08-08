@@ -19,7 +19,10 @@ const SPECULAR = 0.55; // §7.4 gloss highlight, gated by 1 - roughness
 const KEY_DIR = normalize([-0.5, 1, -0.7]); // toward key light
 const FILL_DIR = normalize([0.9, 0.3, 0.3]); // toward fill light
 
-const MATTE: Rgb = [0.227, 0.239, 0.259]; // contact-sheet background
+// Named for what it is rather than `MATTE`: this module reasons about
+// §7.4 materials throughout, and `MATTE` is the material default over in
+// geometry/palette.ts.
+const SHEET_BG: Rgb = [0.227, 0.239, 0.259];
 const LABEL_FG: Rgb = [0.96, 0.97, 0.98];
 const LABEL_BG: Rgb = [0.08, 0.09, 0.1];
 const AXIS_X: Rgb = [0.95, 0.35, 0.35];
@@ -240,7 +243,7 @@ export function renderContactSheet(
 
   const width = columns * tileSize + (columns + 1) * pad;
   const height = headerH + rows * tileSize + (rows + 1) * pad;
-  const sheet = new Framebuffer(width, height, MATTE);
+  const sheet = new Framebuffer(width, height, SHEET_BG);
 
   drawText(sheet, pad, pad, title, titleScale, LABEL_FG);
 

@@ -4,7 +4,7 @@ import { Canvas, type ThreeEvent } from '@react-three/fiber';
 import type { Object3D } from 'three';
 import { AIR, quatFromEulerZXYDeg, type Geometry, type Manifest, type Palette, type Part, type QuatTuple } from '@cuboidy/core';
 
-import { PartGizmos, PartMesh, RiggedParts, TransformGizmoHost, buildRigTree, computeSceneCenter, computeSceneSpan, StudioEnvironment } from '@cuboidy/ui';
+import { PartGizmos, PartMesh, RiggedParts, TransformGizmoHost, buildRigTree, computeSceneCenter, computeSceneSpan, StudioLighting } from '@cuboidy/ui';
 import type { GizmoPicking, GizmoVisibility, PreviewTool, TransformSubTarget, ViewMode, VoxelEdit, VoxelStrokeHandlers } from '@cuboidy/ui';
 
 interface Props {
@@ -390,9 +390,10 @@ export function VoxelScene({
   }, [selectedPart, subPick, tool, geometry]);
 
   // Clicking a part body (or empty space) resets the sub-target along
-  // with the selection. Inert while a voxel tool is active (design
-  // §2.6: clicks are edits there, and losing the selection mid-paint
-  // would be an accident).
+  // with the selection. Inert while a voxel tool is active: clicks are
+  // edits there, and losing the selection mid-paint would be an accident.
+  // (Cited "design §2.6" until docs/preview-editing-design.md was deleted
+  // in b110ec7 — the reasoning is short enough to just say.)
   const selectAndResetSub = useCallback(
     (name: string | null) => {
       if (tool === 'erase' || tool === 'paint') return;
@@ -540,16 +541,7 @@ export function VoxelScene({
       shadows={false}
       onPointerMissed={() => selectAndResetSub(null)}
     >
-      <StudioEnvironment />
-      {/* Ambient was 0.8 before §7.4 materials. The environment (needed at
-          all because a metal has nothing to reflect without one) supplies
-          diffuse fill of its own and supplies MORE of it than this did, so
-          leaving 0.8 lit every matte surface noticeably brighter — a silent
-          restyle of every model that uses no materials. Tuned against a
-          before/after of a plain grey block: the total lands where it was,
-          and the fill now comes from above rather than from nowhere. */}
-      <ambientLight intensity={0.12} />
-      <directionalLight position={[10, 20, 10]} intensity={1.0} />
+      <StudioLighting />
       <gridHelper
         args={[gridSize, gridSize]}
         position={[gridSize / 2, 0, gridSize / 2]}

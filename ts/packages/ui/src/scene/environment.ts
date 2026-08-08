@@ -72,9 +72,23 @@ function gradientBox(): Mesh {
   );
 }
 
-// Prefiltered radiance for `scene.environment`. The caller owns the result
-// and must dispose it; everything built here is cleaned up before returning.
-export function makeStudioEnvironment(renderer: WebGLRenderer): Texture {
+// Prefiltered radiance for `scene.environment`, plus the call that frees it.
+//
+// The render TARGET has to come back, not just its texture. `dispose()` on a
+// render-target texture is a no-op at the GL level — `deallocateTexture`
+// bails on `__webglInit === undefined`, which only `initTexture` sets and
+// which a render-target texture never goes through. Returning the texture
+// alone therefore leaked the framebuffer, the depth renderbuffer and the
+// texture on every mount, while looking for all the world like it was being
+// cleaned up. Under StrictMode that is two per viewport, freed zero.
+export interface StudioEnvironment {
+  texture: Texture;
+  dispose: () => void;
+}
+
+export function makeStudioEnvironment(
+  renderer: WebGLRenderer,
+): StudioEnvironment {
   const scene = new Scene();
   const box = gradientBox();
   scene.add(box);
@@ -85,5 +99,5 @@ export function makeStudioEnvironment(renderer: WebGLRenderer): Texture {
   box.geometry.dispose();
   (box.material as MeshBasicMaterial).dispose();
   pmrem.dispose();
-  return target.texture;
+  return { texture: target.texture, dispose: () => target.dispose() };
 }

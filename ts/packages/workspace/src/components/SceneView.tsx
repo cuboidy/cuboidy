@@ -10,8 +10,7 @@ import {
   TransformGizmoHost,
   ViewOverlay,
   ViewToggle,
-  computeSceneSpan,
-} from '@cuboidy/ui';
+  computeSceneSpan, StudioLighting } from '@cuboidy/ui';
 import type { LibraryModel } from '../lib/library.js';
 import { viewGeometry } from '../lib/model-view.js';
 import {
@@ -236,14 +235,11 @@ export function SceneView({
       </ViewOverlay>
 
       <Canvas
-        flat
         camera={{ position: [reach * 2, reach * 1.6, reach * 2], fov: 35 }}
         onPointerMissed={() => onSelect(null)}
       >
         <color attach="background" args={['#14161a']} />
-        <ambientLight intensity={0.75} />
-        <directionalLight position={[6, 10, 8]} intensity={1.1} />
-        <directionalLight position={[-8, 4, -6]} intensity={0.4} />
+        <StudioLighting />
         <gridHelper args={[reach * 4, 16, '#2a2f38', '#20242b']} />
         <FrameCamera reach={reach} />
         <CaptureCamera into={drop.cameraRef} />

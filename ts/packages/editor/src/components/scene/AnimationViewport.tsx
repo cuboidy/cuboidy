@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import type { Geometry, Manifest, Palette } from '@cuboidy/core';
-import { RiggedParts, buildRigTree, computeSceneCenter, computeSceneSpan, StudioEnvironment } from '@cuboidy/ui';
+import { RiggedParts, buildRigTree, computeSceneCenter, computeSceneSpan, StudioLighting } from '@cuboidy/ui';
 import type { GizmoVisibility } from '@cuboidy/ui';
 import type { AnimationSession } from '../../lib/useAnimationSession.js';
 import { NoAnimationsYet } from '../ui/NoAnimationsYet.js';
@@ -95,15 +95,7 @@ export function AnimationViewport({
       shadows={false}
       onPointerMissed={() => onSelectPart(null)}
     >
-      <StudioEnvironment />
-      {/* Ambient was 0.8 before the environment existed. The environment
-          supplies diffuse fill of its own, so leaving it there lit every
-          matte surface about a third brighter — a silent restyle of every
-          model that uses no materials at all. Lowered to keep the total
-          roughly where it was; the difference is that the fill now comes
-          from above rather than from nowhere. */}
-      <ambientLight intensity={0.12} />
-      <directionalLight position={[10, 20, 10]} intensity={1.0} />
+      <StudioLighting />
       <gridHelper
         args={[gridSize, gridSize]}
         position={[gridSize / 2, 0, gridSize / 2]}

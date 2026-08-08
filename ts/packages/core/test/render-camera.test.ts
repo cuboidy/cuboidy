@@ -79,3 +79,47 @@ describe('resolveAngles', () => {
     expect(resolveAngles('')).toEqual({ error: expect.stringContaining('no angles') });
   });
 });
+
+// The `unders` group and the custom `az<deg>el<deg>` form shipped without
+// tests, and the gap showed: cuboidy-gif advertised the custom form in its
+// help while its parser rejected it, and nothing noticed.
+describe('resolveAngles — views from below and custom views', () => {
+  it('expands `unders` to the four corners at negative elevation', () => {
+    const r = resolveAngles('unders');
+    expect(Array.isArray(r)).toBe(true);
+    if (!Array.isArray(r)) return;
+    expect(r.map((a) => a.id)).toEqual(['fr-dn', 'fl-dn', 'br-dn', 'bl-dn']);
+    for (const a of r) expect(a.el).toBeLessThan(0);
+  });
+
+  it('builds an angle from az<deg>el<deg>', () => {
+    const r = resolveAngles('az20el-25');
+    expect(Array.isArray(r)).toBe(true);
+    if (!Array.isArray(r)) return;
+    expect(r).toHaveLength(1);
+    expect(r[0]!.az).toBe(20);
+    expect(r[0]!.el).toBe(-25);
+    // The label must not repeat the numbers — renders stamp AZ/EL already.
+    expect(r[0]!.label).toBe('CUSTOM');
+  });
+
+  it('accepts a custom angle beside named ones and dedupes by value', () => {
+    const r = resolveAngles('front,az20el-25,az20el-25,front');
+    expect(Array.isArray(r)).toBe(true);
+    if (!Array.isArray(r)) return;
+    expect(r.map((a) => a.id)).toEqual(['front', 'az20el-25']);
+  });
+
+  it('rejects an elevation past the pole rather than mirroring it', () => {
+    for (const spec of ['az0el91', 'az0el-91']) {
+      const r = resolveAngles(spec);
+      expect(Array.isArray(r)).toBe(false);
+      if (!Array.isArray(r)) expect(r.error).toContain(spec);
+    }
+  });
+
+  it('still rejects something that is not an angle at all', () => {
+    const r = resolveAngles('az20');
+    expect(Array.isArray(r)).toBe(false);
+  });
+});

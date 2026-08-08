@@ -222,3 +222,46 @@ describe('material does not change geometry (§7.4, normative)', () => {
     }
   });
 });
+
+// A bucket that holds no quad still advertised a material, which made the
+// renderer flip to a material array plus groups for a model with one visible
+// finish, compile a shader nothing drew with, and issue a zero-count draw.
+describe('buckets hold only materials that are actually visible', () => {
+  it('ignores a material used solely by an enclosed voxel', () => {
+    const shell = rgba(180, 180, 180);
+    const hidden = rgba(200, 200, 200, 255, { metallic: 1, roughness: 0.1 });
+    const part: Part = {
+      name: 'p',
+      size: { w: 3, h: 3, d: 3 },
+      pivot: { pos: { x: 0, y: 0, z: 0 } },
+      sockets: [],
+      // Index 1 sits at the centre, enclosed on all six sides by index 0.
+      voxels: Array.from({ length: 3 }, (_, y) =>
+        Array.from({ length: 3 }, (_, z) =>
+          Array.from({ length: 3 }, (_, x) =>
+            x === 1 && y === 1 && z === 1 ? 1 : 0,
+          ),
+        ),
+      ),
+    };
+    const mesh = buildMesh(part, [shell, hidden]);
+    expect(mesh.materials).toHaveLength(1);
+    expect(mesh.groups).toHaveLength(1);
+    for (const g of mesh.groups) expect(g.count).toBeGreaterThan(0);
+  });
+
+  it('keeps a material the moment one of its faces is visible', () => {
+    const shell = rgba(180, 180, 180);
+    const shown = rgba(200, 200, 200, 255, { metallic: 1, roughness: 0.1 });
+    const part: Part = {
+      name: 'p',
+      size: { w: 2, h: 1, d: 1 },
+      pivot: { pos: { x: 0, y: 0, z: 0 } },
+      sockets: [],
+      voxels: [[[0, 1]]],
+    };
+    const mesh = buildMesh(part, [shell, shown]);
+    expect(mesh.materials).toHaveLength(2);
+    for (const g of mesh.groups) expect(g.count).toBeGreaterThan(0);
+  });
+});

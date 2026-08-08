@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { ANGLES } from '../render/camera.js';
+import { ANGLES, resolveAngles } from '../render/camera.js';
 import type { Angle } from '../render/camera.js';
 import type { Rgb } from '../render/framebuffer.js';
 import { DEFAULT_BG, runGif, type GifOptions } from './gif-runner.js';
@@ -67,12 +67,15 @@ export function parseArgs(
       clip = a.slice('--anim='.length);
       if (clip === '') return { error: '--anim needs a clip name' };
     } else if (a.startsWith('--angle=')) {
-      const id = a.slice('--angle='.length);
-      const found = ANGLES[id];
-      if (found === undefined) {
-        return { error: `unknown angle "${id}" (see --help for the list)` };
-      }
-      angle = found;
+      // Through resolveAngles, not a bare ANGLES lookup: the help above
+      // advertises `az<deg>el<deg>` and only resolveAngles understands it,
+      // so the flag was documented and rejected. One angle, so take the
+      // first — the spec of `--angle` is singular by design.
+      const r = resolveAngles(a.slice('--angle='.length));
+      if ('error' in r) return { error: r.error };
+      const first = r[0];
+      if (first === undefined) return { error: '--angle needs an angle' };
+      angle = first;
     } else if (a.startsWith('--size=')) {
       const n = parsePositiveInt(a.slice('--size='.length));
       if (n === null) return { error: '--size must be a positive integer' };

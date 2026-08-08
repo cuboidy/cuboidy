@@ -1,9 +1,9 @@
 import { AIR } from './geometry/voxel-row.js';
-import { MATTE, isMatte } from './geometry/palette.js';
+import { MATTE } from './geometry/palette.js';
 import type { Material, Palette, Part } from './geometry/types.js';
 
 // Engine-agnostic mesh data for a single Part. Colors are sRGB in 0..1,
-// matching the palette's color space (SPEC §10). Renderers that need
+// matching the palette's color space (SPEC §7.4). Renderers that need
 // linear values (e.g. three.js vertexColors) must convert at upload time.
 //
 // The output is fully deterministic given (part, palette) — the iteration
@@ -62,9 +62,6 @@ function materialKey(m: MeshMaterial): string {
   return `${m.metallic},${m.roughness},${m.emissive},${m.translucent}`;
 }
 
-export function isMatteOpaque(m: MeshMaterial): boolean {
-  return !m.translucent && isMatte(m);
-}
 
 interface FaceDef {
   readonly normal: readonly [number, number, number];
@@ -181,17 +178,24 @@ export function buildMesh(part: Part, palette: Palette): MeshData {
         // An unresolved index is opaque magenta, so it is fully opaque too —
         // and matte, since there is no entry to read a material from.
         const a = paletteAlpha[idx] ?? 1;
-        const into = bucketFor(paletteMaterial[idx] ?? MATTE_OPAQUE);
+        // Resolved on the first face that SURVIVES, not once per voxel. A
+        // fully enclosed voxel emits nothing, and creating its bucket
+        // anyway advertised a material no visible triangle uses: the mesh
+        // reported two materials for a model with one finish, which flipped
+        // the renderer to a material array plus groups, compiled a shader
+        // nothing drew with, and issued a zero-count draw call.
+        let into: number[] | null = null;
         for (const face of FACES) {
           const n = voxelAt(part, x + face.d[0], y + face.d[1], z + face.d[2]);
           if (hiddenBy(n, idx, paletteOpaque)) continue;
+          into ??= bucketFor(paletteMaterial[idx] ?? MATTE_OPAQUE);
           for (const corner of face.corners) {
             positions.push(x + corner[0], y + corner[1], z + corner[2]);
             normals.push(face.normal[0], face.normal[1], face.normal[2]);
             colors.push(r, g, b);
             alphas.push(a);
           }
-          into.push(
+          into!.push(
             vertCount, vertCount + 1, vertCount + 2,
             vertCount, vertCount + 2, vertCount + 3,
           );
@@ -202,8 +206,8 @@ export function buildMesh(part: Part, palette: Palette): MeshData {
   }
 
   // Opaque buckets first, then translucent, each keeping first-appearance
-  // order within its pass. An empty bucket cannot occur — one is created only
-  // when a face lands in it.
+  // order within its pass. Every bucket holds at least one quad, because
+  // `bucketFor` is only reached from a face that survived culling.
   const ordered = [
     ...buckets.filter((b) => !b.material.translucent),
     ...buckets.filter((b) => b.material.translucent),

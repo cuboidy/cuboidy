@@ -123,7 +123,7 @@ export {
 } from './socket-frame.js';
 export type { SocketFrame } from './socket-frame.js';
 
-export { buildMesh, isMatteOpaque } from './mesh.js';
+export { buildMesh } from './mesh.js';
 export type { MeshData, MeshGroup, MeshMaterial } from './mesh.js';
 
 // The named viewpoints. Exported so a browser app can render a model from

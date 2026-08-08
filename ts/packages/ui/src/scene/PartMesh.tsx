@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
 import type { Palette, Part } from '@cuboidy/core';
 import { Mesh } from 'three';
 import { noRaycast } from './gizmo-primitives.js';
@@ -31,6 +32,11 @@ export function PartMesh({ part, palette, raycastDisabled }: Props) {
   // three.js sorts transparent objects, not the triangles within one, and
   // core's own renderer does sort — so without this the editor and
   // `cuboidy-snap` disagree about the same model.
+  //
+  // Driven from `useFrame`, not `onBeforeRender`. r3f runs priority-0
+  // subscribers before its own `gl.render`, which is the only point early
+  // enough: three reads `geometry.groups` in `projectObject`, before any
+  // object's `onBeforeRender` fires.
   const sortTranslucent = useMemo(
     () =>
       makeTranslucentSorter(
@@ -64,12 +70,13 @@ export function PartMesh({ part, palette, raycastDisabled }: Props) {
     [materials],
   );
 
+  useFrame(({ camera }) => sortTranslucent(camera));
+
   return (
     <mesh
       ref={meshRef}
       geometry={geometry}
       material={materials}
-      onBeforeRender={sortTranslucent}
       raycast={raycastDisabled === true ? noRaycast : meshRaycast}
     />
   );

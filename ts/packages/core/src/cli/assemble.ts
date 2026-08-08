@@ -245,7 +245,7 @@ function buildEffectivePalette(
       remap.set(name, null);
       continue;
     }
-    // An palette written out in place was range-checked at parse time; a
+    // A palette written out in place was range-checked at parse time; a
     // REFERENCED one could not be, since its length is known only once the
     // project layer has read the file it points at.
     if (maxIdx >= palette.length) {

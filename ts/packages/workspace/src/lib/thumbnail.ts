@@ -5,20 +5,18 @@ import {
   worldTransformsFor,
 } from '@cuboidy/core';
 import {
+  addStudioLighting,
   buildPartGeometry,
   buildPartMaterials,
-  makeStudioEnvironment,
   makeTranslucentSorter,
+  type SortTranslucent,
 } from '@cuboidy/ui';
 import {
-  AmbientLight,
-  DirectionalLight,
   Group,
   Mesh,
   OrthographicCamera,
   Quaternion,
   Scene,
-  type Texture,
   Vector3,
   WebGLRenderer,
 } from 'three';
@@ -85,38 +83,18 @@ export async function renderThumbnails(
   }
 }
 
-// Built once per renderer and kept: PMREM generation is the expensive part
-// of drawing a card, and every card shares one renderer already.
-let cachedEnvironment: { renderer: WebGLRenderer; texture: Texture } | null =
-  null;
-
-function environmentFor(renderer: WebGLRenderer): Texture {
-  if (cachedEnvironment?.renderer === renderer) return cachedEnvironment.texture;
-  cachedEnvironment?.texture.dispose();
-  const texture = makeStudioEnvironment(renderer);
-  cachedEnvironment = { renderer, texture };
-  return texture;
-}
-
 function renderOne(renderer: WebGLRenderer, model: LibraryModel): string | null {
   const box = modelBounds(model);
   if (box === null) return null;
 
   const scene = new Scene();
-  const group = buildModelGroup(model);
+  const sorters: SortTranslucent[] = [];
+  const group = buildModelGroup(model, sorters);
   scene.add(group);
-  // Lit the same way the scene view is, so a card is a small version of
-  // what dropping it will look like rather than a differently-shaded one.
-  // The environment is not decoration: a §7.4 metal has no diffuse term and
-  // renders black without something to reflect.
-  scene.environment = environmentFor(renderer);
-  scene.add(new AmbientLight(0xffffff, 0.12));
-  const key = new DirectionalLight(0xffffff, 1.1);
-  key.position.set(6, 10, 8);
-  scene.add(key);
-  const fill = new DirectionalLight(0xffffff, 0.4);
-  fill.position.set(-8, 4, -6);
-  scene.add(fill);
+  // The same rig the scene views use — literally the same module, because
+  // the previous version of this comment claimed the same thing while
+  // running 0.75 ambient against the scene view's 0.12.
+  const teardownLighting = addStudioLighting(scene, renderer);
 
   // Orthographic, like cuboidy-snap: a voxel model reads best without
   // perspective, and it also means the frame can be computed exactly
@@ -163,7 +141,10 @@ function renderOne(renderer: WebGLRenderer, model: LibraryModel): string | null 
   camera.bottom = -half;
   camera.updateProjectionMatrix();
 
+  // Depth-sort every translucent part for THIS camera before drawing.
+  for (const sort of sorters) sort(camera);
   renderer.render(scene, camera);
+  teardownLighting();
   const url = renderer.domElement.toDataURL('image/png');
 
   disposeGroup(group);
@@ -174,7 +155,10 @@ function renderOne(renderer: WebGLRenderer, model: LibraryModel): string | null 
 // thumbnail needs no React root and no r3f. The mesh data and the rest
 // transforms both come from core, so a card cannot disagree with the
 // scene view about what the model looks like.
-function buildModelGroup(model: LibraryModel): Group {
+function buildModelGroup(
+  model: LibraryModel,
+  sorters: SortTranslucent[],
+): Group {
   const group = new Group();
   const transforms = worldTransformsFor(model.manifest, model.parts);
   for (const [name, resolved] of model.parts) {
@@ -195,13 +179,19 @@ function buildModelGroup(model: LibraryModel): Group {
       materials.length === 1 ? materials[0]! : materials,
     );
     // Blended faces need to be drawn back to front, and three.js only
-    // orders whole objects. One render from a fixed camera, so this fires
-    // once. See @cuboidy/ui's translucent-order.
-    obj.onBeforeRender = makeTranslucentSorter(
-      () => obj,
-      geometry,
-      opaqueIndexCount,
-      built.translucentQuadMaterials,
+    // orders whole objects. Collected and run by the caller just before
+    // `renderer.render`, NOT hung on `obj.onBeforeRender` — three reads
+    // `geometry.groups` in `projectObject`, before that hook fires, so a
+    // group rebuild there would land a frame late. Here there IS no next
+    // frame: one render, so a card would have been permanently wrong. See
+    // @cuboidy/ui's translucent-order.
+    sorters.push(
+      makeTranslucentSorter(
+        () => obj,
+        geometry,
+        opaqueIndexCount,
+        built.translucentQuadMaterials,
+      ),
     );
     const wt = transforms.get(name) ?? { pos: [0, 0, 0], quat: QUAT_IDENTITY };
     // A part's world transform places its PIVOT at wt.pos, so the mesh —

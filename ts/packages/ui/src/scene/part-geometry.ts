@@ -31,7 +31,7 @@ export interface PartGeometry {
 }
 
 export function buildPartGeometry(part: Part, palette: Palette): PartGeometry {
-  // buildMesh emits sRGB (matching the palette's color space — SPEC §10);
+  // buildMesh emits sRGB (matching the palette's color space — SPEC §7.4);
   // three's vertex-color path bypasses colour management, so the
   // conversion to linear is ours to make (see gizmo-primitives).
   const mesh = buildMesh(part, palette);
@@ -59,10 +59,13 @@ export function buildPartGeometry(part: Part, palette: Palette): PartGeometry {
   // upload, one draw order, and the translucent materials never touch the
   // depth buffer, so faces behind them survive.
   //
-  // Groups are added only when there is more than one material. A geometry
-  // with a single group and a one-element material ARRAY draws nothing in
-  // three.js, and the single-material case is every model that says nothing
-  // about §7.4 materials — which is most of them.
+  // Groups are added only when there is more than one material. It is a
+  // material ARRAY against a geometry with NO groups that draws nothing in
+  // three.js — `projectObject` iterates `geometry.groups` when the material
+  // is an array, so an empty list means nothing gets pushed. The
+  // single-material case therefore passes a bare material instead (see
+  // PartMesh) and needs no groups. That is every model saying nothing
+  // about §7.4 materials, which is most of them.
   const opaqueIndexCount = mesh.opaqueIndexCount;
   const blended = mesh.indices.length - opaqueIndexCount;
   if (mesh.materials.length > 1) {

@@ -20,8 +20,9 @@ type ShaderInfo = Parameters<MeshStandardMaterial['onBeforeCompile']>[0];
 // white would wash every glowing voxel toward white instead of making it
 // glow its own colour.
 //
-// The patch below is four lines of GLSL injected after the stock emissive
-// chunk, where `diffuseColor` already carries the vertex colour. The
+// The patch below adds one GLSL statement after the stock emissive chunk,
+// where `diffuseColor` already carries the vertex colour, plus the uniform
+// it reads. The
 // alternative was one bucket per palette ENTRY rather than per material —
 // up to 62 draw calls for a model that wants one.
 //

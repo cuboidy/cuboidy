@@ -86,7 +86,7 @@ describe('makeTranslucentSorter', () => {
   it('orders translucent quads farthest-first for the given camera', () => {
     const { mesh, opaqueIndexCount, sort } = meshFor(column(5, 0));
     const camera = cameraAt(8, -6, 8);
-    sort(null, null, camera);
+    sort(camera);
 
     expectBackToFront(drawnDepths(mesh, camera, opaqueIndexCount));
   });
@@ -95,11 +95,11 @@ describe('makeTranslucentSorter', () => {
     const { mesh, opaqueIndexCount, sort } = meshFor(column(5, 0));
     const index = mesh.geometry.getIndex()!;
 
-    sort(null, null, cameraAt(8, -6, 8));
+    sort(cameraAt(8, -6, 8));
     const first = Array.from(index.array);
 
     const behind = cameraAt(-8, -6, -8);
-    sort(null, null, behind);
+    sort(behind);
     const second = Array.from(index.array);
 
     expect(second).not.toEqual(first);
@@ -121,7 +121,7 @@ describe('makeTranslucentSorter', () => {
     const index = mesh.geometry.getIndex()!;
     const before = Array.from(index.array).slice(0, opaqueIndexCount);
 
-    sort(null, null, cameraAt(8, -6, 8));
+    sort(cameraAt(8, -6, 8));
 
     expect(Array.from(index.array).slice(0, opaqueIndexCount)).toEqual(before);
   });
@@ -131,8 +131,99 @@ describe('makeTranslucentSorter', () => {
     const index = mesh.geometry.getIndex()!;
     const before = Array.from(index.array);
 
-    sort(null, null, cameraAt(8, -6, 8));
+    sort(cameraAt(8, -6, 8));
 
     expect(Array.from(index.array)).toEqual(before);
+  });
+});
+
+// The group rebuild had NO coverage: every test above passes a single
+// translucent material, so `rebuildGroups` was always false and the
+// coalescing loop — the trickiest part of the sorter, and the only thing
+// keeping two translucent finishes correct under a depth sort — never ran.
+describe('makeTranslucentSorter — two translucent materials in one part', () => {
+  // Same colour, different finish, both see-through: two buckets, so the
+  // depth sort interleaves them and the fixed group boundaries stop
+  // describing the buffer.
+  const GLASS_A: Palette[number] = {
+    r: 58, g: 160, b: 255, a: 0x66, ...MATTE,
+  };
+  const GLASS_B: Palette[number] = {
+    r: 58, g: 160, b: 255, a: 0x66, ...MATTE, emissive: 0.7,
+  };
+  const TWO: Palette = [GLASS_A, GLASS_B];
+
+  // Alternating up the column so neither material is already contiguous in
+  // depth order from the camera used below.
+  const part: Part = {
+    name: 'p',
+    size: { w: 1, h: 6, d: 1 },
+    pivot: { pos: { x: 0, y: 0, z: 0 } },
+    sockets: [],
+    voxels: Array.from({ length: 6 }, (_, y) => [[y % 2]]),
+  };
+
+  function sorted(camera: PerspectiveCamera) {
+    const built = buildPartGeometry(part, TWO);
+    const mesh = new Mesh(built.geometry);
+    mesh.updateMatrixWorld(true);
+    const sort = makeTranslucentSorter(
+      () => mesh,
+      built.geometry,
+      built.opaqueIndexCount,
+      built.translucentQuadMaterials,
+    );
+    sort(camera);
+    return { built, mesh };
+  }
+
+  it('needs two buckets to begin with', () => {
+    const built = buildPartGeometry(part, TWO);
+    expect(built.materials).toHaveLength(2);
+    expect(new Set(built.translucentQuadMaterials).size).toBe(2);
+  });
+
+  it('still orders every quad farthest-first', () => {
+    const camera = cameraAt(8, -6, 8);
+    const { built, mesh } = sorted(camera);
+    expectBackToFront(drawnDepths(mesh, camera, built.opaqueIndexCount));
+  });
+
+  it('rebuilds groups that tile the buffer with no gap or overlap', () => {
+    const { built } = sorted(cameraAt(8, -6, 8));
+    const groups = [...built.geometry.groups].sort((a, b) => a.start - b.start);
+    let at = 0;
+    for (const g of groups) {
+      expect(g.start).toBe(at);
+      expect(g.count).toBeGreaterThan(0);
+      at += g.count;
+    }
+    expect(at).toBe(built.geometry.getIndex()!.count);
+  });
+
+  it('gives every quad the material it actually belongs to', () => {
+    // The bug this guards: groups describing the PREVIOUS order while the
+    // index buffer holds the new one, so quads draw with another finish.
+    const camera = cameraAt(8, -6, 8);
+    const { built, mesh } = sorted(camera);
+    const index = mesh.geometry.getIndex()!;
+    // Rebuild "which material did this quad start in" from the vertex it
+    // still carries — vertices never move, only the index order does.
+    const materialOfVertex = new Map<number, number>();
+    const fresh = buildPartGeometry(part, TWO);
+    const freshIndex = fresh.geometry.getIndex()!;
+    for (let q = 0; q < fresh.translucentQuadMaterials.length; q++) {
+      const at = fresh.opaqueIndexCount + q * 6;
+      materialOfVertex.set(
+        freshIndex.getX(at),
+        fresh.translucentQuadMaterials[q]!,
+      );
+    }
+    for (const g of built.geometry.groups) {
+      if (g.start < built.opaqueIndexCount) continue;
+      for (let i = g.start; i < g.start + g.count; i += 6) {
+        expect(materialOfVertex.get(index.getX(i))).toBe(g.materialIndex);
+      }
+    }
   });
 });
