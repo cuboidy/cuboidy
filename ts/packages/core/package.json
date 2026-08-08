@@ -4,13 +4,10 @@
   "description": "Cuboidy reference implementation (TypeScript): parser, canonical serializer, manifest validation, shared project loader, lint, and inspection CLIs (view/query/snap/gif).",
   "license": "MIT",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
   "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
+    ".": "./src/index.ts"
   },
   "bin": {
     "cuboidy-lint": "./dist/cli/cuboidy-lint.js",

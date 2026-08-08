@@ -1,4 +1,3 @@
-import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
 // Unit tests for the editor's pure modules (lib/). Component and
@@ -6,19 +5,13 @@ import { defineConfig } from 'vitest/config';
 // config deliberately only picks up test/**, so `npm test` stays fast
 // and needs no browser. Node environment: everything under test here is
 // DOM-free by construction.
+//
+// No `@cuboidy/core` alias, and there used not to be one either: core's
+// package `main` now points at its SOURCE, so every consumer — vite, vitest
+// and tsc — resolves it the same way with no configuration at all. It used
+// to point at a hand-built `dist/`, which needed the same alias repeated in
+// seven places, and the seventh would have been whoever added the next one.
 export default defineConfig({
-  // Same alias as vite.config.ts. A vitest config does NOT inherit it —
-  // vitest reads THIS file when it exists — so without the repeat the tests
-  // resolve `@cuboidy/core` to its hand-built `dist/` and quietly check a
-  // stale copy of core. That is the third place this had to be said; the
-  // runtime and tsc were the other two.
-  resolve: {
-    alias: {
-      '@cuboidy/core': fileURLToPath(
-        new URL('../core/src/index.ts', import.meta.url),
-      ),
-    },
-  },
   test: {
     include: ['test/**/*.test.ts'],
     environment: 'node',
