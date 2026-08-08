@@ -9,6 +9,16 @@ Organizing principle: each chunk is one cohesive concern, committable and
 verifiable on its own (typecheck + tests for the mechanical ones, a
 what-to-check list in the running app for anything behavioral).
 
+> **Status, 2026-08-08.** The pre-port hardening pass
+> (`docs/working/core-port-readiness.md`) landed several of these on its way
+> past. **Done: R3-c** (one Zod→diagnostic mapping, `src/zod-diagnostic.ts`),
+> **R3-e** (one parent-chain walk, `forest.ts`'s `resolveHierarchy` — all four
+> callers), **R3-g** in part (the `Vec3Tuple` value/type collision and the
+> readonly/mutable split; `WorldTransform` and `SocketFrame` now alias one
+> `Frame`; the barrel is not trimmed), **R3-k** (as a `prepare` script rather
+> than a `development` export). The `duplicate` row of "Bugs found along the
+> way" went with R3-c. Everything else below stands.
+
 Phases: **R0** deletions & mechanical fixes → **R1** small shared
 extractions → **R2** big-file splits inside each app → **R3** core
 consolidation & API surface. Later phases assume earlier ones but chunks

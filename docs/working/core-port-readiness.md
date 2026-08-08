@@ -74,7 +74,7 @@ another, and only the message says what SPEC requires.
 
 ### D2 — Animation time keys require a decimal point
 
-The grammar becomes `^-?\d+\.\d+$`, stated in SPEC §6.6. `"1"` is not a legal
+The grammar becomes `^[0-9]+\.[0-9]+$`, stated in SPEC §6.6. (No sign: a time key is a position in a clip, and the first must be `"0.0"` anyway.) `"1"` is not a legal
 time key; `"1.0"` is.
 
 This closes two divergences with one rule. First, JavaScript hoists
@@ -106,8 +106,15 @@ squash-and-stretch breath.
 ### D4 — Core owns the application of `scale` and `visible`
 
 Core gains a function returning a part's local vertex transform (pivot-relative
-scale included), and the three existing call sites move onto it. The C# side
-ports it, so a Godot addon calls rather than reimplements.
+scale included), and the existing call sites move onto it. The C# side ports
+it, so a Godot addon calls rather than reimplements.
+
+**Corrected after review.** The rule was written TWICE outside core, not three
+times — `cli/gif-runner.ts` only plumbed `scale` through to the rasterizer.
+Of the two, `render/scene.ts` moved onto `localPointToWorld`;
+`ui/src/scene/RiggedParts.tsx` still expresses it as nested three.js groups,
+verified equivalent but still a second statement. It could not have moved at
+first, because the function was not exported from the barrel — fixed since.
 
 Today `animation.ts:146-151` produces the two fields, `rig-transform.ts:100-104`
 explicitly refuses to consume them (scale is local and does not propagate to
@@ -148,10 +155,15 @@ reported against* — a container means the wrong number of items, an element
 (the last path segment is an index) means that element's value is out of
 range — with `parts` as the single spec-named exception.
 
-The one case SPEC does not name is an empty manifest `geometry` list, which
-the manifest reader called `invalid-value`. It is now `wrong-arity`, the same
-answer an empty palette gets, because the alternative is a special case whose
-only justification is that it is what the code used to do.
+**Corrected after review.** This section originally claimed the one case SPEC
+does not name is an empty manifest `geometry` list, and mapped it to
+`wrong-arity` for consistency. SPEC names it: §11.5 files "duplicate or empty
+`geometry` list" under `invalid-value`, in a section this work never opened,
+which D1 makes authoritative — and the old reader had it right by falling
+through. The change was a regression and is reverted; `geometry` is now the
+named exception to the container rule, which is what the spec asks for. Two
+arrays spelled the same way, coded differently, and the spec is explicit
+about both.
 
 ### D7 — Easing endpoints are clamped, not trusted
 
@@ -162,7 +174,9 @@ keyframes". Five of the twenty do not: `in-sine(1)` is 0.9999999999999999,
 and `in-out-sine(0)` is `-0`.
 
 `applyEasing` returns 0 and 1 for those inputs rather than evaluating the
-formula. The endpoints are where an author placed a value and expects to see
+formula. (Five presets miss: `in-sine(1)`, `in-back(1)`, `out-back(0)`, and
+`in-out-sine(0)` and `in-out-back(0)`, which both return `-0`. An earlier
+draft of this section and of §6.7 said one preset returned `-0`.) The endpoints are where an author placed a value and expects to see
 it, and they are where a second implementation's trig is most likely to round
 the other way — so making the guarantee true is worth more than preserving
 five rounding residues. Interior values are deliberately left alone: they are
@@ -553,7 +567,9 @@ below.* §6's collisions;
 the scope table in `docs/csharp-implementation.md` corrected to nineteen files
 with the five unclassified ones decided; explicit decisions on
 `render/camera.ts` and on splitting the lint vocabulary out of `Diagnostic`;
-R3-k's `development` conditional export; core's `tsconfig.json` widened so
+R3-k, shipped as a `prepare` script rather than the `development`
+conditional export the backlog proposed — it also has to work for `tsc -b`
+and vitest, which do not resolve that condition; core's `tsconfig.json` widened so
 `test/` and `scripts/` are type-checked at all.
 
 ## Deferred

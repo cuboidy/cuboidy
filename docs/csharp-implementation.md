@@ -159,7 +159,7 @@ table and that file's comments; port neither the branches nor the three
 readers' older behaviour, which disagreed with the table and with each other.
 
 `models/` is the positive half of the same contract: every shipped model —
-fox, herbalist, knight, koi, owl, sword, windmill — loads clean.
+fox, herbalist, knight, koi, orrery, owl, sword, windmill — loads clean.
 
 The runtime half has no fixtures, so it is checked against TypeScript
 numerically instead:

@@ -5,6 +5,60 @@ the spec as it stands now.
 
 ## v0.9 (draft — current)
 
+### Rules tightened ahead of the second implementation
+
+A pre-port audit of the reference implementation found several places where
+the spec and the code disagreed, or where the spec was silent about something
+two implementations would have to agree on. These are the resulting normative
+changes. One of them is **breaking**.
+
+**§6.6 — a time key requires its decimal point.** `"1"` is no longer a time
+key; `"1.0"` is. Formally `^[0-9]+\.[0-9]+$`, which also excludes `"0x10"`,
+`"1e3"`, `"5."` and `"+1"`.
+
+*Breaking.* A clip keyed `{"0": …, "1": …}` loaded before and does not now.
+Every shipped model already wrote the decimal form, but real documents used
+the other one. The reason is that a JSON object key spelling a small
+non-negative integer is not an ordinary string key in every language's object
+model — JavaScript hoists it, so a track written in order reads back out of
+order and the §6.6 ordering rules reject it, while a reader over an
+order-preserving parser accepts the same file. Requiring the point keeps
+every legal key an ordinary string key, so implementations agree on which
+documents are valid instead of on which parser read them. A reader MAY accept
+the integer form and normalize it, but MUST NOT emit it.
+
+**§6.7 — easing endpoints are exact, and a near-keyframe time snaps.**
+Implementations MUST return `0` and `1` from a preset at `u = 0` and `u = 1`
+rather than whatever the formula evaluates to; five of the twenty land a
+rounding step away and two of those return `-0`. Interior values follow the
+formulas as written, but are compared across implementations to a tolerance,
+not bit-for-bit — eleven presets go through `sin`/`cos`/`pow`, which no
+runtime is required to round correctly.
+
+Separately, a sample time within `max(|time|, duration) × 1e-12` of a
+keyframe IS that keyframe's time, for every attribute at once. Wrapping is
+the exact IEEE remainder of a dividend that is not the number the author
+wrote, so a clock a whole number of loops past a key lands a few ULPs below
+it — enough for a step attribute to read "not yet" while the interpolating
+ones sit at `u ≈ 1`.
+
+**§7.4 — an index no palette defines renders as opaque magenta.** Previously
+unstated, and left to each renderer. Cross-file validation still reports it,
+but reporting is authoring-time and a runtime that only draws needs a defined
+answer rather than a crash or an out-of-bounds read.
+
+**§7.8 — a host part's animated `scale` moves its sockets.** Previously
+unstated, and the reference ignored it, so a socket at the tip of an arm
+stretched to 3× stayed a third of the way along. A socket is a point in the
+part's geometry and goes through the same mapping the voxels do. The guest is
+NOT resized: the frame carries position and orientation only.
+
+**§11.5 / §11.6 — an ambiguous part name is a resolution failure.** A part
+name defined in two files of the `geometry` list leaves the by-`name` lookup
+with no answer, so an implementation that resolves references but does not
+lint MUST still refuse the model rather than binding to whichever file it
+read first.
+
 ### Per-part geometry, and a single-file model
 
 A manifest part gains an optional **`geometry`** object (§6.13) saying where its
