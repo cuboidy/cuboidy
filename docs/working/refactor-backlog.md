@@ -9,15 +9,58 @@ Organizing principle: each chunk is one cohesive concern, committable and
 verifiable on its own (typecheck + tests for the mechanical ones, a
 what-to-check list in the running app for anything behavioral).
 
-> **Status, 2026-08-08.** The pre-port hardening pass
-> (`docs/working/core-port-readiness.md`) landed several of these on its way
-> past. **Done: R3-c** (one Zod→diagnostic mapping, `src/zod-diagnostic.ts`),
-> **R3-e** (one parent-chain walk, `forest.ts`'s `resolveHierarchy` — all four
-> callers), **R3-g** in part (the `Vec3Tuple` value/type collision and the
-> readonly/mutable split; `WorldTransform` and `SocketFrame` now alias one
-> `Frame`; the barrel is not trimmed), **R3-k** (as a `prepare` script rather
+> **Status, 2026-08-09.** Two passes have gone through this list since it
+> was written: the pre-port hardening pass
+> (`docs/working/core-port-readiness.md`) and a four-agent review of the
+> §7.4 material work.
+>
+> **Done from the hardening pass:** R3-c (one Zod→diagnostic mapping,
+> `src/zod-diagnostic.ts`), R3-e (one parent-chain walk, `forest.ts`'s
+> `resolveHierarchy`, all four callers), R3-g in part (the `Vec3Tuple`
+> value/type collision and the readonly/mutable split; `WorldTransform` and
+> `SocketFrame` now alias one `Frame`), R3-k (as a `prepare` script rather
 > than a `development` export). The `duplicate` row of "Bugs found along the
-> way" went with R3-c. Everything else below stands.
+> way" went with R3-c.
+>
+> **Done from the review pass (2026-08-09):**
+> - **One lint composition** — `core/src/lint/project-lint.ts`. The CLI and
+>   the editor had each composed per-file + cross-file linting, and the
+>   editor's lacked the CLI's `complete` gate, so one missing referenced file
+>   produced a wall of consequential findings instead of the cause.
+> - **One palette reader** — `parsePaletteFileText`. There were five, four of
+>   which collapsed every failure to a bare `null`.
+> - **One CLI arg parser** — `core/src/cli/args.ts`. The two hand-rolled hex
+>   readers disagreed with core's own, so `--bg=#RRGGBBAA` was rejected by
+>   the tools and accepted everywhere else.
+> - **R3-k finished properly** — core's `exports` points at `src`, which
+>   deleted the SEVEN places the alias had to be repeated (2 vite, 2 vitest,
+>   3 tsconfig `paths`).
+> - **R3-g's barrel trim, measured.** The audit's "71 unused exports" is 54,
+>   and 52 of those are used inside core — publishing them is an API-surface
+>   judgement, not dead code. Two were genuinely dead (`EaseMap`,
+>   `validateCrossFile`) and are gone. Treat this row as closed.
+> - **The tree defects, but not the extraction.** The workspace's scene tree
+>   carried the exact drop-strip arrangement the editor's CSS documents as
+>   the Chrome drag bug; fixed. The inert `tree-node` class (10 sites, no
+>   rule, no selector) is gone, all three trees now carry tree/group/treeitem
+>   and `aria-expanded`, and `treeIndent` is shared. The component extraction
+>   itself is still open — see R1/R2 — and is deliberately last: two live
+>   drag-and-drop surfaces.
+>
+> **Three rows in this document are now WRONG and have been left in place
+> rather than silently edited**, since knowing the audit was fallible is
+> worth more than a tidy list: R0-c cites `buildScene` + `Voxel` (it is
+> `buildSceneFromParts`, live in two CLIs); R3-a says the project resolver is
+> duplicated (already unified — core's `resolveProject` took the `overrides`
+> option and `readPaletteRef` does not exist); R3-e's "fourth topo sort at
+> `assemble.ts:453-487`" delegates to `forest.ts` now, and `assemble.ts` is
+> 437 lines, not 495.
+>
+> **Still open:** R2-d (`source-ops.ts`, now 1067 lines / 36 exports), R3-b,
+> R3-d, R3-f (the §7.4 FACE table and hide rule still exist in both
+> `mesh.ts` and `render/scene.ts` — guarded by `mesh-scene-parity.test.ts`,
+> but still two edits), R3-h, R3-i, R3-j, part of R1-g, and the tree
+> component extraction.
 
 Phases: **R0** deletions & mechanical fixes → **R1** small shared
 extractions → **R2** big-file splits inside each app → **R3** core
