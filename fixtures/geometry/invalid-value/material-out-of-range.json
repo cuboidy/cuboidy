@@ -1,0 +1,7 @@
+{
+  "version": "0.9",
+  "palette": [{ "color": "#C0C4CC", "roughness": -0.1 }],
+  "parts": [
+    { "name": "p", "size": [1, 1, 1], "pivot": { "pos": [0, 0, 0] }, "voxels": [["0"]] }
+  ]
+}

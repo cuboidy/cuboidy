@@ -19,19 +19,22 @@ fixtures/
 │   │   ├── parts.json                 no `parts` key
 │   │   ├── parts-empty.json           `parts` present but empty
 │   │   ├── size.json                  part has voxels but no `size`
-│   │   └── voxels.json                part has size but no `voxels`
+│   │   ├── voxels.json                part has size but no `voxels`
+│   │   └── palette-entry-color.json   a §7.4 object entry omits `color`
 │   ├── duplicate/
 │   │   ├── part-name.json             two parts share a name
 │   │   └── socket-name.json           two sockets in one part share a name
 │   ├── unknown/
 │   │   ├── unknown-field.json         unrecognised top-level key
-│   │   └── unknown-part-field.json    unrecognised key on a part
+│   │   ├── unknown-part-field.json    unrecognised key on a part
+│   │   └── palette-entry-key.json     unrecognised key on a §7.4 entry
 │   ├── invalid-value/
 │   │   ├── bad-voxel-char.json        voxel cell outside [.0-9a-zA-Z]
 │   │   ├── bad-color.json             palette entry is not #RGB/#RGBA/#RRGGBB/#RRGGBBAA
 │   │   ├── bad-part-name.json         part name fails the §5 identifier rule
 │   │   ├── palette-index.json         cell indexes past the declared palette
-│   │   └── size-zero.json             size dimension 0 is below the minimum
+│   │   ├── size-zero.json             size dimension 0 is below the minimum
+│   │   └── material-out-of-range.json a §7.4 material field outside 0..1
 │   └── wrong-arity/
 │       ├── row-width.json             row length does not match W
 │       ├── row-count.json             rows in a layer do not match D
@@ -62,11 +65,14 @@ fixtures/
 │       └── inline-row-width.json      §6.13 row length does not match W
 └── palette/                           SPEC §6.10 — an external palette file
     ├── missing/
-    │   └── colors.json                no `colors` key
+    │   ├── colors.json                no `colors` key
+    │   └── entry-color.json           an object entry omits `color` (§7.4)
     ├── unknown/
-    │   └── unknown-field.json         unrecognised top-level key
+    │   ├── unknown-field.json         unrecognised top-level key
+    │   └── entry-key.json             unrecognised key on an entry (§7.4)
     ├── invalid-value/
-    │   └── bad-color.json             a `colors` entry is not a hex color
+    │   ├── bad-color.json             a `colors` entry is not a hex color
+    │   └── material-out-of-range.json a material field outside 0..1 (§7.4)
     └── wrong-arity/
         └── colors-empty.json          `colors` present but empty
 ```

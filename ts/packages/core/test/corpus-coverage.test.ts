@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { EASING_NAMES } from '../src/easing.js';
 import { loadAndAssemble } from '../src/cli/assemble.js';
+import { buildMesh } from '../src/mesh.js';
 import { resolveRefFrom } from '../src/project.js';
 
 const REPO_ROOT = resolve(
@@ -158,5 +159,89 @@ describe('models/ — corpus coverage', () => {
     // to expand all four; 78 of the corpus's colors used to be #RRGGBB and
     // nothing else, leaving the alpha channel untouched entirely.
     expect([...forms].sort((a, b) => a - b)).toEqual([3, 4, 6, 8]);
+  });
+
+  // SPEC §7.4 materials. Until `submersible` there was no shipped model with
+  // one, so an implementation that read the object form and threw the
+  // material away — or skipped the form entirely — passed every criterion
+  // this file states. That is the same hole that let a palette writer drop
+  // every material silently until a slider exposed it.
+  it('some model declares a §7.4 material object', async () => {
+    const found: string[] = [];
+    for (const name of await modelDirs()) {
+      for (const text of await allJsonText(join(MODELS, name))) {
+        if (/"(metallic|roughness|emissive)"\s*:/.test(text)) found.push(name);
+      }
+    }
+    expect(found, 'no shipped model carries a material').not.toHaveLength(0);
+  });
+
+  // The three fields are independent branches — metalness, a highlight, and
+  // an added emission term — and a port can implement one and drop another.
+  it('every §7.4 material field is exercised at a non-default value', async () => {
+    const seen = new Set<string>();
+    for (const name of await modelDirs()) {
+      for (const text of await allJsonText(join(MODELS, name))) {
+        for (const m of text.matchAll(
+          /"(metallic|roughness|emissive)"\s*:\s*([0-9.]+)/g,
+        )) {
+          const field = m[1]!;
+          const value = Number(m[2]);
+          const isDefault =
+            (field === 'metallic' && value === 0) ||
+            (field === 'roughness' && value === 1) ||
+            (field === 'emissive' && value === 0);
+          if (!isDefault) seen.add(field);
+        }
+      }
+    }
+    expect([...seen].sort()).toEqual(['emissive', 'metallic', 'roughness']);
+  });
+
+  // Two entries with the SAME colour and different finishes. Every tool that
+  // identifies an entry by colour alone — a legend, a palette merge, a
+  // remap — collapses them, and the collapse repaints part of a model.
+  it('some model has two entries of one colour with different materials', async () => {
+    for (const name of await modelDirs()) {
+      const r = await loadAndAssemble(join(MODELS, name));
+      if (!r.ok) continue;
+      const byColour = new Map<string, Set<string>>();
+      for (const e of r.assembly.palette) {
+        const c = `${e.color.r},${e.color.g},${e.color.b},${e.color.a}`;
+        const m = `${e.material.metallic},${e.material.roughness},${e.material.emissive}`;
+        (byColour.get(c) ?? byColour.set(c, new Set()).get(c)!).add(m);
+      }
+      if ([...byColour.values()].some((set) => set.size > 1)) return;
+    }
+    throw new Error(
+      'no model pairs one colour with two materials — the case where a ' +
+        'colour-keyed tool silently merges two palette slots',
+    );
+  });
+
+  // One part carrying more than one material is what makes `MeshData.groups`
+  // do anything. With one material everywhere, a port that ignores grouping
+  // entirely still draws the right pixels.
+  it('some part resolves to more than one mesh material', async () => {
+    for (const name of await modelDirs()) {
+      const r = await loadAndAssemble(join(MODELS, name));
+      if (!r.ok) continue;
+      for (const rp of r.assembly.resolvedParts) {
+        const mesh = buildMesh(rp.part, r.assembly.palette);
+        if (mesh.materials.length > 1) return;
+      }
+    }
+    throw new Error('no shipped part has two materials — groups untested');
+  });
+
+  // §7.4 alpha. A translucent colour changes which faces exist, so it is the
+  // one palette field that a port cannot treat as a rendering detail.
+  it('some model uses a translucent colour', async () => {
+    for (const name of await modelDirs()) {
+      const r = await loadAndAssemble(join(MODELS, name));
+      if (!r.ok) continue;
+      if (r.assembly.palette.some((e) => e.color.a < 255)) return;
+    }
+    throw new Error('no shipped model is see-through anywhere');
   });
 });
