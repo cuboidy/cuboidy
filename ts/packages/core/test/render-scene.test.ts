@@ -230,3 +230,55 @@ describe('Framebuffer.fillTriangle — alpha (§7.4)', () => {
     expect(pixel(fb)).toEqual([0, 0, 0]);
   });
 });
+
+// A pixel exactly on the edge shared by two triangles belongs to exactly
+// ONE of them. Accepting it for both is invisible under an opaque fill —
+// the second write lays the same colour over the first — and is a seam
+// under alpha, where it lays a second coat of tint. It drew a diagonal
+// across a translucent face wherever a quad's own triangulation landed on
+// pixel centres, and a grid wherever two voxels of one colour met.
+describe('Framebuffer.fillTriangle — shared edges (§7.4)', () => {
+  // Two triangles meeting on the diagonal, the way a quad is triangulated.
+  const quad = (fb: Framebuffer, alpha: number) => {
+    const v = (x: number, y: number) => ({ x, y, depth: 0.5 });
+    fb.fillTriangle(v(0, 0), v(16, 0), v(16, 16), [1, 1, 1], alpha);
+    fb.fillTriangle(v(0, 0), v(16, 16), v(0, 16), [1, 1, 1], alpha);
+  };
+  const shades = (fb: Framebuffer) => {
+    const seen = new Set<number>();
+    for (let y = 1; y < 15; y++) {
+      for (let x = 1; x < 15; x++) seen.add(fb.color[(y * fb.width + x) * 4]!);
+    }
+    return [...seen].sort((p, q) => p - q);
+  };
+
+  it('blends a translucent quad exactly once everywhere', () => {
+    const fb = new Framebuffer(16, 16, [0, 0, 0]);
+    quad(fb, 0.5);
+    // One coat of 50% white over black. A twice-covered pixel would be 191.
+    expect(shades(fb)).toEqual([128]);
+  });
+
+  it('covers the quad completely — no gap along the diagonal', () => {
+    const fb = new Framebuffer(16, 16, [0, 0, 0]);
+    quad(fb, 0.5);
+    expect(shades(fb)).not.toContain(0);
+  });
+
+  it('leaves an opaque quad exactly as it was', () => {
+    const fb = new Framebuffer(16, 16, [0, 0, 0]);
+    quad(fb, 1);
+    expect(shades(fb)).toEqual([255]);
+  });
+
+  it('accepts either winding', () => {
+    const a = new Framebuffer(16, 16, [0, 0, 0]);
+    const b = new Framebuffer(16, 16, [0, 0, 0]);
+    const v = (x: number, y: number) => ({ x, y, depth: 0.5 });
+    a.fillTriangle(v(0, 0), v(16, 0), v(0, 16), [1, 1, 1], 0.5);
+    b.fillTriangle(v(0, 0), v(0, 16), v(16, 0), [1, 1, 1], 0.5);
+    const at = (fb: Framebuffer) => fb.color[(4 * fb.width + 4) * 4];
+    expect(at(a)).toBe(at(b));
+    expect(at(a)).toBe(128);
+  });
+});

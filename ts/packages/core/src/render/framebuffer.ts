@@ -58,11 +58,26 @@ export class Framebuffer {
     const maxY = Math.min(this.height - 1, Math.ceil(Math.max(a.y, b.y, c.y)));
     if (minX > maxX || minY > maxY) return;
 
-    // Signed area * 2 (orientation-independent: we accept either winding
-    // so back-face culling is the renderer's job, not the rasterizer's).
-    const area = edge(a, b, c);
+    // Signed area * 2. Either winding is accepted — back-face culling is the
+    // renderer's job, not the rasterizer's — but the two are NORMALISED to a
+    // positive area first, because the fill rule below has to know which
+    // side of an edge is inside.
+    let v1 = b;
+    let v2 = c;
+    let area = edge(a, v1, v2);
+    if (area < 0) {
+      v1 = c;
+      v2 = b;
+      area = -area;
+    }
     if (area === 0) return; // degenerate
     const inv = 1 / area;
+    // "Exactly on the edge" has to have a width. Screen positions come from
+    // a float projection, so the two triangles that meet at an edge evaluate
+    // it to values a few ULPs either side of zero rather than to zero — and
+    // then BOTH read it as inside and the seam comes back, fainter. Scaled
+    // to the triangle so it means the same thing at any size.
+    const onEdge = area * 1e-9;
 
     const r = to8(rgb[0]);
     const g = to8(rgb[1]);
@@ -73,15 +88,25 @@ export class Framebuffer {
       for (let x = minX; x <= maxX; x++) {
         const px = x + 0.5;
         const p = { x: px, y: py, depth: 0 };
-        // Barycentric weights via edge functions.
-        let w0 = edge(b, c, p) * inv;
-        let w1 = edge(c, a, p) * inv;
-        let w2 = edge(a, b, p) * inv;
-        // Inside test tolerant of either winding.
-        if ((w0 < 0 || w1 < 0 || w2 < 0) && (w0 > 0 || w1 > 0 || w2 > 0)) {
-          continue;
-        }
-        const d = w0 * a.depth + w1 * b.depth + w2 * c.depth;
+        // Barycentric weights via edge functions, on the normalised winding.
+        const e0 = edge(v1, v2, p);
+        const e1 = edge(v2, a, p);
+        const e2 = edge(a, v1, p);
+        // Top-left fill rule: a pixel exactly ON a shared edge belongs to
+        // exactly ONE of the two triangles that meet there. Accepting it for
+        // both — which "inside or on the edge" does — is invisible for an
+        // opaque fill, where the second write lays the same colour over the
+        // first, and is a seam under alpha, where it lays a second coat of
+        // tint. That is what drew a diagonal across a translucent face
+        // wherever a quad's own triangulation happened to land on pixel
+        // centres, and a grid wherever two voxels of one colour met.
+        if (e0 < -onEdge || (e0 <= onEdge && !isTopLeft(v1, v2))) continue;
+        if (e1 < -onEdge || (e1 <= onEdge && !isTopLeft(v2, a))) continue;
+        if (e2 < -onEdge || (e2 <= onEdge && !isTopLeft(a, v1))) continue;
+        const w0 = e0 * inv;
+        const w1 = e1 * inv;
+        const w2 = e2 * inv;
+        const d = w0 * a.depth + w1 * v1.depth + w2 * v2.depth;
         const i = y * this.width + x;
         if (d >= this.depth[i]!) continue;
         const o = i * 4;
@@ -235,6 +260,15 @@ export class Framebuffer {
 
 // Twice the signed area of triangle (a, b, p); sign encodes which side
 // of edge a→b the point p lies on.
+// With the winding normalised to a positive area and y growing downward,
+// an edge A→B bounds the triangle from above when it is horizontal and runs
+// rightward, and from the left when it runs upward. Those are the two the
+// rule keeps; the opposite pair is left to the neighbouring triangle.
+function isTopLeft(a: ScreenVert, b: ScreenVert): boolean {
+  if (a.y === b.y) return b.x > a.x;
+  return b.y < a.y;
+}
+
 function edge(a: ScreenVert, b: ScreenVert, p: { x: number; y: number }): number {
   return (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
 }
