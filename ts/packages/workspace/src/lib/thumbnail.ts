@@ -1,15 +1,12 @@
 import {
   ANGLES,
   QUAT_IDENTITY,
-  buildMesh,
   cameraDir,
   worldTransformsFor,
 } from '@cuboidy/core';
-import { srgbToLinearArray } from '@cuboidy/ui';
+import { buildPartGeometry, makeTranslucentSorter } from '@cuboidy/ui';
 import {
   AmbientLight,
-  BufferAttribute,
-  BufferGeometry,
   DirectionalLight,
   Group,
   Mesh,
@@ -161,24 +158,36 @@ function buildModelGroup(model: LibraryModel): Group {
   const transforms = worldTransformsFor(model.manifest, model.parts);
   for (const [name, resolved] of model.parts) {
     const part = resolved.part;
-    const mesh = buildMesh(part, resolved.palette);
-    if (mesh.indices.length === 0) continue; // an all-air part draws nothing
-
-    const geom = new BufferGeometry();
-    geom.setAttribute('position', new BufferAttribute(mesh.positions, 3));
-    geom.setAttribute('normal', new BufferAttribute(mesh.normals, 3));
-    // buildMesh emits sRGB in 0..1 (SPEC §10); three's vertex-color path
-    // bypasses colour management, so the conversion is ours to do — the
-    // same conversion PartMesh makes, for the same reason.
-    geom.setAttribute(
-      'color',
-      new BufferAttribute(srgbToLinearArray(mesh.colors), 3),
+    // The very same call PartMesh makes, so a card cannot disagree with the
+    // scene view about geometry, colour, or SPEC §7.4 opacity. Lambert
+    // rather than Standard is the one deliberate difference: a thumbnail
+    // wants a cheap, flat, predictable shade.
+    const { geometry, opaqueIndexCount, hasTranslucent } = buildPartGeometry(
+      part,
+      resolved.palette,
     );
-    geom.setIndex(new BufferAttribute(mesh.indices, 1));
+    if (geometry.getIndex()?.count === 0) continue; // all-air draws nothing
 
     const obj = new Mesh(
-      geom,
-      new MeshLambertMaterial({ vertexColors: true }),
+      geometry,
+      hasTranslucent
+        ? [
+            new MeshLambertMaterial({ vertexColors: true }),
+            new MeshLambertMaterial({
+              vertexColors: true,
+              transparent: true,
+              depthWrite: false,
+            }),
+          ]
+        : new MeshLambertMaterial({ vertexColors: true }),
+    );
+    // Blended faces need to be drawn back to front, and three.js only
+    // orders whole objects. One render from a fixed camera, so this fires
+    // once. See @cuboidy/ui's translucent-order.
+    obj.onBeforeRender = makeTranslucentSorter(
+      () => obj,
+      geometry,
+      opaqueIndexCount,
     );
     const wt = transforms.get(name) ?? { pos: [0, 0, 0], quat: QUAT_IDENTITY };
     // A part's world transform places its PIVOT at wt.pos, so the mesh —

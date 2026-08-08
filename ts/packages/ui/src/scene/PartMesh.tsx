@@ -1,12 +1,9 @@
-import { useEffect, useMemo } from 'react';
-import { buildMesh, type Palette, type Part } from '@cuboidy/core';
-import {
-  BufferAttribute,
-  BufferGeometry,
-  Mesh,
-  MeshStandardMaterial,
-} from 'three';
-import { noRaycast, srgbToLinearArray } from './gizmo-primitives.js';
+import { useEffect, useMemo, useRef } from 'react';
+import type { Palette, Part } from '@cuboidy/core';
+import { Mesh, MeshStandardMaterial } from 'three';
+import { noRaycast } from './gizmo-primitives.js';
+import { buildPartGeometry } from './part-geometry.js';
+import { makeTranslucentSorter } from './translucent-order.js';
 
 interface Props {
   part: Part;
@@ -21,41 +18,22 @@ interface Props {
 const meshRaycast = Mesh.prototype.raycast;
 
 export function PartMesh({ part, palette, raycastDisabled }: Props) {
-  const { geometry, hasTranslucent } = useMemo(() => {
-    // buildMesh emits sRGB (matching the palette's color space — SPEC
-    // §10); vertex colors need the linear form (see gizmo-primitives).
-    const mesh = buildMesh(part, palette);
-    const linear = srgbToLinearArray(mesh.colors);
-    // SPEC §7.4 opacity rides the palette entry, so it is per-vertex here.
-    // three.js reads a four-component `color` attribute as RGBA when the
-    // material is `transparent`, which is why the two arrays are woven
-    // together rather than uploaded separately.
-    const rgba = new Float32Array((linear.length / 3) * 4);
-    for (let i = 0, o = 0; i < linear.length; i += 3, o += 4) {
-      rgba[o] = linear[i]!;
-      rgba[o + 1] = linear[i + 1]!;
-      rgba[o + 2] = linear[i + 2]!;
-      rgba[o + 3] = mesh.alphas[i / 3]!;
-    }
-    const geom = new BufferGeometry();
-    geom.setAttribute('position', new BufferAttribute(mesh.positions, 3));
-    geom.setAttribute('normal', new BufferAttribute(mesh.normals, 3));
-    geom.setAttribute('color', new BufferAttribute(rgba, 4));
-    geom.setIndex(new BufferAttribute(mesh.indices, 1));
-
-    // `buildMesh` orders the indices opaque-first precisely so the two
-    // passes are two ranges of one buffer. Groups keep it that way — one
-    // upload, one draw order, and the translucent material never touches
-    // the depth buffer, so faces behind it survive.
-    const opaque = mesh.opaqueIndexCount;
-    const blended = mesh.indices.length - opaque;
-    if (blended > 0) {
-      geom.addGroup(0, opaque, 0);
-      geom.addGroup(opaque, blended, 1);
-    }
-    return { geometry: geom, hasTranslucent: blended > 0 };
-  }, [part, palette]);
+  const meshRef = useRef<Mesh>(null);
+  const { geometry, hasTranslucent, opaqueIndexCount } = useMemo(
+    () => buildPartGeometry(part, palette),
+    [part, palette],
+  );
   useEffect(() => () => geometry.dispose(), [geometry]);
+
+  // Back-to-front ordering for the blended range. See translucent-order.ts:
+  // three.js sorts transparent objects, not the triangles within one, and
+  // core's own renderer does sort — so without this the editor and
+  // `cuboidy-snap` disagree about the same model.
+  const sortTranslucent = useMemo(
+    () =>
+      makeTranslucentSorter(() => meshRef.current, geometry, opaqueIndexCount),
+    [geometry, opaqueIndexCount],
+  );
 
   // Built here rather than declared as children. r3f attaches a material
   // child to `material`, so TWO of them means the second REPLACES the first
@@ -96,8 +74,10 @@ export function PartMesh({ part, palette, raycastDisabled }: Props) {
 
   return (
     <mesh
+      ref={meshRef}
       geometry={geometry}
       material={materials}
+      onBeforeRender={sortTranslucent}
       raycast={raycastDisabled === true ? noRaycast : meshRaycast}
     />
   );

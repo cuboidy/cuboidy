@@ -81,6 +81,10 @@ export {
 export { RiggedParts } from './scene/RiggedParts.js';
 export type { VoxelStrokeHandlers } from './scene/RiggedParts.js';
 export { PartMesh } from './scene/PartMesh.js';
+export { buildPartGeometry } from './scene/part-geometry.js';
+export type { PartGeometry } from './scene/part-geometry.js';
+export { makeTranslucentSorter } from './scene/translucent-order.js';
+export type { BeforeRender } from './scene/translucent-order.js';
 export { PartGizmos } from './scene/PartGizmos.js';
 export type { GizmoPicking } from './scene/PartGizmos.js';
 export { TransformGizmoHost } from './scene/TransformGizmoHost.js';
