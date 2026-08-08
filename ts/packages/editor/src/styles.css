@@ -1793,6 +1793,114 @@ input[type='checkbox']:disabled {
   border-top: 1px solid rgba(0, 0, 0, 0.35);
 }
 
+/* SPEC §7.4 material handle. Bottom-right, the one corner the tile has
+   left: index is top-left, delete top-right, usage bottom-left, and the
+   alpha strip owns the bottom edge — so this sits just above it. */
+.swatch-material {
+  position: absolute;
+  right: 0.2rem;
+  bottom: 14px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  border: none;
+  border-radius: var(--r-1);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Above the full-tile colour picker, or a click opens the dialog. */
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+/* A matte entry hides the handle until hover, so a palette using no
+   materials looks exactly as it did before they existed. One that DOES
+   carry a material shows it always — the finish is invisible in the grid
+   otherwise, and two entries can share a hex and differ only in it. */
+.palette-swatch:hover .swatch-material,
+.swatch-material.set,
+.swatch-material.open,
+.swatch-material:focus-visible {
+  opacity: 1;
+}
+
+.swatch-material.set,
+.swatch-material.open {
+  background: var(--accent);
+}
+
+.palette-material {
+  margin-top: 0.6rem;
+  padding: 0.5rem 0.6rem 0.6rem;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-2);
+  background: var(--bg-2);
+}
+
+.palette-material-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.45rem;
+}
+
+.palette-material-title {
+  flex: 1;
+  font-size: 0.75rem;
+  color: var(--txt-2);
+}
+
+.palette-material-reset,
+.palette-material-close {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-1);
+  color: var(--txt-2);
+  cursor: pointer;
+}
+
+.palette-material-reset:hover:not(:disabled),
+.palette-material-close:hover {
+  color: var(--txt-1);
+  border-color: var(--line-1);
+}
+
+.palette-material-reset:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.palette-material-row {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr 2.4rem;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.12rem 0;
+}
+
+.palette-material-label {
+  font-size: 0.75rem;
+  color: var(--txt-2);
+}
+
+.palette-material-value {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--txt-2);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .swatch-alpha::-webkit-slider-thumb {
   appearance: none;
   width: 4px;

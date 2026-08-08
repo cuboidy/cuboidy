@@ -1,4 +1,4 @@
-import { InlineAnimationSchema, geometryPaths, parseGeometry, parseGeometryText, parseManifest, parsePaletteFile, resolvePartGeometry, serializeColor, resolveRefFrom, serializeGeometry, toInlineGeometry, type Geometry, type InlineAnimation, type Manifest, type ManifestPart, type Palette, type Part, type PublishedSocket } from '@cuboidy/core';
+import { InlineAnimationSchema, geometryPaths, parseGeometry, parseGeometryText, parseManifest, parsePaletteFile, resolvePartGeometry, serializePaletteEntry, resolveRefFrom, serializeGeometry, toInlineGeometry, type Geometry, type InlineAnimation, type Manifest, type ManifestPart, type Palette, type Part, type PublishedSocket } from '@cuboidy/core';
 import { isGeometryPath, normalizePath, resolveProjectRefs, withResolvedPalette } from './load-model.js';
 import type { LoadedSource } from './types.js';
 
@@ -432,8 +432,17 @@ function putText(src: LoadedSource, path: string, text: string): LoadedSource {
 }
 
 // Canonical text for an external palette file (§6.10).
+//
+// `serializePaletteEntry`, not `serializeColor`: the latter emits the four
+// colour channels and nothing else, so writing through it silently reset
+// every entry's §7.4 material to matte. A slider drag in the palette panel
+// wrote the file, the file was read back, and the finish was gone — which
+// presented as the SLIDER not working.
 export function paletteFileText(palette: Palette): string {
-  return JSON.stringify({ colors: palette.map(serializeColor) }, null, 2) + '\n';
+  return (
+    JSON.stringify({ colors: palette.map(serializePaletteEntry) }, null, 2) +
+    '\n'
+  );
 }
 
 // Does the geometry file at `path` resolve against the palette file at
@@ -493,7 +502,8 @@ export function withModelPalette(
   next: Palette,
 ): LoadedSource | null {
   if (src.manifest === undefined) return null;
-  const colors = next.map(serializeColor);
+  // Entries, not bare colours — see paletteFileText.
+  const colors = next.map(serializePaletteEntry);
   // An empty palette is spelled as an ABSENT field (§6.1), the same way a
   // geometry file omits one it does not have — so clearing every color
   // round-trips instead of leaving `"palette": []`, which the schema

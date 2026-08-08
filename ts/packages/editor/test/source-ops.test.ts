@@ -639,6 +639,35 @@ describe('writeModelPalette — the manifest palette, wherever it lives', () => 
     expect(next!.files.get('palette.json')).toContain('#00FF00');
   });
 
+  // SPEC §7.4 material has to survive a write. Both writers used
+  // `serializeColor`, which emits four channels and nothing else, so every
+  // save reset the palette to matte — and because the panel re-reads what
+  // it just wrote, it looked like the material SLIDER was broken.
+  const POLISHED = [
+    { r: 0xc0, g: 0xc4, b: 0xcc, a: 255, ...MATTE, metallic: 1, roughness: 0.08 },
+  ];
+
+  it('keeps the material when the manifest declares colors inline', () => {
+    const next = writeModelPalette(inlineModel(), POLISHED);
+    expect(next!.manifest?.palette).toEqual([
+      { color: '#C0C4CC', metallic: 1, roughness: 0.08 },
+    ]);
+  });
+
+  it('keeps the material when it writes a palette file', () => {
+    const next = writeModelPalette(referencedModel(), POLISHED);
+    const text = next!.files.get('palette.json') ?? '';
+    expect(text).toContain('"metallic": 1');
+    expect(text).toContain('"roughness": 0.08');
+    // And it round-trips back to the same entry.
+    expect(resolvedModelPalette(next!)).toEqual(POLISHED);
+  });
+
+  it('still writes a matte entry as a bare color', () => {
+    const next = writeModelPalette(inlineModel(), GREEN);
+    expect(next!.manifest?.palette).toEqual(['#00FF00']);
+  });
+
   it('drops the field entirely when the inline palette empties (§6.1)', () => {
     const next = writeModelPalette(inlineModel(), []);
     expect(next!.manifest?.palette).toBeUndefined();
