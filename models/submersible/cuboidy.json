@@ -1,0 +1,30 @@
+{
+  "name": "submersible",
+  "version": "0.9",
+  "geometry": ["hull.json", "bow.json", "stern.json"],
+  "parts": [
+    { "name": "hull", "position": [0, 8, 0] },
+    { "name": "collar", "parent": "hull", "position": [0, 0, -8] },
+    { "name": "dome", "parent": "collar", "position": [0, 0, -2] },
+    { "name": "cabin", "parent": "hull", "position": [0, -3, -8] },
+    { "name": "pod-l", "parent": "hull", "position": [-6, 0, -8], "rotation": [0, -8, 0] },
+    { "name": "pod-r", "parent": "hull", "position": [6, 0, -8], "rotation": [0, 8, 0] },
+    { "name": "tower", "parent": "hull", "position": [0, 4, -5] },
+    { "name": "skid-l", "parent": "hull", "position": [-3, -2, -5] },
+    { "name": "skid-r", "parent": "hull", "position": [3, -2, -5] },
+    { "name": "shroud", "parent": "hull", "position": [0, 0, 12] },
+    { "name": "prop", "parent": "shroud", "position": [0, 0, 1] },
+    { "name": "fin-l", "parent": "hull", "position": [-5, -1, 2] },
+    { "name": "fin-r", "parent": "hull", "position": [5, -1, 2] },
+    { "name": "fin-top", "parent": "hull", "position": [0, 4, 2] }
+  ],
+  "sockets": {
+    "beacon": { "part": "tower", "socket": "beacon" },
+    "manipulator": { "part": "hull", "socket": "manipulator" },
+    "beam-l": { "part": "pod-l", "socket": "beam" },
+    "beam-r": { "part": "pod-r", "socket": "beam" }
+  },
+  "animations": {
+    "hover": "anims/hover.json"
+  }
+}

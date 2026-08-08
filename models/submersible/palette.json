@@ -1,0 +1,16 @@
+{
+  "colors": [
+    "#10151A",
+    "#232C36",
+    { "color": "#93A4B4", "metallic": 1, "roughness": 0.68 },
+    { "color": "#76848F", "metallic": 1, "roughness": 0.5 },
+    { "color": "#DCE4EC", "metallic": 1, "roughness": 0.08 },
+    { "color": "#C9A03C", "metallic": 1, "roughness": 0.3 },
+    "#E9A13B",
+    "#DCE4EC",
+    { "color": "#FFE9A8", "emissive": 1 },
+    { "color": "#FFD07AB4", "emissive": 0.85 },
+    "#8FDCF0A8",
+    { "color": "#48E0C0", "emissive": 0.75 }
+  ]
+}
