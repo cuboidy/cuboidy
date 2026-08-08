@@ -12,9 +12,11 @@ were already legal and already parsed — what they meant was never written
 down, and every renderer discarded the value. §7.4 defines it, and the two
 rules that make it drawable:
 
-- **A face is dropped only when its neighbour hides it** — the neighbour is
-  opaque, or it is the very same palette index. Being merely solid is not
-  enough; that rule would put a hole in the wall behind a pane of glass.
+- **An opaque neighbour hides a face**, but a translucent one does not hide an
+  opaque face — that rule would put a hole in the wall behind a pane of glass.
+- **Between two translucent voxels exactly ONE face survives**, the lower
+  palette index keeping it. Two coincident quads cannot be ordered, so the
+  winner flips per triangle and the join breaks into shifting wedges.
 - **A run of one translucent color is one surface, whatever its thickness.**
   Three voxels of water read exactly as one does. Depth is expressed by
   choosing a denser color, not by stacking, and an implementation MUST NOT

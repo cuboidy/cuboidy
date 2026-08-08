@@ -54,24 +54,36 @@ function voxelAt(part: Part, x: number, y: number, z: number): number {
   return part.voxels[y]![z]![x]!;
 }
 
-// SPEC §7.4: a face is dropped only when its neighbour HIDES it — the
-// neighbour is opaque, or it is the very same palette index.
+// SPEC §7.4: a face is dropped when its neighbour HIDES it.
 //
-// Both halves matter and neither is arbitrary. Dropping a face because the
-// neighbour is merely solid is what would put a hole in the wall behind a
-// pane of glass: the wall's face toward the glass would vanish and the glass
-// would look onto nothing. And keeping the faces between two voxels of one
-// translucent color would blend that color once per layer, so a three-deep
-// body of water would read darker than a one-deep one — §7.4 says a run of
-// one color is one surface, whatever its thickness.
+// An OPAQUE neighbour hides it. The reverse does not hold: a translucent
+// neighbour must NOT hide an opaque face, or the wall behind a pane of glass
+// loses the face you look at and the glass opens onto a hole.
+//
+// Between two TRANSLUCENT voxels exactly ONE face survives, and which one is
+// decided by palette index: the lower index keeps its face, the higher drops
+// it. Two rules fall out of that one.
+//
+// Same colour, so same index: both drop, and a run of one translucent colour
+// is one surface whatever its thickness — three voxels of water read as one.
+//
+// Different colours: one face, never two. Emitting both puts two quads on
+// the SAME rectangle, at the same depth, differing only in which way their
+// normals point and how their corners happen to be triangulated. Nothing
+// downstream can order them: the winner flips from triangle to triangle, so
+// the join breaks into wedges with diagonal edges — one per voxel, shifting
+// as the camera moves. Choosing by index is arbitrary but it is stable, and
+// both voxels reach the same answer without consulting anything else.
 function hiddenBy(
   neighbour: number,
   self: number,
   opaque: readonly boolean[],
 ): boolean {
   if (neighbour === AIR) return false;
-  if (neighbour === self) return true;
-  return opaque[neighbour] ?? true; // an unresolved index draws opaque magenta
+  // An unresolved index draws opaque magenta, so it hides like one.
+  if (opaque[neighbour] ?? true) return true;
+  if (opaque[self] ?? true) return false;
+  return self >= neighbour;
 }
 
 export function buildMesh(part: Part, palette: Palette): MeshData {

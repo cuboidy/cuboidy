@@ -522,8 +522,9 @@ A file that spells its colors out is range-checked at **parse time** — it is i
 
 Two rules make that drawable, and both are normative because two implementations must agree on the geometry they produce:
 
-- **A face is dropped only when its neighbour hides it.** A neighbour hides a face when it is opaque, or when it is the very same palette index. Being merely solid is not enough. Drop a wall's face because a pane of glass sits against it and the glass looks onto a hole; keep the faces inside a body of one translucent color and every layer blends again, so three voxels of water read darker than one.
-- **A run of one translucent color is one surface, whatever its thickness.** That is the consequence of the same-index half above, and it is deliberate: thickness is expressed by choosing a denser color, not by stacking. An implementation MUST NOT blend per layer.
+- **An opaque neighbour hides a face.** The reverse does not hold: a translucent neighbour must not hide an opaque face, or the wall behind a pane of glass loses the face you look at and the glass opens onto a hole.
+- **Between two translucent voxels exactly ONE face survives, and the lower palette index keeps it.** Never two. Two quads on the same rectangle at the same depth, differing only in which way their normals point, cannot be ordered by anything downstream: the winner flips from triangle to triangle and the join breaks into wedges that shift as the camera moves. The tie break is arbitrary but it is stable, and both voxels reach the same answer without consulting anything else.
+- **A run of one translucent color is therefore one surface, whatever its thickness** — same colour means same index, so both faces drop and three voxels of water read exactly as one does. Thickness is expressed by choosing a denser color, not by stacking. An implementation MUST NOT blend per layer.
 
 Draw the opaque faces first, writing depth; then the translucent ones back to front, testing depth but not writing it. Sorting by mean face depth is sufficient — voxel faces do not interpenetrate.
 
