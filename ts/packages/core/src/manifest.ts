@@ -54,7 +54,23 @@ export const PartGeometrySchema = GeometryPartSchema
       }
       return;
     }
-    // Inline form.
+    // Inline form. The mirror of the branch above, and it was missing:
+    // `part` names which part of a REFERENCED file to bind, so it is
+    // meaningless without `path` — SPEC §6.13 says the inline object is
+    // exactly a §7.5 part minus `name` plus `palette`, and §11.5 codes
+    // anything else `unknown`. Written without `path` it parsed, and
+    // `project.ts` then destructured it away in silence. That is also the
+    // shape of the actual authoring slip: naming the part and forgetting
+    // the file.
+    if (g.part !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['part'],
+        message:
+          '`part` names a part inside a referenced file; inline geometry has no file to name (did you mean to add `path`?)',
+        params: { cuboidyCode: 'unknown' },
+      });
+    }
     for (const key of ['size', 'voxels'] as const) {
       if (g[key] === undefined) {
         ctx.addIssue({

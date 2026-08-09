@@ -12,6 +12,7 @@
 // module dependency-free and trivially testable.
 
 import { z } from 'zod';
+import type { Vec3Tuple } from './geometry/types.js';
 import { Identifier } from './identifier-schema.js';
 import { refPath } from './ref-path.js';
 import {
@@ -78,6 +79,16 @@ export const TIME_KEY_RE = /^[0-9]+\.[0-9]+$/;
 // the sampler still tolerates unsorted input defensively.
 export const AnimationTrackSchema = z.record(z.string(), KeyframeSchema);
 
+// SPEC §6.4: the keys of `parts` are PART names, and §5 makes a part name an
+// identifier. They were `z.string()`, so `""`, `"1bad"`, `"a b"`, `"has.dot"`
+// and the reserved `"size"` all parsed — while the `animations` map key and
+// the `sockets` map key beside them were both checked. §6.8 permits a track
+// to target a part the model lacks; it does not permit the key to be
+// something that could not be a part name at all. Keying the record also
+// closes the last place JavaScript's integer-key hoisting can reorder a
+// document, which is what §6.6's decimal point removed for time keys.
+export const AnimationPartsSchema = z.record(Identifier, AnimationTrackSchema);
+
 // SPEC §6.4 / §6.6: an inline animation object, including the semantic
 // rules the schema shape alone can't express — duration must be a
 // positive finite number covering every time key, and each track's keys
@@ -86,7 +97,7 @@ export const InlineAnimationSchema = z
   .object({
     duration: z.number(),
     loop: z.boolean(),
-    parts: z.record(z.string(), AnimationTrackSchema),
+    parts: AnimationPartsSchema,
   })
   .strict()
   .superRefine((anim, ctx) => {
@@ -162,15 +173,18 @@ export type AnimationTrack = z.infer<typeof AnimationTrackSchema>;
 export type InlineAnimation = z.infer<typeof InlineAnimationSchema>;
 export type Animation = z.infer<typeof AnimationSchema>;
 
-// SPEC §4's coordinate triple. `readonly`, and identical to
-// `rig-transform.ts`'s export of the same name — they used to differ in
-// exactly that modifier while both being public, so a port had to decide
-// which one `Pose` and `AnimPose` really meant. C# has no readonly tuple,
-// so the port would have made that decision whether or not anyone took it.
-export type Vec3Tuple = readonly [number, number, number];
-
 // A fully-resolved part pose at one instant. All fields concrete (carryover
 // + interpolation already applied). Units per SPEC §6.5.
+//
+// This is the ONE pose type. `rig-transform.ts` used to declare two narrower
+// views of it — `AnimPose` (`rot`/`pos`) and `PosedPart` (plus an optional
+// `scale`) — which a `Map<string, Pose>` satisfied for free, twice over: by
+// structural typing, and by the map being covariant in its value type. C#
+// has neither. `IReadOnlyDictionary<K, V>` is invariant in `V`, so a
+// `Dictionary<string, Pose>` is not passable where a `PosedPart` map is
+// expected even with inheritance in place — and inheritance was blocked
+// anyway, because `Pose.scale` is required where `PosedPart.scale` was
+// optional. Every caller here already passes a full `Pose`.
 export interface Pose {
   rot: Vec3Tuple; // Euler degrees, ZXY intrinsic
   pos: Vec3Tuple; // voxel-unit delta added to part.position

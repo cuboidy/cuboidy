@@ -804,3 +804,79 @@ describe('parseManifest — §11.2 corners the first pass missed', () => {
     if (!r.ok) expect(r.code).toBe('invalid-value');
   });
 });
+
+// SPEC §6.13: the inline object is exactly a §7.5 part minus `name`, plus
+// `palette`. `part` belongs to the REFERENCE form — it names which part of
+// the file at `path` to bind — so inline it names nothing.
+describe('parseManifest — §6.13 inline geometry rejects reference-only fields', () => {
+  const inline = (geometry: unknown) => ({
+    name: 'm',
+    palette: ['#FF0000'],
+    parts: [{ name: 'body', geometry }],
+  });
+
+  it('rejects a `part` written without a `path`', () => {
+    // It parsed, and project.ts destructured the field away in silence —
+    // which is also the shape of the real authoring slip: naming the part
+    // and forgetting the file.
+    const r = parseManifest(
+      inline({ part: 'beret', size: [1, 1, 1], voxels: [['0']] }),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.code).toBe('unknown');
+      expect(r.message).toMatch(/part/);
+    }
+  });
+
+  it('still accepts `part` in the reference form it belongs to', () => {
+    const r = parseManifest({
+      name: 'm',
+      geometry: ['hats.json'],
+      parts: [{ name: 'body', geometry: { path: 'hats.json', part: 'beret' } }],
+    });
+    expect(r.ok).toBe(true);
+  });
+});
+
+// SPEC §6.4 + §5: a clip's `parts` map is keyed by PART name, and a part
+// name is an identifier. The key was `z.string()` while the `animations` and
+// `sockets` keys beside it were both checked.
+describe('parseManifest — an animation track key is an identifier', () => {
+  const clipWith = (partKey: string) => ({
+    name: 'm',
+    parts: [{ name: 'body' }],
+    animations: {
+      walk: {
+        duration: 1,
+        loop: true,
+        parts: { [partKey]: { '0.0': { rot: [0, 0, 0] } } },
+      },
+    },
+  });
+
+  it.each(['1bad', '', 'a b', 'has.dot', '-lead', 'é'])(
+    'rejects %j as a track key',
+    (key) => {
+      const r = parseManifest(clipWith(key));
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('invalid-value');
+    },
+  );
+
+  it('rejects a reserved keyword, and says which rule failed', () => {
+    const r = parseManifest(clipWith('size'));
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.code).toBe('invalid-value');
+      // "Invalid key in record" is what Zod says; the three identifier-keyed
+      // maps used to report that where the same rule on a FIELD names itself.
+      expect(r.message).toMatch(/reserved keyword/);
+    }
+  });
+
+  it('still allows §6.8 targeting of a part the model does not have', () => {
+    const r = parseManifest(clipWith('ghost'));
+    expect(r.ok).toBe(true);
+  });
+});

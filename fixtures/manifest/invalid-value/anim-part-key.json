@@ -1,0 +1,11 @@
+{
+  "name": "m",
+  "parts": [{ "name": "body" }],
+  "animations": {
+    "walk": {
+      "duration": 1,
+      "loop": true,
+      "parts": { "1bad": { "0.0": { "rot": [0, 0, 0] } } }
+    }
+  }
+}

@@ -3,6 +3,7 @@ import { parseManifest, type Manifest } from '../src/manifest.js';
 import { resolveProject } from '../src/project.js';
 import { publishedSocketFrame, socketFrameOn } from '../src/socket-frame.js';
 import { QUAT_IDENTITY } from '../src/rig-transform.js';
+import type { Pose } from '../src/animation.js';
 import { buildSceneFromParts } from '../src/render/scene.js';
 import { geo } from './helpers/geometry.js';
 import { rgba } from './helpers/palette.js';
@@ -146,8 +147,14 @@ describe('publishedSocketFrame', () => {
       sockets: { top: { part: 'tower', socket: 'top' } },
     });
     const p = resolveProject(m, new Map([['voxels.json', TOWER]]));
-    const poses = new Map([
-      ['tower', { rot: [0, 0, 90] as [number, number, number], pos: [0, 0, 0] as [number, number, number] }],
+    // A whole Pose, not the two fields the rig reads. The rig used to
+    // declare a narrower view that a partial object satisfied structurally;
+    // C# has no such thing, so there is one pose type and it is complete.
+    const poses = new Map<string, Pose>([
+      [
+        'tower',
+        { rot: [0, 0, 90], pos: [0, 0, 0], scale: [1, 1, 1], visible: true },
+      ],
     ]);
     near(publishedSocketFrame(m, p.parts, 'top', poses)!.pos, [-2, 0, 0]);
   });

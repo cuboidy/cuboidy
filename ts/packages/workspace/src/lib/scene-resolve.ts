@@ -101,8 +101,6 @@ export function placeScene(
       } else {
         // Sampled with the HOST's poses: the whole point of attaching to
         // a socket rather than to a position is that the socket moves.
-        // A Pose is structurally an AnimPose (rot/pos plus fields the
-        // rig ignores), so the sampled map passes straight through.
         const socket = publishedSocketFrame(
           hostPlaced.model.manifest,
           hostPlaced.model.parts,

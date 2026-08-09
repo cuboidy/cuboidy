@@ -100,9 +100,13 @@ export function buildSceneFromParts(
 
   for (const { part, remap, transform, scale } of parts) {
     const { w, h, d } = part.size;
+    // Absent is AIR, whether the cell is outside the declared size or
+    // outside a row that is shorter than the size claims — mesh.ts's
+    // `voxelAt` answers the same way, and mesh-scene-parity.test.ts holds
+    // the two together.
     const at = (x: number, y: number, z: number): number =>
       x >= 0 && x < w && y >= 0 && y < h && z >= 0 && z < d
-        ? part.voxels[y]![z]![x]!
+        ? (part.voxels[y]?.[z]?.[x] ?? AIR)
         : AIR;
     // The §7.4 hide rule, identical to mesh.ts's: a neighbour hides a face
     // when it is opaque or the very same index. Merely being solid is not
@@ -121,11 +125,9 @@ export function buildSceneFromParts(
       localPointToWorld([x, y, z], piv, scale, transform);
 
     for (let y = 0; y < h; y++) {
-      const layer = part.voxels[y]!;
       for (let z = 0; z < d; z++) {
-        const row = layer[z]!;
         for (let x = 0; x < w; x++) {
-          const idx = row[x]!;
+          const idx = at(x, y, z);
           if (idx === AIR) continue;
           // SPEC §7.4: an index no palette entry defines renders as opaque
           // magenta, the same answer `mesh.ts` gives. The two non-null

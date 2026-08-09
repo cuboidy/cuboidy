@@ -1,4 +1,3 @@
-import type { Vec3 } from '../geometry/types.js';
 import { AIR, indexToChar } from '../geometry/voxel-row.js';
 import {
   gridRotationWarnings,
@@ -9,12 +8,12 @@ import {
 } from './assemble.js';
 import { formatPaletteLine } from './palette-legend.js';
 import { sampleAnimation, type Pose } from '../animation.js';
+import type { Vec3, Vec3Tuple } from '../geometry/types.js';
 import {
   computeWorldTransforms,
   localPointToWorld,
   pivotRotsOf,
   quatRotateVec3,
-  type Vec3Tuple,
   type WorldTransform,
 } from '../rig-transform.js';
 import { publishedSocketFrames } from '../socket-frame.js';

@@ -1,4 +1,6 @@
+import type { Pose } from './animation.js';
 import { resolveHierarchy } from './forest.js';
+import type { Part, Vec3Tuple } from './geometry/types.js';
 import type { ManifestPart } from './manifest.js';
 
 // SPEC §7.7 rig transform math, renderer-agnostic. This module is the
@@ -13,7 +15,6 @@ import type { ManifestPart } from './manifest.js';
 // the same component order three.js uses, so the editor can feed them
 // to a <group quaternion={...}> prop verbatim.
 
-export type Vec3Tuple = readonly [number, number, number];
 export type QuatTuple = readonly [number, number, number, number];
 
 export const QUAT_IDENTITY: QuatTuple = [0, 0, 0, 1];
@@ -106,15 +107,13 @@ export interface Frame {
 //   v_world = pos + rotate(quat, v − pivot.pos)
 export type WorldTransform = Frame;
 
-// The animated part of a pose, as SPEC §6.5 defines it. `scale` and
-// `visible` are NOT part of the world transform — scale applies to the
-// part's own geometry and does not propagate to children (§7.7), and
-// visibility is a draw decision — so they ride along here for the
-// caller rather than being folded into the matrix.
-export interface AnimPose {
-  rot: Vec3Tuple;
-  pos: Vec3Tuple;
-}
+// `Pose` (animation.ts) is what the functions below take. Only `rot` and
+// `pos` reach the world transform: scale applies to the part's own geometry
+// and does not propagate to children (§7.7), and visibility is a draw
+// decision, so they ride along on the pose for the caller rather than being
+// folded into the matrix. That used to be expressed as two narrower
+// interfaces declared here, which TypeScript accepted a `Pose` for and C#
+// would not — see the note on `Pose`.
 
 // Composes the §7.7 transform down every parent chain:
 //   W.pos  = parent.pos + rotate(parent.quat, part.position + anim.pos)
@@ -133,7 +132,7 @@ export interface AnimPose {
 export function computeWorldTransforms(
   parts: readonly ManifestPart[],
   pivotRots: ReadonlyMap<string, Vec3Tuple>,
-  poses?: ReadonlyMap<string, AnimPose>,
+  poses?: ReadonlyMap<string, Pose>,
 ): Map<string, WorldTransform> {
   const byName = new Map<string, ManifestPart>();
   for (const p of parts) {
@@ -189,13 +188,6 @@ export function computeWorldTransforms(
   return out;
 }
 
-// An AnimPose plus the part-local scale (§6.5). Socket placement needs it —
-// a socket is a point in the part's geometry, so it moves when that geometry
-// grows — while the world transform chain deliberately does not.
-export interface PosedPart extends AnimPose {
-  scale?: Vec3Tuple;
-}
-
 // SPEC §7.7 / §6.5: where a point written in a part's LOCAL space lands in
 // world space.
 //
@@ -234,22 +226,12 @@ export function computeRestWorldTransforms(
   return computeWorldTransforms(parts, pivotRots);
 }
 
-// The slices of a geometry Part the helpers below read. Structural, so
-// this module keeps its single manifest.js dependency.
-interface PartExtent {
-  size: { w: number; h: number; d: number };
-  pivot: {
-    pos: { x: number; y: number; z: number };
-    rot?: { x: number; y: number; z: number } | undefined;
-  };
-}
-
 // The geometry-side pivot.rot map the transform chain takes, keyed by
 // the RIG's name for each part — which §6.13 renaming can make different
 // from the part's own `name`, so callers pass explicit [rigName, part]
 // pairs. Four call sites used to build this map by hand.
 export function pivotRotsOf(
-  parts: Iterable<readonly [string, PartExtent]>,
+  parts: Iterable<readonly [string, Part]>,
 ): Map<string, Vec3Tuple> {
   const out = new Map<string, Vec3Tuple>();
   for (const [name, part] of parts) {
@@ -266,7 +248,7 @@ export function pivotRotsOf(
 // camera framing unions in the unit cube at the origin, a selection
 // outline starts at ±Infinity and checks finiteness itself.
 export function partsWorldBounds(
-  parts: Iterable<readonly [string, PartExtent]>,
+  parts: Iterable<readonly [string, Part]>,
   transforms: ReadonlyMap<string, WorldTransform>,
   seed?: {
     min: readonly [number, number, number];

@@ -127,8 +127,6 @@ export function renderGif(
         ? new Map()
         : sampleAnimation(anim, (i / perLoop) * duration);
 
-    // Pose is structurally an AnimPose (rot/pos plus fields the rig
-    // ignores), so the sampled map passes straight through.
     const transforms = computeWorldTransforms(
       asm.manifest.parts,
       pivotRots,

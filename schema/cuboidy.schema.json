@@ -452,7 +452,19 @@
               "parts": {
                 "type": "object",
                 "propertyNames": {
-                  "type": "string"
+                  "type": "string",
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_-]*$",
+                  "not": {
+                    "enum": [
+                      "palette",
+                      "part",
+                      "size",
+                      "pivot",
+                      "socket",
+                      "voxels",
+                      "rot"
+                    ]
+                  }
                 },
                 "additionalProperties": {
                   "type": "object",

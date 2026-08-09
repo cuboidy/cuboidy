@@ -9,7 +9,8 @@
 // Keyframe carries that field. Editing one attribute at one time only ever
 // touches that field of that time-key entry.
 
-import type { AnimationTrack, Keyframe, Vec3Tuple } from './animation.js';
+import type { AnimationTrack, Keyframe } from './animation.js';
+import type { Vec3Tuple } from './geometry/types.js';
 import type { EasingName } from './easing.js';
 
 export type KeyAttr = 'rot' | 'pos' | 'scale' | 'visible';

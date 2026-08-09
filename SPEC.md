@@ -235,7 +235,7 @@ Per-part shape, pivot, and sockets live in `voxels.json`, not here. See §7.
 |---|---|---|---|
 | `duration` | **yes** | number | Animation length in seconds. Must be ≥ the largest time key |
 | `loop` | **yes** | bool | If `true`, sampling wraps after `duration`; see §6.7 |
-| `parts` | **yes** | object | Map from part name to keyframe sequence. May be empty (no part animates) |
+| `parts` | **yes** | object | Map from part name to keyframe sequence. May be empty (no part animates). Each key is a **part name**, so it obeys §5 like every other name in the format — a key that could not be a part name is `invalid-value` (§11.5). §6.8 separately permits a key that IS a legal name but matches no part in this model |
 
 ### 6.5 Keyframe values
 
@@ -449,6 +449,8 @@ A part's rig (`parent`, `position`, `rotation`) lives in the manifest. Its shape
 ```
 
 The inline object is **exactly a §7.5 part object with `name` removed**, plus an optional `palette` (§7.4, either form). `size` and `voxels` are required; `pivot` and `sockets` follow §7.7 and §7.8 unchanged. The name is the enclosing part's `name` — carrying a second copy here would be one field that can disagree with another, so it is not permitted (`unknown`).
+
+`part` is likewise a reference-form field and `unknown` here, for the same reason read from the other side: it names which part of the file at `path` to bind, and inline there is no file to name. Written without `path` it is the authoring slip it looks like — the part named, the file forgotten — so it is reported rather than ignored.
 
 The presence of `path` decides the form. `path` together with any inline field, or an inline object missing `size` or `voxels`, is an error.
 

@@ -41,7 +41,9 @@ export function resultFromZodError<T>(
   // received undefined"), which reads as a type error to someone who simply
   // forgot a line. Say what actually happened.
   const missing = isMissingAtPath(input, issue.path);
-  const detail = missing ? 'required field is missing' : issue.message;
+  const detail = missing
+    ? 'required field is missing'
+    : (keyReason(issue) ?? issue.message);
   return err(
     mapIssueToCode(issue, missing, input),
     `${label}: ${detail}`,
@@ -129,6 +131,18 @@ function mapIssueToCode(
 
 function originOf(issue: ZodIssueLike): string | undefined {
   return (issue as { origin?: string }).origin;
+}
+
+// Why a record KEY was rejected. Zod reports the key failure as "Invalid key
+// in record" and files the actual reason — the §5 regex, the reserved-word
+// list — in a nested issue list, so the three maps keyed by an identifier
+// (`animations`, `sockets`, and an animation's `parts`) all said the same
+// uninformative thing where the same rule stated on a FIELD says which rule
+// it was. The path already names the offending key.
+function keyReason(issue: ZodIssueLike): string | undefined {
+  if (issue.code !== 'invalid_key') return undefined;
+  const inner = (issue as { issues?: ZodIssueLike[] }).issues ?? [];
+  return inner[0]?.message;
 }
 
 // ----- unions -----------------------------------------------------------

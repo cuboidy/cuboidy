@@ -146,7 +146,7 @@ TypeScript side, rather than pulling in a JSON Schema validator.
 
 Every file under `fixtures/` yields the diagnostic code its directory is named
 after: `fixtures/geometry/wrong-arity/row-width.json` reports `wrong-arity`,
-`fixtures/manifest/missing/name.json` reports `missing`, and so on — 45 files
+`fixtures/manifest/missing/name.json` reports `missing`, and so on — 47 files
 today across `geometry/`, `manifest/` and `palette/`. That corpus is the
 cross-implementation contract; passing it is what "a second implementation
 exists" means here.

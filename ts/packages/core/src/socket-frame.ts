@@ -1,3 +1,5 @@
+import type { Pose } from './animation.js';
+import type { Part, Vec3Tuple } from './geometry/types.js';
 import type { Manifest } from './manifest.js';
 import type { ResolvedPart } from './project.js';
 import {
@@ -7,11 +9,8 @@ import {
   quatFromEulerZXYDeg,
   quatMultiply,
   quatRotateVec3,
-  type AnimPose,
   type Frame,
-  type PosedPart,
   type QuatTuple,
-  type Vec3Tuple,
   type WorldTransform,
 } from './rig-transform.js';
 
@@ -69,7 +68,7 @@ export function composeFrames(
 // right place at its own size rather than being deformed by whatever the
 // wielder's torso is doing.
 export function socketFrameOn(
-  part: ResolvedPart['part'],
+  part: Part,
   world: WorldTransform,
   socketName: string,
   scale?: Vec3Tuple,
@@ -104,7 +103,7 @@ export function publishedSocketFrame(
   manifest: Manifest,
   parts: ReadonlyMap<string, ResolvedPart>,
   publishedName: string,
-  poses?: ReadonlyMap<string, PosedPart>,
+  poses?: ReadonlyMap<string, Pose>,
 ): SocketFrame | null {
   const target = manifest.sockets?.[publishedName];
   if (target === undefined) return null;
@@ -128,7 +127,7 @@ export function publishedSocketFrame(
 export function publishedSocketFrames(
   manifest: Manifest,
   parts: ReadonlyMap<string, ResolvedPart>,
-  poses?: ReadonlyMap<string, PosedPart>,
+  poses?: ReadonlyMap<string, Pose>,
 ): Map<string, SocketFrame> {
   const out = new Map<string, SocketFrame>();
   const published = manifest.sockets;
@@ -155,7 +154,7 @@ export function publishedSocketFrames(
 export function worldTransformsFor(
   manifest: Manifest,
   parts: ReadonlyMap<string, ResolvedPart>,
-  poses?: ReadonlyMap<string, AnimPose>,
+  poses?: ReadonlyMap<string, Pose>,
 ): Map<string, WorldTransform> {
   const pivotRots = pivotRotsOf(
     Array.from(parts, ([name, r]) => [name, r.part] as const),

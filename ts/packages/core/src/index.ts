@@ -96,6 +96,7 @@ export type {
   Size,
   Socket,
   Vec3,
+  Vec3Tuple,
 } from './geometry/types.js';
 
 export {
@@ -156,11 +157,8 @@ export {
   quatRotateVec3,
 } from './rig-transform.js';
 export type {
-  AnimPose,
   Frame,
-  PosedPart,
   QuatTuple,
-  Vec3Tuple,
   WorldTransform,
 } from './rig-transform.js';
 

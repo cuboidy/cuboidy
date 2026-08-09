@@ -13,6 +13,19 @@ export interface Vec3 {
   z: number;
 }
 
+// The same §4 triple, positionally. A geometry file's coordinates are named
+// (`{x, y, z}`, the JSON shape); the rig and the sampler work in ordered
+// triples, which is what their arithmetic reads and what a caller feeding a
+// renderer already holds.
+//
+// One declaration, here beside the other spelling, because there were two —
+// `animation.ts` and `rig-transform.ts` each exported a `Vec3Tuple`, in files
+// that do not import each other, and the barrel silently re-exported one of
+// them. TypeScript never notices; C# cannot have two `Cuboidy.Vec3Tuple`, so
+// the port would have had to pick, and picking is a decision about which
+// module owns the type rather than a translation.
+export type Vec3Tuple = readonly [number, number, number];
+
 export interface Color {
   r: number;
   g: number;

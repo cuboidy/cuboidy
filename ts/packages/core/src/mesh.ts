@@ -73,11 +73,19 @@ function materialKey(m: MeshMaterial): string {
 
 // SPEC §7.4's material ordering. Total, since two materials comparing equal
 // on all four fields are the same material and share a bucket.
+//
+// Returns a SIGN, never a difference. The three fields are 0..1, so the
+// literal C# translation of `return a.metallic - b.metallic` into a
+// `Comparison<MeshMaterial>` truncates every real difference to 0 — every
+// material then compares equal, the sort is a no-op, and the list silently
+// falls back to walk order. That is precisely the failure SPEC §7.4 orders
+// the list to prevent, since `MeshGroup.material` is an index into it.
 export function compareMaterials(a: MeshMaterial, b: MeshMaterial): number {
   if (a.translucent !== b.translucent) return a.translucent ? 1 : -1;
-  if (a.metallic !== b.metallic) return a.metallic - b.metallic;
-  if (a.roughness !== b.roughness) return a.roughness - b.roughness;
-  return a.emissive - b.emissive;
+  if (a.metallic !== b.metallic) return a.metallic < b.metallic ? -1 : 1;
+  if (a.roughness !== b.roughness) return a.roughness < b.roughness ? -1 : 1;
+  if (a.emissive !== b.emissive) return a.emissive < b.emissive ? -1 : 1;
+  return 0;
 }
 
 
@@ -104,10 +112,15 @@ const FACES: readonly FaceDef[] = [
   { normal: [0, 0, -1], d: [0, 0, -1], corners: [[0, 0, 0], [0, 1, 0], [1, 1, 0], [1, 0, 0]] },
 ];
 
+// A cell, or AIR when there is none. Bounds-checks the DECLARED size and the
+// actual arrays: a `Part` that reached here without going through the parser
+// may be ragged, and "shorter than it says" has to mean the same thing as
+// "outside it says" or two implementations disagree about a model neither
+// should have been given.
 function voxelAt(part: Part, x: number, y: number, z: number): number {
   if (x < 0 || y < 0 || z < 0) return AIR;
   if (x >= part.size.w || y >= part.size.h || z >= part.size.d) return AIR;
-  return part.voxels[y]![z]![x]!;
+  return part.voxels[y]?.[z]?.[x] ?? AIR;
 }
 
 // SPEC §7.4: a face is dropped when its neighbour HIDES it. A neighbour
@@ -185,7 +198,15 @@ export function buildMesh(part: Part, palette: Palette): MeshData {
   for (let y = 0; y < part.size.h; y++) {
     for (let z = 0; z < part.size.d; z++) {
       for (let x = 0; x < part.size.w; x++) {
-        const idx = part.voxels[y]![z]![x]!;
+        // Through `voxelAt`, not `part.voxels[y]![z]![x]!`. The direct read
+        // is only safe while every row is exactly `size.w` wide, which the
+        // parser guarantees and `resolveProject`'s `overrides` does not:
+        // `buildMesh` is public and takes a caller-supplied `Part`. A 2-wide
+        // part with a 1-wide row read `undefined`, compared it against AIR,
+        // decided it was solid and painted it magenta — 40 vertices where a
+        // single voxel is 24 — while C# raises on the same input. One answer,
+        // and the one the surrounding code already assumes: absent is AIR.
+        const idx = voxelAt(part, x, y, z);
         if (idx === AIR) continue;
         // SPEC §7.4: an index no palette entry defines renders as opaque
         // magenta. A runtime that only draws still needs an answer, so the

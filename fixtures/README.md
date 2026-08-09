@@ -53,11 +53,16 @@ fixtures/
 │   ├── unknown/
 │   │   ├── unknown-field.json         unrecognised top-level key
 │   │   ├── unknown-part-field.json    unrecognised key on a part
+│   │   ├── inline-stray-part.json     §6.13 inline geometry carrying `part`,
+│   │   │                              which names a part inside a REFERENCED
+│   │   │                              file and has no meaning without `path`
 │   │   └── ease-preset.json           §6.5 ease naming no preset
 │   ├── invalid-value/
 │   │   ├── bad-model-name.json        model name fails the §5 identifier rule
 │   │   ├── dangling-parent.json       `parent` names no part (§11.5)
 │   │   ├── parent-cycle.json          a parent chain closes on itself (§11.5)
+│   │   ├── anim-part-key.json         a clip's `parts` key fails §5 (the map
+│   │   │                              is keyed by PART name)
 │   │   ├── geometry-list-empty.json   `geometry` present but empty (§11.5 —
 │   │   │                              the named exception to the container
 │   │   │                              rule, which would say `wrong-arity`)

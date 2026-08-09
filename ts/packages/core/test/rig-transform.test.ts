@@ -9,8 +9,8 @@ import {
   quatMultiply,
   quatRotateVec3,
   type QuatTuple,
-  type Vec3Tuple,
 } from '../src/rig-transform.js';
+import type { Vec3Tuple } from '../src/geometry/types.js';
 
 function expectVecClose(
   actual: readonly number[],

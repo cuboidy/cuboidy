@@ -1,0 +1,14 @@
+{
+  "name": "m",
+  "palette": ["#FF0000"],
+  "parts": [
+    {
+      "name": "body",
+      "geometry": {
+        "part": "beret",
+        "size": [1, 1, 1],
+        "voxels": [["0"]]
+      }
+    }
+  ]
+}

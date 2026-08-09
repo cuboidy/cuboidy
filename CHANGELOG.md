@@ -161,6 +161,22 @@ a different answer but a different failure per host: reading past the end of
 the keyframe array gives a pose of `NaN`s in one language and an exception in
 another, and which one you got depended on how many keyframes the track had.
 
+**§6.4 — a clip's `parts` keys are part names, so §5 applies.** `""`,
+`"1bad"`, `"a b"` and the reserved `"size"` were all accepted as track keys,
+while the `animations` and `sockets` map keys beside them were both checked.
+§6.8 still permits a key that IS a legal name but matches no part in this
+model — that is the cross-rig sharing rule and it is unchanged.
+
+*Breaking, narrowly.* A clip keyed by something that could never be a part
+name loaded before and does not now.
+
+**§6.13 — `part` is a reference-form field and is `unknown` inline.** The
+spec already said the inline object is exactly a §7.5 part minus `name` plus
+`palette`, and said out loud that a second `name` is not permitted; `part`
+was the same case from the other side and went unlisted. Written inline it
+parsed and was then discarded in silence, which is the shape of the actual
+authoring mistake: naming the part, forgetting the file.
+
 **§7.4 — an index no palette defines renders as opaque magenta.** Previously
 unstated, and left to each renderer. Cross-file validation still reports it,
 but reporting is authoring-time and a runtime that only draws needs a defined

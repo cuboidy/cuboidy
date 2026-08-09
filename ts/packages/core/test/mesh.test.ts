@@ -216,4 +216,36 @@ describe('buildMesh — translucent palette entries (§7.4)', () => {
     expect(m.colors[1]).toBe(0);
     expect(m.colors[2]).toBe(1);
   });
+
+  // `buildMesh` is public and takes a caller-supplied Part — `resolveProject`
+  // hands one straight through from its `overrides` option, unparsed. A row
+  // shorter than `size.w` used to read `undefined`, fail the `=== AIR` test,
+  // and be drawn as a solid magenta voxel: 40 vertices for a part with one
+  // cell in it. C# raises on the same input, so the two implementations
+  // disagreed about a model neither should have been handed.
+  it('reads a cell missing from a ragged part as AIR, not as solid', () => {
+    const ragged: Part = {
+      name: 'p',
+      size: { w: 2, h: 1, d: 1 },
+      pivot: { pos: { x: 0, y: 0, z: 0 } },
+      sockets: [],
+      voxels: [[[0]]], // one cell where `size.w` promises two
+    };
+    const one = buildMesh(strip([0]), [OPAQUE]);
+    expect(buildMesh(ragged, [OPAQUE]).positions.length).toBe(
+      one.positions.length,
+    );
+  });
+
+  it('survives a layer or row missing entirely', () => {
+    const hollow: Part = {
+      name: 'p',
+      size: { w: 1, h: 2, d: 2 },
+      pivot: { pos: { x: 0, y: 0, z: 0 } },
+      sockets: [],
+      voxels: [[[0]]], // one layer of one row where six cells are declared
+    };
+    const m = buildMesh(hollow, [OPAQUE]);
+    expect(m.positions.length).toBe(6 * 4 * 3); // exactly the one real voxel
+  });
 });
