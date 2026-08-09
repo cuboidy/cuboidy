@@ -30,25 +30,30 @@ Ported from `ts/packages/core/`:
 | `mesh.ts` | voxel grid to vertex data |
 
 Those ten are the modules with names worth arguing about. The actual closure
-is **nineteen files**, and the other nine are not optional — an import graph
-over `core/src` finds them reachable from the ten and reachable from nothing
+is **twenty-one files**, and the other eleven are not optional — an import
+graph over `core/src` seeded from the ten reaches them, and reaches nothing
 that is dropped:
 
 | Also required | What it is |
 |---|---|
-| `geometry/types.ts` | the AST every module above produces or consumes |
-| `geometry/palette.ts` | hex → `Color`, and `MAX_PALETTE` |
+| `geometry/types.ts` | the AST every module above produces or consumes, plus `Vec3` and `Vec3Tuple` |
+| `geometry/palette.ts` | hex → `Color`, `MATTE`, and `MAX_PALETTE` |
 | `geometry/voxel-row.ts` | the §7.4 alphabet, `AIR`, `maxPaletteIndex` |
 | `geometry/locate.ts` | a document path back to a line, for `parseGeometryText` |
 | `result.ts`, `diagnostic.ts` | what a reader returns |
+| `zod-diagnostic.ts` | the one §11.2 failure → code mapping. Read it, port neither its branches nor its Zod-shaped inference — see "Done means" |
 | `identifier.ts`, `identifier-schema.ts` | §5 |
 | `ref-path.ts` | §8 |
+| `forest.ts` | `resolveHierarchy`, the one lenient parent policy; `rig-transform.ts` calls it |
 
-And five files the lists above leave unclassified, decided here:
+Regenerate the list rather than trusting this table: walk the imports from
+the ten seeds. The count has been wrong twice, once because
+`zod-diagnostic.ts` was created after the table was written and once because
+`forest.ts` was described as having no consumer inside core on the day
+`rig-transform.ts` started calling it.
 
-- `forest.ts` — **ported.** `resolveHierarchy` is the one lenient parent
-  policy, and `rig-transform.ts` calls it. It has no other consumer inside
-  core, which is why it read as optional.
+And four files the lists above leave unclassified, decided here:
+
 - `num.ts` — **not ported**, with a caveat: `round6` is how `cuboidy-query`
   quantizes the numbers the parity check compares, so a harness that
   reimplements it must use `Math.Floor(n * 1e6 + 0.5) / 1e6` — JavaScript's
@@ -58,8 +63,9 @@ And five files the lists above leave unclassified, decided here:
 - `json-schema.ts` — **not ported.** It builds a generated artifact for
   editors and CI; the C# reader validates structurally as it reads.
 - `index.ts` — **not ported.** A barrel is a TypeScript packaging concern.
-  Note that 49 of its 128 exported names have no consumer outside core, ten
-  of them Zod schema objects; do not read it as an API to reproduce.
+  It exports around 150 names, most of which have no consumer outside core
+  and ten of which are Zod schema objects; do not read it as an API to
+  reproduce.
 
 Deliberately not ported:
 
@@ -91,6 +97,24 @@ Deliberately not ported:
   listed geometry files leaves the by-`name` lookup with no answer, so
   resolution itself fails. Refuse that model rather than binding the name to
   whichever file was read first.
+
+  **`complete` does not cover that, and a library with no lint has to.**
+  `resolveProject` returns `complete: diagnostics.length === 0`, and it
+  deliberately emits no diagnostic for an ambiguous or unresolved part: the
+  ambiguity is reported by leaving the name unbound and listing it in
+  `duplicates` / `unresolved`, whose only consumer today is `validateProject`
+  in the dropped `lint/`. So a model with a part defined in no geometry file
+  resolves `complete: true`, one part short and silent. Surface those two
+  lists from the C# loader — as a refusal, or as something the caller can
+  see — rather than inheriting a `complete` that means "nothing went wrong
+  while reading", which is all it has ever meant.
+
+  **Palette index range is phase-4 and is NOT ported**, deliberately. §11.6
+  makes an index past the end of its resolved palette an error, and the check
+  lives in `lint/cross-file.ts`; `project.ts` does no range checking at all.
+  A runtime that only draws has the answer it needs from §7.4 — an index no
+  palette defines renders as opaque magenta, which `mesh.ts` does — and does
+  not need the report. Do not go looking for the check in the resolver.
 - `geometry/serialize.ts`, `animation-edit.ts` — writing and editing. This
   library reads.
 
@@ -141,6 +165,63 @@ Nothing else. The `schema/*.schema.json` files are generated artifacts for
 editors and CI, not a runtime dependency — the C# reader validates
 structurally as it reads, mirroring what the Zod schemas assert on the
 TypeScript side, rather than pulling in a JSON Schema validator.
+
+## Porting hazards
+
+Places where the literal translation compiles and is wrong. Every one was
+measured on the JavaScript side; the .NET halves are from documented
+semantics, not from a run.
+
+This list lived in a working file that was going to be deleted the day the
+port started, which is the wrong home for the only record of why
+`double.Parse` needs an argument.
+
+**Numbers**
+
+| # | hazard | consequence |
+|---|---|---|
+| N1 | `size.w / 2`, the §7.7 default pivot (`geometry/parse.ts:130`) | `z.number().int()` invites `int`, where `W / 2` is integer division: a width-3 part gets pivot `1` instead of `1.5` and every downstream coordinate is off by half a voxel, silently. `mesh.ts:187`'s `e.color.r / 255` is the same shape. |
+| N2 | culture-sensitive parsing and formatting | `double.Parse(String)` uses `NumberStyles.Float \| AllowThousands` against the CURRENT culture: under `de-DE`, `double.Parse("1.5")` returns **15**. Every parse and every format in this library is `CultureInfo.InvariantCulture`. The two string→double conversions in the closure are both time keys, `animation.ts:126` and `:226`. |
+| N3 | `round6` is `Math.round`, half toward `+∞` | C#'s `Math.Round` is banker's and `AwayFromZero` differs on negatives. The correct C# is `Math.Floor(n * 1e6 + 0.5) / 1e6`. |
+| N4 | `round6` can return `-0` | JS `String(-0)` is `"0"`; .NET `(-0.0).ToString()` is `"-0"`. Normalise with `+ 0.0` before formatting. `cuboidy-query` already folds it. |
+| N5 | `z.number().int()` accepts JSON `3.0` | SPEC §10: integer and decimal literals are interchangeable in any numeric field. A reader calling `GetInt32()` throws where one calling `GetDouble()` and testing `% 1 == 0` matches. Same for `duration` and every coordinate. |
+| N6 | a JSON number outside double range | `1e400` parses to `Infinity` in JS and is rejected as `invalid-value`; `Utf8JsonReader.GetDouble()` throws `FormatException`. A coordinate that overflows is a diagnostic, not an exception. |
+| N7 | `compareMaterials` and any `.sort((a,b) => a - b)` | Returning a DIFFERENCE from a `Comparison<T>` truncates to `int`: for 0..1 fields every pair compares equal and the sort silently does nothing. Core returns a sign — keep it that way on both sides. |
+| N8 | `.sort()` is stable in JS since ES2019; `List<T>.Sort` is introsort and is not | Reachable for keyframes that bypassed validation, which `samplePart` documents itself as tolerating. Use `OrderBy`. |
+| N9 | `easing.ts`'s `n1 * (u -= 1.5 / d1) * u + 0.75` | Ports verbatim only while `u` is a mutable value parameter. An `in double`, a readonly local, or "tidying" it into a temp changes the observable residue. §6.7 requires the expressions as written. **Do not tidy the easing formulas.** |
+
+**Strings and encoding**
+
+| # | hazard | consequence |
+|---|---|---|
+| S1 | .NET regex `$` also matches before a trailing `\n` | `"name": "head\n"` is rejected by TypeScript and accepted by .NET. Six sites: `identifier.ts:28`, `geometry/schema.ts:25`, `geometry/schema.ts:40`, `geometry/palette.ts:25`, `animation.ts:74`, and `ref-path.ts`'s generated pattern. Use `\z`. |
+| S2 | `File.ReadAllText` strips a UTF-8 BOM by default | SPEC §9 forbids a BOM, and TypeScript enforces it only by `JSON.parse` throwing on `﻿`. The natural C# reader silently accepts what the reference rejects. Reject it explicitly. |
+| S3 | `geometry/locate.ts` counts UTF-16 code units | A `Utf8JsonReader`-based port has byte offsets, so any non-ASCII earlier in the file shifts the reported line/column. §5 keeps identifiers ASCII, but a colour name or a path need not be. |
+| S4 | `ToLower()` vs `ToLowerInvariant()` | The Turkish dotless ı. Anywhere case is folded — hex digits, preset names — must be invariant or ordinal. |
+| S5 | `materialKey` interpolates three doubles into a string (`mesh.ts:70-71`) | Under `de-DE` `(0.5).ToString()` is `"0,5"`, the same character as the delimiter, so `metallic=0.5, roughness=0` collides with `metallic=0, roughness=5`; and `false.ToString()` is `"False"`. Port the bucket key as a value tuple or record, never a formatted string. |
+
+**Collections and ordering**
+
+| # | hazard | consequence |
+|---|---|---|
+| C1 | `Map` / `Set` preserve insertion order; `Dictionary` / `HashSet` guarantee none | `project.ts:92`'s `[...new Set(out)]` fixes the geometry list order, which decides what every ordered output contains. Use ordered collections where order is observable. |
+| C2 | time keys must be validated in DOCUMENT order | §6.6's "first key is `0.0`, strictly increasing" is a statement about the document. `System.Text.Json` reads document order, but `Dictionary<string, T>` enumeration order is explicitly unspecified — validating by enumerating a deserialized dictionary relies on undefined behaviour, on the one rule §6.6's decimal point exists to make cross-implementation. Walk with `Utf8JsonReader`, or keep an ordered list. |
+| C3 | duplicate JSON object keys | JS is last-wins. Decide and state what the C# reader does, for time keys especially. |
+
+**Types and `System.Text.Json`**
+
+| # | hazard | consequence |
+|---|---|---|
+| T1 | three union-shaped fields have no source-generated form | `PaletteEntrySchema` (`geometry/schema.ts:84`) is string-or-object, `PaletteFieldSchema` (`:102`) is array-or-string, `AnimationSchema` (`animation.ts:160`) is object-or-string. `JsonSerializerContext` cannot generate a converter for `A \| B`; each needs a hand-written, reflection-free `JsonConverter<T>`. Reading is a `Utf8JsonReader` walk anyway, since the reader validates structurally as it reads — source-gen is for the shapes that are plain records. |
+| T2 | `roughness`'s §7.4 default is **1**, and `default(double)` is 0 | `models/submersible/palette.json` has entries that set `emissive` and omit `roughness`. A DTO with a non-nullable `double Roughness` reads them as a mirror instead of a diffuse surface — and moves the entry in §7.4's normative material order. The three material fields are nullable in the DTO and defaulted after reading. `metallic` and `emissive` default to 0 and hide the bug. |
+| T3 | netstandard2.1 polyfills | `IsExternalInit` for `record` / `init`, and `RequiredMemberAttribute` + `CompilerFeatureRequiredAttribute` + `SetsRequiredMembersAttribute` if `required` members are used — which `geometry/types.ts` argues for on the material fields. |
+| T4 | structural typing has no C# counterpart | Core has been cleaned of the cases that mattered — one `Pose`, one `Vec3Tuple`, one `Frame` under two names, `Part` instead of a structural subset. Do not reintroduce them by "simplifying" a signature during translation. |
+
+**Absence**
+
+| # | hazard | consequence |
+|---|---|---|
+| A1 | JS reads past an array end as `undefined`; C# raises | The two that mattered are fixed: `mesh.ts`'s `voxelAt` treats an absent cell as AIR, and `samplePart` guards a non-finite time. The general rule stands — anywhere the TypeScript reads a container by index without a bounds check, decide what absent means before translating, and make it the same answer. |
 
 ## Done means
 
@@ -265,3 +346,29 @@ inherited.
 The C# side is a port, not a reinterpretation: keep the same decomposition and
 the same names wherever C# allows, so that a future spec change can be applied
 twice without deriving it twice.
+
+### Two audits happened before this
+
+Both were read-only sweeps over `ts/packages/core/`, both produced work that
+has since landed, and neither file survives — the findings are in this
+document, in `SPEC.md` and in the tests, which is where a porter will look.
+`git log` has the rest.
+
+The first (2026-08-08) settled ten open questions where SPEC and the
+implementation disagreed or SPEC was silent, and produced the diagnostic
+unification, the reference fixes, and `--transforms` / `--sockets` / `--anim`.
+
+The second (2026-08-09) asked one question of the result: *would the
+acceptance contract catch a wrong port?* It found four classes that would
+not — no `visible`, no §6.5 carryover, no `mesh.ts` at all, and `scale`
+hanging off one socket on one model — plus three §6.7 rules the reference did
+not actually keep, and the type collisions above. What that says about
+process is worth keeping: the first audit's own work was where the second
+audit found the most, because a fix and its check tend to be written by
+whoever already believes the fix is right.
+
+So the standing advice for the port is the same one those two rounds
+produced. **Do not ask whether the C# side passes; ask what it could get
+wrong and still pass.** Break the implementation on purpose, run the whole
+contract, and count the differing lines. Every row of the table in "Done
+means" was measured that way, and every one of them was zero once.

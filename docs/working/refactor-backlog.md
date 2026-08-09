@@ -9,10 +9,12 @@ Organizing principle: each chunk is one cohesive concern, committable and
 verifiable on its own (typecheck + tests for the mechanical ones, a
 what-to-check list in the running app for anything behavioral).
 
-> **Status, 2026-08-09.** Two passes have gone through this list since it
-> was written: the pre-port hardening pass
-> (`docs/working/core-port-readiness.md`) and a four-agent review of the
-> §7.4 material work.
+> **Status, 2026-08-09.** Three passes have gone through this list since it
+> was written: the pre-port hardening pass (whose working file is deleted —
+> its findings live in `docs/csharp-implementation.md`, `SPEC.md` and the
+> tests), a four-agent review of the §7.4 material work, and a second
+> five-agent audit asking whether the acceptance contract could catch a
+> wrong port.
 >
 > **Done from the hardening pass:** R3-c (one Zod→diagnostic mapping,
 > `src/zod-diagnostic.ts`), R3-e (one parent-chain walk, `forest.ts`'s
@@ -55,6 +57,13 @@ what-to-check list in the running app for anything behavioral).
 > option and `readPaletteRef` does not exist); R3-e's "fourth topo sort at
 > `assemble.ts:453-487`" delegates to `forest.ts` now, and `assemble.ts` is
 > 437 lines, not 495.
+>
+> **Done from the second pre-port audit (2026-08-09):** R3-g's remaining
+> half — the DUPLICATE `Vec3Tuple` declaration, which the first pass left
+> in place while fixing the value/type collision beside it — plus the
+> `Pose` / `AnimPose` / `PosedPart` split and the two structural parameter
+> types (`PartExtent`, `ResolvedPart['part']`). One pose type, one tuple,
+> `Part` where a `Part` is meant. Treat R3-g as fully closed.
 >
 > **Still open:** R2-d (`source-ops.ts`, now 1067 lines / 36 exports), R3-b,
 > R3-d, R3-f (the §7.4 FACE table and hide rule still exist in both
