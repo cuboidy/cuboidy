@@ -146,14 +146,22 @@ this repository, 36 of 3411 keyed components did not survive a round trip
 through the sampler — `fox/trot` keys `-0.02` and read back
 `-0.01999999999999999`. This is the only arithmetic form the spec names.
 
-The snap tolerance is now `min(max(|time|, duration) × 1e-12, g / 2)` for `g`
-the smallest gap between adjacent keyframes. Scaling with the clock is right —
-the wrap error does — but unbounded it overtakes what it is measuring: against
-keys 1 ms apart, a clock at `1e9` gives a tolerance a whole key spacing wide,
-so every sample snaps and the part freezes. It also applied to `loop: false`,
-where the clamp is exact and there is no error to tolerate, and at `1e308` it
-snapped `duration` back to `"0.0"` — returning the first keyframe where the
-last must hold.
+The snap tolerance is now `min(max(|time|, duration) × 1e-12, g / 1000)` for
+`g` the smallest gap between adjacent keyframes, with a tie going to the
+earlier key. Scaling with the clock is right — the wrap error does — but
+unbounded it overtakes what it is measuring: against keys 1 ms apart, a clock
+at `1e9` gives a tolerance a whole key spacing wide, so every sample snaps and
+the part freezes. It also applied to `loop: false`, where the clamp is exact
+and there is no error to tolerate, and at `1e308` it snapped `duration` back
+to `"0.0"` — returning the first keyframe where the last must hold.
+
+A thousandth of a gap, not half of one. Half is the largest tolerance that
+cannot reach a non-nearest key, and a first version of this rule used it —
+but half-gap intervals centred on the keys **tile the timeline**, so at that
+bound every sample is within tolerance of something and the freeze is exactly
+as complete. Measured on the very track this paragraph describes, `g / 2` left
+2 distinct values across the clip at a clock of `1e9`, precisely as the
+unbounded form did.
 
 A non-finite sample time samples as `0`, except that `±Infinity` still clamps
 to an end for `loop: false`. Previously unstated, and the consequence was not

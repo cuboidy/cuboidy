@@ -277,9 +277,10 @@ describe('models/ — corpus coverage', () => {
   // SPEC §6.5 carryover: a keyframe that omits a field inherits the previous
   // keyframe's value, not the default. Measured across the whole gallery,
   // every omission carried a value that HAPPENED to equal the §6.5 default —
-  // 821 of them — so replacing `kf.scale ?? prev.scale` with
-  // `kf.scale ?? [1,1,1]` throughout changed nothing anywhere. Most of
-  // `resolveTrack` was unfalsifiable.
+  // all of them, across every clip — so replacing `kf.scale ?? prev.scale`
+  // with `kf.scale ?? [1,1,1]` throughout changed nothing anywhere. Most of
+  // `resolveTrack` was unfalsifiable. (An earlier version of this comment
+  // said "821 of them", a number no counting of the corpus reproduces.)
   it('some keyframe carries a NON-default value from the one before it', async () => {
     const DEFAULTS: Record<string, string> = {
       rot: '[0,0,0]',

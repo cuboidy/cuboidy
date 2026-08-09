@@ -363,19 +363,55 @@ describe('samplePart — a wrap that lands just short of a keyframe', () => {
   });
 
   // The tolerance scales with the clock, because the wrap error does. Left
-  // unbounded it overtakes the thing it is measuring.
-  it('never reaches a neighbouring keyframe, however large the clock', () => {
+  // unbounded it overtakes the thing it is measuring — and the first attempt
+  // at a bound, half the closest gap, did not help: half-gap intervals
+  // centred on the keys TILE the timeline, so at that bound every sample is
+  // within tolerance of something. It is a thousandth of a gap.
+  //
+  // The clocks below are the point. An earlier version of this test asserted
+  // only at 1e6, where the bound is three orders from binding, so it passed
+  // identically against the unbounded code it was written to pin.
+  it('keeps interpolating at a clock that saturates the scaled tolerance', () => {
     const tight: AnimationTrack = {
       '0.0': { rot: [0, 0, 0] },
       '0.001': { rot: [0, 100, 0] },
       '0.002': { rot: [0, 0, 0] },
     };
-    // eps was `max(|time|, duration) × 1e-12`, so a clock at 1e9 gave 1e-3 —
-    // a whole key spacing. Every sample snapped to a key and the part froze.
-    // Bounded by half the closest pair, a sample midway between two keys is
-    // midway between them at any clock.
-    expect(samplePart(tight, 0.0005, 0.002, true).rot[1]).toBe(50);
-    expect(samplePart(tight, 1e6 + 0.0005, 0.002, true).rot[1]).toBeCloseTo(50, 4);
+    // The scaled term reaches g/1000 at |time| = 1e9 × g, i.e. 1e6 here; the
+    // last three clocks are all past it.
+    for (const base of [0, 1e6, 5e8, 1e9, 1e10]) {
+      expect(
+        samplePart(tight, base + 0.0005, 0.002, true).rot[1],
+        `clock ${base}`,
+      ).toBeCloseTo(50, 1);
+    }
+  });
+
+  it('does not collapse a segment to its endpoints at a large clock', () => {
+    const tight: AnimationTrack = {
+      '0.0': { rot: [0, 0, 0] },
+      '0.001': { rot: [0, 100, 0] },
+      '0.002': { rot: [0, 0, 0] },
+    };
+    // The symptom the bound exists to prevent: with eps a whole gap wide,
+    // every one of these lands on a key and the part steps instead of moving.
+    for (const base of [0, 5e8, 1e9]) {
+      const seen = new Set<number>();
+      for (let i = 0; i < 200; i++) {
+        seen.add(samplePart(tight, base + (0.002 * i) / 200, 0.002, true).rot[1]!);
+      }
+      expect(seen.size, `clock ${base}`).toBeGreaterThan(100);
+    }
+  });
+
+  it('gives a tie to the earlier keyframe', () => {
+    // At a saturating clock an exact midpoint is equidistant from both keys.
+    // Taking the later one jumped a whole segment.
+    const two: AnimationTrack = {
+      '0.0': { rot: [0, 0, 0] },
+      '1.0': { rot: [0, 100, 0] },
+    };
+    expect(samplePart(two, 5e11 + 0.5, 1, true).rot[1]).toBeCloseTo(50, 1);
   });
 
   it('holds the last keyframe past a non-looping clip, at any clock', () => {
@@ -443,6 +479,26 @@ describe('samplePart — a non-finite time is total', () => {
         expect(p.pos.every(Number.isFinite)).toBe(true);
       }
     }
+  });
+
+  // A non-finite DURATION is the same hazard from the other side, and the
+  // first guard missed it: `duration <= 0` is false for NaN, so both failure
+  // modes came straight back — the one-key track threw, the two-key track
+  // returned a pose of NaNs.
+  it('treats a NaN or non-positive duration as a degenerate clip', () => {
+    for (const track of [one, two]) {
+      for (const duration of [NaN, -Infinity, 0, -1]) {
+        const p = samplePart(track, 0.5, duration, true);
+        expect(p.rot, `duration ${duration}`).toEqual([0, 10, 0]);
+        expect(p.scale.every(Number.isFinite)).toBe(true);
+      }
+    }
+  });
+
+  it('lets an infinite duration simply never wrap', () => {
+    // Not degenerate: `0.5 % Infinity` is 0.5, so the clip is sampled where
+    // the clock says. Pinned so the NaN guard is never widened to catch it.
+    expect(samplePart(two, 0.5, Infinity, true).rot[1]).toBe(50);
   });
 
   it('still lets ±Infinity clamp to an end when the clip does not loop', () => {

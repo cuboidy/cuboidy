@@ -38,7 +38,7 @@ that is dropped:
 |---|---|
 | `geometry/types.ts` | the AST every module above produces or consumes, plus `Vec3` and `Vec3Tuple` |
 | `geometry/palette.ts` | hex → `Color`, `MATTE`, and `MAX_PALETTE` |
-| `geometry/voxel-row.ts` | the §7.4 alphabet, `AIR`, `maxPaletteIndex` |
+| `geometry/voxel-row.ts` | the §7.4 alphabet (`charToIndex` / `indexToChar`) and `AIR`. Its `maxPaletteIndex` has no consumer inside the closure — it is called only from `cli/` and `lint/`, both dropped |
 | `geometry/locate.ts` | a document path back to a line, for `parseGeometryText` |
 | `result.ts`, `diagnostic.ts` | what a reader returns |
 | `zod-diagnostic.ts` | the one §11.2 failure → code mapping. Read it, port neither its branches nor its Zod-shaped inference — see "Done means" |
@@ -187,7 +187,7 @@ port started, which is the wrong home for the only record of why
 | N5 | `z.number().int()` accepts JSON `3.0` | SPEC §10: integer and decimal literals are interchangeable in any numeric field. A reader calling `GetInt32()` throws where one calling `GetDouble()` and testing `% 1 == 0` matches. Same for `duration` and every coordinate. |
 | N6 | a JSON number outside double range | `1e400` parses to `Infinity` in JS and is rejected as `invalid-value`; `Utf8JsonReader.GetDouble()` throws `FormatException`. A coordinate that overflows is a diagnostic, not an exception. |
 | N7 | `compareMaterials` and any `.sort((a,b) => a - b)` | Returning a DIFFERENCE from a `Comparison<T>` truncates to `int`: for 0..1 fields every pair compares equal and the sort silently does nothing. Core returns a sign — keep it that way on both sides. |
-| N8 | `.sort()` is stable in JS since ES2019; `List<T>.Sort` is introsort and is not | Reachable for keyframes that bypassed validation, which `samplePart` documents itself as tolerating. Use `OrderBy`. |
+| N8 | `.sort()` is stable in JS since ES2019; `List<T>.Sort` is introsort and is not | Reachable for keyframes that bypassed validation, which `samplePart` documents itself as tolerating. Use `OrderBy` — but see S6 before sorting anything by string with it. |
 | N9 | `easing.ts`'s `n1 * (u -= 1.5 / d1) * u + 0.75` | Ports verbatim only while `u` is a mutable value parameter. An `in double`, a readonly local, or "tidying" it into a temp changes the observable residue. §6.7 requires the expressions as written. **Do not tidy the easing formulas.** |
 
 **Strings and encoding**
@@ -199,6 +199,7 @@ port started, which is the wrong home for the only record of why
 | S3 | `geometry/locate.ts` counts UTF-16 code units | A `Utf8JsonReader`-based port has byte offsets, so any non-ASCII earlier in the file shifts the reported line/column. §5 keeps identifiers ASCII, but a colour name or a path need not be. |
 | S4 | `ToLower()` vs `ToLowerInvariant()` | The Turkish dotless ı. Anywhere case is folded — hex digits, preset names — must be invariant or ordinal. |
 | S5 | `materialKey` interpolates three doubles into a string (`mesh.ts:70-71`) | Under `de-DE` `(0.5).ToString()` is `"0,5"`, the same character as the delimiter, so `metallic=0.5, roughness=0` collides with `metallic=0, roughness=5`; and `false.ToString()` is `"False"`. Port the bucket key as a value tuple or record, never a formatted string. |
+| S6 | **string sorting is ordinal in JS and culture-sensitive in .NET** | `Array.prototype.sort()` with no comparator is specified to compare UTF-16 code units. `List<T>.Sort()`, `Array.Sort(string[])` and `OrderBy(x => x)` all use `Comparer<string>.Default`, i.e. `String.CompareTo`, which is culture-sensitive and differs across ICU on net8.0, NLS on older Windows, and `InvariantGlobalization=true` under IL2CPP. Measured under `ja-JP`, **every one** of `--mesh-faces`' 608 sorted lines for `models/sword` lands in a different position; with `StringComparer.Ordinal`, none do. Every observable sort is `StringComparer.Ordinal`. The face lines contain `-`, ` `, `,` and `=`, and §5 identifiers permit `-` and mixed case, so this is not hypothetical. |
 
 **Collections and ordering**
 
@@ -263,14 +264,45 @@ cuboidy-query <model> --transforms --sockets --mesh [--anim=<clip> --time=<s>]
 - `--sockets` prints every published frame (§6.12) as `pos` and `quat`.
 - `--mesh` prints the §7.4 surface: a face count and a digest over the sorted
   face lines, plus one `mesh-part` line per part carrying that part's material
-  list **in the normative order** and its opaque/translucent split.
-  `--mesh-faces` adds every face. Only the SET of faces is normative, so the
-  lines are sorted and a mesher may still merge or reorder.
+  list **in the normative order**, its opaque face count, and whether the
+  opaque/translucent index split holds. `--mesh-faces` adds every face.
+
+  What is deliberately free, and verified free: the ORDER faces come out in
+  (they are sorted), the triangulation, the voxel walk, and **which corner a
+  quad's four are listed from** — the corners are rotated to start at the
+  lexicographically smallest, so the rectangle and its winding are compared
+  and the table's starting index is not. What is NOT free, and this is a
+  narrowing of what §7.4 permits: **a mesher that MERGES faces fails this
+  criterion.** §7.4 allows greedy meshing and this comparison does not
+  implement it, because an area-equivalence check costs more than it returns
+  for a port whose stated goal is to keep the same decomposition. If a port
+  wants to merge, it must do so above `BuildMesh`, not inside it.
+
+  `opaque-faces` is counted from the faces, not from `opaqueIndexCount / 6`,
+  which would have pinned the triangulation. `opaque-split` reports the
+  property `opaqueIndexCount` exists for — every index below it belongs to an
+  opaque material, every index above it to a translucent one — without
+  pinning where the boundary falls.
 
 All numbers are six decimals with `-0` folded to `0`. Compare **parsed
 doubles with a tolerance**, not the strings: the two runtimes' trig can differ
 in the last bits, and .NET renders negative zero as `-0` where JavaScript
 renders `0`.
+
+**The digest is a regression check, not a parity check.** It is FNV-1a over
+the sorted face lines, and those lines are text at six decimals, so a
+one-ULP difference anywhere flips a digit and the digest with it — measured,
+that is enough to move the digest at 8 of `windmill/turning`'s 27 sample
+points on a perturbation far smaller than two runtimes' trig will produce.
+Use it to tell whether two runs of the SAME implementation agree. Compare two
+implementations with `--mesh-faces` and a per-number tolerance.
+
+**Sort the face lines with `StringComparer.Ordinal`.** `--mesh` sorts them,
+and .NET's default string comparer is culture-sensitive — see hazard S6. The
+digest, if a port reproduces it, is 32-bit FNV-1a (offset basis `0x811c9dc5`,
+prime `0x01000193`, `Math.imul` semantics, i.e. wrapping 32-bit multiply)
+over each line's UTF-16 code units with `\n` folded in after every line
+including the last.
 
 **Sample times are part of the criterion**, because detection is
 sampling-dependent: a wrong `outBounce` threshold shows at 241 samples per
@@ -303,11 +335,16 @@ Before the pose fields and the mesh query, every row below the first two was
 undetectable: they produced byte-identical output for every model, every clip
 and every sample time.
 
-One §7.4 rule stays outside this contract by construction. An index no
-palette defines renders as opaque magenta (§7.4, D8) — but a model containing
-one is rejected by the loader long before anything draws, so no *valid* model
-can exercise it. It is pinned by `mesh.test.ts` instead, and a port should
-pin it the same way rather than look for a fixture.
+One §7.4 rule stays outside this contract, and it is worth being exact about
+why. An index no palette defines renders as opaque magenta (§7.4). No *valid*
+model can exercise it, so no fixture and no `cuboidy-query` output reaches it;
+it is pinned by `mesh.test.ts` and a port should pin it the same way.
+
+But do not read that as "unreachable". The check that refuses such a model
+lives in `cli/assemble.ts` and `lint/cross-file.ts`, **both dropped** — so in
+the C# library the magenta path is live, not defensive. It is what a caller
+gets for handing `BuildMesh` a part whose palette is short, which is exactly
+what a runtime with no lint will do.
 
 ## The Godot addon lives in a separate repository
 

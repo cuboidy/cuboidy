@@ -18,7 +18,7 @@ import {
 } from '../rig-transform.js';
 import { publishedSocketFrames } from '../socket-frame.js';
 import { round6 } from '../num.js';
-import { buildMesh, type MeshMaterial } from '../mesh.js';
+import { buildMesh, type MeshData, type MeshMaterial } from '../mesh.js';
 
 // cuboidy-query: structured, single-line coordinate lookup against an
 // assembled model. Complement to cuboidy-view, designed for LLM
@@ -259,11 +259,10 @@ function formatMesh(
     const scale = pose?.scale;
 
     // buildMesh emits four consecutive vertices per face, in winding order,
-    // sharing one normal / colour / alpha. Recovering quads from that is
-    // exact — and reading it back this way is itself a check that the
-    // invariant holds.
+    // sharing one normal / colour / alpha.
     const quadCount = mesh.positions.length / 12;
     const matOfQuad = quadMaterials(mesh, quadCount);
+    let opaqueFaces = 0;
     for (let f = 0; f < quadCount; f++) {
       const corners: string[] = [];
       for (let c = 0; c < 4; c++) {
@@ -282,11 +281,12 @@ function formatMesh(
         mesh.normals[n0 + 1]!,
         mesh.normals[n0 + 2]!,
       ]);
-      const rgb = [mesh.colors[n0]!, mesh.colors[n0 + 1]!, mesh.colors[n0 + 2]!];
       const m = mesh.materials[matOfQuad[f]!]!;
+      if (!m.translucent) opaqueFaces++;
       faces.push(
-        `face n=${n.map(num).join(',')} ${corners.join(' ')} ` +
-          `rgb=${rgb.map(num).join(',')} a=${num(mesh.alphas[f * 4]!)} ` +
+        `face n=${n.map(num).join(',')} ${rotateToCanonicalStart(corners).join(' ')} ` +
+          `rgb=${channels(mesh.colors, n0).join(',')} ` +
+          `a=${channel(mesh.alphas[f * 4]!)} ` +
           `metallic=${num(m.metallic)} roughness=${num(m.roughness)} ` +
           `emissive=${num(m.emissive)}`,
       );
@@ -294,16 +294,68 @@ function formatMesh(
 
     partLines.push(
       `mesh-part ${rp.name} faces=${quadCount} ` +
-        `opaque-faces=${mesh.opaqueIndexCount / 6} ` +
-        `materials=${mesh.materials.map(materialWord).join(',')}`,
+        `opaque-faces=${opaqueFaces} ` +
+        `opaque-split=${opaqueSplitIsSound(mesh) ? 'ok' : 'BROKEN'} ` +
+        `materials=${mesh.materials.map(materialWord).join(',') || '(none)'}`,
     );
   }
 
+  // Ordinal, by UTF-16 code unit, which is what `Array.prototype.sort()` with
+  // no comparator is specified to do. A port must say so explicitly:
+  // .NET's default string comparer — including `OrderBy(x => x)` — is
+  // culture-sensitive, and under ja-JP it reorders every line of this output.
   faces.sort();
   const out = [`mesh faces=${faces.length} digest=${digest(faces)}`];
   out.push(...partLines);
   if (q.faces) out.push(...faces);
   return out.join('\n');
+}
+
+// A colour channel, recovered to the 8-bit value it came from before being
+// divided. `MeshData.colors` is a `Float32Array` because that is what a GPU
+// takes, and printing it directly leaks the rounding: 182/255 is 0.713725 as
+// a double and 0.713726 through float32, so a C# port computing `r / 255.0`
+// — the obvious translation, and what §7.4 describes — failed two of the
+// nine models on colour alone. The palette's channels are integers by
+// definition (§7.4 hex), so the round trip is exact.
+function channel(v: number): string {
+  return num(Math.round(v * 255) / 255);
+}
+
+function channels(buf: ArrayLike<number>, at: number): string[] {
+  return [channel(buf[at]!), channel(buf[at + 1]!), channel(buf[at + 2]!)];
+}
+
+// SPEC §7.4 makes the RECTANGLE normative, not where a face table starts
+// listing it. Rotating the four corners to begin at the lexicographically
+// smallest one keeps the cyclic order — so a reversed winding is still a
+// different line — while letting a port whose table starts each quad at a
+// different corner produce the same output. It emitted 612 differing lines
+// before, for four identical rectangles with identical outward normals.
+function rotateToCanonicalStart(corners: readonly string[]): string[] {
+  let at = 0;
+  for (let i = 1; i < corners.length; i++) {
+    if (corners[i]! < corners[at]!) at = i;
+  }
+  return [...corners.slice(at), ...corners.slice(0, at)];
+}
+
+// SPEC §7.4's draw-pass split, expressed WITHOUT counting indices. The count
+// itself is in index space, which the spec leaves free — a different
+// triangulation moves it — but the property it exists for does not: every
+// index below `opaqueIndexCount` belongs to an opaque material and every
+// index above it to a translucent one.
+function opaqueSplitIsSound(mesh: MeshData): boolean {
+  for (const g of mesh.groups) {
+    const translucent = mesh.materials[g.material]?.translucent ?? false;
+    const end = g.start + g.count;
+    const before = end <= mesh.opaqueIndexCount;
+    const after = g.start >= mesh.opaqueIndexCount;
+    // A group must sit wholly on one side, and on the side its material says.
+    if (!before && !after) return false;
+    if (before === translucent) return false;
+  }
+  return true;
 }
 
 // One material, in the ORDER SPEC §7.4 makes normative — which is the whole

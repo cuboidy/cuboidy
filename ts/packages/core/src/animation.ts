@@ -305,22 +305,31 @@ function stepVisible(keys: readonly ResolvedKey[], t: number): boolean {
 // which is why removing it looked safe.)
 //
 // Scaled to the larger of the clock and the clip, because the error comes
-// from the dividend's magnitude, not the remainder's — and then BOUNDED by
-// half the closest pair of keys, because that scaling is unbounded in the
-// clock and the guarantee it is supposed to provide is not.
+// from the dividend's magnitude, not the remainder's — and then BOUNDED by a
+// thousandth of the closest pair of keys, because that scaling is unbounded
+// in the clock and the guarantee it is supposed to provide is not.
 //
 // Unbounded, the tolerance overtakes the thing it is measuring. Against a
 // track keyed at 0.0 / 0.001 / 0.002, a clock at 1e9 gives eps = 1e-3 — a
-// whole key spacing, so every sample snaps to the first key and the part
-// stops moving. Worse, it defeated the §6.7 clamp on a NON-LOOPING clip,
-// where there is no wrap error to tolerate at all: at t = 1e308 the clamp
-// correctly yields `duration`, and an eps of 1e296 then snapped that to
-// "0.0" and returned the FIRST keyframe where the last must hold.
+// whole key spacing, so every sample snaps and the part stops moving. It
+// also defeated the §6.7 clamp on a NON-LOOPING clip, where there is no wrap
+// error to tolerate at all: at t = 1e308 the clamp correctly yields
+// `duration`, and an eps of 1e296 then snapped that to "0.0" and returned
+// the FIRST keyframe where the last must hold.
 //
-// Half the minimum gap is the largest tolerance that cannot reach a
-// neighbouring key. Where the clock is so large that its own ulp exceeds
-// that, no tolerance can separate the keys anyway, and this at least
-// answers with the nearest one rather than the earliest within a wide net.
+// A thousandth, not a half. Half the gap is the largest tolerance that
+// cannot reach a NON-NEAREST key — but half-gap balls centred on the keys
+// TILE the timeline, so at that bound every sample is within tolerance of
+// something and interpolation disappears just as completely. Measured on the
+// track above, `minGap / 2` left 2 distinct values across the whole clip at a
+// clock of 1e9, where the unbounded form left 2 as well: the bound changed
+// nothing at the case it was written for. A thousandth leaves 99.8% of each
+// segment interpolating, and still covers the wrap error by three orders at
+// any clock under ~4e9 seconds, which is a hundred and forty years.
+//
+// Past that the sample time has lost the precision to name a keyframe and no
+// tolerance can recover it without destroying the interpolation it protects.
+// That is a property of the double, not a choice made here.
 function snapToKey(
   keys: readonly ResolvedKey[],
   t: number,
@@ -334,13 +343,16 @@ function snapToKey(
   }
   const eps = Math.min(
     Math.max(Math.abs(time), duration) * 1e-12,
-    minGap / 2, // Infinity for a single-key track: nothing to collide with
+    minGap * 1e-3, // Infinity for a single-key track: nothing to collide with
   );
+  // Nearest key within the tolerance; ties keep the EARLIER one, since `keys`
+  // is sorted ascending and the comparison only improves on a strict win. An
+  // equidistant midpoint used to take the later key and jump a whole segment.
   let best = t;
-  let bestDist = eps;
+  let bestDist = Infinity;
   for (const k of keys) {
     const d = Math.abs(k.t - t);
-    if (d <= bestDist) {
+    if (d <= eps && d < bestDist) {
       bestDist = d;
       best = k.t;
     }
@@ -358,7 +370,11 @@ export function clampToClip(
   duration: number,
   loop: boolean,
 ): number {
-  if (duration <= 0) return 0;
+  // `!(duration > 0)`, not `duration <= 0`: NaN fails both comparisons, and
+  // a NaN duration reached the segment search as exactly the two failures the
+  // non-finite `time` guard below was written to remove — a pose of NaNs from
+  // a two-key track, an index past the end from a one-key one.
+  if (!(duration > 0)) return 0;
   if (!loop) {
     // ±Infinity clamps to an end, which is the answer the rule already
     // gives; NaN has no position in a clip at all.

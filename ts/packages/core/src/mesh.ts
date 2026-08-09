@@ -82,9 +82,17 @@ function materialKey(m: MeshMaterial): string {
 // the list to prevent, since `MeshGroup.material` is an index into it.
 export function compareMaterials(a: MeshMaterial, b: MeshMaterial): number {
   if (a.translucent !== b.translucent) return a.translucent ? 1 : -1;
-  if (a.metallic !== b.metallic) return a.metallic < b.metallic ? -1 : 1;
-  if (a.roughness !== b.roughness) return a.roughness < b.roughness ? -1 : 1;
-  if (a.emissive !== b.emissive) return a.emissive < b.emissive ? -1 : 1;
+  // Three-way per field rather than `x < y ? -1 : 1`, so a NaN — which is
+  // neither less nor greater — falls through to 0 instead of reporting a
+  // material as greater than itself. `materialKey` buckets NaN with NaN, and
+  // a comparator that disagreed with the bucketing would order a material
+  // list that has two entries the buckets say is one.
+  if (a.metallic < b.metallic) return -1;
+  if (a.metallic > b.metallic) return 1;
+  if (a.roughness < b.roughness) return -1;
+  if (a.roughness > b.roughness) return 1;
+  if (a.emissive < b.emissive) return -1;
+  if (a.emissive > b.emissive) return 1;
   return 0;
 }
 
@@ -263,7 +271,12 @@ export function buildMesh(part: Part, palette: Palette): MeshData {
       material: materials.length,
     });
     materials.push(bucket.material);
-    indices.push(...bucket.idx);
+    // Appended one at a time, not spread. `push(...idx)` passes every index
+    // as an argument, and a bucket over roughly 125k indices — a solid 64³
+    // part, well inside SPEC §7.5's 1024 per axis — overflows the call stack
+    // with a RangeError. C#'s `AddRange` has no such limit, so this was a
+    // model the reference could not read and a port could.
+    for (const i of bucket.idx) indices.push(i);
     if (!bucket.material.translucent) opaqueIndexCount = indices.length;
   }
 

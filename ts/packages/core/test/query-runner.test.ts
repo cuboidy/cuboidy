@@ -444,6 +444,9 @@ describe('runQuery --mesh', () => {
   const dir = resolve(REPO_ROOT, SINGLE);
   const MESH: Query = { kind: 'mesh', faces: false };
   const FACES: Query = { kind: 'mesh', faces: true };
+  const model = (name: string) => resolve(REPO_ROOT, 'models', name);
+  const lines = (text: string, prefix: string) =>
+    text.split('\n').filter((l) => l.startsWith(prefix));
 
   it('reports a face count and a digest', async () => {
     const r = await runQuery(dir, { queries: [MESH] });
@@ -473,6 +476,63 @@ describe('runQuery --mesh', () => {
       expect(line).toMatch(/roughness=\d/);
       expect(line).toMatch(/emissive=\d/);
       expect(line).toMatch(/a=\d/);
+    }
+  });
+
+  // `MeshData.colors` is a Float32Array because that is what a GPU takes.
+  // Printing it directly leaked the rounding — 182/255 is 0.713725 as a
+  // double and 0.713726 through float32 — so a C# port computing `r / 255.0`,
+  // the obvious translation, failed two of the nine models on colour alone.
+  it('prints colours as doubles, not as the float32 buffer', async () => {
+    const r = await runQuery(model('windmill'), {
+      queries: [{ kind: 'mesh', faces: true }],
+    });
+    const rgb = new Set(
+      lines(r.text, 'face ').flatMap((l) => /rgb=([^ ]+)/.exec(l)?.[1] ?? []),
+    );
+    expect(rgb.size).toBeGreaterThan(1);
+    for (const line of rgb) {
+      for (const v of line.split(',')) {
+        // Every palette channel is an integer over 255. The printed text
+        // must be that DOUBLE at six decimals — 182/255 is 0.713725 — and
+        // not the float32 the vertex buffer holds, which prints 0.713726.
+        const byte = Math.round(Number(v) * 255);
+        const asFloat32 = new Float32Array([byte / 255])[0]!;
+        expect(v, `byte ${byte}`).toBe((byte / 255).toFixed(6));
+        if (asFloat32.toFixed(6) !== (byte / 255).toFixed(6)) {
+          expect(v, `byte ${byte} must not be the float32 form`).not.toBe(
+            asFloat32.toFixed(6),
+          );
+        }
+      }
+    }
+  });
+
+  // §7.4 makes the RECTANGLE normative, not where a face table starts
+  // listing it. A port whose table began each quad at a different corner —
+  // same rectangle, same CCW cycle, same outward normal — used to differ on
+  // 612 lines.
+  it('starts every quad at its lexicographically smallest corner', async () => {
+    const r = await runQuery(model('sword'), {
+      queries: [{ kind: 'mesh', faces: true }],
+    });
+    const faces = lines(r.text, 'face ');
+    expect(faces.length).toBeGreaterThan(0);
+    for (const line of faces) {
+      const corners = line.split(' ').slice(2, 6);
+      expect(corners).toHaveLength(4);
+      for (const c of corners.slice(1)) expect(c >= corners[0]!).toBe(true);
+    }
+  });
+
+  // The §7.4 draw-pass split, stated without counting indices — the count is
+  // in index space, which the spec leaves free.
+  it('reports the opaque/translucent split as sound for every model', async () => {
+    for (const name of ['knight', 'orrery', 'submersible', 'windmill']) {
+      const r = await runQuery(model(name), { queries: [MESH] });
+      const parts = lines(r.text, 'mesh-part ');
+      expect(parts.length, name).toBeGreaterThan(0);
+      for (const line of parts) expect(line, name).toContain('opaque-split=ok');
     }
   });
 
