@@ -127,12 +127,39 @@ formulas as written, but are compared across implementations to a tolerance,
 not bit-for-bit — eleven presets go through `sin`/`cos`/`pow`, which no
 runtime is required to round correctly.
 
-Separately, a sample time within `max(|time|, duration) × 1e-12` of a
-keyframe IS that keyframe's time, for every attribute at once. Wrapping is
+Separately, a sample time within a tolerance of a keyframe IS that
+keyframe's time, for every attribute at once. Wrapping is
 the exact IEEE remainder of a dividend that is not the number the author
 wrote, so a clock a whole number of loops past a key lands a few ULPs below
 it — enough for a step attribute to read "not yet" while the interpolating
 ones sit at `u ≈ 1`.
+
+**§6.7 — the interpolation form is pinned, the snap tolerance is bounded, and
+a non-finite time is defined.** Three corrections to the paragraphs above,
+made when a second audit measured what they actually guaranteed.
+
+Interpolation is `a·(1 − u′) + b·u′`, not `a + (b − a)·u′`. The spec already
+promised that a keyed value is hit *exactly* at its keyframe and clamped the
+easing endpoints to make it true; that turns out to be half the requirement,
+because the second form is not exact at `u′ = 1`. Measured over the models in
+this repository, 36 of 3411 keyed components did not survive a round trip
+through the sampler — `fox/trot` keys `-0.02` and read back
+`-0.01999999999999999`. This is the only arithmetic form the spec names.
+
+The snap tolerance is now `min(max(|time|, duration) × 1e-12, g / 2)` for `g`
+the smallest gap between adjacent keyframes. Scaling with the clock is right —
+the wrap error does — but unbounded it overtakes what it is measuring: against
+keys 1 ms apart, a clock at `1e9` gives a tolerance a whole key spacing wide,
+so every sample snaps and the part freezes. It also applied to `loop: false`,
+where the clamp is exact and there is no error to tolerate, and at `1e308` it
+snapped `duration` back to `"0.0"` — returning the first keyframe where the
+last must hold.
+
+A non-finite sample time samples as `0`, except that `±Infinity` still clamps
+to an end for `loop: false`. Previously unstated, and the consequence was not
+a different answer but a different failure per host: reading past the end of
+the keyframe array gives a pose of `NaN`s in one language and an exception in
+another, and which one you got depended on how many keyframes the track had.
 
 **§7.4 — an index no palette defines renders as opaque magenta.** Previously
 unstated, and left to each renderer. Cross-file validation still reports it,

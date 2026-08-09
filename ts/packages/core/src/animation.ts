@@ -234,12 +234,26 @@ function resolveTrack(track: AnimationTrack): ResolvedKey[] {
   return out;
 }
 
+// SPEC §6.7 states that a keyed value is hit EXACTLY at its keyframe, and
+// means it literally. `applyEasing` clamping its endpoints is only half of
+// that promise: the interpolation itself has to reproduce the endpoints too,
+// and the two textbook forms differ on exactly that.
+//
+//   a + (b − a)·u   is exact at u = 0 and NOT at u = 1
+//   a·(1 − u) + b·u is exact at both
+//
+// Measured over the corpus, the first form misses 32 of 5970 segment
+// endpoints, and 36 of 3411 keyed components did not survive a round trip
+// through the sampler — `fox/trot` keys the body at `-0.02` and read back
+// `-0.01999999999999999`. The second form misses none.
+//
+// So the form is not an implementation detail and §6.7 now names it. The
+// cost is the usual trade: this one is not monotonic in the last bits for
+// interior u, where the other is. The endpoints are where an author put a
+// number and expects to see it; the interior is compared to a tolerance.
 function lerp3(a: Vec3Tuple, b: Vec3Tuple, u: number): Vec3Tuple {
-  return [
-    a[0] + (b[0] - a[0]) * u,
-    a[1] + (b[1] - a[1]) * u,
-    a[2] + (b[2] - a[2]) * u,
-  ];
+  const v = 1 - u;
+  return [a[0] * v + b[0] * u, a[1] * v + b[1] * u, a[2] * v + b[2] * u];
 }
 
 // SPEC §6.7 step interpolation for `visible`: the value of the latest
@@ -277,20 +291,47 @@ function stepVisible(keys: readonly ResolvedKey[], t: number): boolean {
 // which is why removing it looked safe.)
 //
 // Scaled to the larger of the clock and the clip, because the error comes
-// from the dividend's magnitude, not the remainder's. 1e-12 of that is
-// orders above the error and orders below any spacing a §6.6 decimal key
-// can express.
+// from the dividend's magnitude, not the remainder's — and then BOUNDED by
+// half the closest pair of keys, because that scaling is unbounded in the
+// clock and the guarantee it is supposed to provide is not.
+//
+// Unbounded, the tolerance overtakes the thing it is measuring. Against a
+// track keyed at 0.0 / 0.001 / 0.002, a clock at 1e9 gives eps = 1e-3 — a
+// whole key spacing, so every sample snaps to the first key and the part
+// stops moving. Worse, it defeated the §6.7 clamp on a NON-LOOPING clip,
+// where there is no wrap error to tolerate at all: at t = 1e308 the clamp
+// correctly yields `duration`, and an eps of 1e296 then snapped that to
+// "0.0" and returned the FIRST keyframe where the last must hold.
+//
+// Half the minimum gap is the largest tolerance that cannot reach a
+// neighbouring key. Where the clock is so large that its own ulp exceeds
+// that, no tolerance can separate the keys anyway, and this at least
+// answers with the nearest one rather than the earliest within a wide net.
 function snapToKey(
   keys: readonly ResolvedKey[],
   t: number,
   time: number,
   duration: number,
 ): number {
-  const eps = Math.max(Math.abs(time), duration) * 1e-12;
-  for (const k of keys) {
-    if (Math.abs(k.t - t) <= eps) return k.t;
+  let minGap = Infinity;
+  for (let i = 1; i < keys.length; i++) {
+    const gap = keys[i]!.t - keys[i - 1]!.t;
+    if (gap > 0 && gap < minGap) minGap = gap;
   }
-  return t;
+  const eps = Math.min(
+    Math.max(Math.abs(time), duration) * 1e-12,
+    minGap / 2, // Infinity for a single-key track: nothing to collide with
+  );
+  let best = t;
+  let bestDist = eps;
+  for (const k of keys) {
+    const d = Math.abs(k.t - t);
+    if (d <= bestDist) {
+      bestDist = d;
+      best = k.t;
+    }
+  }
+  return best;
 }
 
 // SPEC §6.7: bring an arbitrary clock time inside a clip — a looping clip
@@ -304,7 +345,19 @@ export function clampToClip(
   loop: boolean,
 ): number {
   if (duration <= 0) return 0;
-  if (!loop) return Math.min(Math.max(time, 0), duration);
+  if (!loop) {
+    // ±Infinity clamps to an end, which is the answer the rule already
+    // gives; NaN has no position in a clip at all.
+    return Number.isNaN(time) ? 0 : Math.min(Math.max(time, 0), duration);
+  }
+  // `Infinity % duration` is NaN, and a NaN time reaches the segment search
+  // in samplePart as a comparison that is false either way: a two-key track
+  // returned a pose of NaNs that then poisoned the whole rig, and a
+  // one-key track indexed past the end and threw. Two failure modes for one
+  // input, chosen by key count — and C# would raise on the second where
+  // JavaScript returned `undefined`. 0 is the defined answer, as it already
+  // is for a zero-length clip.
+  if (!Number.isFinite(time)) return 0;
   const wrapped = time % duration;
   return wrapped < 0 ? wrapped + duration : wrapped;
 }

@@ -361,4 +361,94 @@ describe('samplePart — a wrap that lands just short of a keyframe', () => {
     expect(samplePart(track, 0.69, 6, true).visible).toBe(false);
     expect(samplePart(track, 0.6999, 6, true).visible).toBe(false);
   });
+
+  // The tolerance scales with the clock, because the wrap error does. Left
+  // unbounded it overtakes the thing it is measuring.
+  it('never reaches a neighbouring keyframe, however large the clock', () => {
+    const tight: AnimationTrack = {
+      '0.0': { rot: [0, 0, 0] },
+      '0.001': { rot: [0, 100, 0] },
+      '0.002': { rot: [0, 0, 0] },
+    };
+    // eps was `max(|time|, duration) × 1e-12`, so a clock at 1e9 gave 1e-3 —
+    // a whole key spacing. Every sample snapped to a key and the part froze.
+    // Bounded by half the closest pair, a sample midway between two keys is
+    // midway between them at any clock.
+    expect(samplePart(tight, 0.0005, 0.002, true).rot[1]).toBe(50);
+    expect(samplePart(tight, 1e6 + 0.0005, 0.002, true).rot[1]).toBeCloseTo(50, 4);
+  });
+
+  it('holds the last keyframe past a non-looping clip, at any clock', () => {
+    // There is no wrap error to tolerate here at all — the clamp is exact —
+    // but the tolerance applied anyway: at 1e308 it was 1e296, so `duration`
+    // snapped to "0.0" and the sampler returned the FIRST keyframe where
+    // §6.7 requires the last to hold.
+    const two: AnimationTrack = {
+      '0.0': { rot: [0, 0, 0] },
+      '1.0': { rot: [0, 90, 0] },
+    };
+    for (const t of [1.5, 1e6, 1e308, Infinity]) {
+      expect(samplePart(two, t, 2, false).rot[1], `t=${t}`).toBe(90);
+    }
+  });
+});
+
+// SPEC §6.7 says a keyed value is hit exactly at its keyframe and means it
+// literally. `applyEasing` clamping its endpoints was only half of that: the
+// interpolation has to reproduce the endpoints too, and `a + (b − a)·u` does
+// not at u = 1.
+describe('samplePart — a keyed value survives its own keyframe', () => {
+  it('reproduces the authored number bit for bit', () => {
+    // models/fox keys the body at -0.02 and read back -0.01999999999999999.
+    const track: AnimationTrack = {
+      '0.0': { pos: [0, 0, 0] },
+      '0.15': { pos: [0.25, -0.02, 0] },
+      '0.3': { pos: [0, 0, 0] },
+    };
+    expect(samplePart(track, 0.15, 0.3, true).pos).toEqual([0.25, -0.02, 0]);
+  });
+
+  it('holds across every corpus value that used to drift', () => {
+    // One case per authored constant an audit measured as lost: each is a
+    // decimal whose double is not exactly representable, which is when the
+    // two lerp forms disagree.
+    for (const v of [-0.02, -0.05, 0.35, 1.6, 1.2, -0.4, 0.07]) {
+      const track: AnimationTrack = {
+        '0.0': { rot: [0, 0, 0] },
+        '1.0': { rot: [v, v, v] },
+      };
+      const got = samplePart(track, 1, 1, false).rot;
+      expect(got, `v=${v}`).toEqual([v, v, v]);
+    }
+  });
+});
+
+// A non-finite clock reached the segment search as a comparison that is
+// false either way, and what happened next depended on how many keyframes
+// the track had: a two-key track returned NaNs that poisoned the rig, a
+// one-key track indexed past the end and threw. C# would raise on the
+// second where JavaScript returned `undefined`.
+describe('samplePart — a non-finite time is total', () => {
+  const one: AnimationTrack = { '0.0': { rot: [0, 10, 0] } };
+  const two: AnimationTrack = {
+    '0.0': { rot: [0, 10, 0] },
+    '1.0': { rot: [0, 90, 0] },
+  };
+
+  it('answers with the clip start rather than NaN or a throw', () => {
+    for (const track of [one, two]) {
+      for (const loop of [true, false]) {
+        const p = samplePart(track, NaN, 2, loop);
+        expect(p.rot).toEqual([0, 10, 0]);
+        expect(p.pos.every(Number.isFinite)).toBe(true);
+      }
+    }
+  });
+
+  it('still lets ±Infinity clamp to an end when the clip does not loop', () => {
+    expect(samplePart(two, Infinity, 2, false).rot[1]).toBe(90);
+    expect(samplePart(two, -Infinity, 2, false).rot[1]).toBe(10);
+    // A looping clip has no end to clamp to, and Infinity % d is NaN.
+    expect(samplePart(two, Infinity, 2, true).rot[1]).toBe(10);
+  });
 });
