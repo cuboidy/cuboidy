@@ -146,10 +146,15 @@ TypeScript side, rather than pulling in a JSON Schema validator.
 
 Every file under `fixtures/` yields the diagnostic code its directory is named
 after: `fixtures/geometry/wrong-arity/row-width.json` reports `wrong-arity`,
-`fixtures/manifest/missing/name.json` reports `missing`, and so on. Thirty-
-eight files today across `geometry/`, `manifest/` and `palette/`. That corpus
-is the cross-implementation contract; passing it is what "a second
-implementation exists" means here.
+`fixtures/manifest/missing/name.json` reports `missing`, and so on — 45 files
+today across `geometry/`, `manifest/` and `palette/`. That corpus is the
+cross-implementation contract; passing it is what "a second implementation
+exists" means here.
+
+The count and the model list below are written as digits and as names on
+purpose: `corpus-coverage.test.ts` reads this file and fails when either
+stops matching what is on disk. Both were stale within a day of being
+written, in the one document a porter reads to know when they are done.
 
 The C# side does not reimplement the mapping from a validation failure to a
 code. `core/src/zod-diagnostic.ts` is the one place that decides, and its
@@ -159,31 +164,69 @@ table and that file's comments; port neither the branches nor the three
 readers' older behaviour, which disagreed with the table and with each other.
 
 `models/` is the positive half of the same contract: every shipped model —
-fox, herbalist, knight, koi, orrery, owl, sword, windmill — loads clean.
+fox, herbalist, knight, koi, orrery, owl, submersible, sword, windmill —
+loads clean. Nine, and `submersible` is not an afterthought in that list: it
+is the only one carrying §7.4 materials, and one of two with an alpha
+channel, so a port that read the object form of a palette entry and threw the
+material away passed the whole criterion without it.
 
 The runtime half has no fixtures, so it is checked against TypeScript
 numerically instead:
 
 ```
-cuboidy-query <model> --transforms --sockets [--anim=<clip> --time=<s>]
+cuboidy-query <model> --transforms --sockets --mesh [--anim=<clip> --time=<s>]
 ```
 
-`--transforms` prints every part's world transform and `--sockets` every
-published frame (§6.12), each as `pos=x,y,z` and `quat=x,y,z,w` at six
-decimals with `-0` folded to `0`. Compare **parsed doubles with a
-tolerance**, not the strings: the two runtimes' trig can differ in the last
-bits, and .NET renders negative zero as `-0` where JavaScript renders `0`.
+- `--transforms` prints every part's world transform **and its §6.5 pose** —
+  `pos=x,y,z quat=x,y,z,w scale=x,y,z visible=0|1`.
+- `--sockets` prints every published frame (§6.12) as `pos` and `quat`.
+- `--mesh` prints the §7.4 surface: a face count and a digest over the sorted
+  face lines, plus one `mesh-part` line per part carrying that part's material
+  list **in the normative order** and its opaque/translucent split.
+  `--mesh-faces` adds every face. Only the SET of faces is normative, so the
+  lines are sorted and a mesher may still merge or reorder.
 
-This is what the criterion always meant and did not previously say. Until
-`--transforms` existed, the only numbers the tool printed were six bbox
-values and two range endpoints; everything else was palette characters read
-off an axis-aligned voxel grid, which a part's rotation moves the pivot of
-but does not turn the cells of. Measured against all seven models, a port
-could drop `pivot.rot` entirely, or compose `q_pivot ⊗ q_rotation` the wrong
-way round, without moving a single character of that output. There was also
-no way to ask for a pose at all — `--anim` / `--time` are new, and without
-them `animation.ts`, all twenty easing curves and `socket-frame.ts` sat
-outside the contract completely.
+All numbers are six decimals with `-0` folded to `0`. Compare **parsed
+doubles with a tolerance**, not the strings: the two runtimes' trig can differ
+in the last bits, and .NET renders negative zero as `-0` where JavaScript
+renders `0`.
+
+**Sample times are part of the criterion**, because detection is
+sampling-dependent: a wrong `outBounce` threshold shows at 241 samples per
+clip and not at 9. For each clip of each model, sample
+
+```
+t = k·duration/24   for k = -1 … 25
+```
+
+— which covers the clip, both ends of the §6.7 wrap interval, and one step
+outside it in each direction, where a looping clip must wrap and a
+non-looping one must hold.
+
+This is what the criterion always meant and did not previously say. Each
+clause above is there because a deliberately-wrong implementation passed
+everything else. Measured:
+
+| wrong implementation | caught by |
+|---|---|
+| drop `pivot.rot`; swap `q_pivot ⊗ q_rotation`; Euler XYZ; drop manifest `rotation` | `--transforms` |
+| never implement `socket-frame.ts`; ignore a socket's own `rot` or the pivot offset | `--sockets` |
+| never implement `stepVisible`, or `visible` at all | `--transforms` `visible=` |
+| scale in world axes after the rotation instead of about the pivot before it; ignore `scale` | `--transforms` `scale=`, and `--sockets` |
+| no §6.5 carryover — an omitted keyframe field taking the default instead of the previous value | `--transforms` |
+| no face culling; a translucent neighbour hiding a face; reversed winding; a flipped normal | `--mesh` |
+| the material list in walk order instead of §7.4's; a `Comparison<T>` that truncates the difference to an int | `--mesh` `materials=` |
+| `opaqueIndexCount` covering the translucent groups too | `--mesh` `opaque-faces=` |
+
+Before the pose fields and the mesh query, every row below the first two was
+undetectable: they produced byte-identical output for every model, every clip
+and every sample time.
+
+One §7.4 rule stays outside this contract by construction. An index no
+palette defines renders as opaque magenta (§7.4, D8) — but a model containing
+one is rejected by the loader long before anything draws, so no *valid* model
+can exercise it. It is pinned by `mesh.test.ts` instead, and a port should
+pin it the same way rather than look for a fixture.
 
 ## The Godot addon lives in a separate repository
 

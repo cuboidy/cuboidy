@@ -83,6 +83,14 @@ export interface Assembly {
 // The remap is the same table the grid values went through.
 export interface PlacedPart extends OrientedPart {
   name: string;
+  // The part's OWN resolved palette (§7.4), before the merge — i.e. what
+  // `resolveProject` bound to it, and the palette its raw indices address.
+  // `remap` + `Assembly.palette` say the same thing for the merged grid;
+  // this is what `buildMesh(part, palette)` takes, and what a runtime that
+  // draws each part in its own call has. The merge is a CLI concern (one
+  // ASCII legend, one draw), so a consumer that does not merge should read
+  // this and never build the table.
+  palette: Palette;
 }
 
 export interface LoadResult {
@@ -328,10 +336,14 @@ function assembleWorld(
   // that could not see a part written inline in the manifest.
   const shapesByName = new Map<
     string,
-    { part: Part; remap: readonly number[] | null }
+    { part: Part; remap: readonly number[] | null; palette: Palette }
   >();
   for (const [name, r] of parts) {
-    shapesByName.set(name, { part: r.part, remap: eff.remap.get(name) ?? null });
+    shapesByName.set(name, {
+      part: r.part,
+      remap: eff.remap.get(name) ?? null,
+      palette: r.palette,
+    });
   }
 
   // SPEC §7.7 rest world transforms from the shared rig-transform layer
@@ -358,9 +370,9 @@ function assembleWorld(
       warnings.push(`part "${mp.name}" in manifest has no matching geometry part — skipping`);
       continue;
     }
-    const { part, remap } = entry;
+    const { part, remap, palette } = entry;
     const transform = transforms.get(mp.name)!;
-    resolvedParts.push({ name: mp.name, part, remap, transform });
+    resolvedParts.push({ name: mp.name, part, remap, transform, palette });
     const wp = transform.pos;
     const px = part.pivot.pos.x;
     const py = part.pivot.pos.y;

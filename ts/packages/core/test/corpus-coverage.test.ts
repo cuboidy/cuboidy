@@ -52,6 +52,44 @@ describe('models/ — corpus coverage', () => {
     }
   });
 
+  // `docs/csharp-implementation.md` is the one document that says when a
+  // second implementation is DONE, and both halves of its corpus statement
+  // went stale within a day of being written — it named eight models on the
+  // day the ninth landed, and 38 fixtures against 45 on disk. A porter
+  // reading it would have believed the missing model (the only one with §7.4
+  // materials) was not part of the contract. So the numbers are asserted
+  // rather than maintained.
+  it('the acceptance document still describes the corpus on disk', async () => {
+    const doc = await readFile(
+      join(REPO_ROOT, 'docs', 'csharp-implementation.md'),
+      'utf8',
+    );
+    const models = await modelDirs();
+    const sentence = /every shipped model —([\s\S]+?)— *\s*loads clean/.exec(doc);
+    expect(sentence, 'the "every shipped model — … — loads clean" sentence').not.toBeNull();
+    const named = sentence![1]!
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s !== '')
+      .sort();
+    expect(named, 'the model list in the acceptance document').toEqual(models);
+
+    const fixtures: string[] = [];
+    const walk = async (d: string): Promise<void> => {
+      for (const e of await readdir(d, { withFileTypes: true })) {
+        const p = join(d, e.name);
+        if (e.isDirectory()) await walk(p);
+        else if (e.name.endsWith('.json')) fixtures.push(p);
+      }
+    };
+    await walk(join(REPO_ROOT, 'fixtures'));
+    const claimed = /(\d+) files\s+today across/.exec(doc)?.[1];
+    expect(
+      Number(claimed),
+      `acceptance document claims ${claimed} fixtures, ${fixtures.length} on disk`,
+    ).toBe(fixtures.length);
+  });
+
   it('some model writes a part inline in the manifest (§6.13)', async () => {
     const found: string[] = [];
     for (const name of await modelDirs()) {
@@ -227,11 +265,90 @@ describe('models/ — corpus coverage', () => {
       const r = await loadAndAssemble(join(MODELS, name));
       if (!r.ok) continue;
       for (const rp of r.assembly.resolvedParts) {
-        const mesh = buildMesh(rp.part, r.assembly.palette);
+        // The part's OWN palette — its raw indices address that, not the
+        // merged table, and `buildMesh(part, palette)` is the ported pair.
+        const mesh = buildMesh(rp.part, rp.palette);
         if (mesh.materials.length > 1) return;
       }
     }
     throw new Error('no shipped part has two materials — groups untested');
+  });
+
+  // SPEC §6.5 carryover: a keyframe that omits a field inherits the previous
+  // keyframe's value, not the default. Measured across the whole gallery,
+  // every omission carried a value that HAPPENED to equal the §6.5 default —
+  // 821 of them — so replacing `kf.scale ?? prev.scale` with
+  // `kf.scale ?? [1,1,1]` throughout changed nothing anywhere. Most of
+  // `resolveTrack` was unfalsifiable.
+  it('some keyframe carries a NON-default value from the one before it', async () => {
+    const DEFAULTS: Record<string, string> = {
+      rot: '[0,0,0]',
+      pos: '[0,0,0]',
+      scale: '[1,1,1]',
+      visible: 'true',
+    };
+    const found: string[] = [];
+    for (const name of await modelDirs()) {
+      const r = await loadAndAssemble(join(MODELS, name));
+      if (!r.ok) continue;
+      for (const [clip, anim] of r.assembly.animations) {
+        for (const [part, track] of Object.entries(anim.parts)) {
+          const carried: Record<string, string> = { ...DEFAULTS };
+          const keys = Object.keys(track)
+            .map((k) => ({ k, t: Number(k) }))
+            .sort((a, b) => a.t - b.t);
+          for (const { k } of keys) {
+            const kf = track[k] as Record<string, unknown>;
+            for (const field of Object.keys(DEFAULTS)) {
+              if (kf[field] === undefined) {
+                if (carried[field] !== DEFAULTS[field]) {
+                  found.push(`${name}/${clip}/${part}@${k}:${field}`);
+                }
+              } else {
+                carried[field] = JSON.stringify(kf[field]);
+              }
+            }
+          }
+        }
+      }
+    }
+    expect(
+      found,
+      'every omitted keyframe field in the corpus carries a value equal to ' +
+        'its §6.5 default, so carryover itself is never observed',
+    ).not.toHaveLength(0);
+  });
+
+  // §6.5 `scale` reaches printed output through two routes and both were
+  // blind to the axis frame: uniform scale COMMUTES with rotation, and the
+  // one part in the gallery whose socket moved under scale was scaled
+  // uniformly. A port scaling in world axes after the rotation, instead of
+  // about the pivot before it, matched every number.
+  it('some animated part is scaled NON-uniformly, and publishes a socket', async () => {
+    const found: string[] = [];
+    for (const name of await modelDirs()) {
+      const r = await loadAndAssemble(join(MODELS, name));
+      if (!r.ok) continue;
+      const socketed = new Set(
+        Object.values(r.assembly.manifest.sockets ?? {}).map((s) => s.part),
+      );
+      for (const [clip, anim] of r.assembly.animations) {
+        for (const [part, track] of Object.entries(anim.parts)) {
+          if (!socketed.has(part)) continue;
+          for (const kf of Object.values(track)) {
+            const s = kf.scale;
+            if (s !== undefined && new Set(s).size > 1) {
+              found.push(`${name}/${clip}/${part}`);
+            }
+          }
+        }
+      }
+    }
+    expect(
+      found,
+      'no socket-bearing part is scaled non-uniformly — scale order is ' +
+        'unobservable, since a uniform scale commutes with the rotation',
+    ).not.toHaveLength(0);
   });
 
   // §7.4 alpha. A translucent colour changes which faces exist, so it is the

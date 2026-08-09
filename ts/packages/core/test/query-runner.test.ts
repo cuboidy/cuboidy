@@ -301,9 +301,37 @@ describe('runQuery — --transforms / --sockets', () => {
     expect(t.length).toBeGreaterThan(10);
     for (const line of t) {
       expect(line).toMatch(
-        /^transform \S+ pos=-?\d+\.\d{6},-?\d+\.\d{6},-?\d+\.\d{6} quat=-?\d+\.\d{6},-?\d+\.\d{6},-?\d+\.\d{6},-?\d+\.\d{6}$/,
+        /^transform \S+ pos=-?\d+\.\d{6},-?\d+\.\d{6},-?\d+\.\d{6} quat=-?\d+\.\d{6},-?\d+\.\d{6},-?\d+\.\d{6},-?\d+\.\d{6} scale=-?\d+\.\d{6},-?\d+\.\d{6},-?\d+\.\d{6} visible=[01]$/,
       );
     }
+  });
+
+  // §6.5's two non-rigid fields. They are not part of `WorldTransform` —
+  // scale is local and does not propagate, visibility is a draw decision —
+  // and so nothing in the acceptance contract could see them: a port that
+  // never implemented `stepVisible` at all matched every model, clip and
+  // sample time exactly.
+  it('prints the §6.5 pose, so visible and scale are observable', async () => {
+    const at = async (time: number) =>
+      lines(
+        (
+          await runQuery(model('orrery'), {
+            queries: [{ kind: 'transforms' }],
+            anim: 'turning',
+            time,
+          })
+        ).text,
+        'transform orb',
+      )[0]!;
+
+    // orrery's orb is keyed `visible: false` at 1.5 and true again at 2.0.
+    expect(await at(1.6)).toContain('visible=0');
+    expect(await at(0.5)).toContain('visible=1');
+    // …and scaled between 0.0 and 1.0, non-uniformly, so a port applying it
+    // in world axes after the rotation instead of about the pivot before it
+    // is caught here as well as through the socket.
+    const scaled = /scale=([^ ]+)/.exec(await at(0.5))![1]!.split(',');
+    expect(new Set(scaled).size).toBeGreaterThan(1);
   });
 
   it('never prints -0', async () => {

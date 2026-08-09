@@ -9,10 +9,17 @@ import {
 } from './assemble.js';
 import { formatPaletteLine } from './palette-legend.js';
 import { sampleAnimation, type Pose } from '../animation.js';
-import { computeWorldTransforms, pivotRotsOf } from '../rig-transform.js';
+import {
+  computeWorldTransforms,
+  localPointToWorld,
+  pivotRotsOf,
+  quatRotateVec3,
+  type Vec3Tuple,
+  type WorldTransform,
+} from '../rig-transform.js';
 import { publishedSocketFrames } from '../socket-frame.js';
 import { round6 } from '../num.js';
-import { buildSceneFromParts } from '../render/scene.js';
+import { buildMesh, type MeshMaterial } from '../mesh.js';
 
 // cuboidy-query: structured, single-line coordinate lookup against an
 // assembled model. Complement to cuboidy-view, designed for LLM
@@ -56,9 +63,9 @@ export interface CoreQuery {
   pin2: { axis: Axis; value: number };
 }
 
-// Every part's world transform, as numbers. The grid the two queries
-// above read is an axis-aligned projection — a part's rest rotation moves
-// its pivot but does not turn its cells — so rotation is very nearly
+// Every part's world transform and §6.5 pose, as numbers. The grid the two
+// queries above read is an axis-aligned projection — a part's rest rotation
+// moves its pivot but does not turn its cells — so rotation is very nearly
 // invisible through it: dropping `pivot.rot` entirely, or composing
 // q_pivot and q_rotation the wrong way round, does not move a single
 // voxel in any shipped model. This prints the rig math itself, which is
@@ -79,6 +86,12 @@ export interface SocketsQuery {
 // buffers. This prints the comparable form: one line per face, sorted, with
 // a digest so two runs can be compared at a glance before anyone reads a
 // thousand lines.
+//
+// Two things about a mesh are normative but are NOT visible in the face set:
+// the material list's ORDER (§7.4 — `MeshGroup.material` indexes it) and the
+// opaque/translucent split that decides the draw passes. Those get one
+// `mesh-part` line each, so a port that emits the right rectangles with the
+// materials in walk order still fails.
 export interface MeshQuery {
   kind: 'mesh';
   // Print every face, not just the digest and the counts.
@@ -111,7 +124,11 @@ export async function runQuery(
   opts: QueryOptions,
 ): Promise<RunResult> {
   if (opts.queries.length === 0) {
-    return fail('no query specified (use --at=x,y,z or --core=axis,p1=v1,p2=v2)', 2);
+    return fail(
+      'no query specified (use --at=x,y,z, --core=axis,p1=v1,p2=v2, ' +
+        '--transforms, --sockets or --mesh)',
+      2,
+    );
   }
   const loaded = await loadAndAssemble(dir);
   if (!loaded.ok) {
@@ -134,10 +151,21 @@ export async function runQuery(
     poses = sampleAnimation(clip, opts.time ?? 0);
     if (opts.queries.some((q) => q.kind === 'at' || q.kind === 'core')) {
       warnings.push(
-        '--at / --core read the rest-pose grid; --anim applies to --transforms and --sockets only',
+        '--at / --core read the rest-pose grid; --anim applies to --transforms, --sockets and --mesh',
       );
     }
   }
+
+  // §7.7 world placement for every rig query in this invocation. Computed
+  // once here rather than inside each formatter, so --transforms and --mesh
+  // cannot disagree about where a part is: they are the same numbers.
+  // `asm.resolvedParts[].transform` is the REST chain and stays that, since
+  // the grid built from it is documented as rest-only.
+  const world = computeWorldTransforms(
+    asm.manifest.parts,
+    pivotRotsOf(asm.resolvedParts.map((rp) => [rp.name, rp.part] as const)),
+    poses,
+  );
 
   const out: string[] = [];
   out.push(`model: ${asm.manifest.name}`);
@@ -148,7 +176,7 @@ export async function runQuery(
   out.push(formatPaletteLine(asm.palette));
   out.push('');
   for (const q of opts.queries) {
-    out.push(executeQuery(asm, q, poses));
+    out.push(executeQuery(asm, q, poses, world));
   }
   for (const w of warnings) out.push(`warning: ${w}`);
   for (const w of asm.warnings) out.push(`warning: ${w}`);
@@ -165,11 +193,12 @@ function executeQuery(
   asm: Assembly,
   q: Query,
   poses: ReadonlyMap<string, Pose>,
+  world: ReadonlyMap<string, WorldTransform>,
 ): string {
   if (q.kind === 'at') return executeAt(asm, q);
   if (q.kind === 'core') return executeCore(asm, q);
-  if (q.kind === 'transforms') return formatTransforms(asm, poses);
-  if (q.kind === 'mesh') return formatMesh(asm, q);
+  if (q.kind === 'transforms') return formatTransforms(asm, poses, world);
+  if (q.kind === 'mesh') return formatMesh(asm, q, poses, world);
   return formatSockets(asm, poses);
 }
 
@@ -189,37 +218,120 @@ function num(n: number): string {
 // implementations agree about the model's surfaces however they enumerated
 // them.
 //
-// Built through render/scene.ts rather than mesh.ts because that is the one
-// that already places faces in WORLD space through the §7.7 rig, which is
-// what makes the comparison independent of how a port splits parts.
-function formatMesh(asm: Assembly, q: MeshQuery): string {
-  const scene = buildSceneFromParts(
-    asm.resolvedParts.map((rp) => ({
-      part: rp.part,
-      remap: rp.remap,
-      transform: rp.transform,
-    })),
-    asm.palette,
-  );
-  const lines = scene.quads
-    .map((f) => {
-      const n = f.normal.map(num).join(',');
-      const corners = f.corners
-        .map((c) => c.map(num).join(','))
-        .join(' ');
-      const rgb = f.color.map((v) => num(v)).join(',');
-      const m = f.material;
-      return (
-        `face n=${n} ${corners} rgb=${rgb} a=${num(f.alpha)} ` +
-        `metallic=${num(m.metallic)} roughness=${num(m.roughness)} ` +
-        `emissive=${num(m.emissive)}`
-      );
-    })
-    .sort();
+// Built through `mesh.ts`, the module the C# side PORTS, and lifted into
+// world space here with `localPointToWorld` — the §7.7 rule that is also
+// ported. It used to run through `render/scene.ts`, which is dropped from
+// the port and holds a second copy of the face table and the hide rule: a
+// port diffed against that output was diffed against code it does not have,
+// and every mesh.ts defect an audit tried (no culling, reversed winding, a
+// flipped normal, the wrong magenta fallback) came through this query
+// unchanged.
+//
+// Per-part palettes, not the merged one. `buildMesh(part, palette)` is the
+// ported signature and `ResolvedPart.palette` is what a runtime holds; the
+// merge exists so the ASCII grid can spell every colour with one character.
+// Face lines carry colour VALUES, so both routes print the same thing.
+function formatMesh(
+  asm: Assembly,
+  q: MeshQuery,
+  poses: ReadonlyMap<string, Pose>,
+  world: ReadonlyMap<string, WorldTransform>,
+): string {
+  const faces: string[] = [];
+  const partLines: string[] = [];
 
-  const out = [`mesh faces=${lines.length} digest=${digest(lines)}`];
-  if (q.faces) out.push(...lines);
+  for (const rp of asm.resolvedParts) {
+    const pose = poses.get(rp.name);
+    // §6.5: an invisible part contributes no surface. Stated here because
+    // the mesh is the only query where visibility has a consequence a port
+    // can be measured against.
+    if (pose !== undefined && !pose.visible) {
+      partLines.push(`mesh-part ${rp.name} hidden`);
+      continue;
+    }
+    const wt = world.get(rp.name);
+    if (wt === undefined) continue;
+    const mesh = buildMesh(rp.part, rp.palette);
+    const piv: Vec3Tuple = [
+      rp.part.pivot.pos.x,
+      rp.part.pivot.pos.y,
+      rp.part.pivot.pos.z,
+    ];
+    const scale = pose?.scale;
+
+    // buildMesh emits four consecutive vertices per face, in winding order,
+    // sharing one normal / colour / alpha. Recovering quads from that is
+    // exact — and reading it back this way is itself a check that the
+    // invariant holds.
+    const quadCount = mesh.positions.length / 12;
+    const matOfQuad = quadMaterials(mesh, quadCount);
+    for (let f = 0; f < quadCount; f++) {
+      const corners: string[] = [];
+      for (let c = 0; c < 4; c++) {
+        const at = (f * 4 + c) * 3;
+        const p = localPointToWorld(
+          [mesh.positions[at]!, mesh.positions[at + 1]!, mesh.positions[at + 2]!],
+          piv,
+          scale,
+          wt,
+        );
+        corners.push(p.map(num).join(','));
+      }
+      const n0 = f * 12;
+      const n = quatRotateVec3(wt.quat, [
+        mesh.normals[n0]!,
+        mesh.normals[n0 + 1]!,
+        mesh.normals[n0 + 2]!,
+      ]);
+      const rgb = [mesh.colors[n0]!, mesh.colors[n0 + 1]!, mesh.colors[n0 + 2]!];
+      const m = mesh.materials[matOfQuad[f]!]!;
+      faces.push(
+        `face n=${n.map(num).join(',')} ${corners.join(' ')} ` +
+          `rgb=${rgb.map(num).join(',')} a=${num(mesh.alphas[f * 4]!)} ` +
+          `metallic=${num(m.metallic)} roughness=${num(m.roughness)} ` +
+          `emissive=${num(m.emissive)}`,
+      );
+    }
+
+    partLines.push(
+      `mesh-part ${rp.name} faces=${quadCount} ` +
+        `opaque-faces=${mesh.opaqueIndexCount / 6} ` +
+        `materials=${mesh.materials.map(materialWord).join(',')}`,
+    );
+  }
+
+  faces.sort();
+  const out = [`mesh faces=${faces.length} digest=${digest(faces)}`];
+  out.push(...partLines);
+  if (q.faces) out.push(...faces);
   return out.join('\n');
+}
+
+// One material, in the ORDER SPEC §7.4 makes normative — which is the whole
+// reason to print it: `MeshGroup.material` is an index into this list, so two
+// implementations that order it differently hand the same face to different
+// materials while both emitting the right rectangles.
+function materialWord(m: MeshMaterial): string {
+  return (
+    `${num(m.metallic)}:${num(m.roughness)}:${num(m.emissive)}` +
+    `:${m.translucent ? 't' : 'o'}`
+  );
+}
+
+// Which material each quad is drawn with, read back through `groups` — the
+// only route there is, and the one a renderer takes. A quad's four vertices
+// are `4f .. 4f+3`, so any index into it names the quad.
+function quadMaterials(
+  mesh: { groups: readonly { start: number; count: number; material: number }[]; indices: ArrayLike<number> },
+  quadCount: number,
+): number[] {
+  const out = new Array<number>(quadCount).fill(0);
+  for (const g of mesh.groups) {
+    for (let i = g.start; i < g.start + g.count; i++) {
+      out[Math.floor(mesh.indices[i]! / 4)] = g.material;
+    }
+  }
+  return out;
 }
 
 // FNV-1a over the sorted face lines, hex. Not cryptographic — a cheap
@@ -238,20 +350,33 @@ function digest(lines: readonly string[]): string {
   return h.toString(16).padStart(8, '0');
 }
 
+// A part's whole §6.5 pose, not just the rigid half. `scale` and `visible`
+// are deliberately outside `WorldTransform` — scale is local and does not
+// propagate to children, visibility is a draw decision — and that is exactly
+// why they need printing: nothing else in the acceptance contract can see
+// them. Measured before they were here, a port that never implemented
+// `stepVisible`, or that applied scale in world axes after the rotation
+// instead of about the pivot before it, produced byte-identical output for
+// every model, every clip and every sample time.
+//
+// Both are printed for the rest pose too (`1,1,1` and `1`), so the line shape
+// does not depend on whether `--anim` was given.
 function formatTransforms(
   asm: Assembly,
   poses: ReadonlyMap<string, Pose>,
+  world: ReadonlyMap<string, WorldTransform>,
 ): string {
-  const pivotRots = pivotRotsOf(
-    asm.resolvedParts.map((rp) => [rp.name, rp.part] as const),
-  );
-  const world = computeWorldTransforms(asm.manifest.parts, pivotRots, poses);
   const lines: string[] = [];
   for (const mp of asm.order) {
     const wt = world.get(mp.name);
     if (wt === undefined) continue;
+    const pose = poses.get(mp.name);
+    const scale = pose?.scale ?? [1, 1, 1];
+    const visible = pose === undefined || pose.visible;
     lines.push(
-      `transform ${mp.name} pos=${wt.pos.map(num).join(',')} quat=${wt.quat.map(num).join(',')}`,
+      `transform ${mp.name} pos=${wt.pos.map(num).join(',')} ` +
+        `quat=${wt.quat.map(num).join(',')} ` +
+        `scale=${scale.map(num).join(',')} visible=${visible ? 1 : 0}`,
     );
   }
   return lines.join('\n');

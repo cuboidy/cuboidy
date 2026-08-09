@@ -19,7 +19,8 @@
         "visible": true,
         "ease": { "scale": "in-bounce", "pos": "step" }
       },
-      "0.5": { "scale": [1.6, 1.6, 1.6], "pos": [0, 1, 0], "ease": { "scale": "in-out-bounce" } },
+      "0.5": { "scale": [1.6, 1.2, 1.6], "pos": [0, 1, 0], "ease": { "scale": "in-out-bounce" } },
+      "0.75": { "pos": [0, 1, 0] },
       "1.0": { "scale": [1, 1, 1], "pos": [0, 0, 0] },
       "1.5": { "visible": false },
       "2.0": { "visible": true }

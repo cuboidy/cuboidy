@@ -58,6 +58,9 @@ fixtures/
 │   │   ├── bad-model-name.json        model name fails the §5 identifier rule
 │   │   ├── dangling-parent.json       `parent` names no part (§11.5)
 │   │   ├── parent-cycle.json          a parent chain closes on itself (§11.5)
+│   │   ├── geometry-list-empty.json   `geometry` present but empty (§11.5 —
+│   │   │                              the named exception to the container
+│   │   │                              rule, which would say `wrong-arity`)
 │   │   └── absolute-ref.json          a §8 reference path that is absolute
 │   └── wrong-arity/
 │       ├── position-arity.json        `position` is not a triple

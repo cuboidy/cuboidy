@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readdir } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { parseGeometry } from '../src/geometry/parse.js';
@@ -88,5 +88,27 @@ describe('fixtures parity', () => {
     // A guard against the whole corpus silently disappearing behind a bad
     // path — the loop above would pass vacuously.
     expect(checked).toBeGreaterThan(30);
+  });
+
+  // `fixtures/README.md`'s tree is the only place a fixture says what it is
+  // FOR — JSON has no comments, and a second implementation reading
+  // `manifest/invalid-value/geometry-list-empty.json` cannot tell from the
+  // filename which of §11.5's rules it pins. One file was already missing
+  // from that tree.
+  it('every fixture appears in fixtures/README.md', async () => {
+    const readme = await readFile(
+      join(REPO_ROOT, 'fixtures', 'README.md'),
+      'utf8',
+    );
+    const missing: string[] = [];
+    for (const kind of await kinds()) {
+      const root = join(REPO_ROOT, 'fixtures', kind);
+      for (const code of await readdir(root)) {
+        for (const file of await readdir(join(root, code))) {
+          if (!readme.includes(file)) missing.push(`${kind}/${code}/${file}`);
+        }
+      }
+    }
+    expect(missing, 'fixtures with no line in fixtures/README.md').toEqual([]);
   });
 });

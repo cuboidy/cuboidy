@@ -19,15 +19,19 @@ interface Args {
 }
 
 const HELP_TEXT =
-  'Usage: cuboidy-query <dir> [--anim=<clip> --time=<s>] (--at=... | --core=... | --transforms | --sockets)+\n' +
+  'Usage: cuboidy-query <dir> [--anim=<clip> --time=<s>]\n' +
+  '                          (--at=... | --core=... | --transforms | --sockets\n' +
+  '                           | --mesh | --mesh-faces)+\n' +
   '\n' +
   'Assemble a cuboidy model from <dir>/cuboidy.json (plus any geometry it\n' +
   'references), then answer queries about it. Output is one line per\n' +
-  'query (or one per part / socket) plus a short header.\n' +
+  'query (or one per part / socket / face) plus a short header.\n' +
   '\n' +
   'Queries:\n' +
-  '  --transforms                          every part\'s world transform\n' +
-  '                                        → transform <part> pos=x,y,z quat=x,y,z,w\n' +
+  '  --transforms                          every part\'s world transform and\n' +
+  '                                        §6.5 pose\n' +
+  '                                        → transform <part> pos=x,y,z\n' +
+  '                                          quat=x,y,z,w scale=x,y,z visible=0|1\n' +
   '                                        The voxel grid below is an\n' +
   '                                        axis-aligned projection, so a\n' +
   '                                        rest rotation barely shows in it;\n' +
@@ -35,6 +39,14 @@ const HELP_TEXT =
   '                                        itself. Six decimals, -0 folded.\n' +
   '  --sockets                             every published frame (§6.12)\n' +
   '                                        → socket <name> pos=x,y,z quat=x,y,z,w\n' +
+  '  --mesh                                the §7.4 surface: a face count and\n' +
+  '                                        digest, plus one line per part\n' +
+  '                                        carrying its material list in the\n' +
+  '                                        normative order and its opaque /\n' +
+  '                                        translucent split\n' +
+  '  --mesh-faces                          the same, plus every face — sorted,\n' +
+  '                                        since §7.4 makes only the SET of\n' +
+  '                                        faces normative, never their order\n' +
   '  --at=<x>,<y>,<z>                      single voxel; fractional OK\n' +
   '                                        → at(x,y,z)=<palette-char or .>\n' +
   '  --core=<axis>,<pin1>=<v1>,<pin2>=<v2> walk axis at pinned coords\n' +
@@ -49,8 +61,9 @@ const HELP_TEXT =
   '\n' +
   'Options:\n' +
   '  --anim=<clip>    sample a §6.3 animation instead of the rest pose.\n' +
-  '                   Applies to --transforms and --sockets; --at / --core\n' +
-  '                   read the rest-pose grid and warn if combined with it\n' +
+  '                   Applies to --transforms, --sockets and --mesh; --at /\n' +
+  '                   --core read the rest-pose grid and warn if combined\n' +
+  '                   with it\n' +
   '  --time=<s>       seconds into the clip (default 0). Times outside\n' +
   '                   [0, duration] wrap or clamp per §6.7\n' +
   '  --help, -h       show this message\n' +
@@ -104,7 +117,9 @@ function parseArgs(argv: readonly string[]): Args | { help: true } | { error: st
   }
   if (queries.length === 0) {
     return {
-      error: 'expected at least one --at / --core / --transforms / --sockets query',
+      error:
+        'expected at least one --at / --core / --transforms / --sockets / ' +
+        '--mesh / --mesh-faces query',
     };
   }
   if (time !== undefined && anim === undefined) {
