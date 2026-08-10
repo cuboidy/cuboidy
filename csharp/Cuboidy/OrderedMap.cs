@@ -16,7 +16,11 @@ namespace Cuboidy;
 // .NET 9 ships `System.Collections.Generic.OrderedDictionary<,>` and
 // netstandard2.1 does not, which is the whole reason this exists. Read-only:
 // it is built by a reader and never mutated afterwards.
-public sealed class OrderedMap<TValue> : IReadOnlyList<KeyValuePair<string, TValue>>
+// Both interfaces on purpose: an ordered walk is what the §6 maps are read
+// for, and a keyed lookup is what the runtime does with the result. They agree
+// on `Count` and on the element type, so neither costs the other anything.
+public sealed class OrderedMap<TValue>
+    : IReadOnlyList<KeyValuePair<string, TValue>>, IReadOnlyDictionary<string, TValue>
 {
     private static readonly KeyValuePair<string, TValue>[] NoEntries =
         new KeyValuePair<string, TValue>[0];
@@ -74,6 +78,14 @@ public sealed class OrderedMap<TValue> : IReadOnlyList<KeyValuePair<string, TVal
         get
         {
             foreach (KeyValuePair<string, TValue> entry in _entries) yield return entry.Key;
+        }
+    }
+
+    public IEnumerable<TValue> Values
+    {
+        get
+        {
+            foreach (KeyValuePair<string, TValue> entry in _entries) yield return entry.Value;
         }
     }
 

@@ -21,4 +21,15 @@
     <ProjectReference Include="..\Cuboidy\Cuboidy.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!--
+      The runtime half of the acceptance contract: cuboidy-query's transforms
+      and sockets output over every shipped model, every clip, and every one of
+      the 27 sample times the criterion names. Produced by the reference and
+      compared against numerically — see RuntimeParityTests. Regenerate with
+      `npm run -w @cuboidy/core dump:parity`.
+    -->
+    <None Include="parity\**\*.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

@@ -32,6 +32,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "generate:schema": "tsx scripts/generate-schema.ts",
+    "dump:parity": "tsx scripts/dump-parity.ts",
     "lint": "tsx src/cli/cuboidy-lint.ts",
     "verify": "npm run typecheck && npm run test"
   },
