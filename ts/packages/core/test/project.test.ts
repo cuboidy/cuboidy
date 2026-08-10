@@ -207,3 +207,176 @@ describe('resolveProject — ambiguous part names (§11.6)', () => {
     expect(p.parts.get('clone')?.source?.file).toBe('b.json');
   });
 });
+
+// SPEC §6.3: an animation written as a string is a reference to a file, and
+// `resolveProject` reads it. Every branch of that — the file missing, its
+// JSON unparseable, its contents failing §6.4 — was reachable only through
+// `cli/lint-runner.ts`, `cli/assemble.ts` or the editor, all of which a
+// second implementation drops. The diagnostic-code convergence in particular
+// (an absent `loop` reports `missing`, not `invalid-value`) was pinned by
+// nothing the port can run.
+describe('resolveProject — external animations (§6.3)', () => {
+  const BODY = geo(
+    [{ name: 'body', size: [1, 1, 1], pivot: [0, 0, 0], voxels: [['0']] }],
+    ['#FF0000'],
+  );
+  const withClip = (ref: string) =>
+    manifest({
+      name: 'm',
+      geometry: ['a.json'],
+      parts: [{ name: 'body' }],
+      animations: { walk: ref },
+    });
+  const files = (extra: Record<string, string>) =>
+    new Map([['a.json', BODY], ...Object.entries(extra)]);
+
+  it('loads a clip written in its own file', () => {
+    const p = resolveProject(
+      withClip('anims/walk.json'),
+      files({
+        'anims/walk.json': JSON.stringify({
+          duration: 1,
+          loop: true,
+          parts: { body: { '0.0': { rot: [0, 0, 0] } } },
+        }),
+      }),
+    );
+    expect(p.diagnostics).toEqual([]);
+    expect(p.complete).toBe(true);
+    expect(p.externalAnims.get('walk')?.path).toBe('anims/walk.json');
+    expect(p.externalAnims.get('walk')?.anim.duration).toBe(1);
+  });
+
+  it('reports a clip whose file is not there', () => {
+    const p = resolveProject(withClip('anims/walk.json'), files({}));
+    expect(p.complete).toBe(false);
+    expect(p.diagnostics[0]?.file).toBe('anims/walk.json');
+    expect(p.diagnostics[0]?.diag.code).toBe('missing');
+  });
+
+  it('reports a clip whose file is not JSON', () => {
+    const p = resolveProject(
+      withClip('anims/walk.json'),
+      files({ 'anims/walk.json': '{ nope }' }),
+    );
+    expect(p.complete).toBe(false);
+    expect(p.diagnostics[0]?.file).toBe('anims/walk.json');
+    expect(p.diagnostics[0]?.diag.message).toMatch(/JSON/i);
+  });
+
+  // The convergence: the same mistake in the same clip must report the same
+  // code whether the author wrote it inline or in a file. It reported
+  // `invalid-value` for everything from a file until the readers were unified.
+  it('gives an external clip the same codes an inline one gets', () => {
+    const cases: [string, object, string][] = [
+      ['no loop', { duration: 1, parts: {} }, 'missing'],
+      [
+        'bad ease preset',
+        {
+          duration: 1,
+          loop: true,
+          parts: { body: { '0.0': { rot: [0, 0, 0], ease: { rot: 'nope' } } } },
+        },
+        'unknown',
+      ],
+      [
+        'unknown keyframe field',
+        { duration: 1, loop: true, parts: { body: { '0.0': { spin: 1 } } } },
+        'unknown',
+      ],
+      [
+        'time key without its point',
+        { duration: 1, loop: true, parts: { body: { '0': { rot: [0, 0, 0] } } } },
+        'invalid-value',
+      ],
+      [
+        'track keyed by a non-identifier',
+        { duration: 1, loop: true, parts: { '1bad': { '0.0': {} } } },
+        'invalid-value',
+      ],
+    ];
+    for (const [label, clip, code] of cases) {
+      const external = resolveProject(
+        withClip('anims/walk.json'),
+        files({ 'anims/walk.json': JSON.stringify(clip) }),
+      );
+      expect(external.complete, label).toBe(false);
+      expect(external.diagnostics[0]?.diag.code, `external: ${label}`).toBe(code);
+
+      const inline = parseManifest({
+        name: 'm',
+        geometry: ['a.json'],
+        parts: [{ name: 'body' }],
+        animations: { walk: clip },
+      });
+      expect(inline.ok, `inline: ${label}`).toBe(false);
+      if (!inline.ok) expect(inline.code, `inline: ${label}`).toBe(code);
+    }
+  });
+});
+
+// The flag a runtime reads. `complete` answers "did reading the package go
+// fine"; `resolved` answers "is the model whole" — and only the second is
+// what §11.6 requires an implementation without lint to refuse without.
+describe('resolveProject — resolved vs complete', () => {
+  const BODY = geo(
+    [{ name: 'body', size: [1, 1, 1], pivot: [0, 0, 0], voxels: [['0']] }],
+    ['#FF0000'],
+  );
+
+  it('is true for a model that loads and binds every part', () => {
+    const p = resolveProject(
+      manifest({ name: 'm', geometry: ['a.json'], parts: [{ name: 'body' }] }),
+      new Map([['a.json', BODY]]),
+    );
+    expect(p.complete).toBe(true);
+    expect(p.resolved).toBe(true);
+  });
+
+  it('is false for a part no listed file defines, where complete stays true', () => {
+    const p = resolveProject(
+      manifest({
+        name: 'm',
+        geometry: ['a.json'],
+        parts: [{ name: 'body' }, { name: 'ghost' }],
+      }),
+      new Map([['a.json', BODY]]),
+    );
+    // Reading went fine — cross-file lint must still run and report it.
+    expect(p.complete).toBe(true);
+    expect(p.resolved).toBe(false);
+    expect(p.unresolved.map((u) => u.name)).toEqual(['ghost']);
+  });
+
+  it('is false for a name two listed files define (§11.6)', () => {
+    const other = geo(
+      [{ name: 'body', size: [2, 1, 1], pivot: [0, 0, 0], voxels: [['00']] }],
+      ['#00FF00'],
+    );
+    const p = resolveProject(
+      manifest({
+        name: 'm',
+        geometry: ['a.json', 'b.json'],
+        parts: [{ name: 'body' }],
+      }),
+      new Map([
+        ['a.json', BODY],
+        ['b.json', other],
+      ]),
+    );
+    expect(p.complete).toBe(true);
+    expect(p.resolved).toBe(false);
+    // And the part binds to NEITHER shape, which is the rule itself.
+    expect(p.parts.has('body')).toBe(false);
+    expect(p.duplicates.map((d) => d.name)).toEqual(['body']);
+  });
+
+  it('is false whenever complete is', () => {
+    const p = resolveProject(
+      manifest({ name: 'm', geometry: ['a.json'], parts: [{ name: 'body' }] }),
+      new Map(),
+    );
+    expect(p.complete).toBe(false);
+    expect(p.resolved).toBe(false);
+  });
+});

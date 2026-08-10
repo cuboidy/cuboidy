@@ -83,7 +83,51 @@ fixtures/
     │   └── material-out-of-range.json a material field outside 0..1 (§7.4)
     └── wrong-arity/
         └── colors-empty.json          `colors` present but empty
+└── project/                           SPEC §11.6 — a manifest AND its files
+    ├── duplicate/
+    │   └── part-in-two-files/         two listed geometry files define one
+    │                                  part name, so the by-`name` lookup has
+    │                                  no answer and the part binds to nothing
+    └── missing/
+        └── part-in-no-file/           a manifest part that no listed file
+                                       defines
 ```
+
+### `project/` fixtures are packages, not documents
+
+§11.6 is about a manifest and the files it references *together*, so a single
+document cannot express it. Each `project/` fixture is a DIRECTORY holding a
+`cuboidy.json` and whatever it names. The manifest itself always parses — the
+failure is in the project, not in the document.
+
+They are checked twice, because §11.6 splits in two:
+
+- **Resolution.** The package must not resolve: every manifest part bound to
+  a shape, no ambiguous name. In the reference that is
+  `resolveProject(...).resolved === false`.
+
+  For `duplicate/` this is normative — §11.6 says resolution itself fails,
+  and **a second implementation must reproduce it whether or not it lints**,
+  because a runtime that binds one of two candidate shapes makes the answer a
+  fact about its hash table rather than about the model.
+
+  For `missing/` the spec asks only that the condition be reported, so a
+  library MAY hand back the parts it did resolve. The reference reports it
+  through the same flag anyway: a consumer asking "can I draw this" wants one
+  answer, and a flag costs nothing where a refusal would cost the editor its
+  ability to show a half-finished model.
+- **Reporting.** Some cross-file finding carries the code the directory
+  names. That is lint, and an implementation that only draws is conforming
+  without it.
+
+Checking only the second would let a port pass §11.6 by doing nothing at all,
+since it is not required to lint.
+
+They are also the one place the "exactly ONE error" rule above does not hold,
+and cannot: a name defined twice leaves the part unbound, so the `duplicate`
+finding necessarily arrives with a `missing` one behind it and an `unknown`
+for each now-unused definition. The directory names the CAUSE, and the check
+is that the named code is among the findings — not that it is the only one.
 
 ## Cross-implementation parity
 

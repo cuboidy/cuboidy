@@ -1,0 +1,5 @@
+{
+  "version": "0.9",
+  "palette": ["#00FF00"],
+  "parts": [{ "name": "head", "size": [2, 1, 1], "voxels": [["00"]] }]
+}

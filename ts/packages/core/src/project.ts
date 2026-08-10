@@ -196,8 +196,28 @@ export interface ResolvedProject {
   // it gets reported — which requires this flag to stay true, or the report
   // would gate off the reporting. The comment here used to promise "reuse
   // fully resolved", which is the opposite of what the code does and of
-  // what the design needs.
+  // what the design needs. Read `resolved` for that.
   complete: boolean;
+  // True when `complete` AND every manifest part is bound to a shape AND no
+  // part name was ambiguous across the geometry list. This is the question a
+  // consumer that DRAWS has: is there a shape for every part I am about to
+  // place?
+  //
+  // The two flags exist because they answer different questions and only one
+  // of them can gate lint. `complete` means "reading the package went fine",
+  // which is what cross-file validation needs to be true before it says
+  // anything — gating it on `resolved` would mean an unresolved part silences
+  // the very rule that reports it (§11.6). `resolved` means "the model is
+  // whole", which is what a runtime needs and what §11.6 requires it to
+  // refuse without.
+  //
+  // Split out because the alternative was a documented behavioural difference
+  // between implementations: `docs/csharp-implementation.md` told the C# side
+  // to refuse a model that TypeScript loads, on the grounds that TypeScript
+  // could not refuse it without breaking its own lint. Two implementations
+  // disagreeing about which packages load is the one thing a second
+  // implementation exists to prevent.
+  resolved: boolean;
 }
 
 // Phase one of resolveProject: parse the manifest's geometry files. Exposed
@@ -518,6 +538,10 @@ export function resolveProject(
     externalAnims,
     diagnostics,
     complete: diagnostics.length === 0,
+    resolved:
+      diagnostics.length === 0 &&
+      bound.unresolved.length === 0 &&
+      bound.duplicates.length === 0,
   };
 }
 

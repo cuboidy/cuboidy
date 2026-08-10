@@ -74,20 +74,35 @@ describe('models/ — corpus coverage', () => {
       .sort();
     expect(named, 'the model list in the acceptance document').toEqual(models);
 
-    const fixtures: string[] = [];
-    const walk = async (d: string): Promise<void> => {
-      for (const e of await readdir(d, { withFileTypes: true })) {
-        const p = join(d, e.name);
-        if (e.isDirectory()) await walk(p);
-        else if (e.name.endsWith('.json')) fixtures.push(p);
+    // Two numbers, because `project/` fixtures are packages: a directory
+    // holding a manifest and the files it names, counted once.
+    const FIXTURES = join(REPO_ROOT, 'fixtures');
+    const documents: string[] = [];
+    for (const kind of ['geometry', 'manifest', 'palette']) {
+      for (const code of await readdir(join(FIXTURES, kind))) {
+        for (const f of await readdir(join(FIXTURES, kind, code))) {
+          documents.push(`${kind}/${code}/${f}`);
+        }
       }
-    };
-    await walk(join(REPO_ROOT, 'fixtures'));
-    const claimed = /(\d+) files\s+today across/.exec(doc)?.[1];
+    }
+    const packages: string[] = [];
+    for (const code of await readdir(join(FIXTURES, 'project'))) {
+      for (const p of await readdir(join(FIXTURES, 'project', code))) {
+        packages.push(`project/${code}/${p}`);
+      }
+    }
+    // The document wraps its prose, so a claim can straddle a line break.
+    const flat = doc.replace(/\s+/g, ' ');
+    const claimedDocs = /(\d+) documents today across/.exec(flat)?.[1];
+    const claimedPkgs = /plus (\d+) packages under/.exec(flat)?.[1];
     expect(
-      Number(claimed),
-      `acceptance document claims ${claimed} fixtures, ${fixtures.length} on disk`,
-    ).toBe(fixtures.length);
+      Number(claimedDocs),
+      `acceptance document claims ${claimedDocs} documents, ${documents.length} on disk`,
+    ).toBe(documents.length);
+    expect(
+      Number(claimedPkgs),
+      `acceptance document claims ${claimedPkgs} packages, ${packages.length} on disk`,
+    ).toBe(packages.length);
   });
 
   it('some model writes a part inline in the manifest (§6.13)', async () => {

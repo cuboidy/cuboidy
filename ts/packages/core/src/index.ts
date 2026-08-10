@@ -103,7 +103,15 @@ export {
   MANIFEST_FILE,
   geometryPaths,
   normalizeRefPath,
+  // The two-round IO staging protocol, in the order a host must call it:
+  // projectFilePaths → read → resolveGeometries → palettePathsOf → read →
+  // resolveProject. §7.4 palette references live inside geometry files, so
+  // the second round cannot be skipped. Published because every host does
+  // this and none of them can do it from `resolveProject` alone — see
+  // "Loading a package off disk" in docs/csharp-implementation.md.
+  palettePathsOf,
   projectFilePaths,
+  resolveGeometries,
   resolvePartGeometry,
   resolveRefFrom,
   resolveProject,

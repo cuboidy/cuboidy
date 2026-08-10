@@ -1,0 +1,5 @@
+{
+  "name": "gap",
+  "geometry": ["a.json"],
+  "parts": [{ "name": "head" }, { "name": "tail", "parent": "head" }]
+}

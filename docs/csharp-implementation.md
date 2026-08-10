@@ -66,6 +66,29 @@ And four files the lists above leave unclassified, decided here:
   It exports around 150 names, most of which have no consumer outside core
   and ten of which are Zod schema objects; do not read it as an API to
   reproduce.
+- `resolveProject`'s **`overrides` option** — **not ported.** It lets a caller
+  substitute a live geometry AST for a file's text, so the editor keeps
+  rendering the last good shape while the file it came from does not parse.
+  Its only caller anywhere is `editor/src/lib/load-model.ts`. A library has
+  no mid-edit state to preserve, and it is the door through which an
+  unvalidated `Part` reaches `buildMesh` — which is why `voxelAt` bounds-
+  checks the arrays as well as the declared size.
+
+Two things the scope lists said nothing about, decided here:
+
+- **§13 packed `.cuboidy` archives — not ported, for now.** §13 carries
+  MUST-level reader rules (strip a single top-level wrapper directory; reject
+  an absolute, backslashed or `..`-containing entry path as `invalid-value`;
+  `duplicate` for paths that normalise alike) and `core/` implements none of
+  them — the only reader is `editor/src/lib/load-model.ts`, over `fflate`.
+  A C# library would need a ZIP dependency, and this library has one
+  dependency on purpose.
+
+  Flagged rather than dismissed, because the addon's natural import unit is
+  exactly one `.cuboidy` file: if the Godot `EditorImportPlugin` wants it,
+  that is where it goes, over the framework's own `ZipReader`, with §13's
+  path rules ported from the spec rather than from TypeScript (there is no
+  TypeScript to port in core).
 
 Deliberately not ported:
 
@@ -98,16 +121,28 @@ Deliberately not ported:
   resolution itself fails. Refuse that model rather than binding the name to
   whichever file was read first.
 
-  **`complete` does not cover that, and a library with no lint has to.**
-  `resolveProject` returns `complete: diagnostics.length === 0`, and it
-  deliberately emits no diagnostic for an ambiguous or unresolved part: the
-  ambiguity is reported by leaving the name unbound and listing it in
-  `duplicates` / `unresolved`, whose only consumer today is `validateProject`
-  in the dropped `lint/`. So a model with a part defined in no geometry file
-  resolves `complete: true`, one part short and silent. Surface those two
-  lists from the C# loader — as a refusal, or as something the caller can
-  see — rather than inheriting a `complete` that means "nothing went wrong
-  while reading", which is all it has ever meant.
+  **Read `resolved`, not `complete`.** `ResolvedProject` carries two flags
+  because they answer different questions. `complete` is
+  `diagnostics.length === 0` — "reading the package went fine" — and it is
+  what gates cross-file lint, since validating a half-read project buries the
+  failure under its consequences. `resolved` is `complete` plus "every
+  manifest part is bound to a shape and no name was ambiguous" — the question
+  a runtime has: is there a shape for every part I am about to place?
+
+  Only half of that is a §11.6 requirement. The spec says resolution itself
+  fails for an ambiguous name, and an implementation MUST refuse to bind it.
+  For a part no file defines it says only that the condition is reported, so
+  a library is free to hand back the parts it did resolve. `resolved` covers
+  both because a consumer asking "can I draw this" wants one answer, and the
+  cost of the stricter reading is a flag rather than a refusal.
+
+  This was very nearly a documented behavioural difference between the two
+  implementations: an earlier draft of this paragraph told the C# side to
+  refuse a model TypeScript loads, because TypeScript could not refuse it
+  without gating off its own reporting. Two implementations disagreeing about
+  which packages load is the one thing a second implementation exists to
+  prevent, so the flag was split instead. `fixtures/project/` pins both
+  cases.
 
   **Palette index range is phase-4 and is NOT ported**, deliberately. §11.6
   makes an index past the end of its resolved palette an error, and the check
@@ -120,6 +155,78 @@ Deliberately not ported:
 
 The parse-level diagnostics *are* in scope, because they are what the fixtures
 corpus measures — see "Done means" below.
+
+## Two things the port must WRITE, not translate
+
+Everything above is a port. These two are new surface, and both were
+invisible from the scope table because the TypeScript that does the job lives
+in files the port drops. Neither is hard; both are easy to get subtly wrong
+and then discover from a model that loads with one part missing.
+
+### Loading a package off disk
+
+`resolveProject` takes `files: ReadonlyMap<string, string>` and never touches
+IO — which is exactly why a C# loader can reuse the decomposition, and also
+why nothing in the ported set fills that map. Filling it is a **two-round**
+walk, because §7.4 palette references live INSIDE geometry files and are not
+visible until those have been read and parsed:
+
+```
+1  read <dir>/cuboidy.json                     — absent is `missing` (§11.5)
+2  parseManifest                               — stop here if it fails
+3  projectFilePaths(manifest)                  — §6.9 geometry + §6.3 animation
+                                                 refs, already §8-normalised
+4  read all of those into the map
+5  resolveGeometries(manifest, files)          — parse round one
+6  palettePathsOf(those geometries)            — §7.4 refs, now visible
+7  read any of those not already in the map
+8  resolveProject(manifest, files)             — the real call
+```
+
+`resolveGeometries` and `palettePathsOf` are exported for precisely this: step
+5 is a throwaway parse whose only purpose is to discover step 6, and a package
+is a handful of small files, so parsing twice is cheaper than threading a
+callback through the resolver.
+
+The reference does this in `cli/assemble.ts` and again in
+`cli/lint-runner.ts`, both dropped. Read either; the sequence is the contract,
+not the code.
+
+Map keys are package-relative §8 paths as `projectFilePaths` returns them —
+forward slashes, no leading `./`, no drive letters. `normalizeRefPath` is NOT
+`Path.GetFullPath` (hazard H5, and it is worth re-reading before writing this
+function).
+
+### The entry point a consumer actually calls
+
+The library's promise — the resolved rig, rest poses, a clip sampled at a
+time, socket frames, and voxel geometry as vertex data — is four calls in a
+required order, and TypeScript composes all four in exactly one place:
+`cli/query-runner.ts`, which is dropped. So the shape of the API is a
+decision the port makes rather than a translation it performs. What the order
+has to be:
+
+```
+pivotRotsOf(resolved parts)                    → per-part pivot.rot
+sampleAnimation(clip, time)                    → Map<part, Pose>      (omit for rest)
+computeWorldTransforms(manifest.parts, pivotRots, poses)  → Map<part, Frame>
+publishedSocketFrames(manifest, parts, poses)  → Map<name, Frame>     (§6.12)
+buildMesh(part, part.palette)                  → vertex data, PART-LOCAL
+localPointToWorld(v, pivot, pose.scale, world) → each vertex into world space
+```
+
+Two things fall out of that list and are easy to miss. `buildMesh` takes the
+part's OWN palette — `ResolvedPart.palette` — not a merged one; merging is a
+CLI concern that exists so an ASCII grid can spell every colour with one
+character, and a renderer drawing per part never needs it. And the mesh comes
+out in part-local space: `scale` and the world transform are applied by the
+caller, per part, because scale does not propagate to children (§7.7).
+
+Suggested shape, not prescribed: one `CuboidyModel` from the loader above,
+with `RestPose()`, `Pose(clip, time)`, `SocketFrames(pose)` and
+`BuildMesh(partName)`. Whatever it is called, it is the one piece of this
+library with no reference implementation to check against — so it is the one
+piece worth writing a test for before writing the code.
 
 ## Layout
 
@@ -228,10 +335,17 @@ port started, which is the wrong home for the only record of why
 
 Every file under `fixtures/` yields the diagnostic code its directory is named
 after: `fixtures/geometry/wrong-arity/row-width.json` reports `wrong-arity`,
-`fixtures/manifest/missing/name.json` reports `missing`, and so on — 47 files
-today across `geometry/`, `manifest/` and `palette/`. That corpus is the
-cross-implementation contract; passing it is what "a second implementation
-exists" means here.
+`fixtures/manifest/missing/name.json` reports `missing`, and so on — 47
+documents today across `geometry/`, `manifest/` and `palette/`, plus 2
+packages under `project/`. That corpus is the cross-implementation contract;
+passing it is what "a second implementation exists" means here.
+
+`project/` is the odd one and is described in `fixtures/README.md`: §11.6 is
+about a manifest and the files it references together, so those fixtures are
+directories rather than documents, and what they assert is that the package
+does not RESOLVE — `resolveProject(...).resolved === false` — which is the
+half of §11.6 this library owns. The lint half is checked too, by the
+TypeScript side only.
 
 The count and the model list below are written as digits and as names on
 purpose: `corpus-coverage.test.ts` reads this file and fails when either
