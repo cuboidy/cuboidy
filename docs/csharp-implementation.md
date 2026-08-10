@@ -1,9 +1,17 @@
 # C# implementation plan
 
-Settled 2026-08-08, before any code exists. The decisions below were reached
+Settled 2026-08-08, before any code existed. The decisions below were reached
 against constraints that are invisible from inside this repository — Godot's
 addon packaging rules, and how a consuming game's assemblies are laid out — so
 they are written down rather than left to be rediscovered.
+
+**The port landed on 2026-08-10 and `csharp/` is the result.** This document
+is no longer a plan; it is why the code looks the way it does, and it is still
+where a change to either implementation gets thought through first. Every
+scope decision below held, every hazard was hit, and where measuring one from
+the C# side changed the answer the row says so (S6 is the one that did). What
+the port added rather than found is recorded in the git log and in the source
+comments, which is where a reader of `csharp/` will be standing.
 
 ## What it is
 
