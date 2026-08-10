@@ -359,6 +359,20 @@ knows directly what a hand-written validator needs to know. Read §11.2's
 table and that file's comments; port neither the branches nor the three
 readers' older behaviour, which disagreed with the table and with each other.
 
+**Expect the two readers to disagree about the code on a document that holds
+several errors at once, and do not chase it.** Measured over all 94 documents
+under `models/` and `fixtures/` with the §7 reader: the two implementations
+accept and reject exactly the same files, agree on the code for every one of
+the twenty `fixtures/geometry/` documents, and differ on about thirty of the
+rejected ones — every difference a manifest, palette file or animation clip
+fed to the geometry reader, where a hand-written validator reaches the
+unrecognized key first and Zod reaches the absent field first. §11.8 makes
+that legal in as many words ("where several violations coexist *within* one
+phase, which is reported is implementation-defined"), and it is why every
+shared fixture holds exactly one error. What must NOT differ is the phase: a
+phase-2 answer where the reference gives a phase-3 one is a real bug, and the
+accept/reject split is what §11.6's W07 actually depends on.
+
 `models/` is the positive half of the same contract: every shipped model —
 fox, herbalist, knight, koi, orrery, owl, submersible, sword, windmill —
 loads clean. Nine, and `submersible` is not an afterthought in that list: it

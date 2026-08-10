@@ -17,6 +17,19 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!--
+      The reader's DTOs and the §11.2 phase checks are internal: they are what
+      the manifest reader shares with the geometry reader (§6.13 writes a part
+      inline), not surface a consumer of this library has any use for. The
+      tests still have to reach them — the phase split is the part of the
+      reader most worth pinning, and it is invisible from the public API.
+    -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Cuboidy.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.1'">
     <!--
       A framework type on net8.0, a package everywhere else. Used through
