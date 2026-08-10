@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      netstandard2.1 is for Unity, which runs that profile from 2021.2 onward;
+      net8.0 is for Godot's .NET build and for plain .NET tooling. Both are
+      here from the first commit rather than added when the first Unity user
+      turns up, because retrofitting netstandard2.1 later means a pass over
+      every file. See docs/csharp-implementation.md, "Target frameworks".
+    -->
+    <TargetFrameworks>netstandard2.1;net8.0</TargetFrameworks>
+    <RootNamespace>Cuboidy</RootNamespace>
+    <AssemblyName>Cuboidy</AssemblyName>
+    <IsPackable>true</IsPackable>
+    <PackageId>Cuboidy</PackageId>
+    <Description>Reader and runtime for the Cuboidy voxel model format. Engine-neutral: no Godot, no Unity, no GPU resources.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.1'">
+    <!--
+      A framework type on net8.0, a package everywhere else. Used through
+      JsonDocument rather than the serializer: the reader validates
+      structurally as it reads, needs document order (hazard C2) and needs to
+      see duplicate keys (C3), none of which survive a deserialize into a
+      Dictionary. That also keeps the library free of the reflection Unity's
+      IL2CPP strips.
+    -->
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,18 @@
+<Project>
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!--
+      This library is meant to be read alongside ts/packages/core/. Anything
+      that would make the two stop matching line for line — implicit usings
+      pulling in names that have no TypeScript counterpart, a formatter
+      reflowing the easing expressions (hazard N9) — is off on purpose.
+    -->
+  </PropertyGroup>
+
+</Project>
