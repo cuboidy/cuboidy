@@ -100,6 +100,15 @@ internal static class JsonRead
         return e;
     }
 
+    // An object with an OPEN key set — SPEC §6.3, §6.4, §6.6 and §6.12 all key
+    // a map by something the author chooses. `Fields` is the closed-set
+    // counterpart and is what every fixed shape uses.
+    public static JsonElement ObjectValue(JsonElement e, DocPath at)
+    {
+        Expect(e, JsonValueKind.Object, at, "object");
+        return e;
+    }
+
     public static string String(JsonElement e, DocPath at)
     {
         Expect(e, JsonValueKind.String, at, "string");

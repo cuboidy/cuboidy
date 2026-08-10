@@ -40,7 +40,10 @@ namespace Cuboidy;
 // source-generated form. It is read by `ReadPaletteField`, which dispatches on
 // `JsonValueKind` — the reader walks the document anyway, so the union costs a
 // branch rather than a converter.
-internal sealed record PaletteField(
+//
+// Public because the manifest carries one too (§6.1 / §6.13) and `Manifest` is
+// what a consumer of this library holds.
+public sealed record PaletteField(
     IReadOnlyList<PaletteEntryDoc>? Colors,
     string? Ref);
 
