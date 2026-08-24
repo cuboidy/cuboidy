@@ -12,9 +12,14 @@ An open JSON file format for voxel character models, rigs, and animations.
 | **windmill** — constant-rate sails | **herbalist** — laboured walk | **sword** — turntable, no clip | |
 
 Every one of these was authored from [SPEC.md](SPEC.md) and
-[`docs/geometry-authoring.md`](docs/geometry-authoring.md) alone, with no
+[`docs/authoring.md`](docs/authoring.md) alone, with no
 example available to copy from. The turntables are `cuboidy-gif --orbit
 --bg=none` output, unretouched.
+
+That document is craft and procedure in one: the traps that pass every check
+and still look wrong, plus the order of work, what to do when a check fails,
+when to stop, and what a commissioning brief has to supply that the format
+cannot default.
 
 ## What it is
 

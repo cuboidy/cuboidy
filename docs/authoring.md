@@ -1,12 +1,23 @@
-# Authoring Cuboidy models by hand — workflow & tips
+# Authoring Cuboidy models
 
-Notes captured while hand-building characters, and the companion to `SPEC.md`
-for anyone — human or model — authoring from scratch. The spec says what is
-legal; this says what tends to work.
+The companion to `SPEC.md` for anyone — human or language model — authoring from
+scratch. **The spec says what is legal; this says what tends to work**, and what
+to do when a check comes back unhappy.
 
 The golden rule: **write the geometry by hand and let the CLIs give you
 feedback** — do not generate it from a script (that defeats the point of a
-readable format and hides what hand-authoring can do).
+readable format and hides what hand-authoring can do). "By hand" and "by a model"
+are the same side of that rule: what it rules out is *generating* geometry
+mechanically, not who writes it.
+
+Most of this document is craft — the traps, the arithmetic, the things that pass
+every check and still look wrong. The sections that are procedure rather than
+craft are marked as such, and a model working through a batch can read those
+first: **the order of work**, **verification**, **when a check fails**, **when to
+stop**, and **what a brief must supply**.
+
+Nothing here decides what a model should look like. Palette, scale and subject
+belong to whoever commissions the work — see the last section.
 
 ## Where to put the geometry
 
@@ -37,11 +48,24 @@ files listed under the top-level `geometry`. That is how every model here was
 written before §6.13, and it is the most compact form for a model where the
 manifest and one geometry file already line up.
 
-## The loop (like real 3D modeling)
+## The loop (procedure)
 
 ```
-edit geometry  →  cuboidy-lint  →  cuboidy-snap  →  LOOK at the PNG  →  fix
+manifest (rig only)  →  lint  →  geometry, part by part  →  lint  →  snap  →  LOOK  →  fix
 ```
+
+**Write the manifest first, with no geometry at all.** A rig of named parts with
+positions and parents is cheap to write, cheap to fix, and it is where the
+proportions live. Discovering the proportions are wrong after writing voxels
+means rewriting voxels.
+
+Then geometry, one part at a time, largest first — torso before head, head before
+ear. A part written early is the size reference for whatever hangs off it.
+
+**Do not write all the voxels and then lint.** Lint after each part, while the
+mistake is still one part wide. Row-width and layer-count errors are the ones you
+will actually make, and a wrong row reads exactly like a right one whether there
+is one of them or twenty.
 
 Work in passes, never all at once:
 
@@ -374,7 +398,30 @@ hand-math:
   `linear`, and one `pos` cannot be both. Pick the one that shows and accept a
   little drift on the other, or move one of the two jobs to another part.
 
-## Verification (don't trust your head-math)
+## Verification (procedure — don't trust your head-math)
+
+**Read the output, not the exit status.** Measured 2026-08-24, and the two CLIs
+disagree, which is the kind of thing a batch script gets wrong once and then
+silently forever:
+
+```
+$ cuboidy-lint models/fox --strict          # clean: prints nothing
+$ cuboidy-lint broken/ --strict
+broken/tail.json: error: line 27: parts.0.voxels.1.0: row length 5, expected W=6 [wrong-arity]
+$ echo $?
+0                                            # <- lint reports the fault and exits 0
+
+$ cuboidy-snap broken/
+cuboidy-snap: broken/tail.json: line 27: parts.0.voxels.1.0: row length 5, expected W=6
+$ echo $?
+2                                            # <- snap refuses, and writes nothing
+```
+
+So **a script that gates on `cuboidy-lint`'s exit code passes every broken model
+it is given** — and a batch that does that produces thirty packages and reports
+success, which is the one failure a batch cannot recover from. Gate on whether
+anything was printed. `cuboidy-snap` can be gated on status, but that is a late
+and expensive way to learn what lint would have said per part.
 
 - `cuboidy-lint --strict` — catches row-width / layer-count / palette-range
   typos. Hand-writing WILL produce these; lint is the safety net. **The rule
@@ -406,6 +453,108 @@ hand-math:
 - Do not treat the numeric probe as the weaker check. It catches what the eye
   cannot: a colour edit that half-applied, a limb passing through a garment,
   two cells that should be symmetric and are one apart.
+
+## When a check fails (procedure)
+
+| | |
+|---|---|
+| **Lint printed anything** | Fix and re-lint. Never carry a finding into the next part; it gets buried. Remember the exit code will not tell you |
+| **Snap looks wrong in silhouette** | Go back to the **manifest**, not the voxels. Silhouette is positions and sizes |
+| **Snap looks wrong in detail** | Voxels. Fix and re-snap |
+| **A part is missing from the render** | Its geometry did not resolve. Check the name matches the manifest exactly, and that no other geometry file defines the same name — a duplicate makes the model unresolvable rather than ambiguous (§11) |
+
+**Detail on wrong proportions is wasted work.** If the blockout silhouette does
+not read, no amount of face detail rescues it.
+
+## When to stop (procedure)
+
+For **a finished model**: when the side and a three-quarter view both read as the
+thing it is meant to be, and lint is clean under `--strict`.
+
+For **a placeholder** — one of thirty, standing in until real art exists — the bar
+is lower, and worth stating so it is not silently exceeded:
+
+- lint clean under `--strict`
+- the silhouette is identifiable from the side and from a three-quarter view
+- it is not a plank, a lamp post, or a cube with a face
+
+**Two edit→snap loops, then stop.** A placeholder polished over five loops is a
+finished model made by accident, and that effort belongs to whatever replaces it.
+
+## Naming parts
+
+Names are how animation binds (§6.8): a clip animates `foreleg-l`, and any model
+with a part of that name can play it. **A name matching nothing is a warning, not
+an error** — a clip aimed at a misspelled part silently animates nothing.
+
+So a convention is worth keeping even when no clip is shared, because the same
+names are what sockets and consuming code read.
+
+**Bilateral parts take `<base>-l` / `<base>-r`, and the side letter must end the
+name.** This is not cosmetic: W06 looks for a name ending in `l` whose preceding
+character is `-` or `_`. `foreleg-l` / `foreleg-r` is checked; **`leg-fl` /
+`leg-fr` is silently not** — which matters because the front/back-left/right
+spelling is the natural one to reach for on a quadruped, and it is the one that
+turns the symmetry check off. Put the side last: `leg-front-l`, not `leg-fl`.
+
+### Skeletons that recur
+
+Not normative — the format does not care — but a consumer that wants clips or
+socket lookups to carry between models needs some agreed vocabulary.
+
+```
+Humanoid    root → torso → head
+                         → arm-l → hand-l          (and -r)
+                 → hips  → thigh-l → shin-l → foot-l
+
+Quadruped   body → neck → head → ear-l
+                 → leg-front-l → paw-front-l       (and -r, and -back-)
+                 → tail-1 → tail-2 → …
+
+Bird        body → neck → head → beak
+                 → wing-l
+                 → leg-l → foot-l
+                 → tail
+```
+
+**W06 only covers `l`/`r` pairs sharing a parent**, so on any of these the pairs
+below the first joint — `shin`, `foot`, `paw` — escape it entirely. Verify those
+with `cuboidy-query`.
+
+## The rest pose is what people see
+
+**There is no bind pose in this format.** The rest pose is the pose when no
+animation is active (§2), so a model with no clip playing — or a consumer that
+does not animate at all — shows it permanently. `cuboidy-snap` draws it too.
+
+**So do not author a T-pose.** T-pose exists in skinned pipelines to make weight
+painting tractable, and there are no weights here — parts are rigid boxes on
+pivots. A T-posed Cuboidy model is just a model standing with its arms out.
+
+Author a natural resting stance: a humanoid with arms at its sides, a quadruped
+with its legs under it, a bird with its wings folded.
+
+**Arms hanging perfectly vertical will bury the shoulder in the torso**, and if
+the arm and torso widths differ in parity that join lands on a half-voxel seam.
+A few degrees of `rotation` outward usually reads better — check it in the snap
+rather than deciding by arithmetic.
+
+## Sharing a clip between models
+
+A clip's `rot` is **relative to the rest pose** (§6.5). So a shared clip behaves
+the same on two models only if **both their part names and their rest poses
+match**. Names are checkable; **rest poses are not** — there is no such thing as a
+wrong stance, so nothing can flag two models that disagree.
+
+Sharing pays when a family is large and its stances were aligned deliberately. It
+does not pay for two or three models, and it costs something real when the models
+are supposed to move differently: a bear and a rabbit sharing one walk are a bear
+and a rabbit that move identically, which throws away a way of telling them apart
+at a distance.
+
+**Default to a clip per model.** Reach for a shared one when the family is big
+enough to pay for the coupling, and say so in the brief rather than discovering
+it later.
 
 ## Gotchas
 
@@ -447,3 +596,16 @@ hand-math:
   matched-width legs, reached in a handful of edit→lint→snap loops — no
   generator. The format is genuinely hand-authorable when you work in passes
   and let the snaps drive the fixes.
+
+## What a brief must supply (procedure)
+
+This document deliberately decides none of these. A commissioning brief that
+leaves any of them out gets thirty models that do not belong in the same world:
+
+| | why it cannot be defaulted here |
+|---|---|
+| **Palette** | The single biggest source of "these do not go together" |
+| **Scale** — voxels per world unit, and one reference height | A model is dimensionless until something says what a voxel is worth |
+| **Skeleton per subject** | Which shape above each subject uses, and what to do with the ones that fit none |
+| **Where packages go, and how they are named** | The consumer's lookup rule, not the format's |
+| **Finished or placeholder** | Sets which stopping rule applies |
