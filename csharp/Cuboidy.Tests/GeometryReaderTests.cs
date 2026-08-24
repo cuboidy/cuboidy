@@ -94,20 +94,22 @@ public class GeometryReaderTests
     }
 
     [Test]
-    public void APaletteOfSixtyThreeColorsIsWrongArity()
+    public void APaletteOfSixtyFiveColorsIsWrongArity()
     {
-        string colors = string.Join(",", Enumerable.Repeat("\"#FF0000\"", 63));
+        string colors = string.Join(",", Enumerable.Repeat("\"#FF0000\"", 65));
         Fails($$"""{"palette":[{{colors}}],"parts":[{"name":"b","size":[1,1,1],"voxels":[["."]]}]}""",
             CuboidyErrorCode.WrongArity);
     }
 
     [Test]
-    public void SixtyTwoColorsIsTheLimitNotOverIt()
+    public void SixtyFourColorsIsTheLimitNotOverIt()
     {
-        string colors = string.Join(",", Enumerable.Repeat("\"#FF0000\"", 62));
-        Geometry g = Ok($$"""{"palette":[{{colors}}],"parts":[{"name":"b","size":[1,1,1],"voxels":[["Z"]]}]}""");
-        Assert.That(g.Palette.Count, Is.EqualTo(62));
-        Assert.That(g.Parts[0].Voxels[0][0][0], Is.EqualTo(61));
+        // '%' is the last slot, and reaching it is the point: the two non-alphanumeric
+        // characters exist so a 64-colour palette fits in one file.
+        string colors = string.Join(",", Enumerable.Repeat("\"#FF0000\"", 64));
+        Geometry g = Ok($$"""{"palette":[{{colors}}],"parts":[{"name":"b","size":[1,1,1],"voxels":[["%"]]}]}""");
+        Assert.That(g.Palette.Count, Is.EqualTo(64));
+        Assert.That(g.Parts[0].Voxels[0][0][0], Is.EqualTo(63));
     }
 
     // ----- absence vs a wrong type ---------------------------------------

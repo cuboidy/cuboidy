@@ -4,7 +4,7 @@ import { parseHexColor, serializeColor } from '../src/geometry/palette.js';
 import { rgba } from './helpers/palette.js';
 
 // SPEC §6.10 (v0.7): external palette file — same color grammar and
-// 62-color cap as the inline geometry palette, wrapped in { "colors": [...] }.
+// 64-color cap as the inline geometry palette, wrapped in { "colors": [...] }.
 describe('parsePaletteFile', () => {
   it('parses long and short hex forms with and without alpha', () => {
     const r = parsePaletteFile({
@@ -37,8 +37,8 @@ describe('parsePaletteFile', () => {
     if (!r.ok) expect(r.code).toBe('wrong-arity');
   });
 
-  it('rejects more than 62 colors as wrong-arity', () => {
-    const colors = Array.from({ length: 63 }, () => '#abc');
+  it('rejects more than 64 colors as wrong-arity', () => {
+    const colors = Array.from({ length: 65 }, () => '#abc');
     const r = parsePaletteFile({ colors });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe('wrong-arity');

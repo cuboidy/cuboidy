@@ -64,7 +64,7 @@ A complete Cuboidy model — one `cuboidy.json`, one `crown` part, 3×2×3 voxel
 
 `voxels` is positionally indexed: one entry per Y-layer, one string per Z row,
 one character per X cell. `.` is air; every other character is a palette index
-(`0-9a-zA-Z`, hence the 62-colour cap). `size` is `[W, H, D]` and the arrays
+(`0-9a-zA-Z$%`, hence the 64-colour cap). `size` is `[W, H, D]` and the arrays
 must agree with it. See SPEC §7 for the full shape.
 
 That is the whole file — no sibling `voxels.json`, nothing to reference. A part

@@ -12,10 +12,10 @@ namespace Cuboidy;
 
 // SPEC §7.4: the colour codec, shared by a geometry file's own palette and the
 // external palette file (§6.10) — both use the same grammar and the same
-// 62-slot index space.
+// 64-slot index space.
 public static class PaletteCodec
 {
-    public const int MaxPalette = 62;
+    public const int MaxPalette = 64;
 
     // The material an entry has when it says nothing: a plain matte
     // dielectric. These exact numbers are what every model rendered as before

@@ -3,7 +3,7 @@ import type { Color, Material, PaletteEntry } from './types.js';
 // SPEC §7.4: the colour codec, shared by a geometry file's own palette and the
 // external palette file (§6.10) — both use the same grammar and the same
 // 62-slot index space.
-export const MAX_PALETTE = 62;
+export const MAX_PALETTE = 64;
 
 // The material an entry has when it says nothing: a plain matte dielectric.
 // These exact numbers are what every model rendered as before §7.4 gained

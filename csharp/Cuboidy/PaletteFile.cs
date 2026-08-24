@@ -2,7 +2,7 @@
 //
 // SPEC §6.10 (v0.7): external palette file — a shareable palette bound to a
 // model via a §7.4 reference or the manifest's top-level `palette`. The entry
-// grammar, 62-color maximum and index assignment (`0-9a-zA-Z`) are the same as
+// grammar, 64-color maximum and index assignment (`0-9a-zA-Z$%`) are the same as
 // the inline geometry palette (§7.4); only the container differs. Object form
 // (not a bare array) so the format has room for metadata — named colors and
 // the like — without a breaking change.

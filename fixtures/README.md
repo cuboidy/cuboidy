@@ -29,7 +29,7 @@ fixtures/
 │   │   ├── unknown-part-field.json    unrecognised key on a part
 │   │   └── palette-entry-key.json     unrecognised key on a §7.4 entry
 │   ├── invalid-value/
-│   │   ├── bad-voxel-char.json        voxel cell outside [.0-9a-zA-Z]
+│   │   ├── bad-voxel-char.json        voxel cell outside [.0-9a-zA-Z$%]
 │   │   ├── bad-color.json             palette entry is not #RGB/#RGBA/#RRGGBB/#RRGGBBAA
 │   │   ├── bad-part-name.json         part name fails the §5 identifier rule
 │   │   ├── palette-index.json         cell indexes past the declared palette

@@ -212,7 +212,7 @@ describe('parseManifest — geometry list', () => {
   it('rejects an empty geometry list', () => {
     // §11.5 files "duplicate or empty `geometry` list" under `invalid-value`
     // — the two halves of one row, so they must answer alike. (§11.2 puts a
-    // palette's 0-or-over-62 under `wrong-arity`; two arrays spelled the
+    // palette's 0-or-over-64 under `wrong-arity`; two arrays spelled the
     // same way, coded differently, and the spec is explicit about both.)
     const r = parseManifest({ ...base, geometry: [] });
     expect(r.ok).toBe(false);
@@ -490,7 +490,7 @@ describe('parseManifest — §11.2 codes', () => {
     if (!r.ok) expect(r.code).toBe('missing');
   });
 
-  it('wrong-arity: an inline palette with 0 colors or more than 62', () => {
+  it('wrong-arity: an inline palette with 0 colors or more than 64', () => {
     const empty = parseManifest({ name: 'm', parts: [{ name: 'b' }], palette: [] });
     expect(empty.ok).toBe(false);
     if (!empty.ok) expect(empty.code).toBe('wrong-arity');
@@ -498,7 +498,7 @@ describe('parseManifest — §11.2 codes', () => {
     const tooMany = parseManifest({
       name: 'm',
       parts: [{ name: 'b' }],
-      palette: Array.from({ length: 63 }, () => '#000000'),
+      palette: Array.from({ length: 65 }, () => '#000000'),
     });
     expect(tooMany.ok).toBe(false);
     if (!tooMany.ok) expect(tooMany.code).toBe('wrong-arity');

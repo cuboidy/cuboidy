@@ -48,9 +48,29 @@ public class VoxelRowTests
         }
     }
 
+    [Test]
+    public void TheTwoNonAlphanumericSlotsMapBothWays()
+    {
+        // The reason they exist: 62 is what three runs of digits and letters happen to
+        // total, and it left a 64-colour palette two short of fitting in one file.
+        Assert.That(VoxelRow.CharToIndex('$'), Is.EqualTo(62));
+        Assert.That(VoxelRow.CharToIndex('%'), Is.EqualTo(63));
+        Assert.That(VoxelRow.IndexToChar(62), Is.EqualTo('$'));
+        Assert.That(VoxelRow.IndexToChar(63), Is.EqualTo('%'));
+    }
+
+    [Test]
+    public void ACharacterOutsideTheAlphabetIsStillRejected()
+    {
+        // Widening the alphabet by two must not widen it by more: '#' looks like a
+        // colour literal and '@' like a fill, and neither is an index.
+        foreach (char c in new[] { '#', '@', '!', '-', ',', ' ' })
+            Assert.That(VoxelRow.CharToIndex(c), Is.Null, $"'{c}' is not an index");
+    }
+
     [TestCase(-2)]
-    [TestCase(62)]
-    public void IndexToCharRaisesOutsideTheSixtyTwoSlots(int index)
+    [TestCase(64)]
+    public void IndexToCharRaisesOutsideTheSixtyFourSlots(int index)
     {
         Assert.That(() => VoxelRow.IndexToChar(index), Throws.InstanceOf<ArgumentOutOfRangeException>());
     }

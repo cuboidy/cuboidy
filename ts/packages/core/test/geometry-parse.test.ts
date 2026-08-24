@@ -165,13 +165,13 @@ describe('parseGeometry — voxel arity (SPEC §7.9)', () => {
 describe('parseGeometry — palette (SPEC §7.4)', () => {
   it('maps the alphabet to indices', () => {
     const r = parseGeometry({
-      palette: Array.from({ length: 62 }, () => '#FFFFFF'),
-      parts: [{ name: 'p', size: [4, 1, 1], voxels: [['09aZ']] }],
+      palette: Array.from({ length: 64 }, () => '#FFFFFF'),
+      parts: [{ name: 'p', size: [6, 1, 1], voxels: [['09aZ$%']] }],
     });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     // '0'→0, '9'→9, 'a'→10, 'Z'→61
-    expect(r.value.parts[0]!.voxels[0]![0]).toEqual([0, 9, 10, 61]);
+    expect(r.value.parts[0]!.voxels[0]![0]).toEqual([0, 9, 10, 61, 62, 63]);
   });
 
   it('treats `.` as air', () => {
@@ -213,9 +213,9 @@ describe('parseGeometry — palette (SPEC §7.4)', () => {
     expect(parseGeometry(doc({ palette: ['#GGGGGG'] })).ok).toBe(false); // not hex
   });
 
-  it('rejects more than 62 colours', () => {
+  it('rejects more than 64 colours', () => {
     const r = parseGeometry(
-      doc({ palette: Array.from({ length: 63 }, () => '#FFFFFF') }),
+      doc({ palette: Array.from({ length: 65 }, () => '#FFFFFF') }),
     );
     expect(r.ok).toBe(false);
     if (r.ok) return;

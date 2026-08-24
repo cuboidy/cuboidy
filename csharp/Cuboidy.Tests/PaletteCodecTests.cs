@@ -91,8 +91,8 @@ public class PaletteCodecTests
     }
 
     [Test]
-    public void TheIndexSpaceIsSixtyTwoWide()
+    public void TheIndexSpaceIsSixtyFourWide()
     {
-        Assert.That(PaletteCodec.MaxPalette, Is.EqualTo(62));
+        Assert.That(PaletteCodec.MaxPalette, Is.EqualTo(64));
     }
 }

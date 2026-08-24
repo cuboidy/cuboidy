@@ -33,11 +33,11 @@ const Dim = z.number().int().min(1).max(SIZE_MAX);
 const Size = z.tuple([Dim, Dim, Dim]);
 
 // SPEC §7.10: `.` is air, every other character is a palette index in the
-// 0-9a-zA-Z alphabet. Width and index range are checked in the superRefine,
+// 0-9a-zA-Z$% alphabet. Width and index range are checked in the superRefine,
 // which needs `size` and the palette length.
 const VoxelRow = z
   .string()
-  .regex(/^[.0-9a-zA-Z]*$/, 'voxel rows use only [.0-9a-zA-Z]');
+  .regex(/^[.0-9a-zA-Z$%]*$/, 'voxel rows use only [.0-9a-zA-Z$%]');
 
 // SPEC §7.7 / §7.8: a point in part-local space with an optional ZXY Euler
 // rotation in degrees. Fractional values are allowed; out-of-bounds positions

@@ -383,7 +383,7 @@ The palette file itself is a standard JSON document:
 
 | Field | Required | Type | Notes |
 |---|---|---|---|
-| `colors` | **yes** | array of palette entries (non-empty) | Exactly §7.4's entry grammar: a color string (`#RGB` / `#RGBA` / `#RRGGBB` / `#RRGGBBAA`, sRGB) **or** the object form carrying a material. Maximum **62** entries; index assignment is positional and identical to §7.4 (`0-9a-zA-Z`) |
+| `colors` | **yes** | array of palette entries (non-empty) | Exactly §7.4's entry grammar: a color string (`#RGB` / `#RGBA` / `#RRGGBB` / `#RRGGBBAA`, sRGB) **or** the object form carrying a material. Maximum **64** entries; index assignment is positional and identical to §7.4 (`0-9a-zA-Z$%`) |
 
 No other fields are permitted (`unknown`). The object form (rather than a bare array) reserves room for future metadata without a breaking change.
 
@@ -518,18 +518,27 @@ separate parser path.
 - **At most one** palette per file — it is a single field, so duplication is structurally impossible
 - Each color in hex: `#RGB`, `#RGBA`, `#RRGGBB`, or `#RRGGBBAA`
 - Color space: **sRGB**
-- Maximum **62 colors** (palette indices `0..61`; more is `wrong-arity`)
+- Maximum **64 colors** (palette indices `0..63`; more is `wrong-arity`)
 - Voxel data references colors by single character:
   - `0`–`9` → palette indices 0–9
   - `a`–`z` → palette indices 10–35
   - `A`–`Z` → palette indices 36–61
+  - `$` → palette index 62
+  - `%` → palette index 63
+
+  The last two are not alphanumeric because there is no alphanumeric left. 62 was
+  never a decision — it is what three runs of digits and letters happen to total —
+  and it left a 64-colour palette two short of fitting in one file, which is a
+  common size to be two short of. Both characters are dense enough in an ASCII grid
+  not to be mistaken for `.`, which rules out `,` `'` and `:`, and neither carries a
+  meaning elsewhere in the format, which rules out `#`.
 - The character `.` is reserved for empty space (air) and is **not** part of the palette
 
 Position-based indexing: reordering the palette requires rewriting voxel data. Tooling can automate this.
 
 **A geometry file's palette is always its own.** The manifest's top-level `palette` (§6.1) does not reach into a file — it is the default for geometry written *inline in the manifest* (§6.13) and nothing else. A file loaded through a `geometry` list or a part's `geometry.path` means the same thing to every reader, whatever manifest points at it.
 
-A file that spells its colors out is range-checked at **parse time** — it is independently well-formed. A file that **references** a palette cannot be: the length is unknown until the referenced file is read, so its index-range check is deferred to cross-file validation (§6.10, §11.6), exactly as a palette-less file's is. Charset (`[.0-9a-zA-Z]`) and row-width checks always apply at parse time.
+A file that spells its colors out is range-checked at **parse time** — it is independently well-formed. A file that **references** a palette cannot be: the length is unknown until the referenced file is read, so its index-range check is deferred to cross-file validation (§6.10, §11.6), exactly as a palette-less file's is. Charset (`[.0-9a-zA-Z$%]`) and row-width checks always apply at parse time.
 
 #### Material
 
@@ -550,7 +559,7 @@ A palette entry may also be an **object**: the same color, plus how it responds 
 | `roughness` | `0..1` | `1` | 0 = mirror, 1 = fully diffuse |
 | `emissive` | `0..1` | `0` | scales `color` as self-illumination |
 
-- **The two forms are the same entry.** `"#B8BEC6"` and `{ "color": "#B8BEC6" }` decode identically, and both occupy one palette index. The 62-entry maximum counts entries, not forms.
+- **The two forms are the same entry.** `"#B8BEC6"` and `{ "color": "#B8BEC6" }` decode identically, and both occupy one palette index. The 64-entry maximum counts entries, not forms.
 - **The defaults are a plain matte surface** — exactly how a palette rendered before this field existed. A file that says nothing about material means what it always meant.
 - **Canonical output writes the string form when the material is the default**, and omits default-valued keys otherwise. So a palette of plain colors round-trips byte-identically, and `{ "color": "#C0C4CC", "metallic": 1 }` does not grow two keys it never had.
 - Names follow **glTF 2.0's metal-rough workflow**, which Unity, Godot and three.js consume without translation. glTF's `emissiveFactor` is `color × emissive`.
@@ -692,7 +701,7 @@ No other fields are permitted (unknown field → `unknown`). Part names are uniq
 | Layer count ≠ H | `wrong-arity` |
 | Row count in a layer ≠ D | `wrong-arity` |
 | Row width ≠ W | `wrong-arity` |
-| Character outside `[.0-9a-zA-Z]` in a row | `invalid-value` |
+| Character outside `[.0-9a-zA-Z$%]` in a row | `invalid-value` |
 | Row references palette index ≥ palette length | `invalid-value` |
 
 The k-th row in layer `i` represents voxel cells at coordinates `(x, i, k)` for `x ∈ 0..W-1`.
@@ -700,7 +709,7 @@ The k-th row in layer `i` represents voxel cells at coordinates `(x, i, k)` for 
 ### 7.10 Voxel row
 
 - Each row is a JSON string
-- Characters drawn from `[.0-9a-zA-Z]`, no whitespace inside a row
+- Characters drawn from `[.0-9a-zA-Z$%]`, no whitespace inside a row
 - Length exactly equals W
 - Each character is either `.` (air) or a palette index character (must be within the declared palette range)
 
@@ -896,8 +905,8 @@ Cuboidy uses **five structural codes** to describe errors. The code names what *
 | `missing` | A required structural element is absent. | No `parts`, or `parts` present but empty; `name`, `size` or `voxels` absent on a part. (An absent `palette` is **not** an error — §7.4; palette availability is validated cross-file, §11.6) |
 | `duplicate` | A unique-constraint violation: an element that should appear at most once appears more than once. | Two parts sharing a `name`; two sockets on one part sharing a `name` |
 | `unknown` | An unrecognized name appears where the spec defines a closed set. | A top-level field other than `version` / `palette` / `parts`; a part field other than `name` / `size` / `pivot` / `sockets` / `voxels`; an unrecognized key on a `pivot` or `socket` object |
-| `invalid-value` | A value is present but malformed. | Malformed color (`#GG`); a voxel row containing a character outside `[.0-9a-zA-Z]`; a voxel cell naming a palette index that does not exist (checked at parse time only when the file spells its colors out — a referenced palette is checked cross-file, §7.4); a `size` dimension outside `[1..1024]` or non-integer; a non-numeric coordinate in `pivot` / `socket`; an identifier failing the §5 rule; a value of the wrong JSON type for its field (e.g. `"size": ["3", 1, 1]`) |
-| `wrong-arity` | An incorrect number of items. | Voxel-row width does not match declared `W`; a layer's row count differs from declared `D`; the layer count differs from declared `H`; an inline palette with 0 colors or more than 62; `size` or a coordinate that is not a triple |
+| `invalid-value` | A value is present but malformed. | Malformed color (`#GG`); a voxel row containing a character outside `[.0-9a-zA-Z$%]`; a voxel cell naming a palette index that does not exist (checked at parse time only when the file spells its colors out — a referenced palette is checked cross-file, §7.4); a `size` dimension outside `[1..1024]` or non-integer; a non-numeric coordinate in `pivot` / `socket`; an identifier failing the §5 rule; a value of the wrong JSON type for its field (e.g. `"size": ["3", 1, 1]`) |
+| `wrong-arity` | An incorrect number of items. | Voxel-row width does not match declared `W`; a layer's row count differs from declared `D`; the layer count differs from declared `H`; an inline palette with 0 colors or more than 64; `size` or a coordinate that is not a triple |
 
 Note: v0.1 used per-keyword codes (E01–E19); v0.2 restructured them into the five structural categories above, and they have been stable since — the move to a JSON container in v0.9 changed which mistakes are *possible*, not what the codes mean. What specifically went wrong survives in the message string and in the fixture filenames (`fixtures/geometry/<code>/<descriptor>.json`).
 
@@ -928,7 +937,7 @@ Manifest errors use the same five structural codes (§11.2). The TS reference im
 | `duplicate` | Duplicate part name; duplicate animation name (planned) |
 | `unknown` | A field other than `name` / `version` / `geometry` / `palette` / `parts` / `sockets` / `animations` is present at the top level; a field other than `name` / `parent` / `position` / `rotation` / `geometry` is present inside a part; a field other than `part` / `socket` inside a published socket (§6.12); in a part's `geometry` (§6.13), a field other than `path` / `part` in the reference form, or `name` / anything outside §7.5 + `palette` in the inline form — including `path` mixed with inline fields; a field other than `colors` in a palette file |
 | `invalid-value` | Wrong type for a field (e.g. `name` is a number); identifier failing the §5 regex; a `geometry` / `palette` / animation reference path violating §8 (wrong extension, backslash, absolute, URL/URI, empty segment) — including a part's `geometry.path` (§6.13); duplicate or empty `geometry` list; malformed color string in a palette file; `parent` references a non-existent part; a published socket's `part` references a non-existent part (§6.12); parent chain contains a cycle; animation `duration` non-positive, non-finite, or less than the largest time key; time keys not decimal-number strings, not strictly increasing, or not starting at `"0.0"` |
-| `wrong-arity` | Palette file's `colors` is empty or exceeds 62 entries (§6.10) |
+| `wrong-arity` | Palette file's `colors` is empty or exceeds 64 entries (§6.10) |
 
 Items marked "planned" are not yet implemented in the TS reference; the catch-all `invalid-value` may surface generic Zod messages for those cases until then. External animation files (§6.3 string refs) are validated with the same inline-animation rules when the project is resolved (lint, inspection CLIs, editor); a missing or invalid referenced file is an error there.
 
@@ -986,11 +995,11 @@ what gets reported — this is what parity testing compares.
      `size` or `voxels`; the manifest's `name`), or `parts` is present but
      empty, which means the same thing
    - **`wrong-arity`** — a fixed-length array of the wrong length (`size` or a
-     coordinate that is not a triple); a palette with more than 62 colors, or
+     coordinate that is not a triple); a palette with more than 64 colors, or
      an inline palette with none
    - **`invalid-value`** — right shape, wrong content: a malformed color, a
      `size` dimension outside `[1..1024]` or non-integer, a voxel row
-     containing a character outside `[.0-9a-zA-Z]`, an identifier failing §5,
+     containing a character outside `[.0-9a-zA-Z$%]`, an identifier failing §5,
      a reference path violating §8
 3. **Cross-field rules**, which need more than one field at a time and are
    therefore only reachable once the document is structurally sound. Parts are
@@ -1116,7 +1125,10 @@ someone.
 ## 14. Future extensions (out of scope for v0.9)
 
 - **Named palette colors / metadata**: the palette file's object form (§6.10) reserves the room
-- **Multi-character palette encoding**: 2-character indices for palettes larger than 62
+- **Multi-character palette encoding**: 2-character indices for palettes larger than 64.
+  Deferred rather than dropped, and the bar is higher than it was: one character per
+  cell is what makes a row's length its width, and 64 covers the palette sizes that
+  are actually distributed
 - **Animation blending**: simultaneous animations with weighted contribution
 - **Custom easing curves**: cubic-bezier control points beyond the §6.7 named presets
 - **Standardized rig vocabularies**: humanoid / quadruped / biped contracts (analogous to VRM humanoid spec)

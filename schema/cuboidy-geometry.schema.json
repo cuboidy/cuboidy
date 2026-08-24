@@ -12,7 +12,7 @@
       "anyOf": [
         {
           "minItems": 1,
-          "maxItems": 62,
+          "maxItems": 64,
           "type": "array",
           "items": {
             "anyOf": [
@@ -207,7 +207,7 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "pattern": "^[.0-9a-zA-Z]*$"
+                "pattern": "^[.0-9a-zA-Z$%]*$"
               }
             }
           }

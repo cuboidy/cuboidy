@@ -70,7 +70,7 @@ internal static class GeometrySchema
     // SPEC §7.10. `\z`, not `$` — hazard S1, and measured: the reference
     // rejects a row of `"0\n"`, which `$` would accept.
     private static readonly Regex VoxelRowRegex =
-        new Regex(@"^[.0-9a-zA-Z]*\z", RegexOptions.CultureInvariant | RegexOptions.Compiled);
+        new Regex(@"^[.0-9a-zA-Z$%]*\z", RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     // ----- phase 2: each field considered on its own ---------------------
 
@@ -205,7 +205,7 @@ internal static class GeometrySchema
                 if (!VoxelRowRegex.IsMatch(row))
                 {
                     throw JsonRead.Fail(
-                        CuboidyErrorCode.InvalidValue, "voxel rows use only [.0-9a-zA-Z]", rowAt);
+                        CuboidyErrorCode.InvalidValue, "voxel rows use only [.0-9a-zA-Z$%]", rowAt);
                 }
 
                 rows.Add(row);
