@@ -373,4 +373,92 @@ public class ManifestReaderTests
             Assert.That(r.Value.Animations["walk"].IsInline, Is.True, path);
         }
     }
+
+    // ----- §6.2 (v0.9) rest scale ------------------------------------------
+
+    [Test]
+    public void AcceptsAPartScaleTriple()
+    {
+        Manifest m = Ok("{\"name\":\"m\",\"parts\":[{\"name\":\"hair\",\"scale\":[1.1,1.1,1.1]}]}");
+        Assert.That(m.Parts[0].Scale, Is.EqualTo(new Vec3(1.1, 1.1, 1.1)));
+    }
+
+    [Test]
+    public void AcceptsANonUniformScale()
+    {
+        Manifest m = Ok("{\"name\":\"m\",\"parts\":[{\"name\":\"hair\",\"scale\":[1.2,1,0.8]}]}");
+        Assert.That(m.Parts[0].Scale, Is.EqualTo(new Vec3(1.2, 1, 0.8)));
+    }
+
+    [Test]
+    public void LeavesScaleNullWhenOmitted()
+    {
+        Manifest m = Ok("{\"name\":\"m\",\"parts\":[{\"name\":\"body\"}]}");
+        Assert.That(m.Parts[0].Scale, Is.Null);
+    }
+
+    // Zero collapses the part, which is `visible: false` said in a way no
+    // reader expects; a negative factor mirrors it, reversing face winding.
+    [Test]
+    public void RejectsAZeroScaleFactor() =>
+        Fails(
+            "{\"name\":\"m\",\"parts\":[{\"name\":\"body\",\"scale\":[1,0,1]}]}",
+            CuboidyErrorCode.InvalidValue);
+
+    [Test]
+    public void RejectsANegativeScaleFactor() =>
+        Fails(
+            "{\"name\":\"m\",\"parts\":[{\"name\":\"body\",\"scale\":[-1,1,1]}]}",
+            CuboidyErrorCode.InvalidValue);
+
+    [Test]
+    public void RejectsAScaleWithTheWrongArity() =>
+        Fails(
+            "{\"name\":\"m\",\"parts\":[{\"name\":\"body\",\"scale\":[1.1,1.1]}]}",
+            CuboidyErrorCode.WrongArity);
+
+    // §6.2 + §6.5: the two scales are one operator reached twice, so a part's
+    // total scale is their product and the order is unobservable.
+    [Test]
+    public void ComposeScaleMultipliesPerAxisAndCommutes()
+    {
+        Assert.That(
+            Runtime.RigTransform.ComposeScale(new Vec3(2, 3, 4), new Vec3(0.5, 2, 0.25)),
+            Is.EqualTo(new Vec3(1, 6, 1)));
+        Assert.That(
+            Runtime.RigTransform.ComposeScale(new Vec3(1.1, 2, 0.5), new Vec3(3, 0.25, 4)),
+            Is.EqualTo(Runtime.RigTransform.ComposeScale(new Vec3(3, 0.25, 4), new Vec3(1.1, 2, 0.5))));
+    }
+
+    [Test]
+    public void ComposeScaleLeavesTheOtherSideAloneAndStaysNullWhenNeitherIsSet()
+    {
+        Assert.That(Runtime.RigTransform.ComposeScale(null, new Vec3(2, 2, 2)), Is.EqualTo(new Vec3(2, 2, 2)));
+        Assert.That(Runtime.RigTransform.ComposeScale(new Vec3(2, 2, 2), null), Is.EqualTo(new Vec3(2, 2, 2)));
+        Assert.That(Runtime.RigTransform.ComposeScale(null, null), Is.Null);
+    }
+
+    // §7.7: scale acts on the pivot-relative offset, so the pivot is the one
+    // point it leaves alone. Same numbers the reference's own test pins.
+    [Test]
+    public void ScaleGrowsAPartAboutItsPivot()
+    {
+        var world = new Runtime.Frame(new Vec3(10, 0, 0), Runtime.Quat.Identity);
+        var pivot = new Vec3(3, 0, 3);
+
+        Assert.That(
+            Runtime.RigTransform.LocalPointToWorld(pivot, pivot, new Vec3(2, 2, 2), world),
+            Is.EqualTo(new Vec3(10, 0, 0)));
+        // The corner sits 3 out in x from the pivot, so 1.5x puts it 4.5 out.
+        Assert.That(
+            Runtime.RigTransform.LocalPointToWorld(new Vec3(6, 0, 3), pivot, new Vec3(1.5, 1.5, 1.5), world),
+            Is.EqualTo(new Vec3(14.5, 0, 0)));
+        // Per axis, on its own.
+        Assert.That(
+            Runtime.RigTransform.LocalPointToWorld(new Vec3(6, 2, 6), pivot, new Vec3(1, 2, 3), world),
+            Is.EqualTo(new Vec3(13, 4, 9)));
+        Assert.That(
+            Runtime.RigTransform.LocalPointToWorld(new Vec3(6, 2, 6), pivot, null, world),
+            Is.EqualTo(new Vec3(13, 2, 3)));
+    }
 }

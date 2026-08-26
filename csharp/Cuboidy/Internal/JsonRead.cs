@@ -191,6 +191,35 @@ internal static class JsonRead
             Number(items[2], at.Add(2)));
     }
 
+    // SPEC §6.2's rest `scale`: a triple of strictly positive factors. Zero
+    // collapses the part, which is `visible: false` said in a way no reader
+    // expects, and a negative factor mirrors it, reversing face winding — a
+    // separate feature rather than a number scale happens to accept. The
+    // arity failure still comes from Tuple; only the bound is ours, and a
+    // bound on a NUMBER is never an arity.
+    public static Vec3 ScaleValue(JsonElement e, DocPath at)
+    {
+        JsonElement[] items = Tuple(e, at, 3);
+        return new Vec3(
+            Factor(items[0], at.Add(0)),
+            Factor(items[1], at.Add(1)),
+            Factor(items[2], at.Add(2)));
+    }
+
+    private static double Factor(JsonElement e, DocPath at)
+    {
+        double value = Number(e, at);
+        if (!(value > 0) || double.IsInfinity(value))
+        {
+            throw new ReaderException(
+                CuboidyErrorCode.InvalidValue,
+                $"{at.Label}: expected a finite number greater than 0, got {value.ToString("R", CultureInfo.InvariantCulture)}",
+                at);
+        }
+
+        return value;
+    }
+
     // A number constrained to 0..1. §7.4's three material fields are the only
     // ones, and a bound on a NUMBER is never an arity — nothing was counted.
     public static double Unit(JsonElement e, DocPath at)

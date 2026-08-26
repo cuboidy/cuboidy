@@ -350,6 +350,12 @@ function assembleWorld(
   // (the same math the editor renders through). Pivot placement is exact
   // — a child of a rotated parent lands where the rig puts it; only each
   // part's own voxel orientation is approximated below (axis-aligned).
+  //
+  // The occupancy grid below is likewise built at scale 1: it is a map of
+  // which CELL a voxel is, and a part's rest `scale` (§6.2) does not move
+  // voxels between cells, it changes how big they are drawn. Scale rides
+  // on PlacedPart to the render layer, which is geometric, and stops here.
+  // This is the same line already drawn for rotation one sentence up.
   const pivotRots = pivotRotsOf(
     Array.from(shapesByName, ([name, { part }]) => [name, part] as const),
   );
@@ -372,7 +378,7 @@ function assembleWorld(
     }
     const { part, remap, palette } = entry;
     const transform = transforms.get(mp.name)!;
-    resolvedParts.push({ name: mp.name, part, remap, transform, palette });
+    resolvedParts.push({ name: mp.name, part, remap, transform, palette, scale: mp.scale });
     const wp = transform.pos;
     const px = part.pivot.pos.x;
     const py = part.pivot.pos.y;

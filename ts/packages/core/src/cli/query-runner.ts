@@ -10,6 +10,7 @@ import { formatPaletteLine } from './palette-legend.js';
 import { sampleAnimation, type Pose } from '../animation.js';
 import type { Vec3, Vec3Tuple } from '../geometry/types.js';
 import {
+  composeScale,
   computeWorldTransforms,
   localPointToWorld,
   pivotRotsOf,
@@ -256,7 +257,7 @@ function formatMesh(
       rp.part.pivot.pos.y,
       rp.part.pivot.pos.z,
     ];
-    const scale = pose?.scale;
+    const scale = composeScale(rp.scale, pose?.scale);
 
     // buildMesh emits four consecutive vertices per face, in winding order,
     // sharing one normal / colour / alpha.
@@ -422,7 +423,10 @@ function formatTransforms(
     const wt = world.get(mp.name);
     if (wt === undefined) continue;
     const pose = poses.get(mp.name);
-    const scale = pose?.scale ?? [1, 1, 1];
+    const scale = composeScale(
+      asm.manifest.parts.find((p) => p.name === mp.name)?.scale,
+      pose?.scale,
+    ) ?? [1, 1, 1];
     const visible = pose === undefined || pose.visible;
     lines.push(
       `transform ${mp.name} pos=${wt.pos.map(num).join(',')} ` +

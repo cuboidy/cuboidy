@@ -4,6 +4,7 @@ import type { Manifest } from './manifest.js';
 import type { ResolvedPart } from './project.js';
 import {
   computeWorldTransforms,
+  composeScale,
   localPointToWorld,
   pivotRotsOf,
   quatFromEulerZXYDeg,
@@ -115,7 +116,10 @@ export function publishedSocketFrame(
     resolved.part,
     world,
     target.socket,
-    poses?.get(target.part)?.scale,
+    composeScale(
+      manifest.parts.find((p) => p.name === target.part)?.scale,
+      poses?.get(target.part)?.scale,
+    ),
   );
 }
 
@@ -133,6 +137,9 @@ export function publishedSocketFrames(
   const published = manifest.sockets;
   if (published === undefined) return out;
   const world = worldTransformsFor(manifest, parts, poses);
+  // The rest scales, built once: the per-name entry point above can afford
+  // a linear find, an N-socket loop cannot.
+  const restScales = new Map(manifest.parts.map((p) => [p.name, p.scale]));
   for (const [name, target] of Object.entries(published)) {
     const resolved = parts.get(target.part);
     if (resolved === undefined) continue;
@@ -142,7 +149,7 @@ export function publishedSocketFrames(
       resolved.part,
       wt,
       target.socket,
-      poses?.get(target.part)?.scale,
+      composeScale(restScales.get(target.part), poses?.get(target.part)?.scale),
     );
     if (frame !== null) out.set(name, frame);
   }

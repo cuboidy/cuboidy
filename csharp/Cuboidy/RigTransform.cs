@@ -187,6 +187,19 @@ public static class RigTransform
     // runner and the editor's three.js tree — and this port carries none of
     // them, so `scale` would otherwise have arrived as a field of `Pose` with
     // its meaning left in code the port does not have.
+    // SPEC §6.2 + §6.5: the rest scale and the animated scale are the same
+    // operator reached twice — same axes, same pivot, and neither reaches the
+    // part's children — so a part's total scale is their per-axis product and
+    // the order they compose in is unobservable. Absent on either side reads
+    // as [1,1,1]; absent on both stays null, so a model with no scale at all
+    // allocates nothing.
+    public static Vec3? ComposeScale(Vec3? rest, Vec3? anim)
+    {
+        if (rest is null) return anim;
+        if (anim is null) return rest;
+        return new Vec3(rest.Value.X * anim.Value.X, rest.Value.Y * anim.Value.Y, rest.Value.Z * anim.Value.Z);
+    }
+
     public static Vec3 LocalPointToWorld(Vec3 local, Vec3 pivot, Vec3? scale, Frame world)
     {
         Vec3 s = scale ?? new Vec3(1, 1, 1);

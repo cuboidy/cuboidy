@@ -41,7 +41,8 @@ public static class SocketFrame
     // goes through the identical mapping — `LocalPointToWorld`, the same call
     // a mesher makes for every voxel corner.
     //
-    // `scale` is the host part's §6.5 animated scale. A socket is a point in
+    // `scale` is the host part's TOTAL scale — §6.2's rest term times §6.5's
+    // animated one, which `ScaleOf` below composes. A socket is a point in
     // the part's geometry, so it moves exactly as the voxels around it do — the
     // socket on a 3×-lengthened arm stays at the arm's tip instead of ending up
     // buried a third of the way along it. The GUEST is not resized: the frame
@@ -87,7 +88,7 @@ public static class SocketFrame
             return null;
         }
 
-        return SocketFrameOn(resolved.Part, world, target.Socket, ScaleOf(poses, target.Part));
+        return SocketFrameOn(resolved.Part, world, target.Socket, ScaleOf(manifest, poses, target.Part));
     }
 
     // Every frame the model publishes (§6.12), keyed by published name, with
@@ -110,7 +111,7 @@ public static class SocketFrame
             if (!parts.TryGetValue(target.Part, out ResolvedPart? resolved)) continue;
             if (!world.TryGetValue(target.Part, out Frame wt)) continue;
             Frame? frame = SocketFrameOn(
-                resolved.Part, wt, target.Socket, ScaleOf(poses, target.Part));
+                resolved.Part, wt, target.Socket, ScaleOf(manifest, poses, target.Part));
             if (frame is { } f) frames.Add(new KeyValuePair<string, Frame>(entry.Key, f));
         }
 
@@ -126,6 +127,20 @@ public static class SocketFrame
         RigTransform.ComputeWorldTransforms(
             manifest.Parts, RigTransform.PivotRotsOf(parts), poses);
 
-    private static Vec3? ScaleOf(IReadOnlyDictionary<string, Pose>? poses, string part) =>
-        poses is not null && poses.TryGetValue(part, out Pose pose) ? pose.Scale : (Vec3?)null;
+    // The host's total scale: §6.2's rest term times whatever the pose
+    // carries. A socket rides both, exactly as the voxels around it do.
+    private static Vec3? ScaleOf(
+        Manifest manifest, IReadOnlyDictionary<string, Pose>? poses, string part)
+    {
+        Vec3? anim = poses is not null && poses.TryGetValue(part, out Pose pose)
+            ? pose.Scale
+            : (Vec3?)null;
+        Vec3? rest = null;
+        foreach (ManifestPart mp in manifest.Parts)
+        {
+            if (mp.Name == part) { rest = mp.Scale; break; }
+        }
+
+        return RigTransform.ComposeScale(rest, anim);
+    }
 }

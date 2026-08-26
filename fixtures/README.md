@@ -66,9 +66,17 @@ fixtures/
 │   │   ├── geometry-list-empty.json   `geometry` present but empty (§11.5 —
 │   │   │                              the named exception to the container
 │   │   │                              rule, which would say `wrong-arity`)
-│   │   └── absolute-ref.json          a §8 reference path that is absolute
+│   │   ├── absolute-ref.json          a §8 reference path that is absolute
+│   │   ├── scale-zero.json            a §6.2 `scale` factor of 0, which
+│   │   │                              collapses the part
+│   │   └── scale-negative.json        a §6.2 `scale` factor below 0, which
+│   │                                  mirrors the part and so reverses its
+│   │                                  face winding
 │   └── wrong-arity/
 │       ├── position-arity.json        `position` is not a triple
+│       ├── scale-arity.json           `scale` is not a triple — its own
+│       │                              reader bounds each factor, and the
+│       │                              bound must not swallow the arity
 │       ├── palette-empty.json         inline palette with no colors
 │       └── inline-row-width.json      §6.13 row length does not match W
 └── palette/                           SPEC §6.10 — an external palette file

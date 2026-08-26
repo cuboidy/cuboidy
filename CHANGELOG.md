@@ -5,6 +5,48 @@ the spec as it stands now.
 
 ## v0.9 (draft — current)
 
+### Rest scale on a part
+
+A manifest part may now carry `scale`, per-axis multipliers on its own voxels
+around its pivot (§6.2):
+
+```json
+{ "name": "hair", "parent": "head", "scale": [1.1, 1.1, 1.1] }
+```
+
+Purely additive, and deliberately **not a new operator**. `scale` already
+existed as a keyframe attribute (§6.5); this is the rest term of the same
+thing, exactly as the part's `rotation` is the rest term of the keyframe
+`rot`. The two multiply — `S_total = scale ⊙ anim.scale` — and because both
+act per axis around the same pivot and neither reaches the part's children,
+they commute and the order they compose in is unobservable.
+
+That inheritance rule is the part worth reading twice. **Scale stops at the
+part**, so scaling a rig by scaling every part does not work: each part grows
+in place while every `position` stays where it was, and the parts drift apart.
+Resizing a model means changing its `size` and `position` values, or scaling
+the assembled model in the host engine. What the field is for is a part that
+should sit slightly proud of its neighbour — a hair shell a tenth of a voxel
+outside the skull it covers — which is otherwise a whole voxel of clearance or
+nothing.
+
+Two consequences fall out of "scale acts on the pivot-relative offset":
+the pivot is the one point that does not move, so a scaled part stays attached
+where its `position` says and its children neither grow nor shift; and a
+socket rides the scale like every voxel around it (§7.8), while the guest
+attached to it does not.
+
+Every factor MUST be `> 0`. Zero collapses the part, which is `visible: false`
+written in a way no reader expects, and a negative factor mirrors it, which
+reverses face winding — a separate feature rather than a number that scale
+happens to accept.
+
+**The occupancy grid ignores it.** The assembled grid a query or an ASCII
+dump reads is a map of which cell a voxel is, and scale does not move voxels
+between cells — it changes how large they are drawn. Scale reaches the
+geometric layer (meshing, snapshots, socket frames, world bounds) and stops
+before the grid, which is the same line already drawn for rotation.
+
 ### Palette materials
 
 A palette entry may now be an object instead of a bare color string, carrying

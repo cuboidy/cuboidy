@@ -46,6 +46,11 @@ public sealed record ManifestPart(
     // applied around the part's pivot on top of the geometry-side `pivot.rot`
     // (q_rest = q_rotation · q_pivot, §7.7). Absent → identity.
     Vec3? Rotation,
+    // SPEC §6.2 (v0.9): rest scale, per-axis multipliers on this part's own
+    // voxels around its pivot. Multiplies with the keyframe `scale` of §6.5
+    // (S_total = scale ⊙ anim.scale) and, like that one, does NOT reach the
+    // part's children (§7.7). Absent → [1, 1, 1].
+    Vec3? Scale,
     // SPEC §6.13. Absent → the by-`name` lookup among the files in the
     // top-level `geometry` list, which is what every pre-v0.9 model uses.
     PartGeometry? Geometry);
@@ -216,7 +221,7 @@ public static class ManifestReader
 
     private static ManifestPart ReadPart(JsonElement e, DocPath at)
     {
-        ObjectFields fields = JsonRead.Fields(e, at, "name", "parent", "position", "rotation", "geometry");
+        ObjectFields fields = JsonRead.Fields(e, at, "name", "parent", "position", "rotation", "scale", "geometry");
         return new ManifestPart(
             JsonRead.IdentifierValue(fields.Required("name"), at.Add("name")),
             fields.TryGet("parent", out JsonElement parentEl)
@@ -227,6 +232,9 @@ public static class ManifestReader
                 : (Vec3?)null,
             fields.TryGet("rotation", out JsonElement rotationEl)
                 ? JsonRead.Vec3Value(rotationEl, at.Add("rotation"))
+                : (Vec3?)null,
+            fields.TryGet("scale", out JsonElement scaleEl)
+                ? JsonRead.ScaleValue(scaleEl, at.Add("scale"))
                 : (Vec3?)null,
             fields.TryGet("geometry", out JsonElement geometryEl)
                 ? ReadPartGeometry(geometryEl, at.Add("geometry"))

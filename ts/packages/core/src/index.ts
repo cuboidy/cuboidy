@@ -156,6 +156,7 @@ export type { Angle } from './render/camera.js';
 export {
   QUAT_IDENTITY,
   composePartRotation,
+  composeScale,
   computeRestWorldTransforms,
   partsWorldBounds,
   pivotRotsOf,

@@ -203,6 +203,25 @@ export function computeWorldTransforms(
 // three.js tree — and a second implementation ports none of them, so `scale`
 // would have arrived in C# as a field of `Pose` with its meaning left in
 // code the port does not have.
+// SPEC §6.2 + §6.5: the rest scale and the animated scale are the same
+// operator reached twice — same axes, same pivot, and neither reaches the
+// part's children — so a part's total scale is their per-axis product and
+// the order they are written in does not matter. Stated here, next to the
+// one place that consumes it, because a second implementation that gets
+// this wrong produces a model that is subtly the wrong size only while an
+// animation is playing.
+//
+// Undefined on either side reads as [1,1,1]; undefined on both stays
+// undefined, so the overwhelmingly common case allocates nothing.
+export function composeScale(
+  rest: Vec3Tuple | undefined,
+  anim: Vec3Tuple | undefined,
+): Vec3Tuple | undefined {
+  if (rest === undefined) return anim;
+  if (anim === undefined) return rest;
+  return [rest[0] * anim[0], rest[1] * anim[1], rest[2] * anim[2]];
+}
+
 export function localPointToWorld(
   local: Vec3Tuple,
   pivot: Vec3Tuple,
@@ -254,6 +273,13 @@ export function partsWorldBounds(
     min: readonly [number, number, number];
     max: readonly [number, number, number];
   },
+  // Each part's total scale (§6.2 rest × §6.5 animated), by the same names
+  // `transforms` is keyed by. Omitted or absent for a name reads as
+  // [1,1,1] — the case every model without a rest `scale` is in. Passing
+  // it matters because a scaled part's corners move: leave it out on a
+  // model that uses `scale` and the box comes back too small, which a
+  // caller framing a camera will see as the model cropped.
+  scales?: ReadonlyMap<string, Vec3Tuple | undefined>,
 ): { min: [number, number, number]; max: [number, number, number] } {
   const min: [number, number, number] =
     seed === undefined ? [Infinity, Infinity, Infinity] : [...seed.min];
@@ -263,13 +289,14 @@ export function partsWorldBounds(
   for (const [name, part] of parts) {
     const wt = transforms.get(name) ?? fallback;
     const piv = part.pivot.pos;
+    const [sx, sy, sz] = scales?.get(name) ?? [1, 1, 1];
     for (const cx of [0, part.size.w]) {
       for (const cy of [0, part.size.h]) {
         for (const cz of [0, part.size.d]) {
           const r = quatRotateVec3(wt.quat, [
-            cx - piv.x,
-            cy - piv.y,
-            cz - piv.z,
+            (cx - piv.x) * sx,
+            (cy - piv.y) * sy,
+            (cz - piv.z) * sz,
           ]);
           for (let i = 0; i < 3; i++) {
             const w = wt.pos[i]! + r[i]!;

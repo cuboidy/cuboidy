@@ -12,6 +12,13 @@ import { resultFromZodError } from './zod-diagnostic.js';
 
 const Vec3 = z.tuple([z.number(), z.number(), z.number()]);
 
+// SPEC §6.2: a rest-scale factor. Strictly positive and finite — zero
+// collapses the part to nothing and a negative value mirrors it, which
+// reverses face winding. Both are `invalid-value` rather than a mesh that
+// differs from what the author wrote without saying so.
+const Factor = z.number().positive().finite();
+const Scale3 = z.tuple([Factor, Factor, Factor]);
+
 // SPEC §6.13: where a part's shape comes from. Two forms in one object,
 // told apart by whether `path` is present:
 //
@@ -100,6 +107,11 @@ export const ManifestPartSchema = z
     // (§4), applied around the part's pivot on top of the geometry-side
     // pivot.rot (q_rest = q_rotation · q_pivot, §7.7). Absent → identity.
     rotation: Vec3.optional(),
+    // SPEC §6.2 (v0.9): rest scale, per-axis multipliers on this part's own
+    // voxels around its pivot. Multiplies with the keyframe `scale` of §6.5
+    // (S_total = scale ⊙ anim.scale) and, like that one, does NOT reach the
+    // part's children (§7.7). Absent → [1, 1, 1].
+    scale: Scale3.optional(),
     // SPEC §6.13. Absent → the by-`name` lookup among the files in the
     // top-level `geometry` list, which is what every pre-v0.9 model uses.
     geometry: PartGeometrySchema.optional(),

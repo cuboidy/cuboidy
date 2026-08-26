@@ -71,9 +71,12 @@ export interface OrientedPart {
   part: Part;
   remap: readonly number[] | null;
   transform: WorldTransform;
-  // Animated §6.5 scale, applied to this part's own geometry about its
-  // pivot and NOT inherited by children (§7.7 puts S_anim inside the
-  // part's local term). Absent = [1, 1, 1].
+  // The part's total scale — the rest `scale` of §6.2 times the animated
+  // `scale` of §6.5 — applied to this part's own geometry about its pivot
+  // and NOT inherited by children (§7.7 puts S_total inside the part's
+  // local term). One field for both because they are one operator: same
+  // axes, same pivot, same stopping point, so they commute into a single
+  // product. Absent = [1, 1, 1].
   scale?: readonly [number, number, number] | undefined;
 }
 

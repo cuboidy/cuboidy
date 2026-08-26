@@ -164,13 +164,22 @@ public sealed class CuboidyModel
     {
         OrderedMap<Frame> world = WorldTransforms(poses);
         var placements = new List<Placement>();
+        // §6.2's rest scales, read once: a part's total scale is this times
+        // whatever the pose carries.
+        var restScales = new Dictionary<string, Vec3?>(StringComparer.Ordinal);
+        foreach (ManifestPart mp in Manifest.Parts) restScales[mp.Name] = mp.Scale;
         foreach (KeyValuePair<string, Frame> entry in world)
         {
             if (!Project.Parts.TryGetValue(entry.Key, out ResolvedPart? resolved)) continue;
             bool posed = poses is not null && poses.TryGetValue(entry.Key, out Pose pose);
             Pose p = posed ? poses![entry.Key] : Runtime.Pose.Default;
+            restScales.TryGetValue(entry.Key, out Vec3? rest);
             placements.Add(new Placement(
-                entry.Key, entry.Value, resolved.Part.Pivot.Pos, p.Scale, p.Visible));
+                entry.Key,
+                entry.Value,
+                resolved.Part.Pivot.Pos,
+                RigTransform.ComposeScale(rest, p.Scale) ?? new Vec3(1, 1, 1),
+                p.Visible));
         }
 
         return placements;

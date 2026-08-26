@@ -4,6 +4,8 @@ import type { ManifestPart } from '../src/manifest.js';
 import {
   QUAT_IDENTITY,
   composePartRotation,
+  composeScale,
+  localPointToWorld,
   computeRestWorldTransforms,
   quatFromEulerZXYDeg,
   quatMultiply,
@@ -297,5 +299,62 @@ describe('computeRestWorldTransforms — malformed hierarchies', () => {
     expect(dropped.get('c')).toBe('cycle');
     expect(dropped.get('d')).toBe('cycle');
     expect(dropped.has('e')).toBe(false);
+  });
+});
+
+// SPEC §6.2 + §6.5: the rest scale and the animated scale are one operator
+// reached twice, so a part's total scale is their per-axis product.
+describe('composeScale', () => {
+  it('multiplies the two per axis', () => {
+    expect(composeScale([2, 3, 4], [0.5, 2, 0.25])).toEqual([1, 6, 1]);
+  });
+
+  it('returns the other side untouched when one is absent', () => {
+    expect(composeScale(undefined, [2, 2, 2])).toEqual([2, 2, 2]);
+    expect(composeScale([2, 2, 2], undefined)).toEqual([2, 2, 2]);
+  });
+
+  it('stays undefined when neither is set, so the common path allocates nothing', () => {
+    expect(composeScale(undefined, undefined)).toBeUndefined();
+  });
+
+  it('commutes, because both act on the same axes around the same pivot', () => {
+    expect(composeScale([1.1, 2, 0.5], [3, 0.25, 4])).toEqual(
+      composeScale([3, 0.25, 4], [1.1, 2, 0.5]),
+    );
+  });
+});
+
+// SPEC §7.7: scale acts on the pivot-relative offset, so the pivot is the
+// one point it leaves alone — which is what lets a scaled part stay attached
+// where its `position` says, and what keeps its children from moving.
+describe('localPointToWorld — scale', () => {
+  const world = { pos: [10, 0, 0] as Vec3Tuple, quat: QUAT_IDENTITY };
+  const pivot: Vec3Tuple = [3, 0, 3];
+
+  it('leaves the pivot itself where the transform puts it', () => {
+    expectVecClose(localPointToWorld(pivot, pivot, [2, 2, 2], world), [10, 0, 0]);
+  });
+
+  it('pushes a corner out by the factor, measured from the pivot', () => {
+    // The corner sits 3 out in x from the pivot, so 1.5x puts it 4.5 out.
+    expectVecClose(
+      localPointToWorld([6, 0, 3], pivot, [1.5, 1.5, 1.5], world),
+      [14.5, 0, 0],
+    );
+  });
+
+  it('applies each axis on its own', () => {
+    expectVecClose(
+      localPointToWorld([6, 2, 6], pivot, [1, 2, 3], world),
+      [13, 4, 9],
+    );
+  });
+
+  it('is identity when absent', () => {
+    expectVecClose(
+      localPointToWorld([6, 2, 6], pivot, undefined, world),
+      [13, 2, 3],
+    );
   });
 });

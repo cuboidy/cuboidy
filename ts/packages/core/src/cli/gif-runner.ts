@@ -5,7 +5,7 @@ import { buildSceneFromParts, type OrientedPart, type Scene } from '../render/sc
 import { computeGlobalScale, renderTile } from '../render/snapshot.js';
 import { encodeGif } from '../render/gif.js';
 import { sampleAnimation, type InlineAnimation } from '../animation.js';
-import { computeWorldTransforms, pivotRotsOf } from '../rig-transform.js';
+import { composeScale, computeWorldTransforms, pivotRotsOf } from '../rig-transform.js';
 import { loadAndAssemble, type Assembly } from './assemble.js';
 import type { Rgb } from '../render/framebuffer.js';
 
@@ -142,7 +142,7 @@ export function renderGif(
         part: rp.part,
         remap: rp.remap,
         transform: transforms.get(rp.name) ?? rp.transform,
-        scale: pose?.scale,
+        scale: composeScale(rp.scale, pose?.scale),
       });
     }
 

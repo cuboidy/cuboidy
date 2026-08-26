@@ -130,6 +130,69 @@ describe('parseManifest — part rotation (v0.9)', () => {
   });
 });
 
+// SPEC §6.2 (v0.9): per-part rest scale. Same shape as `rotation` above —
+// a rest term the keyframe attribute of §6.5 multiplies into — with the one
+// extra rule that every factor must be strictly positive.
+describe('parseManifest — part scale (v0.9)', () => {
+  it('accepts a part with a scale triple', () => {
+    const r = parseManifest({
+      name: 'test',
+      parts: [{ name: 'hair', scale: [1.1, 1.1, 1.1] }],
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.parts[0]?.scale).toEqual([1.1, 1.1, 1.1]);
+  });
+
+  it('accepts a non-uniform scale', () => {
+    const r = parseManifest({
+      name: 'test',
+      parts: [{ name: 'hair', scale: [1.2, 1, 0.8] }],
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.parts[0]?.scale).toEqual([1.2, 1, 0.8]);
+  });
+
+  it('leaves scale absent when omitted (rest scale [1,1,1])', () => {
+    const r = parseManifest({ name: 'test', parts: [{ name: 'body' }] });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.parts[0]?.scale).toBeUndefined();
+  });
+
+  it('rejects a zero factor', () => {
+    // Zero collapses the part to nothing, which is `visible: false` said
+    // in a way no reader expects.
+    const r = parseManifest({
+      name: 'test',
+      parts: [{ name: 'body', scale: [1, 0, 1] }],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('invalid-value');
+  });
+
+  it('rejects a negative factor', () => {
+    // Mirroring reverses face winding, so it is a separate feature rather
+    // than a number a scale happens to accept.
+    const r = parseManifest({
+      name: 'test',
+      parts: [{ name: 'body', scale: [-1, 1, 1] }],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('invalid-value');
+  });
+
+  it('rejects a scale with the wrong arity', () => {
+    const r = parseManifest({
+      name: 'test',
+      parts: [{ name: 'body', scale: [1.1, 1.1] }],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('wrong-arity');
+  });
+});
+
 // SPEC §6.9: the geometry list. A palette is NOT a manifest concern — it is
 // declared by the geometry file that uses it (§7.4).
 describe('parseManifest — geometry list', () => {
