@@ -459,10 +459,15 @@ and expensive way to learn what lint would have said per part.
   leg passes through the body. Its camera is fixed across the clip, so it is
   also the one render whose frames may be compared to each other.
 - `cuboidy-query` — exact cell lookup; verify attachment & symmetry numerically.
-  **On a half-offset axis, an integer `--at` probe lands between cells and
-  returns `.`** — it looks like empty space, not like a mis-aimed probe. The
-  header does say `contains half-voxel offsets`, so read it. Offset the probe
-  by 0.5, or use `--core`, which prints its own `step=0.5`.
+  **`--at` takes CELL INDICES, not positions.** A fractional coordinate returns
+  `.` whatever is actually there: it neither floors nor rounds, so probing a
+  cell's CENTRE — `x + 0.5`, which is exactly what the pivot section above
+  teaches you to think in — misses every time, and misses silently. It reads as
+  empty space rather than as a mis-aimed probe, which is the trap.
+  Measured by sweeping a solid row in quarter-steps on two models that both
+  report `contains half-voxel offsets`: every integer returns the colour, every
+  fraction between them returns `.`. `--core` walks whole cells too — a ten-cell
+  span comes back as ten characters.
 - Do not treat the numeric probe as the weaker check. It catches what the eye
   cannot: a colour edit that half-applied, a limb passing through a garment,
   two cells that should be symmetric and are one apart.
