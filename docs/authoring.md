@@ -52,12 +52,20 @@ manifest and one geometry file already line up.
 
 ```
 manifest (rig only)  →  lint  →  geometry, part by part  →  lint  →  snap  →  LOOK  →  fix
+                                                    then  →  animate  →  gif   →  LOOK  →  fix
 ```
 
 **Write the manifest first, with no geometry at all.** A rig of named parts with
 positions and parents is cheap to write, cheap to fix, and it is where the
 proportions live. Discovering the proportions are wrong after writing voxels
 means rewriting voxels.
+
+Lint at that stage prints one `cannot read <the geometry file you declared>`
+and nothing else. **That error is expected and is the only one you ignore** —
+the rig itself is still checked with no geometry present: a duplicate part name
+and a `parent` naming nothing are both reported. If the file it names is one
+you never declared (`voxels.json`), the MANIFEST failed to parse and lint fell
+back to the default name; fix the manifest error printed above it.
 
 Then geometry, one part at a time, largest first — torso before head, head before
 ear. A part written early is the size reference for whatever hangs off it.
@@ -316,30 +324,29 @@ hand-math:
 
 ## Animation
 
-- **You cannot render an animated pose.** `cuboidy-snap` draws the rest pose
-  only, so the "look at it" loop this guide is built on does not cover the half
-  of the format that moves. The workaround is to bake: sample the clip at time
-  *t*, fold the result into a scratch copy of the model, and snap that. Two
-  things make it more than a few lines, so budget for them:
-  - Rotations **compose as quaternions** (§7.7), so you cannot add the sampled
-    Euler angles to the manifest `rotation`. Multiply the quaternions and
-    convert back to ZXY Euler — and there is no inverse of
-    `quatFromEulerZXYDeg` in the codebase, so that conversion is yours to
-    write.
-  - `scale` and `visible` have no manifest equivalent, so **a baked frame
-    silently lies about them.** A part that should be hidden or squashed will
-    render at full size. Bake covers `rot` and `pos`; check the rest by
-    sampling numbers.
-  - `cuboidy-snap` **re-fits the camera to each model's bounding box**, so a
-    sequence of baked frames comes out at different scales and offsets and is
-    useless for comparing motion — eight unrelated statues. Fix it by adding
-    two 1×1×1 cells in the background colour at fixed world corners of every
-    baked copy: the bbox is then constant and the frames line up.
-- **Nothing checks whether moving parts collide.** Lint sees only the rest
-  pose, and so does every render. A long rotating member — a sail, a tail, a
-  limb against a garment — has to be checked by sweeping the animation and
-  measuring, or it will pass everything and still intersect. This is the one
-  class of defect the whole documented loop cannot see.
+- **Watch the clip: `cuboidy-gif`.** `cuboidy-snap` draws the rest pose only,
+  so it is not the tool for the half of the format that moves. `cuboidy-gif`
+  is:
+
+  ```
+  cuboidy-gif <dir> --anim=walk --angle=side
+  ```
+
+  **The camera is fixed across every frame** — fitted to the union of the whole
+  clip — so the model does not rescale as it moves and a foot's height IS
+  comparable between frames. That is exactly what a sequence of snaps cannot
+  give you, since snap re-fits per model. `--orbit` turns the model on the spot
+  instead, which is how to look at something that has no clips at all.
+
+  Two things to know before a batch: it **writes into the model directory** and
+  has no `--out`, so a package ships with a diagnostic in it unless the file is
+  moved; and a GIF is 256 colours, so leave `--ss` at 1 for voxel art rather
+  than antialiasing into a quantised palette.
+- **Nothing MEASURES whether moving parts collide.** Lint sees only the rest
+  pose. A gif will show you a gross intersection — a sail through a tower, a
+  tail through a flank — but a limb that passes one voxel inside a garment for
+  two frames reads as contact, and only sweeping the animation and probing with
+  `cuboidy-query` settles that one.
 - **Key an attribute on every keyframe you want it to move through.** Omitted
   fields inherit from the previous keyframe (§6.5 carryover), so keying `rot`
   on eight times and `pos` on four does not give `pos` a coarser curve — it
@@ -445,6 +452,10 @@ and expensive way to learn what lint would have said per part.
   side silhouette first, or at least check it first. Note also that snap
   auto-frames each model, so two renders of different poses are *not* to the
   same scale — never compare heights across frames by eye.
+- `cuboidy-gif` — the only view of a clip. **A walk shipped unwatched is a walk
+  nobody checked**, and neither lint nor snap can tell you the feet skate or a
+  leg passes through the body. Its camera is fixed across the clip, so it is
+  also the one render whose frames may be compared to each other.
 - `cuboidy-query` — exact cell lookup; verify attachment & symmetry numerically.
   **On a half-offset axis, an integer `--at` probe lands between cells and
   returns `.`** — it looks like empty space, not like a mis-aimed probe. The
@@ -461,6 +472,7 @@ and expensive way to learn what lint would have said per part.
 | **Lint printed anything** | Fix and re-lint. Never carry a finding into the next part; it gets buried. Remember the exit code will not tell you |
 | **Snap looks wrong in silhouette** | Go back to the **manifest**, not the voxels. Silhouette is positions and sizes |
 | **Snap looks wrong in detail** | Voxels. Fix and re-snap |
+| **Lint names a geometry file you never declared** (usually `voxels.json`) | The manifest failed to parse and lint fell back to the default name. Fix the manifest error printed above it — this line goes away with it |
 | **A part is missing from the render** | Its geometry did not resolve. Check the name matches the manifest exactly, and that no other geometry file defines the same name — a duplicate makes the model unresolvable rather than ambiguous (§11) |
 
 **Detail on wrong proportions is wasted work.** If the blockout silhouette does
