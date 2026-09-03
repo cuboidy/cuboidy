@@ -329,7 +329,7 @@ hand-math:
   is:
 
   ```
-  cuboidy-gif <dir> --anim=walk --angle=side
+  cuboidy-gif <dir> --anim=walk --angle=side --out=<scratch>/walk.gif
   ```
 
   **The camera is fixed across every frame** — fitted to the union of the whole
@@ -338,10 +338,12 @@ hand-math:
   give you, since snap re-fits per model. `--orbit` turns the model on the spot
   instead, which is how to look at something that has no clips at all.
 
-  Two things to know before a batch: it **writes into the model directory** and
-  has no `--out`, so a package ships with a diagnostic in it unless the file is
-  moved; and a GIF is 256 colours, so leave `--ss` at 1 for voxel art rather
-  than antialiasing into a quantised palette.
+  Two things to know before a batch: it **defaults to writing inside the model
+  directory** (`<dir>/<model>-<clip>.gif`), so pass `--out` or the package
+  ships with a diagnostic in it; and a GIF is 256 colours, so leave `--ss` at 1
+  for voxel art rather than antialiasing into a quantised palette. `--loops=3`
+  is worth knowing too — a 0.6 s walk played once is over before the eye has
+  read the gait.
 - **Nothing MEASURES whether moving parts collide.** Lint sees only the rest
   pose. A gif will show you a gross intersection — a sail through a tower, a
   tail through a flank — but a limb that passes one voxel inside a garment for
