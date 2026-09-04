@@ -28,6 +28,14 @@ const HELP_TEXT =
   'how many steps apart it is: 1 is a joint, 2 is a part reaching past its\n' +
   'parent into its grandparent, 3 or more has no reason to touch.\n' +
   '\n' +
+  'Each pair is measured in every sampled pose and reports its WORST, with\n' +
+  'the pose named. This used to be the rest pose alone, which misses the\n' +
+  'case people actually see: a limb passing through another limb is a walk\n' +
+  'fault far more often than a standing one, so the rest pose is the one\n' +
+  'pose the fault tends to avoid. Measured on one yeti, hand-in-shin read\n' +
+  '13 cells at rest and 77 partway through the walk, and two more pairs --\n' +
+  'jaw in arm, hand in hand -- did not appear at rest at all.\n' +
+  '\n' +
   'The two are separate commands because their fixes pull opposite ways. A\n' +
   'clash is fixed by moving a surface off its neighbour\'s plane; an overlap\n' +
   'is fixed by deleting cells. Run them as one and it is easy to delete the\n' +

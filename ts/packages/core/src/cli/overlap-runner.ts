@@ -64,8 +64,21 @@ export interface PartOverlap {
    * parent into its grandparent; both are how models are built. 3 or more
    * means two parts that are not structurally near each other are in the same
    * place, which is the finding worth acting on.
+   *
+   * The WORST pose, not the rest pose. This used to be measured at rest
+   * alone, which misses the case people actually see: an arm that clears the
+   * thigh while the model stands still and swings through it as it walks. A
+   * limb passing through another limb is a walk-cycle fault far more often
+   * than it is a standing one, so reading only the rest pose is reading the
+   * one pose the fault tends to avoid.
    */
-  insideOf: readonly { part: string; cells: number; rigDistance: number }[];
+  insideOf: readonly {
+    part: string;
+    cells: number;
+    rigDistance: number;
+    /** `rest`, or `<clip> t=<seconds>` — where the worst count was found. */
+    pose: string;
+  }[];
 }
 
 export interface OverlapOptions {
@@ -228,23 +241,56 @@ export function findOverlap(
   const restCells = new Map<string, [number, number, number][][]>();
   for (const p of rest) restCells.set(p.name, centres(p));
 
+  // Who each part is inside, and how badly, in ONE pose. Called for the rest
+  // pose and again for every sampled pose; the report keeps the worst.
+  const insideIn = (
+    posed: readonly ReturnType<typeof place>[number][],
+  ): Map<string, Map<string, number>> => {
+    const out = new Map<string, Map<string, number>>();
+    for (const p of posed) {
+      const cs = centres(p);
+      const who = new Map<string, number>();
+      for (let i = 0; i < cs.length; i++) {
+        for (const q of posed) {
+          if (q.name === p.name) continue;
+          if (covers(q, cs[i]!)) who.set(q.name, (who.get(q.name) ?? 0) + 1);
+        }
+      }
+      out.set(p.name, who);
+    }
+    return out;
+  };
+
   const buried = new Map<string, boolean[]>();
-  const insideOf = new Map<string, Map<string, number>>();
   for (const p of rest) {
     const cs = restCells.get(p.name)!;
     const flags = new Array<boolean>(cs.length).fill(false);
-    const who = new Map<string, number>();
     for (let i = 0; i < cs.length; i++) {
       for (const q of rest) {
         if (q.name === p.name) continue;
-        if (!covers(q, cs[i]!)) continue;
-        flags[i] = true;
-        who.set(q.name, (who.get(q.name) ?? 0) + 1);
+        if (covers(q, cs[i]!)) {
+          flags[i] = true;
+          break;
+        }
       }
     }
     buried.set(p.name, flags);
-    insideOf.set(p.name, who);
   }
+
+  // Worst-over-poses, each remembering which pose it came from. The rest
+  // pose seeds it so a model with no clips still reports.
+  const insideOf = new Map<string, Map<string, { cells: number; pose: string }>>();
+  const recordInside = (posed: ReturnType<typeof place>, label: string): void => {
+    for (const [name, who] of insideIn(posed)) {
+      let acc = insideOf.get(name);
+      if (acc === undefined) insideOf.set(name, (acc = new Map()));
+      for (const [other, cells] of who) {
+        const prev = acc.get(other);
+        if (prev === undefined || cells > prev.cells) acc.set(other, { cells, pose: label });
+      }
+    }
+  };
+  recordInside(rest, 'rest');
 
   // A cell starts out assumed dead and is cleared the first time any pose
   // uncovers it. Absent clips, everything buried at rest counts as dead:
@@ -253,9 +299,10 @@ export function findOverlap(
   for (const [name, flags] of buried) stillDead.set(name, [...flags]);
 
   if (opts.samples > 0) {
-    for (const [, clip] of asm.animations) {
+    for (const [clipName, clip] of asm.animations) {
       for (const t of sampleTimes(clip, opts.samples)) {
         const posed = place(asm, sampleAnimation(clip, t));
+        recordInside(posed, `${clipName} t=${t.toFixed(3)}`);
         for (const p of posed) {
           const dead = stillDead.get(p.name);
           if (dead === undefined) continue;
@@ -290,9 +337,10 @@ export function findOverlap(
       dead: d,
       covering: b - d,
       insideOf: [...(insideOf.get(p.name) ?? new Map())]
-        .map(([part, cells]) => ({
+        .map(([part, hit]) => ({
           part,
-          cells,
+          cells: hit.cells,
+          pose: hit.pose,
           // Unreachable parts (a rig with more than one root) are as far
           // apart as it is possible to be, so they read as strangers.
           rigDistance: distance.get(p.name)?.get(part) ?? Infinity,
@@ -330,18 +378,38 @@ export function formatOverlap(
   // The finding first, because the rest of the report is background. Overlap
   // between parts the rig does not join is the thing to act on; overlap at a
   // joint is how a joint is made.
-  const strangers: string[] = [];
+  // One line per pair, not two: A inside B and B inside A are one fact. Which
+  // direction reports MORE is not decidable in advance -- the two are
+  // measured cell by cell and can peak in different poses -- so both are
+  // collected and the worse survives, rather than keeping whichever name
+  // sorts first and quietly halving some findings.
+  const worst = new Map<
+    string,
+    { a: string; b: string; cells: number; rigDistance: number; pose: string }
+  >();
   for (const p of parts) {
     for (const i of p.insideOf) {
       if (i.rigDistance < STRANGER_DISTANCE) continue;
-      // One line per pair, not two: A inside B and B inside A are one fact.
-      if (p.part > i.part) continue;
-      strangers.push(
-        `not joined: ${p.part} and ${i.part} share ${i.cells} cells ` +
-          `(${i.rigDistance} steps apart in the rig)`,
-      );
+      const key = p.part < i.part ? `${p.part} ${i.part}` : `${i.part} ${p.part}`;
+      const prev = worst.get(key);
+      if (prev === undefined || i.cells > prev.cells) {
+        worst.set(key, {
+          a: p.part,
+          b: i.part,
+          cells: i.cells,
+          rigDistance: i.rigDistance,
+          pose: i.pose,
+        });
+      }
     }
   }
+  const strangers = [...worst.values()]
+    .sort((x, y) => y.cells - x.cells || (x.a < y.a ? -1 : 1))
+    .map(
+      (w) =>
+        `not joined: ${w.a} and ${w.b} share ${w.cells} cells ` +
+        `(${w.rigDistance} steps apart in the rig, worst at ${w.pose})`,
+    );
   if (strangers.length > 0) {
     out.push(...strangers, '');
   } else {

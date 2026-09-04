@@ -158,6 +158,93 @@ describe('runOverlap', () => {
     expect(text).not.toContain('not joined: tip and limb');
   });
 
+  it('finds two parts a clip drives through each other', async () => {
+    // The case the rest pose hides, and the one people actually see: two
+    // limbs that clear each other while the model stands still and pass
+    // through as it walks. Reading only the rest pose reads the one pose the
+    // fault tends to avoid.
+    const dir = await write({
+      'p.json': PALETTE,
+      'g.json': JSON.stringify({
+        version: '0.9',
+        palette: 'p.json',
+        parts: [
+          { name: 'hub', size: [1, 1, 1], pivot: { pos: [0, 0, 0] }, voxels: [['0']] },
+          { name: 'block', size: [5, 5, 5], pivot: { pos: [0, 0, 0] }, voxels: rows(5, 5, 5, '0') },
+          { name: 'swinger', size: [1, 1, 1], pivot: { pos: [0, 0, 0] }, voxels: [['1']] },
+        ],
+      }),
+      'cuboidy.json': JSON.stringify({
+        name: 'swing-through',
+        version: '0.9',
+        geometry: ['g.json'],
+        // Two chains off one hub, four steps apart. At rest the swinger sits
+        // well clear of the block; the clip walks it into the middle of it.
+        animations: {
+          walk: {
+            duration: 2,
+            loop: true,
+            parts: {
+              swinger: {
+                '0.0': { pos: [0, 0, 0] },
+                '1.0': { pos: [-20, 2, 2] },
+                '2.0': { pos: [0, 0, 0] },
+              },
+            },
+          },
+        },
+        parts: [
+          { name: 'hub', position: [0, 0, 0] },
+          { name: 'block', parent: 'hub', position: [0, 0, 0] },
+          { name: 'arm', parent: 'hub', position: [20, 0, 0] },
+          { name: 'swinger', parent: 'arm', position: [2, 0, 0] },
+        ],
+      }),
+    });
+
+    // Rest pose alone: nothing to see, and saying so is true and useless.
+    const still = await runOverlap(dir, { ...OPTS, samples: 0 });
+    expect(still.text).toContain('no overlap between parts the rig does not join');
+
+    const swept = await runOverlap(dir, OPTS);
+    expect(swept.text).toContain('not joined: block and swinger');
+    expect(swept.text).toContain('worst at walk t=1.000');
+  });
+
+  it('reports a stranger pair on one line, not two', async () => {
+    // Overlap is mutual: A is inside B exactly as B is inside A, and the
+    // census counts both. The finding is one fact and prints once.
+    const dir = await write({
+      'p.json': PALETTE,
+      'g.json': JSON.stringify({
+        version: '0.9',
+        palette: 'p.json',
+        parts: [
+          { name: 'hub', size: [1, 1, 1], pivot: { pos: [0, 0, 0] }, voxels: [['0']] },
+          { name: 'limb', size: [5, 5, 5], pivot: { pos: [0, 0, 0] }, voxels: rows(5, 5, 5, '0') },
+          { name: 'tip', size: [1, 1, 1], pivot: { pos: [0, 0, 0] }, voxels: [['1']] },
+        ],
+      }),
+      'cuboidy.json': JSON.stringify({
+        name: 'one-line',
+        version: '0.9',
+        geometry: ['g.json'],
+        parts: [
+          { name: 'hub', position: [0, 0, 0] },
+          { name: 'limb', parent: 'hub', position: [0, 0, 0] },
+          { name: 'branch', parent: 'hub', position: [40, 0, 0] },
+          { name: 'tip', parent: 'branch', position: [-38, 2, 2] },
+        ],
+      }),
+    });
+    const lines = (await runOverlap(dir, OPTS)).text
+      .split('\n')
+      .filter((l) => l.startsWith('not joined:'));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(/\blimb\b.*\btip\b|\btip\b.*\blimb\b/);
+    expect(lines[0]).toContain('worst at rest');
+  });
+
   it('passes the loader exit code through for an unreadable model', async () => {
     const { exitCode } = await runOverlap(
       resolve(tmpdir(), 'cuboidy-overlap-does-not-exist'),
