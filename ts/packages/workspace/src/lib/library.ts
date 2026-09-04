@@ -62,6 +62,24 @@ export interface Library {
 // that has a manifest as a model. Paths are `/`-separated and relative to
 // the folder the user opened, so `knight/cuboidy.json` means the `knight`
 // model's manifest.
+/**
+ * `to`, written relative to the directory `from`. Both are library-root
+ * paths with `/` separators; `from` may be `''` for the root itself.
+ *
+ * Leading `..` segments are what make a shared palette work: a model at
+ * `tropalm/yeti` reaches `palette.json` at the library root by the same
+ * `../../palette.json` its manifest already writes, and core's
+ * `normalizeRefPath` keeps leading `..` rather than collapsing them, so the
+ * key it looks up is the key produced here.
+ */
+function relativeTo(from: string, to: string): string {
+  const a = from === '' ? [] : from.split('/');
+  const b = to.split('/');
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  return [...Array<string>(a.length - i).fill('..'), ...b.slice(i)].join('/');
+}
+
 export function buildLibrary(
   name: string,
   files: ReadonlyMap<string, string>,
@@ -82,18 +100,49 @@ export function buildLibrary(
       scenes.set(path, text);
       continue;
     }
-    const i = path.indexOf('/');
-    // A loose file at the root is not a model: §3 wants a folder.
-    if (i <= 0) continue;
-    const dir = path.slice(0, i);
-    const rel = path.slice(i + 1);
-    let group = byDir.get(dir);
-    if (group === undefined) byDir.set(dir, (group = new Map()));
-    group.set(rel, text);
+    void text;
+  }
+
+  // A model is any directory holding a manifest, AT ANY DEPTH. Grouping by
+  // the first path segment was the old rule and it made a namespaced library
+  // unopenable: `Models/` produced one group called `tropalm` with no
+  // manifest of its own, so seventeen models were reported as one skipped
+  // folder. A loose manifest at the very root is still not a model -- §3
+  // wants a folder, and the library IS that folder.
+  const modelDirs: string[] = [];
+  for (const path of files.keys()) {
+    if (!path.endsWith(`/${MANIFEST_FILE}`)) continue;
+    modelDirs.push(path.slice(0, -(MANIFEST_FILE.length + 1)));
+  }
+
+  // Every model sees the WHOLE library, keyed relative to itself, so a file
+  // above it resolves: one `palette.json` shared by every model is the
+  // arrangement this exists for, and copying it into each folder to satisfy
+  // a loader is how palettes drift apart.
+  for (const dir of modelDirs) {
+    const group = new Map<string, string>();
+    for (const [path, text] of files) group.set(relativeTo(dir, path), text);
+    byDir.set(dir, group);
   }
 
   const models: LibraryModel[] = [];
   const skipped: string[] = [];
+  // Directories with content but no manifest, reported so a mistyped folder
+  // is visible. Only those that hold files directly: an ancestor of a model
+  // is not a folder someone meant to be one.
+  const withFiles = new Set<string>();
+  for (const path of files.keys()) {
+    // Scenes do not make a folder a candidate model: a library may keep a
+    // whole folder of them, and calling that a skipped model is noise.
+    if (path.endsWith(SCENE_EXT)) continue;
+    const i = path.lastIndexOf('/');
+    if (i > 0) withFiles.add(path.slice(0, i));
+  }
+  for (const d of [...withFiles].sort()) {
+    if (!byDir.has(d) && !modelDirs.some((m) => d.startsWith(`${m}/`))) {
+      skipped.push(d);
+    }
+  }
   for (const [dir, group] of [...byDir].sort(([a], [b]) => a.localeCompare(b))) {
     const model = readModel(dir, group);
     if (model === null) skipped.push(dir);

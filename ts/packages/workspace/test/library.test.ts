@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { sceneFileName } from '../src/lib/save-scene.js';
 import { buildLibrary } from '../src/lib/library.js';
 
-// The workspace's unit is a FOLDER OF MODELS. Grouping a flat path map by
-// first segment and reading each group as a package is the whole of it —
+// The workspace's unit is a FOLDER OF MODELS. Finding every directory that
+// holds a cuboidy.json and reading each as a package is the whole of it —
 // everything past that point is core's resolveProject, so what these test
-// is the grouping and what the library does with a group that misbehaves.
+// is the discovery and what the library does with a folder that misbehaves.
 
 const geometry = (name: string) =>
   JSON.stringify({
@@ -133,6 +133,67 @@ describe('buildLibrary', () => {
     expect(lib.models[0]?.problems).toEqual([]);
     expect(lib.models[0]?.parts.size).toBe(1);
   });
+  it('finds models nested below the library root', () => {
+    // The arrangement a game repository actually has: models under a
+    // namespace folder. Grouping by first path segment made this one group
+    // called "tropalm" with no manifest of its own, so every model in it
+    // was reported as a single skipped folder.
+    const lib = buildLibrary(
+      'Models',
+      new Map([
+        ['tropalm/knight/cuboidy.json', manifest('knight')],
+        ['tropalm/knight/voxels.json', geometry('body')],
+        ['tropalm/sword/cuboidy.json', manifest('sword')],
+        ['tropalm/sword/voxels.json', geometry('body')],
+      ]),
+    );
+    expect(lib.models.map((m) => m.dir)).toEqual([
+      'tropalm/knight',
+      'tropalm/sword',
+    ]);
+    expect(lib.skipped).toEqual([]);
+  });
+
+  it('resolves a palette shared by every model from above them', () => {
+    // The reason a model is given the whole library keyed relative to
+    // itself. One palette at the root, referenced by the `../../` path the
+    // manifests already write; copying it into each model folder to satisfy
+    // a loader is how palettes drift apart.
+    const shared = JSON.stringify({ colors: ['#0000FF'] });
+    const geom = JSON.stringify({
+      version: '0.9',
+      palette: '../../palette.json',
+      parts: [{ name: 'body', size: [1, 1, 1], voxels: [['0']] }],
+    });
+    const lib = buildLibrary(
+      'Models',
+      new Map([
+        ['palette.json', shared],
+        ['tropalm/knight/cuboidy.json', manifest('knight')],
+        ['tropalm/knight/voxels.json', geom],
+      ]),
+    );
+    expect(lib.models).toHaveLength(1);
+    expect(lib.models[0]!.problems).toEqual([]);
+    const part = lib.models[0]!.parts.get('body');
+    // Resolved to the shared palette blue, not to a magenta fallback.
+    expect(part?.palette[0]?.color).toMatchObject({ r: 0, g: 0, b: 255 });
+  });
+
+  it('does not report a subfolder of a model as a skipped one', () => {
+    // `anims/` beside a manifest is part of that model, not a folder
+    // somebody forgot to put a manifest in.
+    const lib = buildLibrary(
+      'models',
+      new Map([
+        ['knight/cuboidy.json', manifest('knight')],
+        ['knight/voxels.json', geometry('body')],
+        ['knight/anims/walk.json', JSON.stringify({ duration: 1, parts: {} })],
+      ]),
+    );
+    expect(lib.skipped).toEqual([]);
+  });
+
 });
 
 // Where a scene FILE may sit inside the library it was built from.
