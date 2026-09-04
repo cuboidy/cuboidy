@@ -28,6 +28,17 @@ const HELP_TEXT =
   'how many steps apart it is: 1 is a joint, 2 is a part reaching past its\n' +
   'parent into its grandparent, 3 or more has no reason to touch.\n' +
   '\n' +
+  'IT COUNTS WHOLE CELLS, so an interpenetration shallower than one voxel\n' +
+  'reports as nothing at all. Measured: two strangers overlapping by 1.00\n' +
+  'voxel report 48 cells, by 0.80 report NOTHING, and it stays nothing all\n' +
+  'the way down to zero. So a clean run means "no part is a whole voxel\n' +
+  'inside another", which is not the same as "no part passes through\n' +
+  'another" -- an agent model read clean here while its forearms sat 0.579\n' +
+  'voxels inside its thighs. A rest ROTATION makes this likelier by thinning\n' +
+  'a deep overlap into a shallow one rather than by any special handling of\n' +
+  'rotated parts. To settle a suspected shallow case, test the two parts\n' +
+  'cell by cell with a separating-axis test; this census cannot answer it.\n' +
+  '\n' +
   'Each pair is measured in every sampled pose and reports its WORST, with\n' +
   'the pose named. This used to be the rest pose alone, which misses the\n' +
   'case people actually see: a limb passing through another limb is a walk\n' +

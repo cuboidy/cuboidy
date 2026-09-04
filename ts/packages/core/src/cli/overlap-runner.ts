@@ -390,7 +390,7 @@ export function formatOverlap(
   for (const p of parts) {
     for (const i of p.insideOf) {
       if (i.rigDistance < STRANGER_DISTANCE) continue;
-      const key = p.part < i.part ? `${p.part} ${i.part}` : `${i.part} ${p.part}`;
+      const key = p.part < i.part ? `${p.part} ${i.part}` : `${i.part} ${p.part}`;
       const prev = worst.get(key);
       if (prev === undefined || i.cells > prev.cells) {
         worst.set(key, {
