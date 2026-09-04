@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
 import {
   composePartRotation,
+  composeScale,
   type Palette,
   type Part,
   type Pose,
@@ -144,6 +145,7 @@ function RigNodeView({
   const pose = poses?.get(part.name) ?? REST_POSE;
   const basePos = node.manifestPart?.position;
   const restRot = node.manifestPart?.rotation;
+  const restScale = node.manifestPart?.scale;
   const piv = part.pivot.pos;
   const pivotRot = part.pivot.rot;
 
@@ -175,24 +177,39 @@ function RigNodeView({
     return [q[0], q[1], q[2], q[3]];
   }, [restRot, pivotRot, pose.rot]);
 
+  // S_total = scale ⊙ anim.scale (SPEC §6.2). Both act per axis about the
+  // same pivot and neither reaches the children, so they commute into one
+  // product and the order they compose in is unobservable.
+  //
+  // The rest half used to be missing here, which made this viewport blind to
+  // a whole field: a model whose only difference from another was its parts'
+  // rest `scale` drew identically, and rest scale is exactly what an author
+  // reaches for to lift a buried surface off the one covering it. Two models
+  // differing by five `scale` keys looked like the same model.
+  const totalScale = useMemo<[number, number, number]>(() => {
+    const s = composeScale(restScale, pose.scale) ?? [1, 1, 1];
+    return [s[0], s[1], s[2]];
+  }, [restScale, pose.scale]);
+
   const meshVisible = pose.visible && !hiddenParts.has(part.name);
 
   return (
     // Outer group carries position + rotation only: child PART groups are
     // siblings of the scale group below, so they attach at this part's pivot
     // (the outer group origin) and ride its position/rotation — but are NOT
-    // scaled by this part's animated scale (SPEC §7.7 scopes S_anim to the
-    // part's own (v_local − pivot.pos), and §6.2 places children at the
-    // pivot in parent space).
+    // scaled by this part's own scale, rest or animated (SPEC §7.7 scopes
+    // S_total to the part's own (v_local − pivot.pos), and §6.2 places
+    // children at the pivot in parent space).
     <group
       position={groupPos}
       quaternion={quaternion}
       ref={(obj: Object3D | null) => registerObject?.(part.name, obj)}
     >
-      {/* Scale group: applies S_anim. The −pivot offset lives INSIDE it so
-          the scale is centered on pivot.pos (scaling (v_local − pivot.pos),
-          not (v_local) − pivot). At rest scale [1,1,1] this is a no-op. */}
-      <group scale={pose.scale}>
+      {/* Scale group: applies S_total, the manifest's rest scale times the
+          animated one. The −pivot offset lives INSIDE it so the scale is
+          centered on pivot.pos (scaling (v_local − pivot.pos), not
+          (v_local) − pivot). At [1,1,1] this is a no-op. */}
+      <group scale={totalScale}>
         <group
           position={[-piv.x, -piv.y, -piv.z]}
           visible={meshVisible}
