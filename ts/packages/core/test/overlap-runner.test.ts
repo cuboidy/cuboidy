@@ -101,7 +101,7 @@ describe('runOverlap', () => {
     const { text } = await runOverlap(await write(model([2, 2, 2])), OPTS);
     // The count, and how far apart the two parts are in the rig — 1 is the
     // joint, which is the distinction the report turns on.
-    expect(text).toContain('cover(1/1)');
+    expect(text).toContain('cover(1 rest, 1 dead /1)');
   });
 
   it('says so when no clip was sampled, because dead then over-counts', async () => {
@@ -243,6 +243,80 @@ describe('runOverlap', () => {
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatch(/\blimb\b.*\btip\b|\btip\b.*\blimb\b/);
     expect(lines[0]).toContain('worst at rest');
+  });
+
+  it('splits dead and covering per pair, not just per part', async () => {
+    // The part-wide totals are sums across every relationship a part has,
+    // and a sum is the wrong number for the question an author asks. A cover
+    // holding two pips -- one a clip walks out and one it never touches --
+    // reports "1 dead" overall, and which of the two may be deleted cannot
+    // be read off that. Getting it wrong deletes the load-bearing one.
+    const dir = await write({
+      'p.json': PALETTE,
+      'g.json': JSON.stringify({
+        version: '0.9',
+        palette: 'p.json',
+        parts: [
+          { name: 'cover', size: [5, 5, 5], pivot: { pos: [0, 0, 0] }, voxels: rows(5, 5, 5, '0') },
+          { name: 'mover', size: [1, 1, 1], pivot: { pos: [0, 0, 0] }, voxels: [['1']] },
+          { name: 'stayer', size: [1, 1, 1], pivot: { pos: [0, 0, 0] }, voxels: [['1']] },
+        ],
+      }),
+      'cuboidy.json': JSON.stringify({
+        name: 'two-pips',
+        version: '0.9',
+        geometry: ['g.json'],
+        animations: {
+          move: {
+            duration: 1,
+            loop: true,
+            parts: { mover: { '0.0': { pos: [0, 0, 0] }, '1.0': { pos: [0, 9, 0] } } },
+          },
+        },
+        parts: [
+          { name: 'cover', position: [0, 0, 0] },
+          { name: 'mover', parent: 'cover', position: [1, 2, 2] },
+          { name: 'stayer', parent: 'cover', position: [3, 2, 2] },
+        ],
+      }),
+    });
+    const { text } = await runOverlap(dir, OPTS);
+    // The cover holds one cell of each. The clip lifts `mover` out, so the
+    // cover cell under it is covering; nothing ever uncovers `stayer`.
+    expect(text).toMatch(/^cover .*mover\(1 rest, 0 dead \/1\)/m);
+    expect(text).toMatch(/^cover .*stayer\(1 rest, 1 dead \/1\)/m);
+    // And the part-wide figure is the sum that cannot answer either.
+    expect(text).toMatch(/^cover\s+\d+\s+2\s+\d+%\s+1\s/m);
+  });
+
+  it('counts a cell held by two parts against both of them', async () => {
+    // Stopping at the first cover under-reports the second, and the second
+    // is exactly the one an author is about to delete something from.
+    const dir = await write({
+      'p.json': PALETTE,
+      'g.json': JSON.stringify({
+        version: '0.9',
+        palette: 'p.json',
+        parts: [
+          { name: 'a', size: [3, 3, 3], pivot: { pos: [0, 0, 0] }, voxels: rows(3, 3, 3, '0') },
+          { name: 'b', size: [3, 3, 3], pivot: { pos: [0, 0, 0] }, voxels: rows(3, 3, 3, '0') },
+          { name: 'pip', size: [1, 1, 1], pivot: { pos: [0, 0, 0] }, voxels: [['1']] },
+        ],
+      }),
+      'cuboidy.json': JSON.stringify({
+        name: 'both',
+        version: '0.9',
+        geometry: ['g.json'],
+        parts: [
+          { name: 'a', position: [0, 0, 0] },
+          { name: 'b', parent: 'a', position: [0, 0, 0] },
+          { name: 'pip', parent: 'b', position: [1, 1, 1] },
+        ],
+      }),
+    });
+    const { text } = await runOverlap(dir, OPTS);
+    expect(text).toMatch(/^pip .*a\(1 rest, 1 dead \/2\)/m);
+    expect(text).toMatch(/^pip .*b\(1 rest, 1 dead \/1\)/m);
   });
 
   it('passes the loader exit code through for an unreadable model', async () => {

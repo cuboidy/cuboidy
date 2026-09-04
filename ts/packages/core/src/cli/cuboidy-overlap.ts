@@ -56,6 +56,16 @@ const HELP_TEXT =
   '\n' +
   '  dead      buried at rest AND at every sampled pose of every clip.\n' +
   '            Nothing will see it and nothing depends on it.\n' +
+  '\n' +
+  'Read that split PER PAIR, from the `inside of` column, and not from the\n' +
+  'part-wide dead/covering figures to its left. Those are sums over every\n' +
+  'relationship a part has, and a sum cannot answer the question anyone\n' +
+  'actually asks. A torso buried in both its arms and its hips reports one\n' +
+  'total across all three, so "may I delete what is inside the arm" is not\n' +
+  'in it -- the waist cells hold a seam shut, the armpit cells may or may\n' +
+  'not surface, and they are unrelated facts. One agent model reads\n' +
+  '"32 buried, 4 dead" on its hips, and all four of those dead cells are\n' +
+  'against `root`, none against the torso or the thighs.\n' +
   '  covering  buried at rest, uncovered by some pose. This is the overlap\n' +
   '            doing its job -- what stops a joint tearing open mid-swing.\n' +
   '            Delete these and you get a hole.\n' +

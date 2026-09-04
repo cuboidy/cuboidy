@@ -78,6 +78,25 @@ export interface PartOverlap {
     rigDistance: number;
     /** `rest`, or `<clip> t=<seconds>` — where the worst count was found. */
     pose: string;
+    /**
+     * Of the cells inside THIS part at rest, how many are dead and how many
+     * are covering.
+     *
+     * Split per pair because the part-wide totals answer a different
+     * question than the one an author asks. A torso buried in both its arms
+     * and its hips reports one `dead` figure across all three, and "is it
+     * safe to delete the cells inside the arm" cannot be read off it: the
+     * waist cells hold a seam shut and the armpit cells may or may not
+     * surface, and they are unrelated facts. Getting that wrong is how a
+     * deletion opens a hole somewhere nobody was looking.
+     *
+     * Rest-anchored, unlike `cells` above, which is the worst over every
+     * sampled pose. The two answer different questions -- `cells` says how
+     * badly the pair ever interpenetrates, this says what may be removed --
+     * and the report labels which is which.
+     */
+    restCells: number;
+    dead: number;
   }[];
 }
 
@@ -262,19 +281,30 @@ export function findOverlap(
   };
 
   const buried = new Map<string, boolean[]>();
+  // Which of a part's cells are buried in WHICH other part, at rest, kept as
+  // cell indices so the dead/covering verdict can be split per pair below.
+  // A part-wide "dead 0" is not an answer to "is it safe to delete the cells
+  // inside the arm", because the part is also buried in its parent at the
+  // waist and those are two unrelated relationships sharing one total.
+  const restInside = new Map<string, Map<string, number[]>>();
   for (const p of rest) {
     const cs = restCells.get(p.name)!;
     const flags = new Array<boolean>(cs.length).fill(false);
+    const who = new Map<string, number[]>();
     for (let i = 0; i < cs.length; i++) {
       for (const q of rest) {
         if (q.name === p.name) continue;
-        if (covers(q, cs[i]!)) {
-          flags[i] = true;
-          break;
-        }
+        if (!covers(q, cs[i]!)) continue;
+        flags[i] = true;
+        // Every part it is inside, not just the first: a cell in a corner can
+        // be held by two, and stopping at one under-reports the other.
+        let list = who.get(q.name);
+        if (list === undefined) who.set(q.name, (list = []));
+        list.push(i);
       }
     }
     buried.set(p.name, flags);
+    restInside.set(p.name, who);
   }
 
   // Worst-over-poses, each remembering which pose it came from. The rest
@@ -337,14 +367,19 @@ export function findOverlap(
       dead: d,
       covering: b - d,
       insideOf: [...(insideOf.get(p.name) ?? new Map())]
-        .map(([part, hit]) => ({
-          part,
-          cells: hit.cells,
-          pose: hit.pose,
-          // Unreachable parts (a rig with more than one root) are as far
-          // apart as it is possible to be, so they read as strangers.
-          rigDistance: distance.get(p.name)?.get(part) ?? Infinity,
-        }))
+        .map(([part, hit]) => {
+          const idx = restInside.get(p.name)?.get(part) ?? [];
+          return {
+            part,
+            cells: hit.cells,
+            pose: hit.pose,
+            restCells: idx.length,
+            dead: idx.filter((i) => dead[i] === true).length,
+            // Unreachable parts (a rig with more than one root) are as far
+            // apart as it is possible to be, so they read as strangers.
+            rigDistance: distance.get(p.name)?.get(part) ?? Infinity,
+          };
+        })
         .sort((x, y) => y.cells - x.cells),
     });
   }
@@ -422,8 +457,14 @@ export function formatOverlap(
   );
   for (const p of parts.slice(0, opts.top)) {
     if (p.buriedAtRest === 0) continue;
+    // Per pair: how many cells sit inside that part at rest, how many of
+    // those are dead, and how far apart the two are in the rig. The
+    // part-wide `buried` and `dead` to the left are sums across every
+    // relationship a part has, and a sum is the wrong number for the
+    // question an author actually asks -- "may I delete what is inside the
+    // arm" is not answered by a total that also counts the waist.
     const who = p.insideOf
-      .map((i) => `${i.part}(${i.cells}/${i.rigDistance})`)
+      .map((i) => `${i.part}(${i.restCells} rest, ${i.dead} dead /${i.rigDistance})`)
       .join(' ');
     out.push(
       p.part.padEnd(16) +
