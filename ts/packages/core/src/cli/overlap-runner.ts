@@ -11,14 +11,26 @@ import {
 import { AIR } from '../geometry/voxel-row.js';
 import type { Part, Vec3Tuple } from '../geometry/types.js';
 
-// cuboidy-overlap: cells that two parts hold at the same time — the other
-// overlap, and a different problem from the one cuboidy-clash reports.
+// cuboidy-overlap: parts that hold the same space when they have no business
+// touching — the other overlap, and a different problem from the one
+// cuboidy-clash reports.
+//
+// READ THIS BEFORE ACTING ON THE NUMBERS. Overlapping volume is not a fault
+// and reducing it is not the goal. A joint is BUILT by burying the child in
+// the parent; that is what stops it tearing open when a clip swings it, and a
+// model with none of it is a model that comes apart. Chasing the total down is
+// how you break a rig.
+//
+// What is worth finding is overlap between parts that are not joined. An arm
+// inside a thigh is not a joint technique, it is two limbs in one place, and
+// no amount of pivot or scale work is the fix — the parts are mispositioned.
+// That is what the rig distance beside each pair is for.
 //
 // The two get confused because they share a cause. cuboidy-clash finds
 // SURFACES in one place, which is a rendering fault: the depth buffer has no
 // way to choose and the seam dithers or flickers. This finds VOLUME in one
 // place, which renders perfectly well — the inner cells simply never emit a
-// face — and is instead a question of what the model is carrying.
+// face.
 //
 // They are kept apart because the fixes pull in opposite directions. A clash
 // is fixed by moving a surface off its neighbour's plane; an overlap is fixed
@@ -33,6 +45,9 @@ import type { Part, Vec3Tuple } from '../geometry/types.js';
 // buried and looked like the worst waste in the rig; they turned out to be 49
 // dead cells against 145 covering ones, the best ratio in the model.
 
+/** Overlap between parts this far apart in the rig is not a joint. */
+export const STRANGER_DISTANCE = 3;
+
 export interface PartOverlap {
   part: string;
   /** Solid cells in the part. */
@@ -43,8 +58,14 @@ export interface PartOverlap {
   dead: number;
   /** Buried at rest but uncovered by some pose — the overlap earning its keep. */
   covering: number;
-  /** Who it is buried in, most cells first. */
-  insideOf: readonly { part: string; cells: number }[];
+  /**
+   * Who it is buried in, most cells first, each with how far apart the two
+   * parts are in the rig. 1 is a joint and 2 is a part reaching past its
+   * parent into its grandparent; both are how models are built. 3 or more
+   * means two parts that are not structurally near each other are in the same
+   * place, which is the finding worth acting on.
+   */
+  insideOf: readonly { part: string; cells: number; rigDistance: number }[];
 }
 
 export interface OverlapOptions {
@@ -160,11 +181,48 @@ function holds(p: Placed, at: readonly [number, number, number]): boolean {
   return (p.part.voxels[y]?.[z]?.[x] ?? AIR) !== AIR;
 }
 
+/**
+ * Steps between two parts along the rig's parent links. A joint is 1; a part
+ * reaching past its parent into its grandparent, or two body sections stacked
+ * as siblings, is 2. Anything further apart has no structural reason to share
+ * space.
+ */
+function rigDistances(asm: Assembly): Map<string, Map<string, number>> {
+  const adj = new Map<string, Set<string>>();
+  const link = (a: string, b: string): void => {
+    let set = adj.get(a);
+    if (set === undefined) adj.set(a, (set = new Set()));
+    set.add(b);
+  };
+  for (const p of asm.manifest.parts) {
+    if (!adj.has(p.name)) adj.set(p.name, new Set());
+    if (p.parent === undefined) continue;
+    link(p.name, p.parent);
+    link(p.parent, p.name);
+  }
+  const out = new Map<string, Map<string, number>>();
+  for (const start of adj.keys()) {
+    const seen = new Map<string, number>([[start, 0]]);
+    const queue = [start];
+    while (queue.length > 0) {
+      const cur = queue.shift()!;
+      for (const nb of adj.get(cur) ?? []) {
+        if (seen.has(nb)) continue;
+        seen.set(nb, seen.get(cur)! + 1);
+        queue.push(nb);
+      }
+    }
+    out.set(start, seen);
+  }
+  return out;
+}
+
 export function findOverlap(
   asm: Assembly,
   opts: OverlapOptions,
 ): PartOverlap[] {
   const rest = place(asm, undefined);
+  const distance = rigDistances(asm);
   // Cell order is stable across poses (the grid walk is the same), so a cell
   // can be tracked by its index without carrying coordinates around.
   const restCells = new Map<string, [number, number, number][][]>();
@@ -233,12 +291,25 @@ export function findOverlap(
       dead: d,
       covering: b - d,
       insideOf: [...(insideOf.get(p.name) ?? new Map())]
-        .map(([part, cells]) => ({ part, cells }))
+        .map(([part, cells]) => ({
+          part,
+          cells,
+          // Unreachable parts (a rig with more than one root) are as far
+          // apart as it is possible to be, so they read as strangers.
+          rigDistance: distance.get(p.name)?.get(part) ?? Infinity,
+        }))
         .sort((x, y) => y.cells - x.cells),
     });
   }
-  // Most dead weight first: that is the part an author would open.
-  out.sort((a, b) => b.dead - a.dead || b.buriedAtRest - a.buriedAtRest);
+  // Sorted by how much of the part sits inside something it is not joined to,
+  // because that is the finding. Deliberately NOT by dead weight: ranking a
+  // census by what could be deleted invites deleting it, and most of what is
+  // buried is a joint doing its job.
+  const strange = (p: PartOverlap): number =>
+    p.insideOf
+      .filter((i) => i.rigDistance >= STRANGER_DISTANCE)
+      .reduce((n, i) => n + i.cells, 0);
+  out.sort((a, b) => strange(b) - strange(a) || b.buriedAtRest - a.buriedAtRest);
   return out;
 }
 
@@ -256,13 +327,37 @@ export function formatOverlap(
   const buried = parts.reduce((n, p) => n + p.buriedAtRest, 0);
   const dead = parts.reduce((n, p) => n + p.dead, 0);
   const out: string[] = [`model: ${name}`, ''];
+
+  // The finding first, because the rest of the report is background. Overlap
+  // between parts the rig does not join is the thing to act on; overlap at a
+  // joint is how a joint is made.
+  const strangers: string[] = [];
+  for (const p of parts) {
+    for (const i of p.insideOf) {
+      if (i.rigDistance < STRANGER_DISTANCE) continue;
+      // One line per pair, not two: A inside B and B inside A are one fact.
+      if (p.part > i.part) continue;
+      strangers.push(
+        `not joined: ${p.part} and ${i.part} share ${i.cells} cells ` +
+          `(${i.rigDistance} steps apart in the rig)`,
+      );
+    }
+  }
+  if (strangers.length > 0) {
+    out.push(...strangers, '');
+  } else {
+    out.push('no overlap between parts the rig does not join', '');
+  }
+
   out.push(
     `${'part'.padEnd(16)}${'cells'.padStart(7)}${'buried'.padStart(8)}` +
-      `${'dead'.padStart(8)}${'covering'.padStart(10)}   inside of`,
+      `${'dead'.padStart(8)}${'covering'.padStart(10)}   inside of (rig steps)`,
   );
   for (const p of parts.slice(0, opts.top)) {
     if (p.buriedAtRest === 0) continue;
-    const who = p.insideOf.map((i) => `${i.part}(${i.cells})`).join(' ');
+    const who = p.insideOf
+      .map((i) => `${i.part}(${i.cells}/${i.rigDistance})`)
+      .join(' ');
     out.push(
       p.part.padEnd(16) +
         String(p.cells).padStart(7) +

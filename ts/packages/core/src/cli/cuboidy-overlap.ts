@@ -13,10 +13,20 @@ import { parsePositiveInt } from './args.js';
 const HELP_TEXT =
   'Usage: cuboidy-overlap <dir> [options]\n' +
   '\n' +
-  'Census of cells two parts hold at the same time. This is the OTHER\n' +
-  'overlap: cuboidy-clash finds surfaces in one place, which is a rendering\n' +
-  'fault, and this finds volume in one place, which renders perfectly well\n' +
-  'and is instead a question of what the model is carrying.\n' +
+  'Finds parts holding the same space when the rig does not join them. This\n' +
+  'is the OTHER overlap: cuboidy-clash finds surfaces in one place, which is\n' +
+  'a rendering fault, and this finds volume in one place.\n' +
+  '\n' +
+  'OVERLAPPING VOLUME IS NOT A FAULT AND REDUCING IT IS NOT THE GOAL. A\n' +
+  'joint is BUILT by burying the child in the parent -- that is what stops\n' +
+  'it tearing open when a clip swings it, and a model with none of it comes\n' +
+  'apart. Chasing the total down is how you break a rig.\n' +
+  '\n' +
+  'What is worth finding is the pair the rig does not join, reported first:\n' +
+  'an arm inside a thigh is two limbs in one place, and no pivot or scale\n' +
+  'work fixes it, because the parts are mispositioned. Every pair carries\n' +
+  'how many steps apart it is: 1 is a joint, 2 is a part reaching past its\n' +
+  'parent into its grandparent, 3 or more has no reason to touch.\n' +
   '\n' +
   'The two are separate commands because their fixes pull opposite ways. A\n' +
   'clash is fixed by moving a surface off its neighbour\'s plane; an overlap\n' +

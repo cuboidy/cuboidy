@@ -99,7 +99,9 @@ describe('runOverlap', () => {
 
   it('names who each part is buried in', async () => {
     const { text } = await runOverlap(await write(model([2, 2, 2])), OPTS);
-    expect(text).toContain('cover(1)');
+    // The count, and how far apart the two parts are in the rig — 1 is the
+    // joint, which is the distinction the report turns on.
+    expect(text).toContain('cover(1/1)');
   });
 
   it('says so when no clip was sampled, because dead then over-counts', async () => {
@@ -114,6 +116,46 @@ describe('runOverlap', () => {
     const { text } = await runOverlap(await write(model([9, 0, 0])), OPTS);
     expect(text).toContain('buried at rest: 0');
     expect(text).toContain('dead: 0');
+  });
+
+  it('separates a joint from two parts the rig does not join', async () => {
+    // Two chains off one root. `tip` sits inside its own parent, which is a
+    // joint and how a joint is made, and it also sits inside the far chain's
+    // block, four steps away, which has no structural reason to touch it.
+    // Only the second is a finding; reporting the first would make the report
+    // an argument for taking joints apart.
+    const dir = await write({
+      'p.json': PALETTE,
+      'g.json': JSON.stringify({
+        version: '0.9',
+        palette: 'p.json',
+        parts: [
+          { name: 'hub', size: [1, 1, 1], pivot: { pos: [0, 0, 0] }, voxels: [['0']] },
+          { name: 'limb', size: [5, 5, 5], pivot: { pos: [0, 0, 0] }, voxels: rows(5, 5, 5, '0') },
+          { name: 'tip', size: [1, 1, 1], pivot: { pos: [0, 0, 0] }, voxels: [['1']] },
+          { name: 'other', size: [5, 5, 5], pivot: { pos: [0, 0, 0] }, voxels: rows(5, 5, 5, '0') },
+        ],
+      }),
+      'cuboidy.json': JSON.stringify({
+        name: 'chains',
+        version: '0.9',
+        geometry: ['g.json'],
+        parts: [
+          { name: 'hub', position: [0, 0, 0] },
+          { name: 'limb', parent: 'hub', position: [0, 0, 0] },
+          { name: 'tip', parent: 'limb', position: [2, 2, 2] },
+          { name: 'branch', parent: 'hub', position: [40, 0, 0] },
+          { name: 'other', parent: 'branch', position: [-40, 0, 0] },
+        ],
+      }),
+    });
+    const { text } = await runOverlap(dir, OPTS);
+    // tip -> limb -> hub -> branch -> other is four steps.
+    expect(text).toContain('not joined: other and tip');
+    expect(text).toContain('4 steps apart');
+    // The joint is not reported as a finding, only in the table.
+    expect(text).not.toContain('not joined: limb and tip');
+    expect(text).not.toContain('not joined: tip and limb');
   });
 
   it('passes the loader exit code through for an unreadable model', async () => {
