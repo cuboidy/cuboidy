@@ -8,6 +8,7 @@ import {
   quatRotateVec3,
 } from '../rig-transform.js';
 import type { Vec3Tuple } from '../geometry/types.js';
+import { AIR } from '../geometry/voxel-row.js';
 
 // cuboidy-clash: two surfaces in the same place, facing the same way, in
 // different colours. The renderer has no way to choose between them, so it
@@ -38,22 +39,38 @@ export interface ClashSide {
 }
 
 export interface Clash {
-  /** Centre-to-centre separation, in voxels. Zero is exact coincidence. */
+  /** How far apart the two planes are, along the normal. Zero is coplanar. */
   distance: number;
   a: ClashSide;
   b: ClashSide;
   /** Where the pair sits in the assembled model. */
   world: readonly [number, number, number];
+  /**
+   * True when solid geometry stands between this pair and the outside, so
+   * nothing can ever see it fight. Roughly a fifth to two thirds of the pairs
+   * in a rigged model are like this -- a shoulder inside an arm, a hip inside
+   * a thigh -- and counting them beside the visible ones makes two models
+   * incomparable, since the ratio is a property of how deeply THAT rig nests.
+   */
+  hidden: boolean;
 }
 
 export interface ClashOptions {
   /**
-   * Report a pair whose face centres are within this many voxels. Coincident
-   * surfaces on the integer lattice land at exactly 0; a part carrying a rest
-   * ROTATION lands near but not on its neighbour, which is why a distance and
-   * not an equality test. Measured across a sixteen-model cast, an exact test
-   * missed 161 of 566 real pairs and reported one model with two dozen of them
-   * as perfectly clean.
+   * Report a pair whose PLANES are within this many voxels of each other,
+   * measured along the shared normal. Coincident surfaces on the integer
+   * lattice land at exactly 0; a part carrying a rest ROTATION lands near but
+   * not on its neighbour, which is why a distance and not an equality test.
+   *
+   * Along the normal, and only along it. Centre-to-centre distance was the
+   * first thing tried and it is wrong: it mixes the separation of the two
+   * planes, which is what a depth buffer fights over, with how far the faces
+   * slide past each other IN the plane, which only decides whether they
+   * overlap at all. Two faces sitting on exactly the same plane but offset
+   * half a cell sideways still cover half of each other and still fight, and
+   * a centre-distance test scored them as far apart. On this cast it missed
+   * about two pairs in three -- and called a model with fourteen of them
+   * perfectly clean.
    */
   maxDistance: number;
   /** Longest listing before it is truncated; the summary still counts all. */
@@ -61,6 +78,13 @@ export interface ClashOptions {
 }
 
 export const DEFAULT_MAX_DISTANCE = 0.3;
+
+/**
+ * How far two faces may slide past each other in their shared plane and still
+ * cover any of each other. One cell exactly; a hair under it, because a pair
+ * that meets only along an edge is not a fight.
+ */
+const LATERAL_LIMIT = 0.95;
 export const DEFAULT_TOP = 40;
 
 interface Face {
@@ -152,6 +176,78 @@ export function facesOf(asm: Assembly): Face[] {
 }
 
 /**
+ * Is this world point inside anybody's voxel? The inverse of
+ * `localPointToWorld`, run against every part: rotate the offset back by the
+ * conjugate, undo the scale, add the pivot, and index the grid.
+ */
+function occupancyOf(
+  asm: Assembly,
+): (p: readonly [number, number, number]) => boolean {
+  const world = computeRestWorldTransforms(
+    asm.manifest.parts,
+    pivotRotsOf(asm.resolvedParts.map((rp) => [rp.name, rp.part] as const)),
+  );
+  const entries = asm.resolvedParts
+    .map((rp) => ({
+      part: rp.part,
+      wt: world.get(rp.name),
+      scale: composeScale(rp.scale, undefined),
+    }))
+    .filter((e): e is { part: typeof e.part; wt: NonNullable<typeof e.wt>; scale: typeof e.scale } =>
+      e.wt !== undefined,
+    );
+  return (p) => {
+    for (const e of entries) {
+      const q = e.wt.quat;
+      const l = quatRotateVec3([-q[0], -q[1], -q[2], q[3]], [
+        p[0] - e.wt.pos[0],
+        p[1] - e.wt.pos[1],
+        p[2] - e.wt.pos[2],
+      ]);
+      const [sx, sy, sz] = e.scale ?? [1, 1, 1];
+      const piv = e.part.pivot.pos;
+      const x = Math.floor(piv.x + l[0] / sx);
+      const y = Math.floor(piv.y + l[1] / sy);
+      const z = Math.floor(piv.z + l[2] / sz);
+      if (x < 0 || y < 0 || z < 0) continue;
+      if (x >= e.part.size.w || y >= e.part.size.h || z >= e.part.size.d) continue;
+      if ((e.part.voxels[y]?.[z]?.[x] ?? AIR) !== AIR) return true;
+    }
+    return false;
+  };
+}
+
+/**
+ * Does anything stand between this pair and the outside? Marched along the
+ * shared normal, which is a CONSERVATIVE test: a solid cell directly in front
+ * hides the pair from every direction, while an empty line of sight proves
+ * only that one direction is open. So it can call a pair visible that a
+ * glancing view would not reach, and never the other way round.
+ */
+function occluded(
+  solidAt: (p: readonly [number, number, number]) => boolean,
+  from: readonly [number, number, number],
+  normal: readonly [number, number, number],
+  reach: number,
+): boolean {
+  // A quarter of a cell: a one-voxel wall is four samples thick, so nothing
+  // solid can be stepped over.
+  const STEP = 0.25;
+  for (let t = STEP; t <= reach; t += STEP) {
+    if (
+      solidAt([
+        from[0] + normal[0] * t,
+        from[1] + normal[1] * t,
+        from[2] + normal[2] * t,
+      ])
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Pairs of faces that occupy the same place, point the same way, and disagree
  * about their colour.
  *
@@ -165,6 +261,7 @@ export function facesOf(asm: Assembly): Face[] {
  */
 export function findClashes(asm: Assembly, opts: ClashOptions): Clash[] {
   const faces = facesOf(asm);
+  const solidAt = occupancyOf(asm);
   // One bucket per world cell, scanned against its 26 neighbours: the pairs
   // that matter are within a fraction of a voxel, so the whole-model O(n^2)
   // is not worth paying on a five-thousand-face model.
@@ -177,6 +274,19 @@ export function findClashes(asm: Assembly, opts: ClashOptions): Clash[] {
     if (b === undefined) buckets.set(k, [f]);
     else b.push(f);
   }
+  // How far a probe has to travel to be sure it left the model: the widest
+  // span of the thing, plus a margin. Anything shorter reports a deep pair as
+  // visible because the ray ran out inside the body.
+  let lo = [Infinity, Infinity, Infinity];
+  let hi = [-Infinity, -Infinity, -Infinity];
+  for (const f of faces) {
+    for (let i = 0; i < 3; i++) {
+      lo[i] = Math.min(lo[i]!, f.world[i]!);
+      hi[i] = Math.max(hi[i]!, f.world[i]!);
+    }
+  }
+  const reach = Math.max(hi[0]! - lo[0]!, hi[1]! - lo[1]!, hi[2]! - lo[2]!) + 4;
+
   const out: Clash[] = [];
   const seen = new Set<string>();
   for (const f of faces) {
@@ -196,12 +306,22 @@ export function findClashes(asm: Assembly, opts: ClashOptions): Clash[] {
               f.normal[1] * g.normal[1] +
               f.normal[2] * g.normal[2];
             if (dot < 0.98) continue;
-            const d = Math.hypot(
-              f.world[0] - g.world[0],
-              f.world[1] - g.world[1],
-              f.world[2] - g.world[2],
-            );
+            // Split the offset into the part that separates the planes and
+            // the part that slides along them.
+            const dx = g.world[0] - f.world[0];
+            const dy = g.world[1] - f.world[1];
+            const dz = g.world[2] - f.world[2];
+            const d = Math.abs(dx * f.normal[0] + dy * f.normal[1] + dz * f.normal[2]);
             if (d > opts.maxDistance) continue;
+            // Every face is one cell square (the mesher merges nothing), so
+            // two of them on one plane overlap exactly while their centres are
+            // less than a cell apart. Measured as a radius rather than per
+            // axis, which trims the corners and so under-reports slightly --
+            // the safe direction for a check whose findings cost an edit.
+            const lat = Math.sqrt(
+              Math.max(0, dx * dx + dy * dy + dz * dz - d * d),
+            );
+            if (lat >= LATERAL_LIMIT) continue;
             const [a, b] =
               f.part < g.part || (f.part === g.part && f.rgb < g.rgb)
                 ? [f, g]
@@ -214,6 +334,7 @@ export function findClashes(asm: Assembly, opts: ClashOptions): Clash[] {
               a: { part: a.part, cell: a.cell, face: a.face, rgb: a.rgb },
               b: { part: b.part, cell: b.cell, face: b.face, rgb: b.rgb },
               world: a.world,
+              hidden: occluded(solidAt, a.world, a.normal, reach),
             });
           }
         }
@@ -223,7 +344,14 @@ export function findClashes(asm: Assembly, opts: ClashOptions): Clash[] {
   // Tightest first: an exactly coincident pair is certain, and the further
   // apart two surfaces are the more the verdict depends on the viewing
   // distance and the depth buffer.
-  out.sort((p, q) => p.distance - q.distance || (p.a.part < q.a.part ? -1 : 1));
+  // Visible first, then tightest. A hidden pair is real and worth counting but
+  // is never the one to fix first.
+  out.sort(
+    (p, q) =>
+      Number(p.hidden) - Number(q.hidden) ||
+      p.distance - q.distance ||
+      (p.a.part < q.a.part ? -1 : 1),
+  );
   return out;
 }
 
@@ -242,21 +370,28 @@ export function formatClashes(
   opts: ClashOptions,
 ): string {
   const out: string[] = [`model: ${name}`, `faces: ${faceCount}`, ''];
-  const exact = clashes.filter((c) => c.distance < 0.005).length;
-  const tight = clashes.filter((c) => c.distance >= 0.005 && c.distance < 0.15).length;
-  const loose = clashes.length - exact - tight;
+  const seen = clashes.filter((c) => !c.hidden);
+  const hidden = clashes.length - seen.length;
+  const exact = seen.filter((c) => c.distance < 0.005).length;
+  const tight = seen.filter((c) => c.distance >= 0.005 && c.distance < 0.15).length;
+  const loose = seen.length - exact - tight;
   for (const c of clashes.slice(0, opts.top)) {
     out.push(
-      `clash d=${n3(c.distance)}  ${side(c.a)}  vs  ${side(c.b)}` +
+      `clash d=${n3(c.distance)}${c.hidden ? ' [hidden]' : '         '}  ` +
+        `${side(c.a)}  vs  ${side(c.b)}` +
         `  world(${c.world.map(n3).join(',')})`,
     );
   }
-  if (clashes.length > opts.top) {
+  // Only when a listing was actually asked for: `--top=0` means "the count is
+  // the answer", and a "162 more" line under it is the listing coming back.
+  if (opts.top > 0 && clashes.length > opts.top) {
     out.push(`... ${clashes.length - opts.top} more (raise --top to list them)`);
   }
-  if (clashes.length > 0) out.push('');
+  if (opts.top > 0 && clashes.length > 0) out.push('');
   out.push(
-    `clashes: ${clashes.length}  (exact ${exact}, within 0.15 ${tight}, within ${n3(opts.maxDistance)} ${loose})`,
+    `clashes: ${seen.length} visible  ` +
+      `(exact ${exact}, within 0.15 ${tight}, within ${n3(opts.maxDistance)} ${loose})` +
+      `  + ${hidden} hidden inside the model`,
   );
   return out.join('\n');
 }
@@ -276,6 +411,9 @@ export async function runClash(
     text: formatClashes(asm.manifest.name, faceCount, clashes, opts),
     // Clean is silence-adjacent, not silence: the summary line always prints
     // so a reader can tell "checked, none" from "never ran".
-    exitCode: clashes.length > 0 ? 1 : 0,
+    // Gated on what can be SEEN. A model whose only clashes are buried has
+    // nothing an author could act on, and failing it would train people to
+    // ignore the check.
+    exitCode: clashes.some((c) => !c.hidden) ? 1 : 0,
   };
 }
