@@ -7,6 +7,7 @@ import {
   type Assembly,
 } from './assemble.js';
 import { formatPaletteLine } from './palette-legend.js';
+import { serializeColor } from '../geometry/palette.js';
 import { sampleAnimation, type Pose } from '../animation.js';
 import type { Vec3, Vec3Tuple } from '../geometry/types.js';
 import {
@@ -98,12 +99,29 @@ export interface MeshQuery {
   faces: boolean;
 }
 
+/**
+ * Which palette slot every cell of every part uses, and how much of it the
+ * surface shows.
+ *
+ * This is the diff check for an edit. The geometry commands are colour-blind
+ * -- lint is structural, cuboidy-clash only cares whether two colours DIFFER,
+ * and cuboidy-overlap counts cells -- so a part refilled with the wrong index
+ * passes all three and shows up as a band across the model. Census before an
+ * edit, census after, and every line that moved should be one you meant to
+ * move; an index appearing in a part that had none of it is the signature of
+ * a mis-typed fill.
+ */
+export interface ColorsQuery {
+  kind: 'colors';
+}
+
 export type Query =
   | AtQuery
   | CoreQuery
   | TransformsQuery
   | SocketsQuery
-  | MeshQuery;
+  | MeshQuery
+  | ColorsQuery;
 
 export interface QueryOptions {
   queries: readonly Query[];
@@ -126,7 +144,7 @@ export async function runQuery(
   if (opts.queries.length === 0) {
     return fail(
       'no query specified (use --at=x,y,z, --core=axis,p1=v1,p2=v2, ' +
-        '--transforms, --sockets or --mesh)',
+        '--transforms, --sockets, --mesh or --colors)',
       2,
     );
   }
@@ -199,7 +217,78 @@ function executeQuery(
   if (q.kind === 'core') return executeCore(asm, q);
   if (q.kind === 'transforms') return formatTransforms(asm, poses, world);
   if (q.kind === 'mesh') return formatMesh(asm, q, poses, world);
+  if (q.kind === 'colors') return formatColors(asm);
   return formatSockets(asm, poses);
+}
+
+// Cells and drawn faces, per part and per palette slot. Both, because they
+// answer different halves of "did my edit paint what I meant": the cell count
+// says what changed, and the face count says whether anyone can see it.
+const NEIGHBOURS: ReadonlyArray<readonly [number, number, number]> = [
+  [1, 0, 0], [-1, 0, 0],
+  [0, 1, 0], [0, -1, 0],
+  [0, 0, 1], [0, 0, -1],
+];
+
+function formatColors(asm: Assembly): string {
+  const out: string[] = ['colors:'];
+  const rows: Array<[string, string, string, number, number]> = [];
+  for (const rp of asm.resolvedParts) {
+    // `voxels` is already decoded to palette indices, with AIR for empty.
+    const cells = new Map<number, number>();
+    for (const layer of rp.part.voxels) {
+      for (const row of layer) {
+        for (const idx of row) {
+          if (idx === AIR) continue;
+          cells.set(idx, (cells.get(idx) ?? 0) + 1);
+        }
+      }
+    }
+    // Counted off the grid rather than read back out of `buildMesh`. The
+    // mesh carries resolved RGB and no index, so attributing a face to a
+    // palette slot through it means matching on colour — which merges two
+    // slots that happen to hold the same colour, and misses a translucent
+    // one outright, since alpha is not in the vertex colours. The cull rule
+    // is one line anyway: a face is drawn where the neighbour is not solid.
+    // Per part, exactly as `buildMesh(part, ...)` sees it — a cell hidden by
+    // a DIFFERENT part still counts, because it is still this part's surface.
+    const { w: sw, h: sh, d: sd } = rp.part.size;
+    const solid = (x: number, y: number, z: number): boolean =>
+      x >= 0 && y >= 0 && z >= 0 && x < sw && y < sh && z < sd &&
+      (rp.part.voxels[y]?.[z]?.[x] ?? AIR) !== AIR;
+    const faces = new Map<number, number>();
+    for (let y = 0; y < sh; y++) {
+      for (let z = 0; z < sd; z++) {
+        for (let x = 0; x < sw; x++) {
+          const idx = rp.part.voxels[y]?.[z]?.[x] ?? AIR;
+          if (idx === AIR) continue;
+          let open = 0;
+          for (const [dx, dy, dz] of NEIGHBOURS) {
+            if (!solid(x + dx, y + dy, z + dz)) open++;
+          }
+          faces.set(idx, (faces.get(idx) ?? 0) + open);
+        }
+      }
+    }
+    for (const idx of [...cells.keys()].sort((a, b) => a - b)) {
+      const entry = rp.palette[idx];
+      const hex = entry === undefined ? '(unbound)' : serializeColor(entry.color);
+      rows.push([rp.name, indexToChar(idx), hex, cells.get(idx)!, faces.get(idx) ?? 0]);
+    }
+  }
+  const w = Math.max(4, ...rows.map((r) => r[0].length));
+  out.push(`  ${'part'.padEnd(w)}  idx  ${'hex'.padEnd(9)}   cells   faces`);
+  for (const [part, ch, hex, cells, faces] of rows) {
+    out.push(
+      `  ${part.padEnd(w)}  ${ch.padEnd(3)}  ${hex.padEnd(9)}  ` +
+        `${String(cells).padStart(6)}  ${String(faces).padStart(6)}`,
+    );
+  }
+  out.push(
+    `  total: ${rows.reduce((n, r) => n + r[3], 0)} cells in ` +
+      `${asm.resolvedParts.length} parts`,
+  );
+  return out.join('\n');
 }
 
 // Every printed number goes through here: rounded to the 1e-6 grid the

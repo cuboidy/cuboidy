@@ -21,7 +21,7 @@ interface Args {
 const HELP_TEXT =
   'Usage: cuboidy-query <dir> [--anim=<clip> --time=<s>]\n' +
   '                          (--at=... | --core=... | --transforms | --sockets\n' +
-  '                           | --mesh | --mesh-faces)+\n' +
+  '                           | --mesh | --mesh-faces | --colors)+\n' +
   '\n' +
   'Assemble a cuboidy model from <dir>/cuboidy.json (plus any geometry it\n' +
   'references), then answer queries about it. Output is one line per\n' +
@@ -38,6 +38,18 @@ const HELP_TEXT =
   '                                        this prints the §7.7 rig math\n' +
   '                                        itself. Six decimals, -0 folded.\n' +
   '  --sockets                             every published frame (§6.12)\n' +
+  '  --colors                              per part and palette slot: how many\n' +
+  '                                        cells use it, and how many drawn\n' +
+  '                                        faces show it. The check the other\n' +
+  '                                        commands cannot make — they are\n' +
+  '                                        colour-blind, so a part refilled\n' +
+  '                                        with the wrong index passes lint,\n' +
+  '                                        clash and overlap alike. Census\n' +
+  '                                        before an edit and after; every line\n' +
+  '                                        that moved should be one you meant\n' +
+  '                                        to move, and an index appearing in a\n' +
+  '                                        part that had none of it is a\n' +
+  '                                        mis-typed fill\n' +
   '                                        → socket <name> pos=x,y,z quat=x,y,z,w\n' +
   '  --mesh                                the §7.4 surface: a face count and\n' +
   '                                        digest, plus one line per part\n' +
@@ -86,6 +98,8 @@ function parseArgs(argv: readonly string[]): Args | { help: true } | { error: st
       queries.push({ kind: 'mesh', faces: false });
     } else if (a === '--mesh-faces') {
       queries.push({ kind: 'mesh', faces: true });
+    } else if (a === '--colors') {
+      queries.push({ kind: 'colors' });
     } else if (a === '--sockets') {
       queries.push({ kind: 'sockets' });
     } else if (a.startsWith('--anim=')) {
@@ -119,7 +133,7 @@ function parseArgs(argv: readonly string[]): Args | { help: true } | { error: st
     return {
       error:
         'expected at least one --at / --core / --transforms / --sockets / ' +
-        '--mesh / --mesh-faces query',
+        '--mesh / --mesh-faces / --colors query',
     };
   }
   if (time !== undefined && anim === undefined) {
