@@ -295,17 +295,40 @@ A joint has to hold shut through every pose without its two parts fighting for
 the same pixels. Those pull against each other, and which way you resolve it is
 a choice made when the parts are built, not a cleanup pass afterwards.
 
-### The default treatment: scale the child 0.99 across the bone
+### The default treatment: break the tie with `scale`
 
 **Where a joint's two parts are different colours and their surfaces would be
-coplanar, scale the child by `0.99` on the two axes ACROSS the bone and leave
-`1.0` along it.** Do this as a matter of course rather than as a repair.
-Getting a joint to clear by shape alone is genuinely hard — it depends on the
-parent's taper, the child's taper and the swing, and it has to come out right
-on every model — while a scale offset is one line in the manifest and cannot
-be got subtly wrong.
+coplanar, give ONE of them a `scale` of about `0.99` on the two axes ACROSS
+the bone, leaving `1.0` along it.** Do this as a matter of course rather than
+as a repair. Getting a joint to clear by shape alone is genuinely hard — it
+depends on the parent's taper, the child's taper and the swing, and it has to
+come out right on every model — while a scale offset is one line in the
+manifest.
 
-Two conditions, and both matter:
+What removes the fight is that the two parts stop being the same size. That
+is worth stating as the rule, because "scale the child by 0.99" is only one
+way to get there and following it literally produces two failures that look
+like the offset not working. Measured on a same-section pair, 120 visible
+clashes at rest:
+
+```
+no scale                       120
+child  0.99                      0
+parent 0.99                      0
+BOTH   0.99                    120   <- back where it started
+```
+
+- **Either side does.** Prefer shrinking whichever part is BURIED, so its
+  faces retreat inside the covering one; where the buried part is the parent
+  — a neck swallowed by a head — that means scaling the parent, and "scale
+  the child" points the wrong way.
+- **Rest `scale` is NOT inherited** (verified against `--transforms`: a child
+  of a `0.99` parent reports `1.0`). So a flat `0.99` on every part of a
+  constant cross-section chain makes each neighbouring PAIR equal again, and
+  the seams come back — the last row above, in chain form. Grade it instead:
+  `0.99 / 0.98 / 0.97` down the chain is what inheritance would have produced.
+
+Two more conditions, and both matter:
 
 - **The pivot must sit at the cross-section centre.** Scale moves each face
   away from the pivot, so a pivot on one face leaves that face exactly where
