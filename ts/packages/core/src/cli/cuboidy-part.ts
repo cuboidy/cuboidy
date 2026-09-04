@@ -8,8 +8,9 @@ import type { Axis } from '../geometry/transform.js';
 
 const HELP_TEXT =
   'Usage:\n' +
-  '  cuboidy-part duplicate <from.json> <fromPart> <to.json> <toPart>\n' +
-  '  cuboidy-part mirror    <file.json> <part> [axis]\n' +
+  '  cuboidy-part duplicate  <from.json> <fromPart> <to.json> <toPart>\n' +
+  '  cuboidy-part mirror     <file.json> <part> [axis]\n' +
+  '  cuboidy-part move-pivot <dir> <part> <x>,<y>,<z> [--dry-run]\n' +
   '\n' +
   'Author concrete geometry (plain voxel data — no clone/mirror reference).\n' +
   '\n' +
@@ -23,7 +24,36 @@ const HELP_TEXT =
   '            <file.json>. axis is x|y|z; default x. To make a mirrored\n' +
   '            copy for the other side, duplicate first, then mirror the copy.\n' +
   '\n' +
+  'move-pivot — put the pivot at <x>,<y>,<z> in part-local coordinates and\n' +
+  '            leave every voxel exactly where it was. WHERE the pivot should\n' +
+  '            go is your decision, not this command\'s: a limb usually wants\n' +
+  '            it at the cross-section centre so a scale offset moves all four\n' +
+  '            side faces, a hinge wants it on the axis line, a rotor arm at\n' +
+  '            the root of the sweep.\n' +
+  '\n' +
+  '            Takes the model DIRECTORY, because the correction spans two\n' +
+  '            files -- the pivot is in the geometry and the position that\n' +
+  '            cancels the move is in the manifest -- and every direct child\n' +
+  '            needs its own position corrected too, since a child is placed\n' +
+  '            from its PARENT\'S PIVOT. Doing one of those and not the others\n' +
+  '            is what this exists to prevent, so the input cannot express it.\n' +
+  '\n' +
+  '            That mistake is close to invisible otherwise. Measured on a\n' +
+  '            zombie forearm: an uncompensated one-voxel pivot move left\n' +
+  '            lint, cuboidy-overlap, the bbox and even --transforms\n' +
+  '            byte-identical (the transform reports the PIVOT\'s world\n' +
+  '            position, which is what did not move), while cuboidy-clash\n' +
+  '            went 57 to 49 -- the one number that moves moves in the\n' +
+  '            reassuring direction. So this verifies its own work: it\n' +
+  '            compares every drawn face\'s world position before and after\n' +
+  '            and rolls both files back if any of them moved.\n' +
+  '\n' +
+  '            Only the numbers it changes are rewritten. The manifests are\n' +
+  '            hand-formatted and read by hand, and a parse/print round trip\n' +
+  '            would put every line of one in the diff.\n' +
+  '\n' +
   'Options:\n' +
+  '  --dry-run        print the edits and write nothing\n' +
   '  --help, -h       show this message\n' +
   '\n' +
   'Exit codes:\n' +
@@ -35,12 +65,35 @@ function parseArgs(
   argv: readonly string[],
 ): PartOp | { help: true } | { error: string } {
   const positional: string[] = [];
+  let dryRun = false;
   for (const a of argv) {
     if (a === '--help' || a === '-h') return { help: true };
-    if (a.startsWith('-')) return { error: `unknown flag "${a}"` };
+    if (a === '--dry-run') {
+      dryRun = true;
+      continue;
+    }
+    // A negative pivot coordinate starts with '-' and is not a flag.
+    if (a.startsWith('-') && !/^-?[\d.]/.test(a.slice(1))) {
+      return { error: `unknown flag "${a}"` };
+    }
     positional.push(a);
   }
   const [op, ...rest] = positional;
+
+  if (op === 'move-pivot') {
+    const [dir, part, coords, ...extra] = rest;
+    if (dir === undefined || part === undefined || coords === undefined) {
+      return { error: 'move-pivot expects <dir> <part> <x>,<y>,<z>' };
+    }
+    if (extra.length > 0) return { error: `unexpected argument "${extra[0]}"` };
+    const n = coords.split(',').map((s) => Number(s.trim()));
+    if (n.length !== 3 || n.some((v) => !Number.isFinite(v))) {
+      return { error: `move-pivot coordinates must be x,y,z (got "${coords}")` };
+    }
+    return { op, dir, part, to: [n[0]!, n[1]!, n[2]!], dryRun };
+  }
+
+  if (dryRun) return { error: '--dry-run applies to move-pivot only' };
 
   if (op === 'duplicate') {
     const [fromFile, fromPart, toFile, toPart, ...extra] = rest;

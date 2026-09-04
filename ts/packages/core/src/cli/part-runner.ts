@@ -10,6 +10,7 @@ import {
   type Axis,
 } from '../geometry/transform.js';
 import type { Geometry, Part } from '../geometry/types.js';
+import { runMovePivot } from './move-pivot.js';
 
 // `cuboidy-part`: author concrete geometry by copying or flipping a part.
 // `duplicate` copies a part into a (same or other) geometry file; `mirror`
@@ -26,7 +27,18 @@ export type PartOp =
       toFile: string;
       toPart: string;
     }
-  | { op: 'mirror'; file: string; part: string; axis: Axis };
+  | { op: 'mirror'; file: string; part: string; axis: Axis }
+  // Takes the model DIRECTORY, not a geometry file, because the compensation
+  // spans two files: the pivot lives in the geometry and the position that
+  // cancels the move lives in the manifest. Editing one without the other is
+  // the mistake this exists to remove, so the input cannot express it.
+  | {
+      op: 'move-pivot';
+      dir: string;
+      part: string;
+      to: [number, number, number];
+      dryRun: boolean;
+    };
 
 export interface RunResult {
   text: string;
@@ -48,6 +60,9 @@ async function readGeometryFile(
 }
 
 export async function runPart(op: PartOp): Promise<RunResult> {
+  if (op.op === 'move-pivot') {
+    return runMovePivot(op.dir, op.part, op.to, { dryRun: op.dryRun });
+  }
   return op.op === 'mirror' ? runMirror(op) : runDuplicate(op);
 }
 
