@@ -4,6 +4,7 @@ import {
   isInlineAnimation,
   sampleAnimation,
   samplePart,
+  sampleTimes,
   type AnimationTrack,
 } from '../src/animation.js';
 import { parseManifest } from '../src/manifest.js';
@@ -506,5 +507,43 @@ describe('samplePart — a non-finite time is total', () => {
     expect(samplePart(two, -Infinity, 2, false).rot[1]).toBe(10);
     // A looping clip has no end to clamp to, and Infinity % d is NaN.
     expect(samplePart(two, Infinity, 2, true).rot[1]).toBe(10);
+  });
+});
+
+describe('sampleTimes', () => {
+  const clip = (duration: number, loop: boolean) => ({
+    duration,
+    loop,
+    parts: {},
+  });
+
+  it('lands on the midpoint for an even step count', () => {
+    // The property the two sweeping tools depend on. A clip that goes out
+    // and comes back is furthest at the middle, and that is the pose worth
+    // looking at.
+    expect(sampleTimes(clip(2, true), 8)).toContain(1);
+    expect(sampleTimes(clip(2, false), 8)).toContain(1);
+  });
+
+  it('misses the midpoint for an odd step count', () => {
+    // Stated so the even default is not quietly changed to an odd one.
+    expect(sampleTimes(clip(2, true), 7)).not.toContain(1);
+    expect(sampleTimes(clip(2, false), 7)).not.toContain(1);
+  });
+
+  it('gives a one-shot clip its final pose', () => {
+    // A lunge or a swing very often ENDS at its extreme; a sweep that stops
+    // one step short inspects everything except the pose that was the point.
+    expect(sampleTimes(clip(1, false), 4)).toEqual([0, 0.25, 0.5, 0.75, 1]);
+  });
+
+  it('does not repeat the end of a looping clip, which is its start', () => {
+    expect(sampleTimes(clip(1, true), 4)).toEqual([0, 0.25, 0.5, 0.75]);
+  });
+
+  it('always yields at least the rest of the clip', () => {
+    expect(sampleTimes(clip(1, true), 1)).toEqual([0]);
+    expect(sampleTimes(clip(1, false), 1)).toEqual([0, 1]);
+    expect(sampleTimes(clip(1, true), 0)).toEqual([0]);
   });
 });

@@ -472,3 +472,33 @@ export function sampleAnimation(
   }
   return out;
 }
+
+/**
+ * The times to sample a clip at, cutting it into `divisions` equal steps.
+ *
+ * Whether the END is one of them is decided by the clip, not by the caller:
+ * a looping clip's last frame IS its first, so sampling both spends a pose
+ * on a duplicate, while a one-shot clip very often finishes AT its extreme
+ * -- the top of a swing, the end of a lunge -- and dropping it inspects
+ * everything except the pose that was the point.
+ *
+ * An EVEN `divisions` always lands on the midpoint, in both cases, which is
+ * where a clip that goes out and comes back reaches furthest. That is the
+ * whole reason this is one function: the two tools that walk clips each
+ * wrote their own rule and each got a different half of this wrong -- one
+ * stepped over the midpoint of every swing, the other never looked at the
+ * final frame of a one-shot -- and cuboidy-overlap calls a cell DEAD, which
+ * its own help says is safe to delete, on the strength of the poses it
+ * sampled. A cell uncovered only at the pose that was skipped is reported
+ * as safe to delete and leaves a hole.
+ */
+export function sampleTimes(
+  anim: InlineAnimation,
+  divisions: number,
+): number[] {
+  const n = Math.max(1, Math.floor(divisions));
+  const last = anim.loop ? n - 1 : n;
+  const out: number[] = [];
+  for (let i = 0; i <= last; i++) out.push((anim.duration * i) / n);
+  return out;
+}

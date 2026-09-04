@@ -1,5 +1,5 @@
 import { loadAndAssemble, type Assembly } from './assemble.js';
-import { sampleAnimation, type Pose } from '../animation.js';
+import { sampleAnimation, sampleTimes, type Pose } from '../animation.js';
 import {
   composeScale,
   computeWorldTransforms,
@@ -254,8 +254,7 @@ export function findOverlap(
 
   if (opts.samples > 0) {
     for (const [, clip] of asm.animations) {
-      for (let s = 0; s < opts.samples; s++) {
-        const t = (clip.duration * s) / opts.samples;
+      for (const t of sampleTimes(clip, opts.samples)) {
         const posed = place(asm, sampleAnimation(clip, t));
         for (const p of posed) {
           const dead = stillDead.get(p.name);

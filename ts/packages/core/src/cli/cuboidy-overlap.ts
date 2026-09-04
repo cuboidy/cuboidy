@@ -45,7 +45,14 @@ const HELP_TEXT =
   'load-bearing -- so there is no count that should fail a build.\n' +
   '\n' +
   'Options:\n' +
-  '  --samples=<n>  poses to sample per clip (default: ' + DEFAULT_SAMPLES + ').\n' +
+  '  --samples=<n>  equal steps to cut each clip into (default: ' + DEFAULT_SAMPLES + ').\n' +
+  '                 An EVEN n always lands on the midpoint, where a swing that\n' +
+  '                 goes out and back reaches furthest; a one-shot clip also\n' +
+  '                 gets its final pose, a looping one does not (its end is its\n' +
+  '                 start). This matters more here than anywhere: dead is\n' +
+  '                 computed from the poses actually looked at, so a cell that\n' +
+  '                 only comes out at a pose nobody sampled is reported safe to\n' +
+  '                 delete, and deleting it leaves a hole.\n' +
   '                 0 leaves the census at the rest pose, where every buried\n' +
   '                 cell is reported dead and the number over-counts\n' +
   '  --top=<n>      list at most n parts (default: ' + DEFAULT_TOP + ')\n' +
