@@ -337,11 +337,22 @@ coincide.
 **Detail colour does not belong in a part's outermost column.** A cell painted
 a different colour in the silhouette column emits a side face on the same
 plane as the part's own body colour, so it fights its OWN part — and a scale
-offset moves both faces together, which is exactly no help. Measured on a
-yeti's hand: claws written `n.n.n` across the outer row scored 17 visible
-clashes, and `.nnn.` — the same three claws, one column in — scored 5, which
-is what deleting the claws entirely also scored. Keep markings, claws, stripes
-and eyes off the outer columns.
+offset moves both faces together, which is exactly no help.
+
+Measured on a yeti's 5-wide hand, body colour `d`, claws `n`:
+
+```
+.nnn.   claws inset one column      0 at rest,  0 worst
+n.n.n   claws in the outer columns  2 at rest,  4 worst (attack t=0.300)
+nnnnn   outer columns, no gaps      2 at rest,  4 worst  <- same as above
+.ddd.   no claws at all             0 at rest,  0 worst
+```
+
+The third row is the one that says what the cause is. Filling the gaps
+changes nothing, so it is not about the claws being separated — it is about
+their colour reaching the silhouette column. And the first row matters as
+much: inset, the claws cost nothing at all, so this is not a reason to drop
+detail. Keep markings, claws, stripes and eyes one column in.
 
 **Matching corner profiles down a constant cross-section chain clash however
 far you scale them.** If `arm`, `forearm` and `hand` all carry the same
