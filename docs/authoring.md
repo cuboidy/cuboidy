@@ -295,6 +295,43 @@ A joint has to hold shut through every pose without its two parts fighting for
 the same pixels. Those pull against each other, and which way you resolve it is
 a choice made when the parts are built, not a cleanup pass afterwards.
 
+### The default treatment: scale the child 0.99 across the bone
+
+**Where a joint's two parts are different colours and their surfaces would be
+coplanar, scale the child by `0.99` on the two axes ACROSS the bone and leave
+`1.0` along it.** Do this as a matter of course rather than as a repair.
+Getting a joint to clear by shape alone is genuinely hard — it depends on the
+parent's taper, the child's taper and the swing, and it has to come out right
+on every model — while a scale offset is one line in the manifest and cannot
+be got subtly wrong.
+
+Two conditions, and both matter:
+
+- **The pivot must sit at the cross-section centre.** Scale moves each face
+  away from the pivot, so a pivot on one face leaves that face exactly where
+  it was and moves only the opposite one. The joint then still fights on one
+  side, and it looks like the offset "did not work" when it half-worked.
+- **Only if the colours differ.** Two coincident surfaces in the same colour
+  shade identically, so whichever the renderer picks draws the same pixel.
+  The reference humanoid carries forty-four of those and shows nothing.
+  `cuboidy-clash` reports only differing pairs for this reason.
+
+Along the bone stays `1.0` because that axis is the overlap holding the joint
+shut; shortening it opens the seam the overlap was there to cover.
+
+Measured: two same-sized segments meeting flush dither visibly in
+`cuboidy-snap`, and the same pair with the child at `[0.99, 1.0, 0.99]`
+renders a clean boundary. The floor is lower than the rule — `0.999`, three
+thousandths of a voxel, was already clean, because a rasterizer only has to
+break a tie. The rule asks for `0.01` anyway: a GPU depth buffer has finite
+precision and can still fight at long range on a separation that small, and
+that case has not been measured. `cuboidy-clash --max-distance` defaults to
+half the rule's offset so a joint fixed this way reads clean.
+
+The shape work below is for parts that are in the wrong PLACE — an arm inside
+a thigh. It is not the first thing to reach for when two surfaces merely
+coincide.
+
 **Prefer abutting cross-sections to embedding.** Two parts whose end faces meet
 exactly, with no shared cells, have nothing to fight over. The reference fox's
 tail segments are built this way, so it is not a theoretical option. It costs
@@ -307,7 +344,11 @@ tearing open, and is narrowed on the axes across the bone so its sides sit
 strictly inside the parent's rather than flush with them. Flush is what
 clashes; inside is invisible.
 
-**Eroding the child alone can make it worse, and this surprises people.** Chain
+**Eroding the child alone can make it worse, and this surprises people.** (This
+and the paragraph before it are the shape route, kept because it is the right
+answer when a scale offset is not available — a part whose pivot cannot move to
+its cross-section centre, or a fight that survives the offset. The offset above
+is what to try first.) Chain
 segments usually taper identically at both ends, so shaving one cell off the
 child just re-matches the parent's own end taper and the two are flush again at
 the new width. Measured on one yeti: 88 visible clashes went to 44 by eroding
@@ -675,9 +716,10 @@ it later.
   real improvement and it is **not a fix**, because it only holds while the
   cells stay buried. Measured on one yeti: rest-pose clashes 146 → 0, while
   the same model's walk went 61 → 28 and its attack 84 → 36. A clip swings the
-  child out and the recoloured cells come into view still fighting. See
-  **Joints** for the structural treatment; recolour is what you do to the
-  cells that genuinely never surface, which `cuboidy-overlap` calls *dead*.
+  child out and the recoloured cells come into view still fighting. **The
+  standing treatment is the 0.99 scale offset in Joints**; recolour is what
+  you do to the cells that genuinely never surface, which `cuboidy-overlap`
+  calls *dead*.
   `cuboidy-clash` finds them; the reference humanoid scores zero while
   carrying forty-four same-coloured coincidences, so this is achievable rather
   than inherent.

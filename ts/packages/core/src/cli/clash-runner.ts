@@ -104,7 +104,22 @@ export interface ClashOptions {
   samples: number;
 }
 
-export const DEFAULT_MAX_DISTANCE = 0.3;
+/**
+ * Half the offset the joint rule asks for, so a joint fixed that way reads
+ * clean and the check does not fight the rule it exists to support.
+ *
+ * 0.3 was a guess and it was too generous by nearly two orders of magnitude.
+ * Measured: two same-sized segments meeting flush dither visibly, and a
+ * child scaled 0.99 across the bone -- 0.003 voxels of separation, the
+ * smallest step tried -- renders with a clean boundary. Any real separation
+ * resolves it, because a rasterizer only has to break a tie.
+ *
+ * That measurement is the software rasterizer in cuboidy-snap. A GPU depth
+ * buffer has finite precision and can still fight at long range on a
+ * separation this small, which is why the authoring rule asks for 0.01 --
+ * twice this -- rather than the least that measured clean.
+ */
+export const DEFAULT_MAX_DISTANCE = 0.005;
 
 /**
  * EVEN on purpose: an even number of steps always lands on the clip's

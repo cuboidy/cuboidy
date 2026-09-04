@@ -54,7 +54,12 @@ const HELP_TEXT =
   '                      distance and not an equality. Along the normal and\n' +
   '                      only along it -- centre-to-centre mixes in how far\n' +
   '                      the faces slide past each other IN the plane, and\n' +
-  '                      missed about two pairs in three\n' +
+  '                      missed about two pairs in three.\n' +
+  '                      The default is half the 0.01 offset the joint rule\n' +
+  '                      asks for, so a joint fixed that way reads clean. It\n' +
+  '                      was 0.3, which was a guess: measured, a separation\n' +
+  '                      of 0.003 already renders a clean boundary, because\n' +
+  '                      a rasterizer only has to break a tie\n' +
   '  --anim=<clip>       narrow to one §6.3 clip instead of all of them\n' +
   '  --rest-only         skip every clip; check the rest pose alone\n' +
   '  --time=<s>          pin one time in seconds instead of sweeping\n' +
