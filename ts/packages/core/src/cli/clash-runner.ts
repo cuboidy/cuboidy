@@ -1,8 +1,9 @@
 import { loadAndAssemble, type Assembly } from './assemble.js';
 import { buildMesh } from '../mesh.js';
+import { sampleAnimation, sampleTimes, type Pose } from '../animation.js';
 import {
   composeScale,
-  computeRestWorldTransforms,
+  computeWorldTransforms,
   localPointToWorld,
   pivotRotsOf,
   quatRotateVec3,
@@ -75,9 +76,42 @@ export interface ClashOptions {
   maxDistance: number;
   /** Longest listing before it is truncated; the summary still counts all. */
   top: number;
+  /**
+   * One SPEC §6.3 clip to narrow to. Undefined means EVERY clip the model
+   * declares, which is the default because the alternative was measured and
+   * it lies: a yeti reads 2 visible at rest and 218 partway through its
+   * attack, and the rest number is not a weak signal of the other, it is
+   * unrelated. Checking only the rest pose is a real option -- it is twenty
+   * times quicker -- but it has to be asked for, or the quick answer is the
+   * one that gets reported as clean.
+   *
+   * The rest pose is always evaluated and always reported first, because it
+   * is the baseline the others are read against: a seam that fights in every
+   * pose is a build fault, and one that appears only past a certain angle is
+   * a clearance fault, and the two are fixed differently.
+   */
+  anim?: string | undefined;
+  /** Skip every clip and check the rest pose alone. */
+  restOnly?: boolean | undefined;
+  /** Pin one time in seconds instead of sweeping. */
+  time?: number | undefined;
+  /**
+   * Equal steps to cut each clip into when `time` is not pinned; see
+   * `sampleTimes`, which decides the times and is shared with
+   * cuboidy-overlap. A one-shot clip yields one more pose than steps,
+   * because its end is a pose of its own.
+   */
+  samples: number;
 }
 
 export const DEFAULT_MAX_DISTANCE = 0.3;
+
+/**
+ * EVEN on purpose: an even number of steps always lands on the clip's
+ * midpoint, which is where a swing that goes out and comes back reaches
+ * furthest. See `sampleTimes`.
+ */
+export const DEFAULT_SAMPLES = 8;
 
 /**
  * How far two faces may slide past each other in their shared plane and still
@@ -119,22 +153,30 @@ function hex(r: number, g: number, b: number): string {
  * Every drawn face of the assembled model, in world space, each still knowing
  * the part and the part-local voxel it came from.
  */
-export function facesOf(asm: Assembly): Face[] {
-  const world = computeRestWorldTransforms(
+export function facesOf(
+  asm: Assembly,
+  poses?: ReadonlyMap<string, Pose>,
+): Face[] {
+  const world = computeWorldTransforms(
     asm.manifest.parts,
     pivotRotsOf(asm.resolvedParts.map((rp) => [rp.name, rp.part] as const)),
+    poses,
   );
   const out: Face[] = [];
   for (const rp of asm.resolvedParts) {
     const wt = world.get(rp.name);
     if (wt === undefined) continue;
+    const pose = poses?.get(rp.name);
+    // A clip that hides a part hides its surfaces too. Counting a clash on
+    // something the pose does not draw would report a fault nobody can see.
+    if (pose !== undefined && !pose.visible) continue;
     const mesh = buildMesh(rp.part, rp.palette);
     const piv: Vec3Tuple = [
       rp.part.pivot.pos.x,
       rp.part.pivot.pos.y,
       rp.part.pivot.pos.z,
     ];
-    const scale = composeScale(rp.scale, undefined);
+    const scale = composeScale(rp.scale, pose?.scale);
     const quads = mesh.positions.length / 12;
     for (let f = 0; f < quads; f++) {
       const n0 = f * 12;
@@ -182,16 +224,19 @@ export function facesOf(asm: Assembly): Face[] {
  */
 function occupancyOf(
   asm: Assembly,
+  poses?: ReadonlyMap<string, Pose>,
 ): (p: readonly [number, number, number]) => boolean {
-  const world = computeRestWorldTransforms(
+  const world = computeWorldTransforms(
     asm.manifest.parts,
     pivotRotsOf(asm.resolvedParts.map((rp) => [rp.name, rp.part] as const)),
+    poses,
   );
   const entries = asm.resolvedParts
+    .filter((rp) => poses?.get(rp.name)?.visible !== false)
     .map((rp) => ({
       part: rp.part,
       wt: world.get(rp.name),
-      scale: composeScale(rp.scale, undefined),
+      scale: composeScale(rp.scale, poses?.get(rp.name)?.scale),
     }))
     .filter((e): e is { part: typeof e.part; wt: NonNullable<typeof e.wt>; scale: typeof e.scale } =>
       e.wt !== undefined,
@@ -259,9 +304,16 @@ function occluded(
  * OPPOSED normals are left out for a different reason: back-face culling keeps
  * exactly one of them, whichever side the camera is on, so they never compete.
  */
-export function findClashes(asm: Assembly, opts: ClashOptions): Clash[] {
-  const faces = facesOf(asm);
-  const solidAt = occupancyOf(asm);
+export function findClashes(
+  asm: Assembly,
+  opts: ClashOptions,
+  poses?: ReadonlyMap<string, Pose>,
+): Clash[] {
+  const faces = facesOf(asm, poses);
+  // From the SAME poses as the faces. Occlusion is a property of the pose:
+  // an arm that hides a seam at rest can swing off it, and testing a bent
+  // pose's surfaces against the rest body would call that seam hidden.
+  const solidAt = occupancyOf(asm, poses);
   // One bucket per world cell, scanned against its 26 neighbours: the pairs
   // that matter are within a fraction of a voxel, so the whole-model O(n^2)
   // is not worth paying on a five-thousand-face model.
@@ -363,13 +415,42 @@ function side(s: ClashSide): string {
   return `${s.part} cell(${s.cell.join(',')}) ${s.face} ${s.rgb}`;
 }
 
+/** One evaluated pose: what it is called, and what fought in it. */
+export interface PoseClashes {
+  /** `rest`, or `<clip> t=<seconds>`. */
+  label: string;
+  clashes: Clash[];
+}
+
+function visibleCount(p: PoseClashes): number {
+  return p.clashes.filter((c) => !c.hidden).length;
+}
+
 export function formatClashes(
   name: string,
   faceCount: number,
-  clashes: readonly Clash[],
+  poses: readonly PoseClashes[],
   opts: ClashOptions,
 ): string {
   const out: string[] = [`model: ${name}`, `faces: ${faceCount}`, ''];
+  // The listing describes the pose with the most to fix. Printing every
+  // pose's listing buries it; printing only the rest pose's is what made a
+  // sweep worth nothing.
+  const worst = poses.reduce((a, b) => (visibleCount(b) > visibleCount(a) ? b : a));
+  const rest = poses[0]!;
+  if (poses.length > 1) {
+    const w = Math.max(...poses.map((p) => p.label.length));
+    for (const p of poses) {
+      const v = visibleCount(p);
+      out.push(
+        `pose  ${p.label.padEnd(w)}  ${String(v).padStart(4)} visible` +
+          `  + ${p.clashes.length - v} hidden` +
+          (p === worst && poses.length > 1 ? '   <- listed below' : ''),
+      );
+    }
+    out.push('');
+  }
+  const clashes = worst.clashes;
   const seen = clashes.filter((c) => !c.hidden);
   const hidden = clashes.length - seen.length;
   const exact = seen.filter((c) => c.distance < 0.005).length;
@@ -391,7 +472,10 @@ export function formatClashes(
   out.push(
     `clashes: ${seen.length} visible  ` +
       `(exact ${exact}, within 0.15 ${tight}, within ${n3(opts.maxDistance)} ${loose})` +
-      `  + ${hidden} hidden inside the model`,
+      `  + ${hidden} hidden inside the model` +
+      (poses.length > 1
+        ? `  [worst of ${poses.length} poses: ${worst.label}; rest ${visibleCount(rest)}]`
+        : ''),
   );
   return out.join('\n');
 }
@@ -400,20 +484,64 @@ export async function runClash(
   dir: string,
   opts: ClashOptions,
 ): Promise<{ text: string; exitCode: number }> {
+  // Contradictory rather than merely redundant: one says which clip to bend
+  // by, the other says not to bend at all. Silently picking a winner is how a
+  // run gets read as a sweep that never happened.
+  if (opts.restOnly === true && (opts.anim !== undefined || opts.time !== undefined)) {
+    return {
+      text: 'cuboidy-clash: rest-only cannot be combined with a clip or a pinned time\n',
+      exitCode: 2,
+    };
+  }
   const loaded = await loadAndAssemble(dir);
   if (!loaded.ok) {
     return { text: `cuboidy-clash: ${loaded.message}`, exitCode: loaded.exitCode };
   }
   const asm = loaded.assembly;
-  const clashes = findClashes(asm, opts);
+
+  // The rest pose is index 0 and always present: every other pose is read
+  // against it.
+  const poses: PoseClashes[] = [
+    { label: 'rest', clashes: findClashes(asm, opts) },
+  ];
+  if (opts.restOnly !== true) {
+    const names =
+      opts.anim === undefined || opts.anim === 'all'
+        ? [...asm.animations.keys()].sort()
+        : [opts.anim];
+    for (const n of names) {
+      const clip = asm.animations.get(n);
+      if (clip === undefined) {
+        const known = [...asm.animations.keys()].sort().join(', ');
+        return {
+          text:
+            `cuboidy-clash: model has no animation "${n}"` +
+            `${known === '' ? '' : ` (has: ${known})`}\n`,
+          exitCode: 2,
+        };
+      }
+      // A pinned time is one pose; otherwise the shared rule, so this and
+      // cuboidy-overlap cannot disagree about which poses a clip has.
+      const times =
+        opts.time !== undefined ? [opts.time] : sampleTimes(clip, opts.samples);
+      for (const t of times) {
+        poses.push({
+          label: `${n} t=${t.toFixed(3)}`,
+          clashes: findClashes(asm, opts, sampleAnimation(clip, t)),
+        });
+      }
+    }
+  }
+
   const faceCount = facesOf(asm).length;
   return {
-    text: formatClashes(asm.manifest.name, faceCount, clashes, opts),
+    text: formatClashes(asm.manifest.name, faceCount, poses, opts),
     // Clean is silence-adjacent, not silence: the summary line always prints
     // so a reader can tell "checked, none" from "never ran".
     // Gated on what can be SEEN. A model whose only clashes are buried has
     // nothing an author could act on, and failing it would train people to
-    // ignore the check.
-    exitCode: clashes.some((c) => !c.hidden) ? 1 : 0,
+    // ignore the check. Any pose counts: a seam that only fights mid-swing
+    // is still a seam the player watches flicker.
+    exitCode: poses.some((p) => p.clashes.some((c) => !c.hidden)) ? 1 : 0,
   };
 }

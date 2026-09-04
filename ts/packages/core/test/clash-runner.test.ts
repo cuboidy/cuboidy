@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
-import { runClash, DEFAULT_MAX_DISTANCE } from '../src/cli/clash-runner.js';
+import {
+  runClash,
+  DEFAULT_MAX_DISTANCE,
+  DEFAULT_SAMPLES,
+} from '../src/cli/clash-runner.js';
 
 // The fault this covers is the one nothing else in the toolchain sees: two
 // surfaces in one place, facing the same way, in different colours. Lint is
@@ -63,7 +67,31 @@ function model(
   };
 }
 
-const OPTS = { maxDistance: DEFAULT_MAX_DISTANCE, top: 40 };
+const OPTS = { maxDistance: DEFAULT_MAX_DISTANCE, top: 40, samples: DEFAULT_SAMPLES };
+
+/**
+ * The pair, apart at rest, with a clip that slides `b` onto `a` and off
+ * again. The rest pose is clean and the midpoint is not — which is the whole
+ * reason a sweep exists, and the shape a rest-only check reported as fine.
+ */
+function slidingModel(): Record<string, string> {
+  const m = model([2, 0, 0]);
+  const manifest = JSON.parse(m['cuboidy.json']!) as Record<string, unknown>;
+  manifest['animations'] = {
+    slide: {
+      duration: 2,
+      loop: true,
+      parts: {
+        b: {
+          '0.0': { pos: [0, 0, 0] },
+          '1.0': { pos: [-2, 0, 0] },
+          '2.0': { pos: [0, 0, 0] },
+        },
+      },
+    },
+  };
+  return { ...m, 'cuboidy.json': JSON.stringify(manifest) };
+}
 
 describe('runClash', () => {
   it('finds two parts sharing one cell, and names both sides', async () => {
@@ -179,5 +207,87 @@ describe('runClash', () => {
       OPTS,
     );
     expect(exitCode).toBe(2);
+  });
+
+  it('finds a clash a clip creates and the rest pose does not have', async () => {
+    // Why sweeping is the default. --rest-only reports this model clean,
+    // which is true and useless: the flicker is at t=1.
+    const dir = await write(slidingModel());
+    const still = await runClash(dir, { ...OPTS, restOnly: true });
+    expect(still.text).toContain('clashes: 0 visible');
+    expect(still.exitCode).toBe(0);
+
+    // No --anim: every clip, because a quick answer nobody asked to narrow
+    // should be the safe one.
+    const swept = await runClash(dir, OPTS);
+    expect(swept.text).toContain('pose  rest');
+    // The default step count is even, so the midpoint the parts actually
+    // meet at is sampled rather than stepped over.
+    expect(swept.text).toContain('slide t=1.000');
+    // The listing follows the worst pose, and names both sides of the pair.
+    expect(swept.text).toMatch(/clash d=0\.000.*\ba\b.*vs.*\bb\b/);
+    expect(swept.text).toContain('slide t=1.000; rest 0');
+    // A seam that only fights mid-swing still fails the gate.
+    expect(swept.exitCode).toBe(1);
+  });
+
+  it('does not spend a pose on a looping clip\'s duplicated end', async () => {
+    const dir = await write(slidingModel());
+    const { text } = await runClash(dir, { ...OPTS, anim: 'slide', samples: 2 });
+    // duration 2, looping, two steps: t=0 and t=1. Not t=2 — that is t=0
+    // again, and sampling it twice buys nothing.
+    expect(text).toContain('slide t=0.000');
+    expect(text).toContain('slide t=1.000');
+    expect(text).not.toContain('slide t=2.000');
+  });
+
+  it('checks one pinned time when asked', async () => {
+    const dir = await write(slidingModel());
+    const { text } = await runClash(dir, {
+      ...OPTS,
+      anim: 'slide',
+      time: 1,
+    });
+    expect(text).toContain('slide t=1.000; rest 0');
+    expect(text).not.toContain('t=0.250');
+  });
+
+  it('refuses rest-only together with a clip, rather than picking one', async () => {
+    const dir = await write(slidingModel());
+    const { text, exitCode } = await runClash(dir, {
+      ...OPTS,
+      restOnly: true,
+      anim: 'slide',
+    });
+    expect(text).toContain('cannot be combined');
+    expect(exitCode).toBe(2);
+  });
+
+  it('names the clips it has when asked for one it does not', async () => {
+    const { text, exitCode } = await runClash(await write(slidingModel()), {
+      ...OPTS,
+      anim: 'walk',
+    });
+    expect(text).toContain('model has no animation "walk"');
+    expect(text).toContain('has: slide');
+    expect(exitCode).toBe(2);
+  });
+
+  it('ignores a part a clip hides', async () => {
+    // `b` is drawn on top of `a` at rest, and the clip switches it off. A
+    // hidden part has no surfaces, so the pose it is hidden in is clean —
+    // counting the clash there would report a fault nobody can see.
+    const m = model([0, 0, 0]);
+    const manifest = JSON.parse(m['cuboidy.json']!) as Record<string, unknown>;
+    manifest['animations'] = {
+      vanish: {
+        duration: 1,
+        loop: false,
+        parts: { b: { '0.0': { visible: false } } },
+      },
+    };
+    const dir = await write({ ...m, 'cuboidy.json': JSON.stringify(manifest) });
+    const { text } = await runClash(dir, { ...OPTS, anim: 'vanish', time: 0 });
+    expect(text).toMatch(/^pose {2}vanish t=0\.000 {2}\s*0 visible/m);
   });
 });
