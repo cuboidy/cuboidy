@@ -289,6 +289,57 @@ hand-math:
   each naming the same file: `"palette": "palette.json"`, which is also how you
   keep colors consistent across them.
 
+## Joints
+
+A joint has to hold shut through every pose without its two parts fighting for
+the same pixels. Those pull against each other, and which way you resolve it is
+a choice made when the parts are built, not a cleanup pass afterwards.
+
+**Prefer abutting cross-sections to embedding.** Two parts whose end faces meet
+exactly, with no shared cells, have nothing to fight over. The reference fox's
+tail segments are built this way, so it is not a theoretical option. It costs
+you the margin that hides a gap when the joint bends, so it suits a chain that
+turns through small angles — a tail, a neck, a spine — and not a shoulder.
+
+**When you do embed, overlap ALONG the bone and inset ACROSS it.** The child's
+buried end keeps its length inside the parent, which is what stops the seam
+tearing open, and is narrowed on the axes across the bone so its sides sit
+strictly inside the parent's rather than flush with them. Flush is what
+clashes; inside is invisible.
+
+**Eroding the child alone can make it worse, and this surprises people.** Chain
+segments usually taper identically at both ends, so shaving one cell off the
+child just re-matches the parent's own end taper and the two are flush again at
+the new width. Measured on one yeti: 88 visible clashes went to 44 by eroding
+alone, with `forearm/hand` actually rising 8 → 11. The treatment is a **pair**
+of edits per joint — erode the child's buried layers, **and square off the
+parent's socket end** so the narrowed core sits inside a straight-walled
+opening. Squaring adds material, so it thickens the elbow or knee slightly
+rather than thinning anything. The same yeti went 88 → 2 once both halves were
+applied.
+
+**No animation will part faces whose normal is the axis they turn about.** A
+rotation about X moves nothing along X. So the side faces of a constant
+cross-section chain — `arm/forearm/hand`, `thigh/shin/foot`, all hinging about
+X — stay coplanar in every pose of every clip, and every one of those seams has
+to be built apart. This is worth knowing before you decide a seam will "sort
+itself out in motion": some will, and this class provably will not.
+
+**Volume overlap is not the thing to minimise.** A joint is *made* by burying
+the child in the parent. `cuboidy-overlap` exists to find the other kind — two
+parts holding the same space that the rig does not join, an arm inside a thigh
+— and it reports how many rig steps apart each pair is so you can tell them
+apart: 1 is a joint, 2 is a part reaching past its parent, 3 or more has no
+structural reason to touch. Chasing the total down is how you take a rig apart.
+
+**Some overlaps are the brief, not the model.** Check the arithmetic before
+reworking geometry: a 16-wide box holding two 6-wide arms and two 5-wide legs
+needs 22 units of width and does not have them, so an ape build with hanging
+arms cannot have them laterally disjoint at any pivot. When a fault turns out
+to be a constraint conflict, say so and hand the choice back — widening the
+box, thinning the limbs and abandoning the pose are all decisions above the
+model.
+
 ## Shape / rounding
 
 - You don't need a true sphere. **Narrow the layers toward top and bottom**
@@ -465,6 +516,27 @@ and expensive way to learn what lint would have said per part.
   part and part-local voxel and which face, so the finding points at a row you
   can edit. Lint is silent about it by construction: it is a property of the
   assembled model, not of a file.
+  **It checks every clip as well as the rest pose, and you want that.** The
+  rest number does not predict the others and is not a weak version of them:
+  across sixteen mobs, a yeti reading **2** at rest reached **218** partway
+  through its attack, and a slime reading 6 reached 128. `--rest-only` is
+  twenty times quicker and is the wrong thing to reach for by habit.
+- `cuboidy-overlap` — the OTHER overlap: two parts holding the same *volume*,
+  as against two surfaces in one place. Read the `not joined:` lines first;
+  the census below them is context, and its total is not a number to drive
+  down (see **Joints**). Note `dead` is computed from the poses it sampled, so
+  it is only as trustworthy as the sweep — the default step count is even
+  precisely so the midpoint of every swing is one of them.
+- `cuboidy-query --colors` — cells and drawn faces per part and palette slot.
+  **The only check in the toolchain that sees colour at all.** Lint is
+  structural, `cuboidy-clash` only asks whether two colours DIFFER, and
+  `cuboidy-overlap` counts cells: a part refilled with the wrong index passes
+  all three and renders as a band across the model. This happened — an author
+  eroding a joint filled the arm sockets with `9` where the arm is `a`, and it
+  was caught by a human looking at a render, which is a catch that stops
+  working the moment nobody looks. Census before an edit and after; every line
+  that moved should be one you meant to move, and an index appearing in a part
+  that had none of it is a mis-typed fill.
 - `cuboidy-query` — exact cell lookup; verify attachment & symmetry numerically.
   **`--at` takes CELL INDICES, not positions.** A fractional coordinate returns
   `.` whatever is actually there: it neither floors nor rounds, so probing a
@@ -595,13 +667,18 @@ it later.
   therefore escape the symmetry check entirely — verify those yourself. (The
   check also ignores rest rotations, so a mirrored `rotation` pair is neither
   validated nor penalised.)
-- **Overlap joints in the SAME colour, or the overlap dithers.** The advice to
-  overlap parts by one or two cells is right, and it is also what creates this:
-  where two parts hold one cell, both emit a face on the same plane facing the
-  same way, and if their colours differ the renderer has no tie-break. Paint the
-  buried cells the covering part's colour — do not shrink the overlap, which
-  trades a visible artifact for a joint that tears open the moment a clip moves
-  it. `cuboidy-clash` finds them; the reference humanoid scores zero while
+- **Overlap joints in the SAME colour, and know what that does and does not
+  buy.** The advice to overlap parts by one or two cells is right, and it is
+  also what creates this: where two parts hold one cell, both emit a face on
+  the same plane facing the same way, and if their colours differ the renderer
+  has no tie-break. Painting the buried cells the covering part's colour is a
+  real improvement and it is **not a fix**, because it only holds while the
+  cells stay buried. Measured on one yeti: rest-pose clashes 146 → 0, while
+  the same model's walk went 61 → 28 and its attack 84 → 36. A clip swings the
+  child out and the recoloured cells come into view still fighting. See
+  **Joints** for the structural treatment; recolour is what you do to the
+  cells that genuinely never surface, which `cuboidy-overlap` calls *dead*.
+  `cuboidy-clash` finds them; the reference humanoid scores zero while
   carrying forty-four same-coloured coincidences, so this is achievable rather
   than inherent.
 - **A rotated part is not drawn rotated by `cuboidy-view` / `cuboidy-query`.**
