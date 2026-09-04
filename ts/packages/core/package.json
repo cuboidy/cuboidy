@@ -10,6 +10,7 @@
     ".": "./src/index.ts"
   },
   "bin": {
+    "cuboidy-clash": "./dist/cli/cuboidy-clash.js",
     "cuboidy-lint": "./dist/cli/cuboidy-lint.js",
     "cuboidy-view": "./dist/cli/cuboidy-view.js",
     "cuboidy-query": "./dist/cli/cuboidy-query.js",

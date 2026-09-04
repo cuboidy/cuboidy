@@ -458,6 +458,13 @@ and expensive way to learn what lint would have said per part.
   nobody checked**, and neither lint nor snap can tell you the feet skate or a
   leg passes through the body. Its camera is fixed across the clip, so it is
   also the one render whose frames may be compared to each other.
+- `cuboidy-clash` — the one fault no other check sees: two surfaces in the same
+  place, facing the same way, in DIFFERENT colours. The renderer cannot choose
+  between them, so it decides per pixel — a dithered cross-hatch here, a flicker
+  that follows the camera in anything with a depth buffer. It names both sides,
+  part and part-local voxel and which face, so the finding points at a row you
+  can edit. Lint is silent about it by construction: it is a property of the
+  assembled model, not of a file.
 - `cuboidy-query` — exact cell lookup; verify attachment & symmetry numerically.
   **`--at` takes CELL INDICES, not positions.** A fractional coordinate returns
   `.` whatever is actually there: it neither floors nor rounds, so probing a
@@ -588,6 +595,15 @@ it later.
   therefore escape the symmetry check entirely — verify those yourself. (The
   check also ignores rest rotations, so a mirrored `rotation` pair is neither
   validated nor penalised.)
+- **Overlap joints in the SAME colour, or the overlap dithers.** The advice to
+  overlap parts by one or two cells is right, and it is also what creates this:
+  where two parts hold one cell, both emit a face on the same plane facing the
+  same way, and if their colours differ the renderer has no tie-break. Paint the
+  buried cells the covering part's colour — do not shrink the overlap, which
+  trades a visible artifact for a joint that tears open the moment a clip moves
+  it. `cuboidy-clash` finds them; the reference humanoid scores zero while
+  carrying forty-four same-coloured coincidences, so this is achievable rather
+  than inherent.
 - **A rotated part is not drawn rotated by `cuboidy-view` / `cuboidy-query`.**
   They place its pivot correctly but keep its voxels axis-aligned, and warn.
   Only `cuboidy-snap` shows the true orientation, so a model that uses
