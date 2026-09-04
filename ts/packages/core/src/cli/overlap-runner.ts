@@ -90,27 +90,56 @@ function place(
   return out;
 }
 
-/** Every solid cell of a part, as world-space centres, in grid order. */
-function centres(p: Placed): [number, number, number][] {
+/**
+ * The nine points a cell is tested by: its eight corners, pulled a twentieth
+ * of a cell inward so a shared face does not read as an intersection, plus the
+ * centre to catch a cavity the corners would straddle.
+ *
+ * A cell is only counted buried when ALL of them are inside another part,
+ * because that is the question being asked — can this cell be deleted without
+ * changing what renders. A cell half inside another still shows its other
+ * half. Testing the centre alone answers neither "does it touch" nor "is it
+ * covered", and on a model whose rest pose carries rotations the three answers
+ * are nowhere near each other: one humanoid here reads 48% by touch, 35% by
+ * centre and 15% fully covered.
+ */
+const PROBES: readonly (readonly [number, number, number])[] = [
+  [0.5, 0.5, 0.5],
+  [0.05, 0.05, 0.05], [0.95, 0.05, 0.05], [0.05, 0.95, 0.05], [0.95, 0.95, 0.05],
+  [0.05, 0.05, 0.95], [0.95, 0.05, 0.95], [0.05, 0.95, 0.95], [0.95, 0.95, 0.95],
+];
+
+/** Every solid cell of a part, as its nine probe points, in grid order. */
+function centres(p: Placed): [number, number, number][][] {
   const { w, h, d } = p.part.size;
   const piv = p.part.pivot.pos;
   const pivot: Vec3Tuple = [piv.x, piv.y, piv.z];
-  const out: [number, number, number][] = [];
+  const out: [number, number, number][][] = [];
   for (let y = 0; y < h; y++) {
     for (let z = 0; z < d; z++) {
       for (let x = 0; x < w; x++) {
         if ((p.part.voxels[y]?.[z]?.[x] ?? AIR) === AIR) continue;
-        const q = localPointToWorld(
-          [x + 0.5, y + 0.5, z + 0.5],
-          pivot,
-          p.scale,
-          p.wt,
+        out.push(
+          PROBES.map((o) => {
+            const q = localPointToWorld(
+              [x + o[0], y + o[1], z + o[2]],
+              pivot,
+              p.scale,
+              p.wt,
+            );
+            return [q[0], q[1], q[2]] as [number, number, number];
+          }),
         );
-        out.push([q[0], q[1], q[2]]);
       }
     }
   }
   return out;
+}
+
+/** Is every probe point of this cell inside that part? */
+function covers(p: Placed, cell: readonly [number, number, number][]): boolean {
+  for (const at of cell) if (!holds(p, at)) return false;
+  return true;
 }
 
 /** Is this world point inside that part's solid volume? */
@@ -138,7 +167,7 @@ export function findOverlap(
   const rest = place(asm, undefined);
   // Cell order is stable across poses (the grid walk is the same), so a cell
   // can be tracked by its index without carrying coordinates around.
-  const restCells = new Map<string, [number, number, number][]>();
+  const restCells = new Map<string, [number, number, number][][]>();
   for (const p of rest) restCells.set(p.name, centres(p));
 
   const buried = new Map<string, boolean[]>();
@@ -150,7 +179,7 @@ export function findOverlap(
     for (let i = 0; i < cs.length; i++) {
       for (const q of rest) {
         if (q.name === p.name) continue;
-        if (!holds(q, cs[i]!)) continue;
+        if (!covers(q, cs[i]!)) continue;
         flags[i] = true;
         who.set(q.name, (who.get(q.name) ?? 0) + 1);
       }
@@ -179,7 +208,7 @@ export function findOverlap(
             let covered = false;
             for (const q of posed) {
               if (q.name === p.name) continue;
-              if (holds(q, cs[i]!)) {
+              if (covers(q, cs[i]!)) {
                 covered = true;
                 break;
               }
