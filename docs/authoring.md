@@ -332,6 +332,24 @@ The shape work below is for parts that are in the wrong PLACE — an arm inside
 a thigh. It is not the first thing to reach for when two surfaces merely
 coincide.
 
+### Two things the scale offset cannot fix
+
+**Detail colour does not belong in a part's outermost column.** A cell painted
+a different colour in the silhouette column emits a side face on the same
+plane as the part's own body colour, so it fights its OWN part — and a scale
+offset moves both faces together, which is exactly no help. Measured on a
+yeti's hand: claws written `n.n.n` across the outer row scored 17 visible
+clashes, and `.nnn.` — the same three claws, one column in — scored 5, which
+is what deleting the claws entirely also scored. Keep markings, claws, stripes
+and eyes off the outer columns.
+
+**Matching corner profiles down a constant cross-section chain clash however
+far you scale them.** If `arm`, `forearm` and `hand` all carry the same
+`.bbb.` rounded rim at the same relative offset, their corner faces land on
+each other's planes, and scaling the whole part moves the rim with it. The fix
+is to make the PROFILES differ — a rounded upper arm into a plain prism
+forearm with a tapered wrist — not to scale harder.
+
 **Prefer abutting cross-sections to embedding.** Two parts whose end faces meet
 exactly, with no shared cells, have nothing to fight over. The reference fox's
 tail segments are built this way, so it is not a theoretical option. It costs
