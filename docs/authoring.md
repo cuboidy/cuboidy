@@ -332,34 +332,34 @@ The shape work below is for parts that are in the wrong PLACE — an arm inside
 a thigh. It is not the first thing to reach for when two surfaces merely
 coincide.
 
-### Two things the scale offset cannot fix
+### Two rules that were here and were wrong
 
-**Detail colour does not belong in a part's outermost column.** A cell painted
-a different colour in the silhouette column emits a side face on the same
-plane as the part's own body colour, so it fights its OWN part — and a scale
-offset moves both faces together, which is exactly no help.
+Both were written from a model author's report without being checked, and
+both are withdrawn. They are named rather than deleted because the reasoning
+that produced them is easy to repeat.
 
-Measured on a yeti's 5-wide hand, body colour `d`, claws `n`:
+**"Detail colour does not belong in a part's outermost column."** There was
+never anything wrong with it. Two faces of ONE part can never overlap: a
+part's voxels sit on an integer grid and the mesher merges nothing, so its
+coplanar faces are always adjacent tiles, one cell apart. What produced the
+finding was `cuboidy-clash` comparing that gap against a limit written in
+VOXELS, which assumed every drawn face is one cell square — so a part
+carrying `scale [0.93, 1, 0.93]` had its faces 0.93 apart, under the
+constant, and every colour boundary on it was reported. The check now
+normalises by the faces' own size and a yeti's claws score zero wherever
+they sit. Put markings where they look right.
 
-```
-.nnn.   claws inset one column      0 at rest,  0 worst
-n.n.n   claws in the outer columns  2 at rest,  4 worst (attack t=0.300)
-nnnnn   outer columns, no gaps      2 at rest,  4 worst  <- same as above
-.ddd.   no claws at all             0 at rest,  0 worst
-```
+**"Matching corner profiles down a constant cross-section chain clash
+however far you scale them."** Measured on a two-segment chain: matching
+rims score 40 unscaled and **0** with the child at `0.99`; a plain prism
+child scores 24 unscaled and **0** scaled. The scale offset fixes both, and
+differing profiles are a smaller improvement than it, not a substitute.
 
-The third row is the one that says what the cause is. Filling the gaps
-changes nothing, so it is not about the claws being separated — it is about
-their colour reaching the silhouette column. And the first row matters as
-much: inset, the claws cost nothing at all, so this is not a reason to drop
-detail. Keep markings, claws, stripes and eyes one column in.
-
-**Matching corner profiles down a constant cross-section chain clash however
-far you scale them.** If `arm`, `forearm` and `hand` all carry the same
-`.bbb.` rounded rim at the same relative offset, their corner faces land on
-each other's planes, and scaling the whole part moves the rim with it. The fix
-is to make the PROFILES differ — a rounded upper arm into a plain prism
-forearm with a tapered wrist — not to scale harder.
+The common error is worth more than either rule. A number came back, and
+rather than ask whether the number was true, a mechanism was invented that
+would explain it — "both faces belong to one part, so scaling moves them
+together" is a satisfying sentence about a thing that was not happening.
+Check that a finding is real before explaining why it is.
 
 **Prefer abutting cross-sections to embedding.** Two parts whose end faces meet
 exactly, with no shared cells, have nothing to fight over. The reference fox's
