@@ -130,8 +130,20 @@ export const DEFAULT_SAMPLES = 8;
 
 /**
  * How far two faces may slide past each other in their shared plane and still
- * cover any of each other. One cell exactly; a hair under it, because a pair
- * that meets only along an edge is not a fight.
+ * cover any of each other, as a FRACTION of the pair's own size: 1 is the
+ * offset at which they meet along an edge and stop overlapping, and a hair
+ * under it, because a pair that meets only along an edge is not a fight.
+ *
+ * A fraction and not a length in voxels, because a drawn face is one cell
+ * square only at rest. A clip's `scale` resizes a part's voxels, so on a
+ * squash-and-stretch model the faces are not unit-sized, and a fixed
+ * 0.95-VOXEL limit then reads every colour BAND boundary on a squashed wall
+ * as a clash -- abutting faces, never overlapping, whose centres the squash
+ * simply pulled under the constant. Measured on the slime, whose idle passes
+ * through a body scale of 0.95: at 0.950308 the sweep reports 6 and at
+ * 0.950000 it reports 74, on geometry that did not change. Normalising by the
+ * faces' real extent removes that cliff and leaves every unit-scale model's
+ * numbers exactly as they were, since two unit half-extents sum to 1.
  */
 const LATERAL_LIMIT = 0.95;
 export const DEFAULT_TOP = 40;
@@ -143,9 +155,79 @@ interface Face {
   rgb: string;
   world: readonly [number, number, number];
   normal: readonly [number, number, number];
+  /**
+   * The face's two in-plane HALF-edges, in world space. A drawn face is one
+   * local cell square, so at rest these are half unit vectors -- but a clip's
+   * `scale` resizes a part's voxels, and that resizing lands here. Measuring
+   * them rather than assuming them is what keeps LATERAL_LIMIT honest on a
+   * squash-and-stretch model.
+   */
+  u: readonly [number, number, number];
+  v: readonly [number, number, number];
 }
 
 const AXES = ['X', 'Y', 'Z'] as const;
+
+function dot3(
+  a: readonly [number, number, number],
+  b: readonly [number, number, number],
+): number {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+/**
+ * A face's half-extent across `dir`: the length of whichever of its two edges
+ * lies more nearly along that direction.
+ *
+ * Its own edge LENGTH, deliberately, and not the support of the rectangle --
+ * which is what a face turned within its plane would project onto `dir`. The
+ * support is the more correct answer to "could these two rectangles overlap",
+ * and adopting it here turns this into a separating-axis test that finds every
+ * corner-on-corner sliver two rest ROTATIONS leave behind: measured across the
+ * mob fleet it raised eleven models by a fifth to a half, none of which is a
+ * seam anybody would go and edit. This check under-reports on purpose, so the
+ * rotation stays out of it and only the SIZE is read off the geometry.
+ */
+function halfSpan(f: Face, dir: readonly [number, number, number]): number {
+  const u = Math.hypot(f.u[0], f.u[1], f.u[2]);
+  const v = Math.hypot(f.v[0], f.v[1], f.v[2]);
+  return Math.abs(dot3(f.u, dir)) >= Math.abs(dot3(f.v, dir)) ? u : v;
+}
+
+function unit(
+  v: readonly [number, number, number],
+): [number, number, number] | undefined {
+  const n = Math.hypot(v[0], v[1], v[2]);
+  return n === 0 ? undefined : [v[0] / n, v[1] / n, v[2] / n];
+}
+
+/**
+ * How far two coplanar faces have slid past each other, measured in units of
+ * how far they COULD slide before they stopped covering each other -- so 1 is
+ * edge to edge whatever size a clip has scaled them to.
+ *
+ * Read on the first face's own in-plane axes, and combined as a radius rather
+ * than per axis, which inscribes an ellipse in the overlap rectangle and so
+ * trims its corners. That under-reports slightly, which is the safe direction
+ * for a check whose findings cost an edit, and it is what this did before the
+ * measurement moved from voxels to fractions: at unit scale the two forms are
+ * the same arithmetic, so every model that scales nothing reports what it
+ * always reported -- verified across the seventeen mobs, where only the one
+ * squash-and-stretch model moved.
+ */
+function lateralSlide(
+  f: Face,
+  g: Face,
+  off: readonly [number, number, number],
+): number {
+  const uHat = unit(f.u);
+  const vHat = unit(f.v);
+  if (uHat === undefined || vHat === undefined) return Infinity;
+  const su = halfSpan(f, uHat) + halfSpan(g, uHat);
+  const sv = halfSpan(f, vHat) + halfSpan(g, vHat);
+  if (su <= 0 || sv <= 0) return Infinity;
+  return Math.hypot(dot3(off, uHat) / su, dot3(off, vHat) / sv);
+}
 
 // A local normal off `buildMesh` is axis-aligned and unit length, so the
 // largest component names the face and its sign gives the direction.
@@ -204,8 +286,13 @@ export function facesOf(
       // lies ON a cell boundary, and the voxel that owns it is the one behind.
       const c: [number, number, number] = [0, 0, 0];
       const w: [number, number, number] = [0, 0, 0];
-      for (let v = 0; v < 4; v++) {
-        const at = (f * 4 + v) * 3;
+      // The corners are kept, not just averaged: the two edges leaving corner
+      // 0 are the face's in-plane axes AND its size along them, and the size
+      // is what a clip's scale changes. `mesh.ts` lists a quad's corners as a
+      // ring, so 0->1 and 0->3 are its two edges on whichever face this is.
+      const corner: [number, number, number][] = [];
+      for (let k = 0; k < 4; k++) {
+        const at = (f * 4 + k) * 3;
         const p: Vec3Tuple = [
           mesh.positions[at]!,
           mesh.positions[at + 1]!,
@@ -213,8 +300,14 @@ export function facesOf(
         ];
         for (let i = 0; i < 3; i++) c[i]! += p[i]! / 4;
         const wp = localPointToWorld(p, piv, scale, wt);
+        corner.push([wp[0], wp[1], wp[2]]);
         for (let i = 0; i < 3; i++) w[i]! += wp[i]! / 4;
       }
+      const halfEdge = (k: number): [number, number, number] => [
+        (corner[k]![0] - corner[0]![0]) / 2,
+        (corner[k]![1] - corner[0]![1]) / 2,
+        (corner[k]![2] - corner[0]![2]) / 2,
+      ];
       out.push({
         part: rp.name,
         cell: [
@@ -226,6 +319,8 @@ export function facesOf(
         rgb: hex(mesh.colors[n0]!, mesh.colors[n0 + 1]!, mesh.colors[n0 + 2]!),
         world: w as readonly [number, number, number],
         normal: quatRotateVec3(wt.quat, local),
+        u: halfEdge(1),
+        v: halfEdge(3),
       });
     }
   }
@@ -380,14 +475,11 @@ export function findClashes(
             const dz = g.world[2] - f.world[2];
             const d = Math.abs(dx * f.normal[0] + dy * f.normal[1] + dz * f.normal[2]);
             if (d > opts.maxDistance) continue;
-            // Every face is one cell square (the mesher merges nothing), so
-            // two of them on one plane overlap exactly while their centres are
-            // less than a cell apart. Measured as a radius rather than per
-            // axis, which trims the corners and so under-reports slightly --
-            // the safe direction for a check whose findings cost an edit.
-            const lat = Math.sqrt(
-              Math.max(0, dx * dx + dy * dy + dz * dz - d * d),
-            );
+            // Two faces on one plane cover each other while their centres are
+            // less than the sum of their half-extents apart. The mesher merges
+            // nothing, so that sum is one cell -- until a clip scales one of
+            // them, which is why it is read off the faces themselves.
+            const lat = lateralSlide(f, g, [dx, dy, dz]);
             if (lat >= LATERAL_LIMIT) continue;
             const [a, b] =
               f.part < g.part || (f.part === g.part && f.rgb < g.rgb)

@@ -201,6 +201,68 @@ describe('runClash', () => {
     expect(exitCode).toBe(0);
   });
 
+  it('does not report a scaled part abutting itself', async () => {
+    // The lateral test asks whether two coplanar faces cover any of each
+    // other, and it used to ask that in VOXELS -- which assumed every drawn
+    // face is one cell square. A `scale` under 1 makes them smaller, so
+    // neighbouring faces sit closer than the constant while still merely
+    // abutting, and every colour boundary on the part was reported.
+    //
+    // Two cells of one part can never overlap anyway: a part's voxels are on
+    // an integer grid, so its coplanar faces are adjacent tiles. Measured on
+    // a yeti's hand at `scale [0.93, 1, 0.93]`, the claw row in the outer
+    // column scored 2 visible clashes and now scores 0 -- and a rule about
+    // where detail colour may sit had already been written to explain that
+    // artifact.
+    const twoTone = {
+      'p.json': PALETTE,
+      'g.json': JSON.stringify({
+        version: '0.9',
+        palette: 'p.json',
+        parts: [
+          {
+            name: 'slab',
+            size: [1, 1, 2],
+            pivot: { pos: [0.5, 0, 1] },
+            // Two cells stacked in Z, different colours: their +X faces are
+            // coplanar, co-facing, and abut along an edge.
+            voxels: [['0', '1']],
+          },
+        ],
+      }),
+    };
+    const build = (scale?: number[]): Record<string, string> => ({
+      ...twoTone,
+      'cuboidy.json': JSON.stringify({
+        name: 'slab',
+        version: '0.9',
+        geometry: ['g.json'],
+        parts: [{ name: 'slab', position: [0, 0, 0], ...(scale ? { scale } : {}) }],
+      }),
+    });
+    for (const s of [undefined, [0.99, 1, 0.99], [0.95, 1, 0.95], [0.93, 1, 0.93], [0.6, 1, 0.6]]) {
+      const { text } = await runClash(await write(build(s)), OPTS);
+      expect(text, `scale ${JSON.stringify(s)}`).toContain('clashes: 0 visible');
+    }
+  });
+
+  it('still finds a real coincidence between two scaled parts', async () => {
+    // The other half: normalising by the faces' own size must not blind the
+    // check on a model that scales. Two parts in the same place, different
+    // colours, both scaled.
+    const m = model([0, 0, 0]);
+    const manifest = JSON.parse(m['cuboidy.json']!) as {
+      parts: Array<Record<string, unknown>>;
+    };
+    for (const p of manifest.parts) p['scale'] = [0.93, 1, 0.93];
+    const { text, exitCode } = await runClash(
+      await write({ ...m, 'cuboidy.json': JSON.stringify(manifest) }),
+      OPTS,
+    );
+    expect(text).toMatch(/clashes: [1-9]\d* visible/);
+    expect(exitCode).toBe(1);
+  });
+
   it('passes the loader exit code through for an unreadable model', async () => {
     const { exitCode } = await runClash(
       resolve(tmpdir(), 'cuboidy-clash-does-not-exist'),
