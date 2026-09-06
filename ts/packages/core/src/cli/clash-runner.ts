@@ -140,11 +140,25 @@ export const DEFAULT_MAX_DISTANCE = 0.005;
  * building the faces rather than the poses. 64 is 10.2s and finds almost
  * nothing 32 misses -- the yeti reports the same 24 at both.
  *
- * There is a bound worth knowing rather than sweeping for. Normals pair at
- * `dot >= 0.98`, which is 11.478 degrees, and the lateral cut-off is 0.95,
- * so a coplanar pair needs about `0.95 * tan(11.478) = 0.193` voxels of
- * separation before no rotation inside the gate can bring it back. Anything
- * less is a bet on where the samples happen to fall, at any count.
+ * There is a bound worth knowing rather than sweeping for, and it is a
+ * NECESSARY condition, not a sufficient one. Normals pair at `dot >= 0.98`,
+ * which is 11.478 degrees, and the lateral cut-off is 0.95, so a coplanar
+ * pair under 0.95 * tan(11.478) = 0.193 voxels of separation is a bet on
+ * where the samples happen to fall, at any count.
+ *
+ * Clearing it is not enough, because it accounts for the tilt of a face and
+ * not for how far that face swings. Two models made the same correction
+ * independently. A camel's hindleg sat at 0.249, above the bound, and still
+ * crossed at a 10.7 degree normal angle: the term the bound omits is
+ * `D(1 - cos a)`, which for a face 4.3 voxels from its own pivot adds 0.086
+ * at the gate edge. A yeti's elbow needed about 0.24 for the same reason,
+ * the binding case being a face one row below the joint rather than at it.
+ * And a part rotating about Y can sweep a plane a whole voxel.
+ *
+ * So: under 0.193, a clean sweep proves nothing. Over it, measure the actual
+ * swing. The reliable answer for a joint is a real grid step on both axes
+ * across the bone -- a yeti had one on X and none on Z, and every one of its
+ * findings was on Z.
  */
 export const DEFAULT_SAMPLES = 32;
 
