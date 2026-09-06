@@ -67,7 +67,13 @@ const HELP_TEXT =
   '                      An EVEN n always lands on the midpoint, where a swing\n' +
   '                      that goes out and back reaches furthest; a one-shot\n' +
   '                      clip also gets its final pose, a looping one does not\n' +
-  '                      (its end is its start)\n' +
+  '                      (its end is its start).\n' +
+  '                      The default was 8 and 8 is not a bar to sign off on:\n' +
+  '                      eight division points look at eight moments and a pair\n' +
+  '                      that crosses between them is invisible. Of seventeen\n' +
+  '                      models declared clean on an 8-sample sweep, raising it\n' +
+  '                      to 32 found faults in nine -- one at 24. Lowering it is\n' +
+  '                      for a quick look, not for a verdict\n' +
   '  --top=<n>           list at most n pairs (default: ' + DEFAULT_TOP + ').\n' +
   '                      The summary counts all of them either way. Under a\n' +
   '                      sweep the listing is the worst pose\'s\n' +

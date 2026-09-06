@@ -125,8 +125,28 @@ export const DEFAULT_MAX_DISTANCE = 0.005;
  * EVEN on purpose: an even number of steps always lands on the clip's
  * midpoint, which is where a swing that goes out and comes back reaches
  * furthest. See `sampleTimes`.
+ *
+ * 32 and not 8, because 8 was measured and it is not a bar anyone can sign
+ * off against. Eight division points only ever look at eight moments, and a
+ * pair that crosses between them is invisible. Across a fleet of seventeen
+ * models, nine of which had been declared "0 in every pose" on the strength
+ * of the 8-sample sweep, raising it to 32 found faults in every one: a yeti
+ * at 24, a bear at 9, a camel at 6, a zombie at 4, and 2 apiece on five
+ * more. Only the models whose authors had raised the count themselves came
+ * through clean.
+ *
+ * The cost is small and was measured too, on the heaviest model in that
+ * fleet: 3.7s at 8 divisions and 5.2s at 32, because most of the work is
+ * building the faces rather than the poses. 64 is 10.2s and finds almost
+ * nothing 32 misses -- the yeti reports the same 24 at both.
+ *
+ * There is a bound worth knowing rather than sweeping for. Normals pair at
+ * `dot >= 0.98`, which is 11.478 degrees, and the lateral cut-off is 0.95,
+ * so a coplanar pair needs about `0.95 * tan(11.478) = 0.193` voxels of
+ * separation before no rotation inside the gate can bring it back. Anything
+ * less is a bet on where the samples happen to fall, at any count.
  */
-export const DEFAULT_SAMPLES = 8;
+export const DEFAULT_SAMPLES = 32;
 
 /**
  * How far two faces may slide past each other in their shared plane and still

@@ -107,7 +107,20 @@ export interface OverlapOptions {
   top: number;
 }
 
-export const DEFAULT_SAMPLES = 8;
+/**
+ * 32, matching cuboidy-clash, and for a sharper reason than symmetry.
+ *
+ * `dead` means "buried at every pose we sampled", and the help tells the
+ * reader a dead cell is safe to delete. So every pose the sweep misses is a
+ * cell that may be reported deletable and is not. Measured on a yeti: 445
+ * cells read dead at 8 divisions and 437 at 32, so eight of them were cells
+ * that open a hole, sitting behind a promise that they would not.
+ *
+ * The same count that stopped a clash sweep being trustworthy, then, and
+ * with worse consequences -- a missed clash is a flicker somebody can see,
+ * and a missed uncovering is a hole cut on the tool's advice.
+ */
+export const DEFAULT_SAMPLES = 32;
 export const DEFAULT_TOP = 40;
 
 interface Placed {

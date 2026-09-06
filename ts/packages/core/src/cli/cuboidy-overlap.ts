@@ -75,6 +75,11 @@ const HELP_TEXT =
   '\n' +
   'Options:\n' +
   '  --samples=<n>  equal steps to cut each clip into (default: ' + DEFAULT_SAMPLES + ').\n' +
+  '                 Lowering it makes `dead` LIE in the dangerous direction:\n' +
+  '                 a cell only uncovered at a pose you did not sample reads\n' +
+  '                 as safe to delete. Measured on one yeti, 8 divisions call\n' +
+  '                 445 cells dead and 32 call 437 -- eight cells that open a\n' +
+  '                 hole, behind a promise that they would not.\n' +
   '                 An EVEN n always lands on the midpoint, where a swing that\n' +
   '                 goes out and back reaches furthest; a one-shot clip also\n' +
   '                 gets its final pose, a looping one does not (its end is its\n' +
