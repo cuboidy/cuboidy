@@ -58,20 +58,24 @@ export interface Clash {
 
 export interface ClashOptions {
   /**
-   * Report a pair whose PLANES are within this many voxels of each other,
-   * measured along the shared normal. Coincident surfaces on the integer
-   * lattice land at exactly 0; a part carrying a rest ROTATION lands near but
+   * Report a pair whose SURFACES come within this many voxels of each other
+   * over the patch they share -- see `planeGap`. Coincident surfaces on the
+   * integer lattice land at exactly 0, and so does any pair whose planes
+   * cross inside that patch; a part carrying a rest ROTATION lands near but
    * not on its neighbour, which is why a distance and not an equality test.
    *
-   * Along the normal, and only along it. Centre-to-centre distance was the
-   * first thing tried and it is wrong: it mixes the separation of the two
-   * planes, which is what a depth buffer fights over, with how far the faces
-   * slide past each other IN the plane, which only decides whether they
-   * overlap at all. Two faces sitting on exactly the same plane but offset
-   * half a cell sideways still cover half of each other and still fight, and
-   * a centre-distance test scored them as far apart. On this cast it missed
-   * about two pairs in three -- and called a model with fourteen of them
-   * perfectly clean.
+   * Two earlier measures were wrong and both are worth remembering, because
+   * each was plausible. Centre-to-centre distance came first: it mixes the
+   * separation of the planes, which is what a depth buffer fights over, with
+   * how far the faces slide past each other IN the plane, which only decides
+   * whether they overlap at all. It missed about two pairs in three and
+   * called a model with fourteen of them perfectly clean.
+   *
+   * Projecting that offset onto one face's normal fixed the flat case and
+   * broke the tilted one, because the projection carries the lateral term
+   * back in as soon as the normals differ -- and at a joint the faces are a
+   * cell apart sideways, so that term dominates. It read 0.004 where the
+   * surfaces were 0.039 apart and 0.003 where they were 0.22 apart.
    */
   maxDistance: number;
   /** Longest listing before it is truncated; the summary still counts all. */
@@ -249,6 +253,52 @@ function unit(
  * always reported -- verified across the seventeen mobs, where only the one
  * squash-and-stretch model moved.
  */
+/**
+ * How close the two surfaces actually come, over the patch they share.
+ *
+ * NOT the offset between their centres projected onto a normal, which is
+ * what this used to report and which is wrong whenever the normals are not
+ * parallel. The projection then carries LATERAL distance into the answer:
+ * with the faces a cell apart sideways -- the adjacent-cell case at every
+ * joint -- and one tilted 6 degrees, the two terms are `1.0 * sin 6` and
+ * `gap * cos 6`, and their sum has almost nothing to do with the gap. Signs
+ * decide which way it lies, so it is wrong in both directions. Measured
+ * against the true separation: 0.004 reported where the surfaces were 0.039
+ * apart, and 0.003 where they were 0.22 apart.
+ *
+ * That is not only a bad number in a listing. The same value gates the pair,
+ * so a real crossing whose centres happen to sit askew is never reported at
+ * all -- an agent model's forearm crossed its torso at idle t=0.40 and the
+ * old measure read 0.037 there and stayed silent.
+ *
+ * So the answer is the smallest |separation| anywhere on g's quad, probed at
+ * its corners and its centre, and exactly zero when the sign flips across
+ * them, which means the planes cross inside the patch rather than merely
+ * coming near it.
+ */
+function planeGap(
+  f: Face,
+  g: Face,
+  off: readonly [number, number, number],
+): number {
+  let lo = Infinity;
+  let neg = false;
+  let pos = false;
+  // g's centre, then its four corners at +/-u +/-v.
+  for (let c = -1; c < 4; c++) {
+    const su = c < 0 ? 0 : (c & 1) === 0 ? -1 : 1;
+    const sv = c < 0 ? 0 : (c & 2) === 0 ? -1 : 1;
+    let s = 0;
+    for (let i = 0; i < 3; i++) {
+      s += (off[i]! + su * g.u[i]! + sv * g.v[i]!) * f.normal[i]!;
+    }
+    if (s < 0) neg = true;
+    if (s > 0) pos = true;
+    lo = Math.min(lo, Math.abs(s));
+  }
+  return neg && pos ? 0 : lo;
+}
+
 function lateralSlide(
   f: Face,
   g: Face,
@@ -507,7 +557,7 @@ export function findClashes(
             const dx = g.world[0] - f.world[0];
             const dy = g.world[1] - f.world[1];
             const dz = g.world[2] - f.world[2];
-            const d = Math.abs(dx * f.normal[0] + dy * f.normal[1] + dz * f.normal[2]);
+            const d = planeGap(f, g, [dx, dy, dz]);
             if (d > opts.maxDistance) continue;
             // Two faces on one plane cover each other while their centres are
             // less than the sum of their half-extents apart. The mesher merges

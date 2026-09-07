@@ -263,6 +263,38 @@ describe('runClash', () => {
     expect(exitCode).toBe(1);
   });
 
+  it('measures the gap over the shared patch, not between the centres', async () => {
+    // The distance used to be the centre-to-centre offset projected onto one
+    // normal, which carries LATERAL distance into the answer as soon as the
+    // normals are not parallel -- and at a joint the faces are a cell apart
+    // sideways, so the lateral term dominates. Measured on real models, it
+    // read 0.004 where the surfaces were 0.039 apart and 0.003 where they
+    // were 0.22 apart: wrong in both directions, because the sign of the
+    // lateral term decides which.
+    //
+    // Here `b` is rotated about Y, so its +X faces tilt away from `a`'s while
+    // their planes still meet. The pair must be found, and it is exactly the
+    // pair the old measure could miss: the crossing is inside the patch, not
+    // at either centre.
+    const m = model([0, 0, 0], ['0', '1'], [0, 8, 0]);
+    const { text, exitCode } = await runClash(await write(m), {
+      ...OPTS,
+      restOnly: true,
+    });
+    // Zero, not a small number: the planes cross inside the patch rather
+    // than running near it, and a crossing is what a renderer cannot break.
+    expect(text).toMatch(/clash d=0\.000/);
+    expect(exitCode).toBe(1);
+  });
+
+  it('reports a genuinely separated pair at its real distance', async () => {
+    // The other half: correcting the measure must not turn every near miss
+    // into a zero. Two parallel faces a clear tenth of a voxel apart stay
+    // outside the default threshold and are not reported.
+    const { text } = await runClash(await write(model([1.1, 0, 0])), OPTS);
+    expect(text).toContain('clashes: 0 visible');
+  });
+
   it('passes the loader exit code through for an unreadable model', async () => {
     const { exitCode } = await runClash(
       resolve(tmpdir(), 'cuboidy-clash-does-not-exist'),
