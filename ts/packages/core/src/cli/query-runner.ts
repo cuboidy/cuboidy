@@ -110,6 +110,10 @@ export interface MeshQuery {
  * edit, census after, and every line that moved should be one you meant to
  * move; an index appearing in a part that had none of it is the signature of
  * a mis-typed fill.
+ *
+ * With `--anim` / `--time` this counts the frame that is on screen at that
+ * instant rather than the assembled model, which is the only form in which a
+ * flipbook's numbers mean anything (see `formatColors`).
  */
 export interface ColorsQuery {
   kind: 'colors';
@@ -126,8 +130,9 @@ export type Query =
 export interface QueryOptions {
   queries: readonly Query[];
   // SPEC §6.3 clip to sample, and the time in seconds to sample it at.
-  // Applies to `transforms` and `sockets`; the voxel grid is rest-only
-  // (see TransformsQuery) and says so rather than pretending otherwise.
+  // Applies to `transforms`, `sockets`, `mesh` and `colors`; the voxel grid
+  // is rest-only (see TransformsQuery) and says so rather than pretending
+  // otherwise.
   anim?: string | undefined;
   time?: number | undefined;
 }
@@ -154,7 +159,8 @@ export async function runQuery(
   }
   const asm = loaded.assembly;
 
-  // Sampled poses, shared by every rig query in this invocation.
+  // Sampled poses, shared by every rig query in this invocation. Empty means
+  // "rest", and every consumer below reads that as every part visible.
   let poses: ReadonlyMap<string, Pose> = new Map();
   const warnings: string[] = [];
   if (opts.anim !== undefined) {
@@ -169,7 +175,7 @@ export async function runQuery(
     poses = sampleAnimation(clip, opts.time ?? 0);
     if (opts.queries.some((q) => q.kind === 'at' || q.kind === 'core')) {
       warnings.push(
-        '--at / --core read the rest-pose grid; --anim applies to --transforms, --sockets and --mesh',
+        '--at / --core read the rest-pose grid; --anim applies to --transforms, --sockets, --mesh and --colors',
       );
     }
   }
@@ -217,7 +223,7 @@ function executeQuery(
   if (q.kind === 'core') return executeCore(asm, q);
   if (q.kind === 'transforms') return formatTransforms(asm, poses, world);
   if (q.kind === 'mesh') return formatMesh(asm, q, poses, world);
-  if (q.kind === 'colors') return formatColors(asm);
+  if (q.kind === 'colors') return formatColors(asm, poses);
   return formatSockets(asm, poses);
 }
 
@@ -230,10 +236,29 @@ const NEIGHBOURS: ReadonlyArray<readonly [number, number, number]> = [
   [0, 0, 1], [0, 0, -1],
 ];
 
-function formatColors(asm: Assembly): string {
+// `poses` is empty for a rest-pose census and carries the §6.5 sample when
+// `--anim` was given, which is what makes this a census of ONE FRAME.
+//
+// An assembled model holds every frame of every flipbook at once (a set of
+// `<name>_f<n>` parts taking turns being visible — §11.6 W09-W11), so a
+// rest-pose count of a campfire counts eight flames, and the share of the
+// model that is loud orange comes out as a number about an object nobody
+// looks at: Tropalm measured 69.2% assembled against 28.4% at one instant of
+// `burn`. Sampling the clip and dropping the parts that are not visible is
+// the whole difference, and it was a shell script joining `--transforms` to
+// `--colors` in the consumer until it moved here.
+function formatColors(
+  asm: Assembly,
+  poses: ReadonlyMap<string, Pose>,
+): string {
   const out: string[] = ['colors:'];
   const rows: Array<[string, string, string, number, number]> = [];
+  let counted = 0;
   for (const rp of asm.resolvedParts) {
+    // Absent from `poses` means the clip does not animate it, which leaves it
+    // at the §6.5 default `true` — the same answer `--transforms` prints.
+    if (poses.get(rp.name)?.visible === false) continue;
+    counted++;
     // `voxels` is already decoded to palette indices, with AIR for empty.
     const cells = new Map<number, number>();
     for (const layer of rp.part.voxels) {
@@ -284,9 +309,10 @@ function formatColors(asm: Assembly): string {
         `${String(cells).padStart(6)}  ${String(faces).padStart(6)}`,
     );
   }
+  const hidden = asm.resolvedParts.length - counted;
   out.push(
-    `  total: ${rows.reduce((n, r) => n + r[3], 0)} cells in ` +
-      `${asm.resolvedParts.length} parts`,
+    `  total: ${rows.reduce((n, r) => n + r[3], 0)} cells in ${counted} parts` +
+      (hidden === 0 ? '' : ` (${hidden} not visible at this time)`),
   );
   return out.join('\n');
 }

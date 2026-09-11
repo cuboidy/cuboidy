@@ -117,3 +117,53 @@ describe('cuboidy-query --colors', () => {
     expect(text).toMatch(/^ {2}block\s+1\s+#00FF00\s+1\s+0$/m);
   });
 });
+
+// A flipbook (§11.6 W09-W11) holds every frame of itself at once when it is
+// assembled, and a census of the assembly is therefore a census of an object
+// nobody looks at: Tropalm measured its campfire as 69.2% loud orange
+// assembled against 28.4% at one instant of `burn`. The frame is the unit, so
+// the census has to be able to name a moment.
+describe('cuboidy-query --colors --anim --time', () => {
+  /** Two frames of one colour each, alternating on a 1 s loop. */
+  async function flipbook(): Promise<string> {
+    return write({
+      'cuboidy.json': JSON.stringify({
+        name: 'flame',
+        version: '0.9',
+        palette: ['#FF0000', '#00FF00'],
+        parts: [
+          { name: 'flame_f0', geometry: { size: [1, 1, 1], voxels: [['0']] } },
+          { name: 'flame_f1', geometry: { size: [1, 1, 1], voxels: [['1']] } },
+        ],
+        animations: {
+          burn: {
+            duration: 1,
+            loop: true,
+            parts: {
+              flame_f0: { '0.0': { visible: true }, '0.5': { visible: false }, '1.0': { visible: true } },
+              flame_f1: { '0.0': { visible: false }, '0.5': { visible: true }, '1.0': { visible: false } },
+            },
+          },
+        },
+      }),
+    });
+  }
+
+  it('counts every frame at rest, which is the assembled object', async () => {
+    const { text } = await runQuery(await flipbook(), COLORS);
+    expect(text).toContain('total: 2 cells in 2 parts');
+  });
+
+  it('counts one frame at an instant of the clip', async () => {
+    const dir = await flipbook();
+    const at = async (time: number) =>
+      (await runQuery(dir, { ...COLORS, anim: 'burn', time })).text;
+    const t0 = await at(0);
+    expect(t0).toMatch(/^ {2}flame_f0\s+0\s+#FF0000\s+1\s+6$/m);
+    expect(t0.slice(t0.indexOf('colors:'))).not.toContain('flame_f1');
+    expect(t0).toContain('total: 1 cells in 1 parts (1 not visible at this time)');
+    const t05 = await at(0.5);
+    expect(t05).toMatch(/^ {2}flame_f1\s+1\s+#00FF00\s+1\s+6$/m);
+    expect(t05.slice(t05.indexOf('colors:'))).not.toContain('flame_f0');
+  });
+});

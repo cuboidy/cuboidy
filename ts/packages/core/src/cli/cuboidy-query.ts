@@ -49,7 +49,12 @@ const HELP_TEXT =
   '                                        that moved should be one you meant\n' +
   '                                        to move, and an index appearing in a\n' +
   '                                        part that had none of it is a\n' +
-  '                                        mis-typed fill\n' +
+  '                                        mis-typed fill. With --anim/--time,\n' +
+  '                                        counts ONE FRAME: parts not visible\n' +
+  '                                        at that instant are left out, which\n' +
+  '                                        is the only honest census of a model\n' +
+  '                                        whose flipbook holds every frame at\n' +
+  '                                        once (§11.6 W09-W11)\n' +
   '                                        → socket <name> pos=x,y,z quat=x,y,z,w\n' +
   '  --mesh                                the §7.4 surface: a face count and\n' +
   '                                        digest, plus one line per part\n' +
@@ -73,9 +78,9 @@ const HELP_TEXT =
   '\n' +
   'Options:\n' +
   '  --anim=<clip>    sample a §6.3 animation instead of the rest pose.\n' +
-  '                   Applies to --transforms, --sockets and --mesh; --at /\n' +
-  '                   --core read the rest-pose grid and warn if combined\n' +
-  '                   with it\n' +
+  '                   Applies to --transforms, --sockets, --mesh and\n' +
+  '                   --colors; --at / --core read the rest-pose grid and\n' +
+  '                   warn if combined with it\n' +
   '  --time=<s>       seconds into the clip (default 0). Times outside\n' +
   '                   [0, duration] wrap or clamp per §6.7\n' +
   '  --help, -h       show this message\n' +
