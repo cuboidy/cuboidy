@@ -5,6 +5,49 @@ the spec as it stands now.
 
 ## v0.9 (draft — current)
 
+### Flipbook lint — W09, W10, W11, H04
+
+No change to the format. A **flipbook** is how a volume whose voxel count
+changes gets animated — fire, smoke, a plant putting out a leaf, a damage
+state — and it needs nothing new, because it is already expressible: parts
+named `<prefix>_f0`…`<prefix>_f<n−1>`, each the whole shape at one instant,
+with a clip keying `visible` (§6.5, which steps per §6.7) so exactly one of
+them is drawn at a time. No transform turns one shape into a different one, so
+this is the only construction available, and it was in use in a consumer
+package before any of it was written down.
+
+What the format could not do is say when it was **wrong**. Two frames visible
+at one instant renders as one thicker flame; none visible is a hole for a fifth
+of a second. Both parse, both resolve, both pass every other check in the
+toolchain, and neither is visible in a still — a rest-pose render draws all
+eight frames stacked, so it shows nothing either way. Four rules close that
+(§11.6):
+
+- **W09** — a clip keys `visible` on some members of a set and not others. The
+  unkeyed one holds the §6.5 default `true` and covers the rest. W10 is
+  suppressed for that clip: the co-visibility is at every instant, and
+  reporting it once per keyframe buries the sentence that names the cause.
+- **W10** — an instant where the count of visible members is not exactly one.
+  `visible` steps, so visibility is constant between consecutive key times and
+  sampling each of the set's key times is exhaustive rather than a probe.
+- **W11** — indices that are not `0..n−1`: a gap, or two names spelling one
+  index (`_f0` and `_f00`).
+- **H04** — outside the 4–8 frame band, or keyed at uneven intervals. A hint,
+  not a warning: this is about how the loop reads, and a deliberate hold is
+  allowed to sit here. §11.1 makes that split the operative decision, since a
+  warning fails `--strict` and a hint does not.
+
+All four are scoped by a clip rather than by the naming. `_f<n>` is a
+convention, not a reserved word, so the rules apply to a prefix group only once
+some clip keys `visible` on one of its members — two fixed panels called
+`panel_f1` / `panel_f2` are never reported.
+
+`cuboidy-query --colors` gained the same frame awareness: with `--anim` and
+`--time` it counts only the parts visible at that instant. An assembled
+flipbook holds every frame at once, so a rest-pose census of a campfire counts
+its flame eight times over — 69% of the model loud orange against the 28% a
+player sees. That is not a rough version of the same number.
+
 ### Rest scale on a part
 
 A manifest part may now carry `scale`, per-axis multipliers on its own voxels

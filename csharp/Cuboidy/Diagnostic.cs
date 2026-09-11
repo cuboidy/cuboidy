@@ -1,7 +1,7 @@
 // Port of ts/packages/core/src/diagnostic.ts — the narrow half of it.
 //
 // `Diagnostic` and `LintRuleId` are NOT ported. `LintRuleId` is a vocabulary
-// of eleven authoring-time rules (W01..W08, H01..H03) and this library has no
+// of fifteen authoring-time rules (W01..W11, H01..H04) and this library has no
 // lint, so it could never populate them; carrying the enum would be an API
 // promise it cannot keep. `docs/csharp-implementation.md` draws the line as
 // "resolution is in scope, reporting is not", and TypeScript draws the same
