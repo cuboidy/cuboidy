@@ -151,7 +151,7 @@ warning saying so.
   The default is the seven-view **standard** set: four three-quarter corners from above plus front / right-side / top. Other groups: `cardinal` (six faces), `corners` (four), `all`; or list ids directly (`front back side left top bottom fr-up fl-up br-up bl-up`).
 
 - **`cuboidy-view <dir>`** — orthographic projections as **ASCII grids** of palette-index characters (the `voxels.json` alphabet), for a token-cheap textual read.
-- **`cuboidy-query <dir> --at=x,y,z`** — exact voxel lookup at world coordinates (fractional-safe; the precise tool when half-voxel offsets are present). It also prints the parts of a model the voxel grid cannot show, as numbers a second implementation can be diffed against: `--transforms` (every part's world transform and §6.5 pose), `--sockets` (§6.12 published frames), and `--mesh` / `--mesh-faces` (the §7.4 surface as the sorted set §7.4 makes normative). Add `--anim=<clip> --time=<s>` to ask any of them for a pose rather than the rest.
+- **`cuboidy-query <dir> --at=x,y,z`** — exact voxel lookup at world coordinates (fractional-safe; the precise tool when half-voxel offsets are present). It also prints the parts of a model the voxel grid cannot show, as numbers a second implementation can be diffed against: `--transforms` (every part's world transform and §6.5 pose), `--sockets` (§6.12 published frames), and `--mesh` / `--mesh-faces` (the §7.4 surface as the sorted set §7.4 makes normative). `--colors` is the census of which palette slot every cell uses — the one check in the toolchain that is not colour-blind. Add `--anim=<clip> --time=<s>` to ask any of them for a pose rather than the rest; with `--colors` that counts **one frame**, which is the only honest census of a model whose flipbook holds every frame at once.
 - **`cuboidy-lint <dir>`** — voxel-definition + cross-file lint.
 
 - **`cuboidy-gif <dir>`** — renders an animation clip to an **animated GIF**, optionally orbiting the camera around the model. The only way to see the half of the format that moves. The scale is fitted once to the whole clip *and* every viewpoint it will be seen from, so the model never rescales between frames and a foot's height can be compared across them. Same dependency-free policy as `cuboidy-snap`: software rasterizer plus a hand-rolled GIF encoder.
@@ -204,7 +204,7 @@ Done — the v0.9 spec and a complete TypeScript implementation of it
 - [x] Lint — `lintGeometry` (W01–W05, H01–H02) plus cross-file
       `validateProject` (part matching, duplicate names, palette resolution and
       range, animation targets, published-socket resolution, W06 l/r symmetry,
-      W07 unreferenced file)
+      W07 unreferenced file, W09–W11 + H04 flipbook exclusivity)
 - [x] JSON Schemas for both file kinds, generated from the same Zod schemas the
       runtime uses, plus shared `fixtures/` as the cross-implementation contract
 - [x] Inspection CLIs — `cuboidy-view` (ASCII), `cuboidy-query` (coordinates),

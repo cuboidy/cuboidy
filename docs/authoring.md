@@ -551,6 +551,76 @@ model.
   `linear`, and one `pos` cannot be both. Pick the one that shows and accept a
   little drift on the other, or move one of the two jobs to another part.
 
+### Flipbook volumes (when the shape itself changes)
+
+Everything above animates a **rigid** part: the voxels stay what they are and
+the rig moves them. A flame has no rigid part to move. Its volume changes —
+cells that exist at one instant do not exist at the next — and there is no
+`rot` or `pos` that turns one shape into another one.
+
+So draw the shapes, and switch between them. A **flipbook** is a set of parts
+`<name>_f0`, `<name>_f1`, … `<name>_f<n−1>`, each one the **whole** volume at
+that instant, with a clip that keys `visible` so exactly one of them is on at
+any time. `visible` is a keyframe field (§6.5) and it **steps** (§6.7), which
+is what makes this work at all: the switch is a cut, with nothing in between
+to interpolate.
+
+- **Reach for it when the voxel count changes.** Fire, smoke, a splash, a plant
+  putting out a leaf, a damage state that loses a chunk. The test is whether
+  the thing has the same cells at both instants: if it does, it is a transform
+  animation and a flipbook would be eight copies of one drawing. If it does
+  not, no transform exists that gets you there.
+- **Each frame is complete, and they are mutually exclusive.** Not a base part
+  plus a changing tip: one part, the whole flame, drawn eight times. Splitting
+  it into several parts each on its own cycle is the tempting shortcut and it
+  is a trap — nobody authors the silhouette the combination makes, so the
+  outline of the thing at any given instant is an accident, and you cannot fix
+  a frame you never drew.
+- **Four to eight frames, at one constant `dt`.** The loop is `frames × dt`,
+  and that is the only number that sets the rate. Below four the cycle reads as
+  a strobe; above eight the extra drawings are ones the eye cannot separate at
+  these rates, and every one of them is a full volume to draw and to check. The
+  shipped fire runs 8 frames at 0.2 s, a 1.6 s loop.
+- **Vary the OUTLINE, not just the filling.** Eight frames with the same
+  silhouette and different interior colours is a recolour, not an animation —
+  it reads as a surface flickering rather than as a thing moving. This is the
+  most common way a flipbook comes out wrong and it looks fine as eight stills.
+- **Fold the colour grade into the frames.** The instinct is a second part —
+  a tint, an overlay, a hot core — cycling on its own so the colour shifts
+  while the shape moves. Don't: a frame carries its own colours, and the grade
+  changes because the next drawing is drawn differently. An overlay part is a
+  second thing whose exclusivity nothing checks, and at these rates the two
+  cycles beat against each other in a pattern nobody chose.
+- **Hard cuts are correct.** At 5 frames a second a cut reads as flicker, which
+  is what fire does. Nothing here wants easing, and `visible` would not take it.
+- **Measure ONE FRAME, never the assembly.** An assembled flipbook holds every
+  frame at once, so `cuboidy-query --colors` on the rest pose counts a
+  campfire's flame eight times over and tells you the model is 69% loud orange
+  when what a player sees is 28%. That is not a rough version of the same
+  number; it is a number about an object nobody looks at. Name the moment:
+
+  ```
+  cuboidy-query <dir> --colors --anim=burn --time=0.2
+  ```
+
+  which drops the parts that are not visible at that instant. The figure moves
+  with the instant — a flame is a different shape at 0.0 and at 0.2 — so quote
+  the clip and the time alongside it, always. The same applies to
+  `cuboidy-snap`: it draws the rest pose, so it draws all eight flames stacked.
+  Use `cuboidy-gif --anim=burn` to look at a flipbook.
+- **`cuboidy-lint` checks the switching, and nothing else can.** W09/W10/W11
+  (§11.6) catch the three ways a flipbook breaks silently: a clip that keys
+  `visible` on some frames and not others, an instant where two frames or none
+  are visible, and indices that are not contiguous from 0. Two frames on reads
+  as one thicker flame; none on is a hole for a fifth of a second. Neither is
+  visible in a still and both survive every other check in the toolchain. H04
+  is the 4–8 band and the constant `dt`, as hints.
+
+Two shipped examples, in the consumer repository rather than here:
+`Tropalm.Godot/Models/tropalm/campfire/` and `Tropalm.Godot/Models/tropalm/furnace/`
+— `flame_f0`…`flame_f7` under `anims/burn.json`, dt 0.2 s, a 1.6 s loop, the
+furnace's flame sitting inside its firebox so the walls show around it.
+
 ## Verification (procedure — don't trust your head-math)
 
 **Read the output, not the exit status.** Measured 2026-08-24, and the two CLIs
