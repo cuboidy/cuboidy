@@ -143,6 +143,11 @@ export function renderGif(
         remap: rp.remap,
         transform: transforms.get(rp.name) ?? rp.transform,
         scale: composeScale(rp.scale, pose?.scale),
+        // §6.14 is a rest-pose statement, so it applies to a turntable of a
+        // still model and to nothing else here: once a clip is sampled the
+        // parts have left the plane the author declared, and dropping the
+        // seam faces anyway would open a hole that moves.
+        open: anim === null ? rp.open : undefined,
       });
     }
 

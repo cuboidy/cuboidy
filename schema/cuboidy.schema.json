@@ -81,6 +81,22 @@
         }
       ]
     },
+    "openBoundaries": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "+x",
+          "-x",
+          "+y",
+          "-y",
+          "+z",
+          "-z"
+        ]
+      },
+      "uniqueItems": true
+    },
     "parts": {
       "minItems": 1,
       "type": "array",
@@ -167,6 +183,22 @@
             ],
             "minItems": 3,
             "maxItems": 3
+          },
+          "openBoundaries": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "+x",
+                "-x",
+                "+y",
+                "-y",
+                "+z",
+                "-z"
+              ]
+            },
+            "uniqueItems": true
           },
           "geometry": {
             "type": "object",

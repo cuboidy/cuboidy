@@ -1,6 +1,12 @@
 import { AIR } from './geometry/voxel-row.js';
 import { MATTE } from './geometry/palette.js';
-import type { Material, Palette, Part } from './geometry/types.js';
+import type { Material, Palette, Part, Vec3Tuple } from './geometry/types.js';
+import { faceOnOpenPlane, type OpenPlane } from './open-boundary.js';
+import {
+  localPointToWorld,
+  quatRotateVec3,
+  type WorldTransform,
+} from './rig-transform.js';
 
 // Engine-agnostic mesh data for a single Part. Colors are sRGB in 0..1,
 // matching the palette's color space (SPEC §7.4). Renderers that need
@@ -167,7 +173,26 @@ function hiddenBy(
   return opaque[neighbour] ?? true;
 }
 
-export function buildMesh(part: Part, palette: Palette): MeshData {
+// SPEC §6.14: the open planes that apply to THIS part, with the rest placement
+// that puts its local corners into package space. The mesh still comes out
+// part-local; the placement is here only because the plane is stated in
+// package coordinates and the test has to be made there.
+//
+// Rest only, by construction: there is no pose in this object. An open
+// boundary is a statement about where the package's outside is, and a part
+// that moves takes its faces off the plane — lint H05 says so at authoring
+// time, and this signature is why there is nothing to say at runtime.
+export interface OpenBoundaryCull {
+  planes: readonly OpenPlane[];
+  transform: WorldTransform;
+  scale?: Vec3Tuple | undefined;
+}
+
+export function buildMesh(
+  part: Part,
+  palette: Palette,
+  open?: OpenBoundaryCull,
+): MeshData {
   const positions: number[] = [];
   const normals: number[] = [];
   const colors: number[] = [];
@@ -190,6 +215,13 @@ export function buildMesh(part: Part, palette: Palette): MeshData {
     }
     return buckets[at]!.idx;
   };
+
+  // Resolved once, not per face: a part with no open boundary must pay
+  // nothing at all for this, and one with an open boundary pays a rotate per
+  // corner only on the faces that survived neighbour culling.
+  const cull =
+    open === undefined || open.planes.length === 0 ? null : open;
+  const pivot: Vec3Tuple = [part.pivot.pos.x, part.pivot.pos.y, part.pivot.pos.z];
 
   const paletteSrgb = palette.map(
     (e) => [e.color.r / 255, e.color.g / 255, e.color.b / 255] as const,
@@ -236,6 +268,26 @@ export function buildMesh(part: Part, palette: Palette): MeshData {
         for (const face of FACES) {
           const n = voxelAt(part, x + face.d[0], y + face.d[1], z + face.d[2]);
           if (hiddenBy(n, idx, paletteOpaque)) continue;
+          // §6.14, AFTER the neighbour rule and BEFORE the bucket: a seam
+          // face is one nothing hid, and a part every one of whose faces is
+          // on the seam must not advertise a material no triangle uses.
+          if (
+            cull !== null &&
+            faceOnOpenPlane(
+              cull.planes,
+              face.corners.map((c) =>
+                localPointToWorld(
+                  [x + c[0], y + c[1], z + c[2]],
+                  pivot,
+                  cull.scale,
+                  cull.transform,
+                ),
+              ),
+              quatRotateVec3(cull.transform.quat, face.normal),
+            )
+          ) {
+            continue;
+          }
           into ??= bucketFor(paletteMaterial[idx] ?? MATTE_OPAQUE);
           for (const corner of face.corners) {
             positions.push(x + corner[0], y + corner[1], z + corner[2]);

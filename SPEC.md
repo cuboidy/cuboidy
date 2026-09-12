@@ -153,6 +153,7 @@ The manifest is a standard JSON document (no comments, no trailing commas).
   "version": "0.9",
   "geometry": ["body.json", "gear/hat.json"],
   "palette": "palette.json",
+  "openBoundaries": ["+z"],
   "parts": [ ... ],
   "sockets": { ... },
   "animations": { ... }
@@ -165,6 +166,7 @@ The manifest is a standard JSON document (no comments, no trailing commas).
 | `version` | no | string | Spec version this model targets. Absent → the current spec version (`"0.9"` in this draft) |
 | `geometry` | no | array of reference paths | The model's geometry **files** (§6.9), for parts that do not carry their own geometry. Absent → `["voxels.json"]` |
 | `palette` | no | array of colors, or a reference path | The palette **inline part geometry** uses when it declares none of its own (§6.13). It never applies to a part whose geometry lives in a file — see the scoping rule in §6.13 |
+| `openBoundaries` | no | array of `+x`/`-x`/`+y`/`-y`/`+z`/`-z` | Planes of the **package's** bounds that a neighbouring package is placed against; the faces lying on them are not baked (§6.14). Non-empty, no repeats. Absent → the package is closed |
 | `parts` | **yes** | array (non-empty) | At least one part |
 | `sockets` | no | object | The model's **published sockets** (§6.12) — the attachment points it offers to consumers. Absent → the model publishes none |
 | `animations` | no | object | Map from animation name to definition. Absent → no animations |
@@ -178,6 +180,7 @@ The manifest is a standard JSON document (no comments, no trailing commas).
   "position": [x, y, z],
   "rotation": [rx, ry, rz],
   "scale": [sx, sy, sz],
+  "openBoundaries": ["+z"],
   "geometry": { … }
 }
 ```
@@ -189,6 +192,7 @@ The manifest is a standard JSON document (no comments, no trailing commas).
 | `parent` | no | string (identifier) | Another part's name. Absent → this part is a root |
 | `position` | no | `[number, number, number]` | Where this part's pivot sits in **parent space** — voxel-unit offset from the parent's pivot (root parts: offset from world origin). Default `[0, 0, 0]` (this part's pivot coincides with the parent's pivot). See §7.7 for the full transform semantics |
 | `rotation` | no | `[number, number, number]` | The part's **rest rotation** in parent space: Euler degrees, ZXY intrinsic order (§4), applied around the part's pivot. Composes outside the geometry file's `pivot.rot` (`q_rest = q_rotation · q_pivot`, §7.7) and is inherited by children like any parent transform. Default: absent → identity |
+| `openBoundaries` | no | array of `+x`/`-x`/`+y`/`-y`/`+z`/`-z` | Planes of **this part's own** bounds that are open (§6.14). Same field as the manifest's, over a different box, and it applies to this part alone. Absent → the part is closed |
 | `scale` | no | `[number, number, number]` | The part's **rest scale**: per-axis multipliers on its voxels, applied around the part's pivot. Every value MUST be `> 0` (zero, negative and non-finite are `invalid-value`); non-uniform is allowed. Multiplies with the keyframe `scale` of §6.5 — same axis, same pivot, same non-inheritance — so `S_total = scale ⊙ anim.scale`. Default: absent → `[1, 1, 1]` |
 
 Rules:
@@ -472,6 +476,70 @@ A part in the **reference form is never affected by the manifest's `palette`**: 
 
 A top-level `palette` that no inline part ends up using is dead weight and lints as **W08** (§11.6) — most often a v0.7 manifest binding, which meant something else.
 
+### 6.14 Open boundaries
+
+```json
+"openBoundaries": ["+z"]
+```
+
+A package that is **meant to be placed against another one** — a bed's head
+and foot, a pipe segment, a wall run — has a face that is never seen: the one
+the neighbour covers. Baked anyway it is drawn for nothing, and where the two
+packages meet exactly it z-fights with the face pointing back at it.
+`openBoundaries` is how a package says which of its sides that is.
+
+The field is a set of the six planes of a bounds, spelled `+x`, `-x`, `+y`,
+`-y`, `+z`, `-z` (§4 axes). It appears in two places, with the same meaning
+over different bounds:
+
+| Location | The plane it names |
+|---|---|
+| top level (§6.1) | a plane of the **whole package's** bounds — every part takes part, and an interior one simply has no face on it |
+| part object (§6.2) | a plane of **that part's own** bounds, and it applies to that part alone |
+
+Both are optional; absent means the package (or the part) is closed, which is
+what every model written before this field is.
+
+**Bounds** here is the §7.7 rest-pose box over every participating part's
+declared `size` — the same box `cuboidy-query` prints — not the box the
+occupied voxels fill. A package declares how big it is by its parts' sizes, and
+that is the side a neighbour is placed against whether or not the outermost
+layer has holes in it.
+
+**What a bake does.** A face is omitted when, in package coordinates:
+
+- all four of its corners have the declared axis coordinate **exactly equal**
+  to the plane, and
+- its outward normal points **through** the plane (a `+z` declaration drops
+  `+z` faces; a face pointing back into the package at the same coordinate is
+  the inside of a hollow, and nothing covers it).
+
+Everything else is drawn. An interior face of the same direction — a `+z` face
+one voxel short of the plane, at the back of a recess — is not on the plane and
+is kept. The equality is exact and **MUST NOT** be given a tolerance: the
+coordinates are a lattice, so a face either lies on the plane or does not, and
+an epsilon silently eats the faces that sit just inside it. A model is allowed
+to be over-drawn; it is not allowed to lose surfaces for reasons the author
+cannot see.
+
+**Why a plane and not a list of faces.** Naming faces binds the declaration to
+the shape: every voxel added, removed or moved on that side invalidates the
+list, and nothing says so. A plane is a statement about where the package's
+outside is, and it survives reshaping — whatever ends up lying on `z = max` is
+the seam, however many rectangles that turns out to be.
+
+**Rest pose only.** The omission is applied to the rest pose and to nothing
+else. A part that an animation moves takes its faces off the plane, and the
+hole they left stops being covered: the model opens, mid-clip, from one side.
+A consumer sampling a clip therefore draws every face, and an author who
+animates a part that lies on an open boundary is told so by **H05** (§11.6) —
+a hint rather than an error, because the combination is spec-valid and can be
+deliberate.
+
+Two implementations must omit the same faces (§7.4's set comparison is taken
+over what is left). Nothing else about the mesh changes: the surviving faces
+keep their corners, normals, colors, alphas and materials.
+
 ---
 
 ## 7. `voxels.json` — voxel definition
@@ -584,7 +652,7 @@ Two consequences follow, and both are normative:
 
 Two rules make that drawable, and both are normative because two implementations must agree on the geometry they produce:
 
-- **A face is dropped only when its neighbour hides it.** A neighbour hides a face when it is opaque, or when it is the very same palette index. Being merely solid is not enough. Drop a wall's face because a pane of glass sits against it and the glass looks onto a hole; keep the faces inside a body of one translucent color and every layer blends again, so three voxels of water read darker than one.
+- **A face is dropped only when its neighbour hides it.** A neighbour hides a face when it is opaque, or when it is the very same palette index. (§6.14's open boundaries are the one other rule that drops a face, and it is a property of the package rather than of the voxel: a face on a declared open plane is omitted from a rest-pose bake because the package placed against it covers it.) Being merely solid is not enough. Drop a wall's face because a pane of glass sits against it and the glass looks onto a hole; keep the faces inside a body of one translucent color and every layer blends again, so three voxels of water read darker than one.
 - **A run of one translucent color is one surface, whatever its thickness.** That is the consequence of the same-index half above, and it is deliberate: thickness is expressed by choosing a denser color, not by stacking. An implementation MUST NOT blend per layer.
 
 Draw the opaque faces first, writing depth; then the translucent ones back to front, testing depth but not writing it. Sorting by mean face depth is sufficient — voxel faces do not interpenetrate.
@@ -862,6 +930,8 @@ Reference cycles (a → b → a) are an error.
 | `cuboidy.json` | part `geometry` | absent → the part of the same `name` in the `geometry` list (§6.13) |
 | `cuboidy.json` | part `geometry.part` | absent → the enclosing part's `name` |
 | `cuboidy.json` | `palette` | absent → inline geometry has no default palette |
+| `cuboidy.json` | `openBoundaries` | absent → the package is closed; every face is baked (§6.14) |
+| `cuboidy.json` | part `openBoundaries` | absent → the part is closed (§6.14) |
 | `cuboidy.json` | `sockets` | absent → no published sockets (§6.12) |
 | `cuboidy.json` | `animations` | absent → no animations |
 | `cuboidy.json` | `version` | absent → current spec version (`"0.9"` in this draft) |
@@ -940,8 +1010,8 @@ Manifest errors use the same five structural codes (§11.2). The TS reference im
 |---|---|
 | `missing` | Top-level `name` is absent; top-level `parts` is absent or empty; **`cuboidy.json` itself is absent** (§3); an inline part `geometry` without `size` or `voxels` (§6.13); palette file's `colors` is absent (§6.10) |
 | `duplicate` | Duplicate part name; duplicate animation name (planned) |
-| `unknown` | A field other than `name` / `version` / `geometry` / `palette` / `parts` / `sockets` / `animations` is present at the top level; a field other than `name` / `parent` / `position` / `rotation` / `geometry` is present inside a part; a field other than `part` / `socket` inside a published socket (§6.12); in a part's `geometry` (§6.13), a field other than `path` / `part` in the reference form, or `name` / anything outside §7.5 + `palette` in the inline form — including `path` mixed with inline fields; a field other than `colors` in a palette file |
-| `invalid-value` | Wrong type for a field (e.g. `name` is a number); identifier failing the §5 regex; a `geometry` / `palette` / animation reference path violating §8 (wrong extension, backslash, absolute, URL/URI, empty segment) — including a part's `geometry.path` (§6.13); duplicate or empty `geometry` list; malformed color string in a palette file; `parent` references a non-existent part; a published socket's `part` references a non-existent part (§6.12); parent chain contains a cycle; animation `duration` non-positive, non-finite, or less than the largest time key; time keys not decimal-number strings, not strictly increasing, or not starting at `"0.0"` |
+| `unknown` | A field other than `name` / `version` / `geometry` / `palette` / `openBoundaries` / `parts` / `sockets` / `animations` is present at the top level; a field other than `name` / `parent` / `position` / `rotation` / `scale` / `openBoundaries` / `geometry` is present inside a part; an `openBoundaries` entry naming no plane (§6.14) — a name outside a closed set, as an ease preset is; a field other than `part` / `socket` inside a published socket (§6.12); in a part's `geometry` (§6.13), a field other than `path` / `part` in the reference form, or `name` / anything outside §7.5 + `palette` in the inline form — including `path` mixed with inline fields; a field other than `colors` in a palette file |
+| `invalid-value` | Wrong type for a field (e.g. `name` is a number); identifier failing the §5 regex; a `geometry` / `palette` / animation reference path violating §8 (wrong extension, backslash, absolute, URL/URI, empty segment) — including a part's `geometry.path` (§6.13); duplicate or empty `geometry` list; duplicate or empty `openBoundaries` (§6.14), and an entry of it that is not a string; malformed color string in a palette file; `parent` references a non-existent part; a published socket's `part` references a non-existent part (§6.12); parent chain contains a cycle; animation `duration` non-positive, non-finite, or less than the largest time key; time keys not decimal-number strings, not strictly increasing, or not starting at `"0.0"` |
 | `wrong-arity` | Palette file's `colors` is empty or exceeds 64 entries (§6.10) |
 
 Items marked "planned" are not yet implemented in the TS reference; the catch-all `invalid-value` may surface generic Zod messages for those cases until then. External animation files (§6.3 string refs) are validated with the same inline-animation rules when the project is resolved (lint, inspection CLIs, editor); a missing or invalid referenced file is an error there.
@@ -968,6 +1038,7 @@ Most of these rules are *reporting*, and an implementation that only needs to dr
 | `invalid-value` | warning | **[W09]** an animation keys `visible` on some members of a **flipbook** set but not on all of them. A flipbook is parts named `<prefix>_f<n>` that a clip switches between so that exactly one is drawn at a time — the way a volume whose voxel count changes (fire, growth, a damage state) is animated, since no transform turns one shape into another. An unkeyed member holds the §6.5 default `true` for the whole clip and is drawn over every other frame. W10 is suppressed for that clip, since the unkeyed member is co-visible at every instant and would otherwise report the one mistake once per keyframe |
 | `invalid-value` | warning | **[W10]** an instant of a clip at which the number of visible members of a flipbook set is not exactly one. `visible` steps (§6.7), so the set's visibility is constant between consecutive key times and sampling each of the set's key times is exhaustive, not a probe. Two frames on reads as one thicker shape and none on is a hole; neither shows in a still, and no other check in a toolchain sees either |
 | `invalid-value` | warning | **[W11]** a flipbook set whose frame indices are not `0..n−1` — a gap (a deleted drawing the clip still has a slot for) or two names spelling one index (`_f0` and `_f00`) |
+| `invalid-value` | hint | **[H05]** a part that lies on an **open boundary** plane (§6.14) and is animated by some clip. The bake omits that part's seam faces in the rest pose, so the hole they left shows the moment the part moves off the plane — from one side only, mid-clip, in a model whose stills all look right. A hint rather than a warning: the combination is spec-valid and can be deliberate (a lid that only ever opens away from the seam), and `--strict` must not make that unpublishable. Scoped to parts actually ON a plane, since a package-level declaration reaches every part and an animated part deep inside it has nothing to lose |
 | `invalid-value` | hint | **[H04]** a flipbook set outside the 4–8 frame band, or keyed at uneven intervals. Guidance about how the loop reads rather than a claim the model is wrong, hence a hint: a deliberate hold on one frame is allowed to sit here. Intervals compare with a relative tolerance, since `0.6 − 0.4` and `0.8 − 0.6` are not the same double |
 | — | — | **All four are scoped by a clip, not by the naming.** `_f<n>` is a convention, not a reserved word: the rules apply to a prefix group only once some clip keys `visible` on one of its members, which is the author saying the set is a flipbook. Two fixed panels called `panel_f1` / `panel_f2` are never reported |
 | `missing` | error | A published socket (§6.12) names a `socket` that its host part does not declare in geometry (§7.8). The other half — a `part` that is not in `parts` at all — is a manifest-level `invalid-value` (§11.5), because it needs no geometry file to detect |

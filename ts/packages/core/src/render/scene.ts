@@ -1,6 +1,7 @@
 import type { Material, Palette, Part } from '../geometry/types.js';
 import { AIR } from '../geometry/voxel-row.js';
 import { MATTE } from '../geometry/palette.js';
+import { faceOnOpenPlane, type OpenPlane } from '../open-boundary.js';
 import {
   localPointToWorld,
   quatRotateVec3,
@@ -78,6 +79,12 @@ export interface OrientedPart {
   // axes, same pivot, same stopping point, so they commute into a single
   // product. Absent = [1, 1, 1].
   scale?: readonly [number, number, number] | undefined;
+  // SPEC §6.14: the open planes that apply to this part, in package
+  // coordinates — the faces lying on them are a seam and are not emitted.
+  // Set by the REST assembly only: a posed part has left the plane, so a
+  // consumer that samples a clip builds its parts without this field and the
+  // whole model draws closed (see gif-runner).
+  open?: readonly OpenPlane[] | undefined;
 }
 
 // Rotation-aware scene builder: per part, emit the faces its own solid
@@ -101,7 +108,7 @@ export function buildSceneFromParts(
   let minX = Infinity, minY = Infinity, minZ = Infinity;
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
 
-  for (const { part, remap, transform, scale } of parts) {
+  for (const { part, remap, transform, scale, open } of parts) {
     const { w, h, d } = part.size;
     // Absent is AIR, whether the cell is outside the declared size or
     // outside a row that is shorter than the size claims — mesh.ts's
@@ -149,9 +156,18 @@ export function buildSceneFromParts(
             const corners = f.corners.map((c) =>
               toWorld(x + c[0], y + c[1], z + c[2]),
             ) as [Vec3, Vec3, Vec3, Vec3];
+            const normal = quatRotateVec3(transform.quat, f.normal);
+            // §6.14: a seam face — one lying exactly on a declared open plane
+            // of the package's (or this part's) bounds — is not drawn, because
+            // the package it abuts covers it. The same test mesh.ts makes, on
+            // the same package-space corners, so a render and a bake omit the
+            // same rectangles.
+            if (open !== undefined && faceOnOpenPlane(open, corners, normal)) {
+              continue;
+            }
             quads.push({
               corners,
-              normal: quatRotateVec3(transform.quat, f.normal),
+              normal,
               color,
               alpha,
               material: materialOf[effIdx] ?? MATTE,

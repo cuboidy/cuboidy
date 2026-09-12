@@ -59,9 +59,9 @@ public class ManifestFixtureTests
     }
 
     [Test]
-    public void TheWholeNegativeCorpusIsFiftyDocuments()
+    public void TheWholeNegativeCorpusIsFiftyTwoDocuments()
     {
-        // geometry 20 + manifest 23 + palette 7. Both the plan document and
+        // geometry 20 + manifest 25 + palette 7. Both the plan document and
         // `fixtures/README.md` quote this count and both were stale within a
         // day of being written; a corpus that shrank without anyone noticing
         // is a contract that stopped testing something.
@@ -70,9 +70,9 @@ public class ManifestFixtureTests
         int palette = Count("palette");
 
         Assert.That(geometry, Is.EqualTo(20), "fixtures/geometry");
-        Assert.That(manifest, Is.EqualTo(23), "fixtures/manifest");
+        Assert.That(manifest, Is.EqualTo(25), "fixtures/manifest");
         Assert.That(palette, Is.EqualTo(7), "fixtures/palette");
-        Assert.That(geometry + manifest + palette, Is.EqualTo(50));
+        Assert.That(geometry + manifest + palette, Is.EqualTo(52));
 
         static int Count(string kind) => Directory
             .GetFiles(Path.Combine(TestPaths.FixturesDir, kind), "*.json", SearchOption.AllDirectories)

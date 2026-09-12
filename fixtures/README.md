@@ -56,7 +56,9 @@ fixtures/
 │   │   ├── inline-stray-part.json     §6.13 inline geometry carrying `part`,
 │   │   │                              which names a part inside a REFERENCED
 │   │   │                              file and has no meaning without `path`
-│   │   └── ease-preset.json           §6.5 ease naming no preset
+│   │   ├── ease-preset.json           §6.5 ease naming no preset
+│   │   └── open-boundary-face.json    §6.14 `openBoundaries` naming no plane
+│   │                                  (a name outside a closed set, §11.2)
 │   ├── invalid-value/
 │   │   ├── bad-model-name.json        model name fails the §5 identifier rule
 │   │   ├── dangling-parent.json       `parent` names no part (§11.5)
@@ -69,9 +71,12 @@ fixtures/
 │   │   ├── absolute-ref.json          a §8 reference path that is absolute
 │   │   ├── scale-zero.json            a §6.2 `scale` factor of 0, which
 │   │   │                              collapses the part
-│   │   └── scale-negative.json        a §6.2 `scale` factor below 0, which
-│   │                                  mirrors the part and so reverses its
-│   │                                  face winding
+│   │   ├── scale-negative.json        a §6.2 `scale` factor below 0, which
+│   │   │                              mirrors the part and so reverses its
+│   │   │                              face winding
+│   │   └── open-boundary-duplicate.json
+│   │                                  §6.14 the same plane twice, which says
+│   │                                  nothing the single entry does not
 │   └── wrong-arity/
 │       ├── position-arity.json        `position` is not a triple
 │       ├── scale-arity.json           `scale` is not a triple — its own

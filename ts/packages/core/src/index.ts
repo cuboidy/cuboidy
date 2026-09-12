@@ -136,7 +136,29 @@ export {
 export type { SocketFrame } from './socket-frame.js';
 
 export { buildMesh } from './mesh.js';
-export type { MeshData, MeshGroup, MeshMaterial } from './mesh.js';
+export type {
+  MeshData,
+  MeshGroup,
+  MeshMaterial,
+  OpenBoundaryCull,
+} from './mesh.js';
+
+// SPEC §6.14. `openPlanesFor` is the one place a declaration becomes planes,
+// so a host that bakes its own rest pose resolves them exactly as the CLIs do
+// rather than re-reading the manifest field itself.
+export {
+  BOUNDARY_FACES,
+  boundaryAxis,
+  boundaryIsPositive,
+  boundsOf,
+  faceOnOpenPlane,
+  openPlanesFor,
+} from './open-boundary.js';
+export type {
+  BoundaryFace,
+  OpenPlane,
+  RestPlacement,
+} from './open-boundary.js';
 
 // The named viewpoints. Exported so a browser app can render a model from
 // the SAME angle cuboidy-snap does rather than inventing its own — a

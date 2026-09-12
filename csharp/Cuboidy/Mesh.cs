@@ -80,6 +80,14 @@ public sealed record MeshData(
     // ignore `Groups` too and still draw the right triangles.
     IReadOnlyList<MeshGroup> Groups);
 
+// SPEC §6.14: what `BuildMesh` needs to drop the faces on an open boundary —
+// the planes, in package coordinates, and the rest placement that puts a
+// part-local corner there. `OpenBoundary.PlanesFor` resolves a manifest's
+// declaration into `Planes`; `CuboidyModel.BuildMesh` composes the two, so a
+// consumer that draws a package never assembles this by hand.
+public sealed record OpenBoundaryCull(
+    IReadOnlyList<OpenPlane> Planes, Frame Transform, Vec3? Scale);
+
 public static class Mesh
 {
     private static readonly MeshMaterial MatteOpaque = new MeshMaterial(PaletteCodec.Matte, false);
@@ -174,10 +182,28 @@ public static class Mesh
     // The mesh comes out in PART-LOCAL space. `scale` and the world transform
     // are applied by the caller, per part, because scale does not propagate to
     // children (§7.7) — see `RigTransform.LocalPointToWorld`.
-    public static MeshData BuildMesh(Part part, IReadOnlyList<PaletteEntry> palette)
+    //
+    // `open` is SPEC §6.14: the open planes that apply to this part, with the
+    // rest placement that puts its local corners into package space. The mesh
+    // still comes out part-local; the placement is here only because the plane
+    // is stated in package coordinates and the test has to be made there. Rest
+    // only, by construction — there is no pose in `OpenBoundaryCull`, because a
+    // part that moves takes its faces off the plane (lint H05 says so at
+    // authoring time; this signature is why there is nothing to say at
+    // runtime). Null, or no planes, and this file behaves exactly as it did
+    // before the field existed.
+    public static MeshData BuildMesh(
+        Part part, IReadOnlyList<PaletteEntry> palette, OpenBoundaryCull? open = null)
     {
         if (part is null) throw new ArgumentNullException(nameof(part));
         if (palette is null) throw new ArgumentNullException(nameof(palette));
+
+        // Resolved once, not per face: a part with no open boundary pays
+        // nothing at all, and one with an open boundary pays a rotate per
+        // corner only on the faces that survived neighbour culling.
+        OpenBoundaryCull? cull = open is { Planes.Count: > 0 } ? open : null;
+        Vec3 pivot = part.Pivot.Pos;
+        var worldCorners = new double[12];
 
         var positions = new List<float>();
         var normals = new List<float>();
@@ -260,6 +286,38 @@ public static class Mesh
                     {
                         int neighbour = VoxelAt(part, x + face.Dx, y + face.Dy, z + face.Dz);
                         if (HiddenBy(neighbour, idx, paletteOpaque)) continue;
+                        // §6.14, AFTER the neighbour rule and BEFORE the
+                        // bucket: a seam face is one nothing hid, and a part
+                        // every one of whose faces is on the seam must not
+                        // advertise a material no triangle uses.
+                        if (cull is { } seam)
+                        {
+                            for (int c = 0; c < 4; c++)
+                            {
+                                Vec3 w = RigTransform.LocalPointToWorld(
+                                    new Vec3(
+                                        x + face.Corners[c * 3],
+                                        y + face.Corners[c * 3 + 1],
+                                        z + face.Corners[c * 3 + 2]),
+                                    pivot,
+                                    seam.Scale,
+                                    seam.Transform);
+                                worldCorners[c * 3] = w.X;
+                                worldCorners[c * 3 + 1] = w.Y;
+                                worldCorners[c * 3 + 2] = w.Z;
+                            }
+
+                            if (OpenBoundary.FaceOnOpenPlane(
+                                    seam.Planes,
+                                    worldCorners,
+                                    RigTransform.QuatRotateVec3(
+                                        seam.Transform.Quat,
+                                        new Vec3(face.Nx, face.Ny, face.Nz))))
+                            {
+                                continue;
+                            }
+                        }
+
                         into ??= BucketFor(known ? paletteMaterial[idx] : MatteOpaque);
                         for (int c = 0; c < 4; c++)
                         {

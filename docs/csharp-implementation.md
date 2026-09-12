@@ -343,7 +343,7 @@ port started, which is the wrong home for the only record of why
 
 Every file under `fixtures/` yields the diagnostic code its directory is named
 after: `fixtures/geometry/wrong-arity/row-width.json` reports `wrong-arity`,
-`fixtures/manifest/missing/name.json` reports `missing`, and so on — 50
+`fixtures/manifest/missing/name.json` reports `missing`, and so on — 52
 documents today across `geometry/`, `manifest/` and `palette/`, plus 2
 packages under `project/`. That corpus is the cross-implementation contract;
 passing it is what "a second implementation exists" means here.

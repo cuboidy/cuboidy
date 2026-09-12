@@ -289,6 +289,38 @@ hand-math:
   each naming the same file: `"palette": "palette.json"`, which is also how you
   keep colors consistent across them.
 
+## Packages that sit against each other
+
+A model that is half of something — a bed's head and foot, one segment of a
+pipe or a wall — has a side that is never seen, because the other half covers
+it. Baked whole, that side is drawn for nothing, and where the two halves meet
+exactly it z-fights with the face pointing back at it. Say which side it is:
+
+```json
+{ "name": "bed_head", "openBoundaries": ["+z"], "parts": [ … ] }
+```
+
+The bake then omits the faces lying exactly on that plane of the package's
+bounds, and only those — an interior face of the same direction, a `+z` face at
+the back of a recess one voxel short of the plane, still draws. A part can
+carry the field instead of the manifest when the open side belongs to one
+component rather than to the whole model; the plane is then that part's own
+bounds.
+
+Declare the **plane**, and resist the urge to want a way to name the faces:
+faces move every time you edit the voxels on that side, and a list of them goes
+stale without saying so. `"+z"` keeps meaning the same thing after you reshape
+the headboard, add a post, or knock a hole through it — whatever ends up lying
+on `z = max` is the seam.
+
+Two things to keep in mind. The plane is measured from the parts' declared
+`size`, so a package that pads its bounds past its voxels has its seam out
+where the padding ends, not where the shape does. And it is a **rest-pose**
+statement: animate a part that lies on the plane and the hole its seam faces
+left opens as soon as it moves. `cuboidy-lint` says so (H05) rather than
+refusing — a lid that only ever swings away from the seam is a legitimate
+thing to author — but check it in the engine before you keep it.
+
 ## Joints
 
 A joint has to hold shut through every pose without its two parts fighting for

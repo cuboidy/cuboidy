@@ -7,6 +7,7 @@ import type { PaletteEntry, Palette, Part, Vec3 } from '../geometry/types.js';
 import { AIR, maxPaletteIndex } from './../geometry/voxel-row.js';
 import { MAX_PALETTE } from '../geometry/palette.js';
 import { round6 } from '../num.js';
+import { openPlanesFor } from '../open-boundary.js';
 import type { OrientedPart } from '../render/scene.js';
 import { computeRestWorldTransforms, pivotRotsOf } from '../rig-transform.js';
 import {
@@ -413,6 +414,21 @@ function assembleWorld(
         }
       }
     }
+  }
+
+  // SPEC §6.14, resolved only now: a manifest-level open boundary is a plane
+  // of the WHOLE package's bounds, so it does not exist until every part has
+  // been placed. The planes ride on PlacedPart, and every consumer that draws
+  // the REST pose (cuboidy-snap, cuboidy-query --mesh, a still gif) passes
+  // them straight through; one that samples a clip drops them, because a
+  // posed part is no longer on the plane.
+  const openPlanes = openPlanesFor(
+    manifest,
+    new Map(resolvedParts.map((rp) => [rp.name, rp] as const)),
+  );
+  for (const rp of resolvedParts) {
+    const planes = openPlanes.get(rp.name);
+    if (planes !== undefined) rp.open = planes;
   }
 
   return {

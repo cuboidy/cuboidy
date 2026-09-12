@@ -1,6 +1,7 @@
 import type { Diagnostic } from '../diagnostic.js';
 import { isInlineAnimation, type InlineAnimation } from '../animation.js';
 import { checkFlipbooks } from './flipbook.js';
+import { checkOpenBoundaries } from './open-boundary.js';
 import type { Geometry, Part } from '../geometry/types.js';
 import { AIR, maxPaletteIndex } from '../geometry/voxel-row.js';
 import type { Manifest } from '../manifest.js';
@@ -166,6 +167,12 @@ export function validateProject(input: ProjectInput): Diagnostic[] {
   // names and every clip's body at once, so this is the first point that has
   // both. See lint/flipbook.ts.
   checkFlipbooks(manifest, animsToCheck, diags);
+
+  // H05 — §6.14 open boundaries against those same clips. Here for the same
+  // reason: it needs every clip's body and the resolved shapes at once.
+  if (resolved !== undefined) {
+    checkOpenBoundaries(manifest, resolved, animsToCheck, diags);
+  }
 
   // §7.4 palette availability, per geometry file. Nothing to reconcile here
   // any more: a file declares its colors or points at a palette file, and

@@ -185,9 +185,57 @@ public sealed class CuboidyModel
         return placements;
     }
 
+    // §6.14: the open-boundary cull for each part, in the REST pose.
+    //
+    // Resolved once and kept, because a manifest-level declaration is a plane
+    // of the whole package's bounds — so it costs a pass over every part — and
+    // because a block is baked once and drawn thousands of times. A package
+    // that declares nothing produces an empty map, every lookup below misses,
+    // and `BuildMesh` behaves exactly as it did before §6.14 existed.
+    private Dictionary<string, OpenBoundaryCull>? culls;
+
+    private Dictionary<string, OpenBoundaryCull> Culls
+    {
+        get
+        {
+            if (culls is not null) return culls;
+
+            var placements = new Dictionary<string, RestPlacement>(StringComparer.Ordinal);
+            OrderedMap<Frame> world = WorldTransforms();
+            foreach (ManifestPart mp in Manifest.Parts)
+            {
+                if (!Project.Parts.TryGetValue(mp.Name, out ResolvedPart? resolved)) continue;
+                if (!world.TryGetValue(mp.Name, out Frame frame)) continue;
+                placements[mp.Name] = new RestPlacement(resolved.Part, frame, mp.Scale);
+            }
+
+            culls = new Dictionary<string, OpenBoundaryCull>(StringComparer.Ordinal);
+            foreach (KeyValuePair<string, IReadOnlyList<OpenPlane>> entry in
+                     OpenBoundary.PlanesFor(Manifest, placements))
+            {
+                // The very placement the planes were measured from, so a face
+                // is never tested against a plane derived from a different one.
+                RestPlacement placement = placements[entry.Key];
+                culls[entry.Key] = new OpenBoundaryCull(
+                    entry.Value, placement.Transform, placement.Scale);
+            }
+
+            return culls;
+        }
+    }
+
+    private OpenBoundaryCull? CullFor(string partName) =>
+        Culls.TryGetValue(partName, out OpenBoundaryCull? cull) ? cull : null;
+
     // §7.4 vertex data for one part, in PART-LOCAL space, against that part's
     // OWN palette. Raises for a part the model does not have or did not
     // resolve; `Placements` lists exactly the ones it does.
+    //
+    // §6.14 is applied here rather than left to the caller: the omission is a
+    // property of the PACKAGE, and a consumer that baked the faces anyway would
+    // draw a seam the format says is not there. It is a rest-pose statement, so
+    // there is deliberately no posed overload — a part that moves keeps every
+    // face, and lint H05 is where an author is told the two do not mix.
     public MeshData BuildMesh(string partName)
     {
         if (!Project.Parts.TryGetValue(partName, out ResolvedPart? resolved))
@@ -196,14 +244,14 @@ public sealed class CuboidyModel
                 $"model '{Name}' has no resolved part '{partName}'");
         }
 
-        return Mesh.BuildMesh(resolved.Part, resolved.Palette);
+        return Mesh.BuildMesh(resolved.Part, resolved.Palette, CullFor(partName));
     }
 
     public bool TryBuildMesh(string partName, out MeshData mesh)
     {
         if (Project.Parts.TryGetValue(partName, out ResolvedPart? resolved))
         {
-            mesh = Mesh.BuildMesh(resolved.Part, resolved.Palette);
+            mesh = Mesh.BuildMesh(resolved.Part, resolved.Palette, CullFor(partName));
             return true;
         }
 

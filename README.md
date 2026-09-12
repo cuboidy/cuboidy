@@ -204,7 +204,8 @@ Done — the v0.9 spec and a complete TypeScript implementation of it
 - [x] Lint — `lintGeometry` (W01–W05, H01–H02) plus cross-file
       `validateProject` (part matching, duplicate names, palette resolution and
       range, animation targets, published-socket resolution, W06 l/r symmetry,
-      W07 unreferenced file, W09–W11 + H04 flipbook exclusivity)
+      W07 unreferenced file, W09–W11 + H04 flipbook exclusivity,
+      H05 an animated part on an open boundary)
 - [x] JSON Schemas for both file kinds, generated from the same Zod schemas the
       runtime uses, plus shared `fixtures/` as the cross-implementation contract
 - [x] Inspection CLIs — `cuboidy-view` (ASCII), `cuboidy-query` (coordinates),

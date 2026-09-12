@@ -51,6 +51,11 @@ public sealed record ManifestPart(
     // (S_total = scale ⊙ anim.scale) and, like that one, does NOT reach the
     // part's children (§7.7). Absent → [1, 1, 1].
     Vec3? Scale,
+    // SPEC §6.14: planes of THIS PART's bounds that are open — the faces on
+    // them are a seam and are not baked. Scoped to the part, so a package whose
+    // open side belongs to one component says so there instead of opening the
+    // whole package's plane. Absent → the part is closed.
+    IReadOnlyList<BoundaryFace>? OpenBoundaries,
     // SPEC §6.13. Absent → the by-`name` lookup among the files in the
     // top-level `geometry` list, which is what every pre-v0.9 model uses.
     PartGeometry? Geometry);
@@ -72,6 +77,10 @@ public sealed record Manifest(
     // geometry file, so a referenced part still means what its own file says
     // (§7.4) and there is nothing to shadow.
     PaletteField? Palette,
+    // SPEC §6.14: planes of the PACKAGE's bounds that are open. Every part
+    // takes part — an interior one simply has no face on the plane. Absent →
+    // the package is closed, which is what every model before this field was.
+    IReadOnlyList<BoundaryFace>? OpenBoundaries,
     IReadOnlyList<ManifestPart> Parts,
     // SPEC §6.12: the attachment points this model offers to consumers. Keys
     // are §5 identifiers and are unique model-wide by virtue of being object
@@ -140,7 +149,8 @@ public static class ManifestReader
     {
         DocPath at = DocPath.Root;
         ObjectFields fields = JsonRead.Fields(
-            root, at, "name", "version", "geometry", "palette", "parts", "sockets", "animations");
+            root, at, "name", "version", "geometry", "palette", "openBoundaries", "parts",
+            "sockets", "animations");
 
         string name = JsonRead.IdentifierValue(fields.Required("name"), at.Add("name"));
 
@@ -156,6 +166,11 @@ public static class ManifestReader
             ? GeometrySchema.ReadPaletteField(paletteEl, at.Add("palette"))
             : null;
 
+        IReadOnlyList<BoundaryFace>? openBoundaries =
+            fields.TryGet("openBoundaries", out JsonElement openEl)
+                ? ReadOpenBoundaries(openEl, at.Add("openBoundaries"))
+                : null;
+
         IReadOnlyList<ManifestPart> parts = ReadParts(fields.Required("parts"), at.Add("parts"));
 
         OrderedMap<PublishedSocket> sockets = fields.TryGet("sockets", out JsonElement socketsEl)
@@ -166,7 +181,8 @@ public static class ManifestReader
             ? AnimationSchema.ReadAnimations(animationsEl, at.Add("animations"))
             : OrderedMap<Animation>.Empty;
 
-        return new Manifest(name, version, geometry, palette, parts, sockets, animations);
+        return new Manifest(
+            name, version, geometry, palette, openBoundaries, parts, sockets, animations);
     }
 
     private static IReadOnlyList<string> ReadGeometryList(JsonElement e, DocPath at)
@@ -200,6 +216,50 @@ public static class ManifestReader
         return paths;
     }
 
+    // SPEC §6.14. Non-empty and without repeats, for the reason the `geometry`
+    // list is: a duplicate says nothing the single entry does not, so it is a
+    // slip rather than a shorthand.
+    //
+    // An unrecognised spelling is `unknown`, not `invalid-value`: §11.2 files
+    // "an unrecognized name where the spec defines a closed set" there, and an
+    // ease preset name (§6.7) already goes that way. A non-string — `123`, or
+    // `null` — is a value of the wrong JSON type and stays `invalid-value`,
+    // which is what `JsonRead.String` raises before the lookup is reached.
+    private static IReadOnlyList<BoundaryFace> ReadOpenBoundaries(JsonElement e, DocPath at)
+    {
+        JsonRead.ArrayValue(e, at);
+        if (e.GetArrayLength() == 0)
+        {
+            throw JsonRead.Fail(
+                CuboidyErrorCode.InvalidValue, "expected at least one open boundary", at);
+        }
+
+        var faces = new List<BoundaryFace>();
+        int i = 0;
+        foreach (JsonElement item in e.EnumerateArray())
+        {
+            string wire = JsonRead.String(item, at.Add(i));
+            if (!OpenBoundary.TryParseWire(wire, out BoundaryFace face))
+            {
+                throw JsonRead.Fail(
+                    CuboidyErrorCode.Unknown,
+                    $"expected one of +x, -x, +y, -y, +z, -z, got \"{wire}\"",
+                    at.Add(i));
+            }
+
+            if (faces.Contains(face))
+            {
+                throw JsonRead.Fail(
+                    CuboidyErrorCode.InvalidValue, "duplicate open boundary", at.Add(i));
+            }
+
+            faces.Add(face);
+            i++;
+        }
+
+        return faces;
+    }
+
     private static IReadOnlyList<ManifestPart> ReadParts(JsonElement e, DocPath at)
     {
         JsonRead.ArrayValue(e, at);
@@ -221,7 +281,8 @@ public static class ManifestReader
 
     private static ManifestPart ReadPart(JsonElement e, DocPath at)
     {
-        ObjectFields fields = JsonRead.Fields(e, at, "name", "parent", "position", "rotation", "scale", "geometry");
+        ObjectFields fields = JsonRead.Fields(
+            e, at, "name", "parent", "position", "rotation", "scale", "openBoundaries", "geometry");
         return new ManifestPart(
             JsonRead.IdentifierValue(fields.Required("name"), at.Add("name")),
             fields.TryGet("parent", out JsonElement parentEl)
@@ -236,6 +297,9 @@ public static class ManifestReader
             fields.TryGet("scale", out JsonElement scaleEl)
                 ? JsonRead.ScaleValue(scaleEl, at.Add("scale"))
                 : (Vec3?)null,
+            fields.TryGet("openBoundaries", out JsonElement openEl)
+                ? ReadOpenBoundaries(openEl, at.Add("openBoundaries"))
+                : null,
             fields.TryGet("geometry", out JsonElement geometryEl)
                 ? ReadPartGeometry(geometryEl, at.Add("geometry"))
                 : null);

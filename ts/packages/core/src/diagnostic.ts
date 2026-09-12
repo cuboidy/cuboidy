@@ -40,7 +40,11 @@ export type LintRuleId =
   // H04: cross-file — a flipbook set outside the 4-8 frame band, or keyed at
   // uneven intervals. Guidance about how the loop reads, hence a hint: it
   // does not fail `--strict`, and a deliberate hold is allowed to sit here.
-  | 'H04';
+  | 'H04'
+  // H05: cross-file — a part that lies on an open boundary plane (§6.14) and
+  // is animated by some clip. The bake omits its seam faces in the rest pose,
+  // so the hole shows the moment the part leaves the plane.
+  | 'H05';
 
 export interface Diagnostic {
   // Structural category (SPEC §11.2). For lint diagnostics that don't map

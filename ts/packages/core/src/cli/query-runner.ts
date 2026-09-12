@@ -366,7 +366,17 @@ function formatMesh(
     }
     const wt = world.get(rp.name);
     if (wt === undefined) continue;
-    const mesh = buildMesh(rp.part, rp.palette);
+    // §6.14 applies to the REST pose and `poses` empty is exactly that (see
+    // the sampling above), so a `--mesh` with no `--anim` prints the surface
+    // a bake produces, seam faces and all — and a `--mesh --anim` prints the
+    // whole closed part, which is what the model actually is once it moves.
+    const mesh = buildMesh(
+      rp.part,
+      rp.palette,
+      poses.size === 0 && rp.open !== undefined
+        ? { planes: rp.open, transform: wt, scale: rp.scale }
+        : undefined,
+    );
     const piv: Vec3Tuple = [
       rp.part.pivot.pos.x,
       rp.part.pivot.pos.y,

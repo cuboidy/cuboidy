@@ -5,6 +5,39 @@ the spec as it stands now.
 
 ## v0.9 (draft — current)
 
+### Open boundaries — `openBoundaries`, §6.14, H05
+
+A new optional field, on the manifest and on a part: the planes of a bounds
+that another package is expected to be placed against. A rest-pose bake omits
+the faces lying exactly on such a plane, and nothing else changes.
+
+The case is two packages that abut — a bed's head and foot, a pipe run, a wall.
+Each baked its own complete surface, so the seam carried two faces buried
+inside the combined volume: drawn for nothing, and z-fighting wherever the two
+landed on the same coordinate. Nothing in the format could say the side was
+never going to be seen.
+
+- **A plane, not a list of faces.** Naming faces binds the declaration to the
+  shape and goes stale the first time a voxel on that side moves, silently. A
+  plane says where the package's outside is, and whatever ends up lying on it
+  is the seam — the declaration survives reshaping.
+- **Exact equality, no tolerance.** A face is omitted when all four corners
+  have the declared axis coordinate exactly equal to the plane and the outward
+  normal points through it. The coordinates are a lattice, so this is decidable
+  without an epsilon — and an epsilon would silently eat faces that sit just
+  inside the boundary, which is a disappearance an author cannot explain.
+  Interior faces of the same direction are kept.
+- **Bounds is the §7.7 box of the declared sizes**, not of the occupied voxels:
+  a package's size is what a neighbour is placed against, holes in the outer
+  layer or not.
+- **Rest pose only**, because a part that moves takes its faces off the plane
+  and the hole opens mid-clip. **H05** reports a part that lies on an open
+  boundary and is animated — a hint, not a warning: the combination is
+  spec-valid and can be deliberate, and `--strict` should not forbid it.
+
+Absent on every existing model, and absent means closed, so nothing that
+exists renders differently.
+
 ### Flipbook lint — W09, W10, W11, H04
 
 No change to the format. A **flipbook** is how a volume whose voxel count

@@ -6,6 +6,7 @@ import {
   checkPartFields,
 } from './geometry/schema.js';
 import { Identifier } from './identifier-schema.js';
+import { BOUNDARY_FACES } from './open-boundary.js';
 import { refPath } from './ref-path.js';
 import { ok, type Result } from './result.js';
 import { resultFromZodError } from './zod-diagnostic.js';
@@ -18,6 +19,19 @@ const Vec3 = z.tuple([z.number(), z.number(), z.number()]);
 // differs from what the author wrote without saying so.
 const Factor = z.number().positive().finite();
 const Scale3 = z.tuple([Factor, Factor, Factor]);
+
+// SPEC §6.14: the planes of a bounds that are open — a seam another package is
+// expected to sit against. One field, two scopes (the manifest's own bounds,
+// or a part's), so the shape is declared once here.
+const OpenBoundaries = z
+  .array(z.enum(BOUNDARY_FACES))
+  .min(1)
+  .refine((a) => new Set(a).size === a.length, {
+    message: 'duplicate open boundary',
+  })
+  // The refine is runtime-only; `.meta()` carries the equivalent constraint
+  // into the generated JSON Schema, the same way `geometry` does.
+  .meta({ uniqueItems: true });
 
 // SPEC §6.13: where a part's shape comes from. Two forms in one object,
 // told apart by whether `path` is present:
@@ -112,6 +126,11 @@ export const ManifestPartSchema = z
     // (S_total = scale ⊙ anim.scale) and, like that one, does NOT reach the
     // part's children (§7.7). Absent → [1, 1, 1].
     scale: Scale3.optional(),
+    // SPEC §6.14: planes of THIS PART's bounds that are open — the faces on
+    // them are a seam and are not baked. Scoped to the part, so a package
+    // whose open side belongs to one component says so there instead of
+    // opening the whole package's plane. Absent → the part is closed.
+    openBoundaries: OpenBoundaries.optional(),
     // SPEC §6.13. Absent → the by-`name` lookup among the files in the
     // top-level `geometry` list, which is what every pre-v0.9 model uses.
     geometry: PartGeometrySchema.optional(),
@@ -153,6 +172,10 @@ export const ManifestSchema = z
     // hint H03. A binding no inline part uses lints as W08 (§11.6), which
     // is exactly the shape a leftover v0.7 manifest has.
     palette: PaletteFieldSchema.optional(),
+    // SPEC §6.14: planes of the PACKAGE's bounds that are open. Every part
+    // takes part — an interior one simply has no face on the plane. Absent →
+    // the package is closed, which is what every model before this field was.
+    openBoundaries: OpenBoundaries.optional(),
     parts: z.array(ManifestPartSchema).min(1),
     // SPEC §6.12: the attachment points this model offers to consumers.
     // Keys are §5 identifiers and are unique model-wide by virtue of being
