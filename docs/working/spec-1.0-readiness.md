@@ -91,7 +91,7 @@ and implemented the same way by both readers.
 | 6.13 | Part geometry | **New since the mark** | Added `439d0eb`. `test/part-geometry.test.ts:9-24`; the inline form is used by one model (`orrery`) |
 | 6.14 | Open boundaries | **New since the mark** | Added `db730d1`, ten days ago. `test/open-boundary.test.ts` entire, two negative fixtures. No shipped model uses it and there is no positive fixture; 2 production packages already do — see §3 |
 | 7.1 | Geometry file structure | **Changed** | Gained the palette (`fd0ff25`) |
-| 7.4 | Palette | **Changed** | Materials (`228c68e`), alpha (`004b2bc`), the 64 cap (`37de2e7`), and the statement of what two implementations must agree on about a mesh (`db771f3`). The most-cited section in the suite: `test/palette-material.test.ts`, `test/mesh.test.ts:9,111,151`, `test/render-scene.test.ts:106-290`. Materials and alpha have zero production users |
+| 7.4 | Palette | **Changed** | Materials (`228c68e`), alpha (`004b2bc`), the 64 cap (`37de2e7`), and the statement of what two implementations must agree on about a mesh (`db771f3`). The most-cited section in the suite: `test/palette-material.test.ts`, `test/mesh.test.ts:9,111,151`, `test/render-scene.test.ts:106-290`. Material objects have zero production users; alpha has one colour, in six packages |
 | 7.5 | Part object | Stable | `test/geometry-parse.test.ts:108,132` |
 | 7.6 | `size` | Stable | `test/geometry-parse.test.ts`; W04/W05 |
 | 7.7 | `pivot` | **Changed** | Rotated-parent composition specified in `13f4acb`. `test/rig-transform.test.ts:91,328`, and `partPlacement` in `@cuboidy/three` is the one restatement both renderers read |
@@ -120,49 +120,74 @@ today's TypeScript and today's C#, not between C# and a stale artifact.
 
 ### What a production corpus exercises, and what it does not
 
-Tropalm carries 97 Cuboidy packages under one namespace — 127 geometry files,
-438 parts, 92 standalone animation clips. It consumes the C# reader directly
+Tropalm carries 97 Cuboidy packages under one namespace — 126 geometry files
+holding 438 distinct shape parts, placed by 449 rig-part entries, plus 92
+standalone animation clips. It consumes the C# reader directly
 (`Tropalm.Godot.csproj:46` is a `ProjectReference` to `csharp/Cuboidy`, with a
 comment saying it becomes a `PackageReference` once that package is
-published). It is the only evidence available of what the format looks like
-when somebody has to live in it, so it is worth reading as a coverage report.
+published), so what the loader supports is the whole of §6 and §7 — what
+follows is a census of the *content*, not of the reader. It is the only
+evidence available of what the format looks like when somebody has to live in
+it, so it is worth reading as a coverage report.
 
 Exercised hard:
 
-- §6.2 hierarchy — 346 of 438 parts declare a `parent`.
-- §6.2 rest `rotation` (16 packages) and rest `scale` (16 packages). **The
+- §6.2 hierarchy — 346 of the 449 rig-part entries declare a `parent`, in 26
+  packages. The longest chain is six links deep (`scorpion`:
+  `body → tail-1 … tail-5 → stinger`).
+- §6.2 rest `rotation` (16 packages) and rest `scale` (the same 16). **The
   rest `scale` added a month ago and used by no reference model is used in
   production**, which is the reverse of what C4 would predict.
 - §6.3 clip references — 22 packages, 92 clip files, **every one a string
   path**. Not one inline animation object (§6.4) in 97 packages.
-- §6.5 and §6.7 — `ease` in 88 files, always the per-attribute object form
-  (`"ease": { "rot": "in-out-sine" }`); `visible` keyframes in 12; `loop:
-  false` in 19.
+- §6.7 easing — 2,146 keyframes carry an `ease`, always the per-attribute
+  object form (`"ease": { "rot": "in-out-sine" }`). Eleven of the twenty
+  presets appear, and the distribution is steep: `in-out-sine` alone is 1,804
+  of them. Nine are never used at all — `step`, every `-bounce`, `in-back`,
+  `in-elastic`, `in-out-quad`, `in-out-elastic`, `in-out-back`.
+- §6.5 `visible` — 300 keyframes across 5 packages, almost all of it four
+  eight-frame flipbooks (`campfire`, `furnace`, `torch`, `wall_torch`), which
+  sits inside H04's 4-8 band.
+- §6.3 `loop: false` — 19 of the 92 clips are one-shots.
 - §6.9 multi-file geometry — 17 packages name more than one file.
-- §6.10 external palettes — effectively universal: 126 palette references
-  across 127 geometry files.
-- §6.12 and §7.8 sockets — 10 packages publish one.
-- §6.14 `openBoundaries` — 2 packages, ten days after it was specified.
-- §6.13 inline part geometry — 2 packages.
+- §6.10 external palettes — **universal**. All 126 geometry files reference a
+  palette file; not one spells out an inline colour array.
+- §6.12 and §7.8 sockets — 10 packages publish exactly one, all named `grip`;
+  4 of the 10 declared sockets carry a `rot`.
+- §6.13 reference-form part geometry — 20 parts across 2 packages (`agent` 19,
+  `guitar` 1), used for shape reuse: eleven of `agent`'s joints point at one
+  shared `bone` cuboid, and `guitar` reaches into `agent`'s folder for its own.
+- §6.14 `openBoundaries` — 2 packages, ten days after it was specified, and
+  exactly the case §6.14 was written for: `bed_head` declares `+z` and
+  `bed_foot` declares `-z`.
 
 Untouched in 97 packages:
 
-- §7.4's material objects. **Zero.** Every palette entry in the corpus is a
+- §7.4's material objects. **Zero of 192 palette entries.** Every one is a
   plain hex string. Metallic, roughness and emissive — the largest grammar
   addition of August, and the one with the most test citations in the
-  repository — have no production user.
-- §7.4 alpha. Zero. No translucent colour anywhere.
-- §7.7 `pivot.rot`. Zero.
+  repository — have no production user, though Tropalm's Godot shim implements
+  them in full.
+- §7.4 alpha — **one entry in the whole corpus**: `palette_glass.json` index 8,
+  `#FFFFFF66`, which six bottle packages draw on. One colour is not nothing,
+  but it is not coverage either.
+- §6.13 *inline* part geometry. Zero — the 20 above are all the reference form.
+- §7.7 `pivot.rot`. Zero; every rest rotation goes through §6.2 instead.
 - §7.6's upper range. The largest axis on any part is 27; the cap is 1024.
-- §13. No `.cuboidy` archive exists anywhere in Tropalm.
+- §13. No `.cuboidy` archive exists anywhere in Tropalm, and no unpacking code
+  either.
 
-And one finding that is neither: **112 of the 127 geometry files resolve their
-palette through `../../palette.json`** — a single palette shared by the whole
-corpus, two directories above each package. §8 permits the path and then warns
-that it leaves the package, and that a folder-scoped tool "cannot resolve it
-and reports it as unreadable". The browser editor is exactly such a tool. So
-the reference editor cannot open the majority of the largest corpus the format
-has, by the spec's own design. See S7.
+And one finding that is neither: **118 of the 126 geometry files resolve their
+palette outside their own package** — 112 through `../../palette.json`, a
+single 64-colour palette shared by the whole corpus two directories up, and 6
+through `../../palette_glass.json`. §8 permits the path and then warns that it
+leaves the package, and that a folder-scoped tool "cannot resolve it and
+reports it as unreadable". The browser editor is exactly such a tool. So the
+reference editor cannot open the majority of the largest corpus the format
+has, by the spec's own design. 95 of the 97 packages reach outside for a
+palette; `agent` is the only self-contained one, and `guitar` reaches into
+`agent`'s folder instead. None of the 95 could be zipped per §13 without
+carrying a palette it does not contain. See S7.
 
 Worth saying plainly: the corpus adds **no keys of its own**. Every top-level
 and part-level key in 97 packages is one §6 defines. Nothing in production has
@@ -223,10 +248,11 @@ it, or delete the row.
 
 **S7. §3 says self-contained, §8 permits leaving, and production left.** §3
 defines a model as a self-contained folder; §8 allows `../shared/walk.json`
-and then warns it may not load. 112 of the 127 geometry files in Tropalm's
-corpus reference `../../palette.json`, so the pattern the spec discourages is
-the one a real library converged on — because a shared palette across 97
-packages is a genuine need and the format has no other way to express it. A
+and then warns it may not load. 95 of the 97 packages in Tropalm's corpus
+reach outside their own folder for their palette, so the pattern the spec
+discourages is the one a real library converged on — because a shared palette
+across 97 packages is a genuine need and the format has no other way to
+express it. A
 1.0 has to pick: either the self-containment rule wins and the spec says a
 conforming package must not reference outside its folder (making that corpus
 non-conforming and pushing it to copy the palette per package), or the escape
@@ -273,10 +299,11 @@ they work — and also the argument that `models/` has stopped being the place
 the format is demonstrated. Each needs a model, or at minimum a positive
 fixture, before a 1.0 can claim the reference corpus covers the format.
 
-The mirror of this is worth noting next to it: §7.4's material objects and
-alpha have heavy test coverage, a `models-test/` package each, and **zero**
-production users in 97 packages. Tested is not the same as used, in either
-direction, and a 1.0 should know which of its features are which.
+The mirror of this is worth noting next to it: §7.4's material objects have
+heavy test coverage, a `models-test/` package, a full implementation in
+Tropalm's Godot shim — and **zero** users across 97 production packages. Alpha
+has exactly one colour in one shared palette. Tested is not the same as used,
+in either direction, and a 1.0 should know which of its features are which.
 
 **C5. Comment rot from the 64-colour change.**
 `ts/packages/core/src/result.ts:33` and `csharp/Cuboidy/Result.cs:32` both say
