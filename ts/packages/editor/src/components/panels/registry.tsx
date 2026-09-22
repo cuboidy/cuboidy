@@ -1,10 +1,6 @@
 import type { Geometry, Manifest, Palette } from '@cuboidy/core';
-import type {
-  GizmoVisibility,
-  PanelContent,
-  PreviewTool,
-  ViewMode,
-} from '@cuboidy/ui';
+import type { GizmoVisibility } from '@cuboidy/r3f';
+import type { PanelContent, PreviewTool, ViewMode } from '@cuboidy/ui';
 import { ConsolePanel, type ConsoleEntry } from './ConsolePanel.js';
 import { FileTree } from './FileTree.js';
 import { KeyInspectorPanel } from './KeyInspectorPanel.js';

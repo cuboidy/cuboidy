@@ -32,12 +32,8 @@ import {
   filePanelPath,
   initialLayout,
 } from './lib/panels.js';
-import type {
-  GizmoVisibility,
-  PanelContent,
-  PreviewTool,
-  ViewMode,
-} from '@cuboidy/ui';
+import type { GizmoVisibility } from '@cuboidy/r3f';
+import type { PanelContent, PreviewTool, ViewMode } from '@cuboidy/ui';
 import type { PanelId } from './lib/panels.js';
 
 export function App() {

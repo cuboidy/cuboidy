@@ -4,8 +4,27 @@ import { Canvas, type ThreeEvent } from '@react-three/fiber';
 import type { Object3D } from 'three';
 import { AIR, quatFromEulerZXYDeg, type Geometry, type Manifest, type Palette, type Part, type QuatTuple } from '@cuboidy/core';
 
-import { PartGizmos, PartMesh, RiggedParts, TransformGizmoHost, buildRigTree, computeSceneCenter, computeSceneSpan, StudioLighting, StudioGrid, computeSceneBounds, StudioBackground } from '@cuboidy/ui';
-import type { GizmoPicking, GizmoVisibility, PartLayout, PreviewTool, TransformSubTarget, ViewMode, VoxelEdit, VoxelStrokeHandlers } from '@cuboidy/ui';
+import {
+  PartGizmos,
+  PartMesh,
+  RiggedParts,
+  TransformGizmoHost,
+  StudioBackground,
+  StudioGrid,
+  StudioLighting,
+  type GizmoPicking,
+  type GizmoVisibility,
+  type TransformSubTarget,
+  type VoxelStrokeHandlers,
+} from '@cuboidy/r3f';
+import {
+  buildRigTree,
+  computeSceneBounds,
+  computeSceneCenter,
+  computeSceneSpan,
+  type PartLayout,
+} from '@cuboidy/three';
+import type { PreviewTool, ViewMode, VoxelEdit } from '@cuboidy/ui';
 
 // The framing functions ask how the parts are LAID OUT, not which view
 // button is lit: geometry view stacks every part at the origin, and the

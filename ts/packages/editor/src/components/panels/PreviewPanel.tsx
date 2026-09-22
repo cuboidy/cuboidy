@@ -7,7 +7,8 @@ import { ViewModeToggle } from '../ui/ViewModeToggle.js';
 import { VoxelScene } from '../scene/VoxelScene.js';
 import type { AnimationSession } from '../../lib/useAnimationSession.js';
 import { ToggleGroup, ToolOverlay, Transport, ViewOverlay } from '@cuboidy/ui';
-import type { GizmoVisibility, PreviewTool, ViewMode, VoxelEdit } from '@cuboidy/ui';
+import type { GizmoVisibility } from '@cuboidy/r3f';
+import type { PreviewTool, ViewMode, VoxelEdit } from '@cuboidy/ui';
 
 interface Props {
   geometry: Geometry;
