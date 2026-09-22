@@ -18,8 +18,7 @@ export type { GizmoPicking } from './PartGizmos.js';
 export { TransformGizmoHost } from './TransformGizmoHost.js';
 
 export { StudioLighting } from './StudioLighting.js';
-export { StudioGrid, studioGridSpec } from './StudioGrid.js';
-export type { StudioGridSpec } from './StudioGrid.js';
+export { StudioGrid } from './StudioGrid.js';
 export {
   StudioBackground,
   studioBackgroundColor,

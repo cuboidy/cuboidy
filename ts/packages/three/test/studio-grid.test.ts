@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { studioGridSpec } from '@cuboidy/ui';
+import { studioGridSpec } from '../src/studio-grid.js';
 
 // The grid was `<gridHelper args={[n, n]} position={[n/2, 0, n/2]} />`, which
 // puts the whole plane in the +X +Z quadrant, with `n` derived from the

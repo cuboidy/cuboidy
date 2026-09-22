@@ -1,10 +1,16 @@
-// Editor UI shared between the model editor and anything else that shows a
-// Cuboidy model — a scene workspace above all.
+// The editor chrome, shared between the model editor and anything else
+// built out of the same parts — a scene workspace above all.
 //
-// The line: this package knows about a MODEL (core's types) and about
-// drawing and arranging one. It knows nothing about a document — no
-// loading, no saving, no `LoadedSource`. That is what makes it usable by an
-// app whose unit is a scene of several models rather than a single package.
+// The line: this package is what surrounds a 3D view, and never what is
+// inside one. A dock, a header, inputs, a transport, undo/redo, the browser
+// file pickers, and the stylesheet the three of them are drawn with. The
+// model itself is `@cuboidy/three`'s and `@cuboidy/r3f`'s, and neither is a
+// dependency here — the arrow points the other way, and the chrome should
+// not pull a renderer in behind it.
+//
+// It also knows nothing about a document — no loading, no saving, no
+// `LoadedSource`. That is what makes it usable by an app whose unit is a
+// scene of several models rather than a single package.
 
 export { AppHeader, HeaderDivider, HeaderGroup } from './AppHeader.js';
 export { InlineNameInput } from './InlineNameInput.js';
@@ -66,57 +72,6 @@ export {
 export type { PickedFile } from './fs/browser-fs.js';
 
 export { treeIndent } from './tree.js';
-
-// Re-exported from @cuboidy/three while the two apps still reach for the
-// whole scene layer through this barrel. The next commits point them at
-// the packages that own these, and then these lines go.
-export {
-  AXIS_COLORS,
-  GIZMO_FRAME_COLOR,
-  GIZMO_MARKER_COLOR,
-  GIZMO_SOCKET_ACTIVE_COLOR,
-  GIZMO_SOCKET_COLOR,
-  addStudioLighting,
-  axisCross,
-  buildPartGeometry,
-  buildPartMaterials,
-  buildRigTree,
-  computeSceneBounds,
-  computeSceneCenter,
-  computeSceneSpan,
-  disposeMaterials,
-  makeStudioEnvironment,
-  makeTranslucentSorter,
-  noRaycast,
-  srgbToLinear,
-  srgbToLinearArray,
-} from '@cuboidy/three';
-export type {
-  PartGeometry,
-  PartLayout,
-  RigNode,
-  SortTranslucent,
-  StudioEnvironment,
-} from '@cuboidy/three';
-
-export {
-  PartGizmos,
-  PartMesh,
-  RiggedParts,
-  StudioBackground,
-  StudioGrid,
-  StudioLighting,
-  TransformGizmoHost,
-  studioBackgroundColor,
-  studioGridSpec,
-} from '@cuboidy/r3f';
-export type {
-  GizmoPicking,
-  GizmoVisibility,
-  StudioGridSpec,
-  TransformSubTarget,
-  VoxelStrokeHandlers,
-} from '@cuboidy/r3f';
 
 export type {
   PreviewTool,

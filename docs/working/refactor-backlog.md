@@ -65,6 +65,25 @@ what-to-check list in the running app for anything behavioral).
 > types (`PartExtent`, `ResolvedPart['part']`). One pose type, one tuple,
 > `Part` where a `Part` is meant. Treat R3-g as fully closed.
 >
+> **Done from the three-way package split (2026-09-22):** R3-h's second
+> half. `@cuboidy/ui` is now editor chrome only — the three.js layer is
+> `@cuboidy/three`, the react-three-fiber components are `@cuboidy/r3f`, and
+> ui depends on neither. The editor-only vocabulary the row asks to move
+> back went with it: `GizmoVisibility` and `TransformSubTarget` to r3f
+> (props of the components that read them), `PreviewTool` / `VoxelEdit` /
+> `SelectedKey` / `ViewMode` kept in ui. `PartGizmos` did NOT go back to the
+> editor — the workspace draws its own model-level gizmos out of the same
+> primitives, so it is shared code after all. **Still open in R3-h:** the rig
+> entry points still take `(geometry, manifest)`; `buildRigTreeOf(parts,
+> manifest)` is the parts-shaped form and `buildModelObject` uses it, but the
+> workspace still synthesizes a throwaway `Geometry` for `RiggedParts`. And
+> `RiggedParts`' `gizmos` prop is still required.
+>
+> **Also done:** R2-h in part — there is now one imperative scene builder
+> (`buildModelObject`) and one statement of SPEC §7.7 (`partPlacement`) that
+> both renderers read. The shared `<ModelCanvas>` the row asks for is still
+> open.
+
 > **Still open:** R2-d (`source-ops.ts`, now 1067 lines / 36 exports), R3-b,
 > R3-d, R3-f (the §7.4 FACE table and hide rule still exist in both
 > `mesh.ts` and `render/scene.ts` — guarded by `mesh-scene-parity.test.ts`,

@@ -33,6 +33,8 @@ export { makeTranslucentSorter } from './translucent-order.js';
 export type { SortTranslucent } from './translucent-order.js';
 
 // ─── The studio: what a model is lit by and seen against ────────────────
+export { studioGridSpec } from './studio-grid.js';
+export type { StudioGridSpec } from './studio-grid.js';
 export {
   STUDIO_AMBIENT,
   STUDIO_FILL,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MATTE, type Palette, type Part } from '@cuboidy/core';
-import { buildPartGeometry, makeTranslucentSorter } from '@cuboidy/ui';
+import { buildPartGeometry, makeTranslucentSorter } from '../src/index.js';
 import { Mesh, PerspectiveCamera, Vector3 } from 'three';
 
 // three.js sorts transparent OBJECTS back to front and never the triangles

@@ -214,6 +214,14 @@ Done — the v0.9 spec and a complete TypeScript implementation of it
 
 Shipped alongside it:
 
+- [x] **Rendering libraries.** `@cuboidy/three` (`ts/packages/three/`) turns a
+      model into three.js objects — voxels to geometry, SPEC §7.4 to
+      materials, back-to-front ordering, the rig, the studio lighting, and one
+      call that builds a whole package as an `Object3D` with sockets and poses
+      on it. `@cuboidy/r3f` is the same things as react-three-fiber
+      components, and `@cuboidy/ui` is the editor chrome the two apps share
+      and holds no three.js at all. `npm run build -w @cuboidy/three` also
+      emits a browser bundle, so a page can show a model with no build step.
 - [~] **Web-based editor** (`ts/packages/editor/`) — loads a model folder, a
       single `cuboidy.json` or a `.cuboidy` ZIP; Geometry / Rig / Anim views;
       part, palette and keyframe editing with undo/redo; direct manipulation
