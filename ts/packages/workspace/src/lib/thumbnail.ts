@@ -1,21 +1,7 @@
+import { ANGLES, cameraDir } from '@cuboidy/core';
+import { addStudioLighting, buildModelObject } from '@cuboidy/three';
 import {
-  ANGLES,
-  QUAT_IDENTITY,
-  cameraDir,
-  worldTransformsFor,
-} from '@cuboidy/core';
-import {
-  addStudioLighting,
-  buildPartGeometry,
-  buildPartMaterials,
-  makeTranslucentSorter,
-  type SortTranslucent,
-} from '@cuboidy/three';
-import {
-  Group,
-  Mesh,
   OrthographicCamera,
-  Quaternion,
   Scene,
   Vector3,
   WebGLRenderer,
@@ -88,9 +74,15 @@ function renderOne(renderer: WebGLRenderer, model: LibraryModel): string | null 
   if (box === null) return null;
 
   const scene = new Scene();
-  const sorters: SortTranslucent[] = [];
-  const group = buildModelGroup(model, sorters);
-  scene.add(group);
+  // The model at rest, parts placed by the rig — plain three.js, because a
+  // thumbnail needs no React root and no r3f. Literally the same builder
+  // the scene view's components place their parts with, so a card cannot
+  // disagree with the viewport about geometry, colour, SPEC §7.4 opacity or
+  // §7.4 material. It used to be a second implementation here, which is how
+  // a translucent model came to be solid on its library card under a
+  // comment promising it could not be.
+  const built = buildModelObject(model);
+  scene.add(built.object);
   // The same rig the scene views use — literally the same module, because
   // the previous version of this comment claimed the same thing while
   // running 0.75 ambient against the scene view's 0.12.
@@ -142,80 +134,13 @@ function renderOne(renderer: WebGLRenderer, model: LibraryModel): string | null 
   camera.updateProjectionMatrix();
 
   // Depth-sort every translucent part for THIS camera before drawing.
-  for (const sort of sorters) sort(camera);
+  // There is no next frame here — one render, so a card that drew its
+  // blended faces in the wrong order would be permanently wrong.
+  built.sortTranslucent(camera);
   renderer.render(scene, camera);
   teardownLighting();
   const url = renderer.domElement.toDataURL('image/png');
 
-  disposeGroup(group);
+  built.dispose();
   return url;
-}
-
-// The model at rest, parts placed by the rig — plain three.js, because a
-// thumbnail needs no React root and no r3f. The mesh data and the rest
-// transforms both come from core, so a card cannot disagree with the
-// scene view about what the model looks like.
-function buildModelGroup(
-  model: LibraryModel,
-  sorters: SortTranslucent[],
-): Group {
-  const group = new Group();
-  const transforms = worldTransformsFor(model.manifest, model.parts);
-  for (const [name, resolved] of model.parts) {
-    const part = resolved.part;
-    // The very same calls PartMesh makes, so a card cannot disagree with
-    // the scene view about geometry, colour, SPEC §7.4 opacity or §7.4
-    // material. This used to build its own Lambert materials and read
-    // neither `alphas` nor the material buckets, which made a translucent
-    // model solid and a polished one matte — under a comment promising the
-    // card could not disagree with the scene view.
-    const built = buildPartGeometry(part, resolved.palette);
-    const { geometry, opaqueIndexCount } = built;
-    if (geometry.getIndex()?.count === 0) continue; // all-air draws nothing
-
-    const materials = buildPartMaterials(built.materials);
-    const obj = new Mesh(
-      geometry,
-      materials.length === 1 ? materials[0]! : materials,
-    );
-    // Blended faces need to be drawn back to front, and three.js only
-    // orders whole objects. Collected and run by the caller just before
-    // `renderer.render`, NOT hung on `obj.onBeforeRender` — three reads
-    // `geometry.groups` in `projectObject`, before that hook fires, so a
-    // group rebuild there would land a frame late. Here there IS no next
-    // frame: one render, so a card would have been permanently wrong. See
-    // @cuboidy/three's translucent-order.
-    sorters.push(
-      makeTranslucentSorter(
-        () => obj,
-        geometry,
-        opaqueIndexCount,
-        built.translucentQuadMaterials,
-      ),
-    );
-    const wt = transforms.get(name) ?? { pos: [0, 0, 0], quat: QUAT_IDENTITY };
-    // A part's world transform places its PIVOT at wt.pos, so the mesh —
-    // whose local origin is the voxel grid's corner — is offset by −pivot
-    // inside a group sitting at that point.
-    const holder = new Group();
-    holder.position.set(wt.pos[0], wt.pos[1], wt.pos[2]);
-    holder.quaternion.copy(
-      new Quaternion(wt.quat[0], wt.quat[1], wt.quat[2], wt.quat[3]),
-    );
-    obj.position.set(-part.pivot.pos.x, -part.pivot.pos.y, -part.pivot.pos.z);
-    holder.add(obj);
-    group.add(holder);
-  }
-  return group;
-}
-
-function disposeGroup(group: Group): void {
-  group.traverse((o) => {
-    if (o instanceof Mesh) {
-      o.geometry.dispose();
-      const m = o.material;
-      if (Array.isArray(m)) m.forEach((x) => x.dispose());
-      else m.dispose();
-    }
-  });
 }
