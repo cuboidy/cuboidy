@@ -2,10 +2,13 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import type { Palette, Part } from '@cuboidy/core';
 import { Mesh } from 'three';
-import { noRaycast } from './gizmo-primitives.js';
-import { buildPartGeometry } from './part-geometry.js';
-import { buildPartMaterials, disposeMaterials } from './part-materials.js';
-import { makeTranslucentSorter } from './translucent-order.js';
+import {
+  buildPartGeometry,
+  buildPartMaterials,
+  disposeMaterials,
+  makeTranslucentSorter,
+  noRaycast,
+} from '@cuboidy/three';
 
 interface Props {
   part: Part;

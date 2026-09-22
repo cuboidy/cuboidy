@@ -5,7 +5,14 @@ import type { Object3D } from 'three';
 import { AIR, quatFromEulerZXYDeg, type Geometry, type Manifest, type Palette, type Part, type QuatTuple } from '@cuboidy/core';
 
 import { PartGizmos, PartMesh, RiggedParts, TransformGizmoHost, buildRigTree, computeSceneCenter, computeSceneSpan, StudioLighting, StudioGrid, computeSceneBounds, StudioBackground } from '@cuboidy/ui';
-import type { GizmoPicking, GizmoVisibility, PreviewTool, TransformSubTarget, ViewMode, VoxelEdit, VoxelStrokeHandlers } from '@cuboidy/ui';
+import type { GizmoPicking, GizmoVisibility, PartLayout, PreviewTool, TransformSubTarget, ViewMode, VoxelEdit, VoxelStrokeHandlers } from '@cuboidy/ui';
+
+// The framing functions ask how the parts are LAID OUT, not which view
+// button is lit: geometry view stacks every part at the origin, and the
+// other two place them by the rig.
+function layoutOf(mode: ViewMode): PartLayout {
+  return mode === 'geometry' ? 'stacked' : 'rigged';
+}
 
 interface Props {
   geometry: Geometry;
@@ -437,12 +444,12 @@ export function VoxelScene({
   // after every edit.
   /* eslint-disable react-hooks/exhaustive-deps */
   const target = useMemo<[number, number, number]>(
-    () => computeSceneCenter(geometry, manifest, viewMode),
+    () => computeSceneCenter(geometry, manifest, layoutOf(viewMode)),
     [framingKey, viewMode],
   );
 
   const radius = useMemo(() => {
-    const span = computeSceneSpan(geometry, manifest, viewMode);
+    const span = computeSceneSpan(geometry, manifest, layoutOf(viewMode));
     return Math.max(span.w, span.h, span.d) * 1.8;
   }, [framingKey, viewMode]);
   /* eslint-enable react-hooks/exhaustive-deps */
@@ -451,7 +458,7 @@ export function VoxelScene({
   // largest part's own size: rig positions are signed, and the old formula
   // could not grow past its floor of 20 however far a model reached.
   const bounds = useMemo(
-    () => computeSceneBounds(geometry, manifest, viewMode),
+    () => computeSceneBounds(geometry, manifest, layoutOf(viewMode)),
     [geometry, manifest, viewMode],
   );
 

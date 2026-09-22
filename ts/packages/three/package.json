@@ -1,0 +1,42 @@
+{
+  "name": "@cuboidy/three",
+  "version": "0.0.0",
+  "private": true,
+  "description": "three.js for Cuboidy models: voxel geometry, SPEC §7.4 materials, back-to-front ordering, the rig that places the parts, the studio lighting, and one Object3D for a whole package",
+  "license": "MIT",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "tsconfig.json",
+    "tsconfig.typecheck.json"
+  ],
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc -p tsconfig.json && npm run bundle",
+    "bundle": "node scripts/bundle.mjs",
+    "typecheck": "tsc -p tsconfig.typecheck.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "verify": "npm run typecheck && npm run test"
+  },
+  "dependencies": {
+    "@cuboidy/core": "*"
+  },
+  "peerDependencies": {
+    "three": ">=0.160.0 <1.0.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.170.0",
+    "esbuild": "^0.25.10",
+    "three": "^0.170.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.6"
+  }
+}

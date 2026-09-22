@@ -9,15 +9,30 @@ import {
   type ManifestPart,
   type Part,
 } from '@cuboidy/core';
-import type { ViewMode } from './view-types.js';
 
-// Rig math shared by the static rig view (VoxelScene) and the animation
-// view (AnimationView). Two concerns live here:
+// Rig math shared by every surface that draws a model. Two concerns live
+// here:
 //   1. Camera framing — the scene's world-space bbox, computed from the
 //      REST pose (manifest positions + rotations, no animation) so the
 //      camera never jumps as an animation plays.
-//   2. Hierarchy — the parent/child forest the animation view nests into
-//      three.js groups so a parent's animated transform carries its children.
+//   2. Hierarchy — the parent/child forest a renderer nests into three.js
+//      groups so a parent's animated transform carries its children.
+
+// How the parts are laid out, which is the one thing the framing functions
+// below branch on.
+//
+// This used to be the editor's `ViewMode` ('geometry' | 'rig' | 'anim'),
+// passed down from the view toggle — a rendering layer holding the name of
+// a button in one app, and two of whose three values behaved identically.
+// The distinction that actually exists is whether the manifest places the
+// parts or not, so that is what is asked for.
+export type PartLayout =
+  // Every part drawn at the origin, its own voxel grid and nothing else —
+  // the editor's geometry view, and the only case where no coordinate is
+  // negative.
+  | 'stacked'
+  // Parts placed by the manifest rig, which is every other case.
+  | 'rigged';
 
 interface Bounds {
   min: [number, number, number];
@@ -36,9 +51,9 @@ interface Bounds {
 export function computeSceneBounds(
   geometry: Geometry,
   manifest: Manifest | undefined,
-  viewMode: ViewMode,
+  layout: PartLayout,
 ): Bounds {
-  if (viewMode === 'geometry' || manifest === undefined) {
+  if (layout === 'stacked' || manifest === undefined) {
     // Geometry view stacks every part at the origin, so the model occupies
     // 0..size on each axis — the one case where nothing is negative.
     return {
@@ -74,9 +89,9 @@ export interface Span {
 export function computeSceneSpan(
   geometry: Geometry,
   manifest: Manifest | undefined,
-  viewMode: ViewMode,
+  layout: PartLayout,
 ): Span {
-  if (viewMode === 'geometry' || manifest === undefined) {
+  if (layout === 'stacked' || manifest === undefined) {
     return {
       w: Math.max(1, ...geometry.parts.map((p) => p.size.w)),
       h: Math.max(1, ...geometry.parts.map((p) => p.size.h)),
@@ -90,9 +105,9 @@ export function computeSceneSpan(
 export function computeSceneCenter(
   geometry: Geometry,
   manifest: Manifest | undefined,
-  viewMode: ViewMode,
+  layout: PartLayout,
 ): [number, number, number] {
-  if (viewMode === 'geometry' || manifest === undefined) {
+  if (layout === 'stacked' || manifest === undefined) {
     const maxW = Math.max(1, ...geometry.parts.map((p) => p.size.w));
     const maxH = Math.max(1, ...geometry.parts.map((p) => p.size.h));
     const maxD = Math.max(1, ...geometry.parts.map((p) => p.size.d));
@@ -128,6 +143,17 @@ export function buildRigTree(
   geometry: Geometry,
   manifest: Manifest | undefined,
 ): RigNode[] {
+  return buildRigTreeOf(geometry.parts, manifest);
+}
+
+// The same forest from the parts alone. `resolveProject` hands back a
+// `ReadonlyMap<string, ResolvedPart>` and no `Geometry`, so a caller
+// holding one used to synthesize a throwaway `Geometry` — with a file-level
+// palette that was a lie — purely to get through the door.
+export function buildRigTreeOf(
+  parts: readonly Part[],
+  manifest: Manifest | undefined,
+): RigNode[] {
   const mpByName = new Map<string, ManifestPart>();
   if (manifest !== undefined) {
     for (const mp of manifest.parts) mpByName.set(mp.name, mp);
@@ -138,7 +164,7 @@ export function buildRigTree(
     children: n.children.map(toRig),
   });
   return buildForest(
-    geometry.parts,
+    parts,
     (p) => p.name,
     (p) => mpByName.get(p.name)?.parent,
   ).map(toRig);

@@ -65,42 +65,50 @@ export {
 } from './fs/browser-fs.js';
 export type { PickedFile } from './fs/browser-fs.js';
 
-export {
-  buildRigTree,
-  computeSceneBounds,
-  computeSceneCenter,
-  computeSceneSpan,
-} from './rig.js';
 export { treeIndent } from './tree.js';
 
+// Re-exported from @cuboidy/three while the two apps still reach for the
+// whole scene layer through this barrel. The next commits point them at
+// the packages that own these, and then these lines go.
 export {
   AXIS_COLORS,
   GIZMO_FRAME_COLOR,
   GIZMO_MARKER_COLOR,
   GIZMO_SOCKET_ACTIVE_COLOR,
   GIZMO_SOCKET_COLOR,
+  addStudioLighting,
   axisCross,
+  buildPartGeometry,
+  buildPartMaterials,
+  buildRigTree,
+  computeSceneBounds,
+  computeSceneCenter,
+  computeSceneSpan,
+  disposeMaterials,
+  makeStudioEnvironment,
+  makeTranslucentSorter,
   noRaycast,
   srgbToLinear,
   srgbToLinearArray,
-} from './scene/gizmo-primitives.js';
+} from '@cuboidy/three';
+export type {
+  PartGeometry,
+  PartLayout,
+  RigNode,
+  SortTranslucent,
+  StudioEnvironment,
+} from '@cuboidy/three';
+
 export { RiggedParts } from './scene/RiggedParts.js';
 export type { VoxelStrokeHandlers } from './scene/RiggedParts.js';
 export { PartMesh } from './scene/PartMesh.js';
-export { buildPartGeometry } from './scene/part-geometry.js';
-export type { PartGeometry } from './scene/part-geometry.js';
-export { buildPartMaterials, disposeMaterials } from './scene/part-materials.js';
-export { makeStudioEnvironment } from './scene/environment.js';
-export type { StudioEnvironment } from './scene/environment.js';
-export { StudioLighting, addStudioLighting } from './scene/StudioLighting.js';
+export { StudioLighting } from './scene/StudioLighting.js';
 export { StudioGrid, studioGridSpec } from './scene/StudioGrid.js';
 export {
   StudioBackground,
   studioBackgroundColor,
 } from './scene/StudioBackground.js';
 export type { StudioGridSpec } from './scene/StudioGrid.js';
-export { makeTranslucentSorter } from './scene/translucent-order.js';
-export type { SortTranslucent } from './scene/translucent-order.js';
 export { PartGizmos } from './scene/PartGizmos.js';
 export type { GizmoPicking } from './scene/PartGizmos.js';
 export { TransformGizmoHost } from './scene/TransformGizmoHost.js';

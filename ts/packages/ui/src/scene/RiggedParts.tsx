@@ -8,7 +8,7 @@ import {
   type Pose,
 } from '@cuboidy/core';
 import type { Object3D } from 'three';
-import type { RigNode } from '../rig.js';
+import type { RigNode } from '@cuboidy/three';
 import type { GizmoVisibility } from '../view-types.js';
 import { PartGizmos, type GizmoPicking } from './PartGizmos.js';
 import { PartMesh } from './PartMesh.js';

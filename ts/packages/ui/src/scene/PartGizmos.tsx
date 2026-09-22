@@ -9,7 +9,7 @@ import {
   GIZMO_SOCKET_COLOR as SOCKET_COLOR,
   axisCross,
   noRaycast,
-} from './gizmo-primitives.js';
+} from '@cuboidy/three';
 import type { GizmoVisibility, TransformSubTarget } from '../view-types.js';
 
 // Transform-tool integration, non-null while a transform

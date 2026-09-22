@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    // three.js types reference the DOM (canvas, WebGL contexts, image
+    // sources), so the package cannot be checked against ES alone even
+    // though nothing here touches `document`.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+  },
+  "include": ["src/**/*"]
+}

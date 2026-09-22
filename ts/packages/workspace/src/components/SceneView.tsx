@@ -109,7 +109,7 @@ export function SceneView({
     for (const p of placed) {
       const g = viewGeometry(p.model);
       if (g === null) continue;
-      const span = computeSceneSpan(g, p.model.manifest, 'rig');
+      const span = computeSceneSpan(g, p.model.manifest, 'rigged');
       max = Math.max(max, span.w, span.h, span.d);
     }
     return max;

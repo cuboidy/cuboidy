@@ -64,11 +64,11 @@ export function AnimationViewport({
   // VoxelScene for the rationale.
   /* eslint-disable react-hooks/exhaustive-deps */
   const center = useMemo<[number, number, number]>(
-    () => computeSceneCenter(geometry, manifest, 'rig'),
+    () => computeSceneCenter(geometry, manifest, 'rigged'),
     [framingKey],
   );
   const radius = useMemo(() => {
-    const span = computeSceneSpan(geometry, manifest, 'rig');
+    const span = computeSceneSpan(geometry, manifest, 'rigged');
     return Math.max(span.w, span.h, span.d) * 1.8;
   }, [framingKey]);
   /* eslint-enable react-hooks/exhaustive-deps */
@@ -76,7 +76,7 @@ export function AnimationViewport({
   // animation view is always the rig, so a posed part reaching into
   // negative X or Z is the normal case, not the exception.
   const bounds = useMemo(
-    () => computeSceneBounds(geometry, manifest, 'rig'),
+    () => computeSceneBounds(geometry, manifest, 'rigged'),
     [geometry, manifest],
   );
 

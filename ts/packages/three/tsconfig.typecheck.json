@@ -1,0 +1,15 @@
+{
+  // `tsconfig.json` is the BUILD config: it emits `dist/`, so its `rootDir`
+  // has to stay `src`, which leaves `test/` and `scripts/` checked by
+  // nothing — vitest runs the tests through esbuild, which strips types
+  // without reading them. This one emits nothing, so `rootDir` only scopes
+  // what tsc will accept. `npm run typecheck` uses it; `npm run build`
+  // still uses the other.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*", "test/**/*", "scripts/**/*"]
+}
