@@ -99,25 +99,28 @@ export type {
   StudioEnvironment,
 } from '@cuboidy/three';
 
-export { RiggedParts } from './scene/RiggedParts.js';
-export type { VoxelStrokeHandlers } from './scene/RiggedParts.js';
-export { PartMesh } from './scene/PartMesh.js';
-export { StudioLighting } from './scene/StudioLighting.js';
-export { StudioGrid, studioGridSpec } from './scene/StudioGrid.js';
 export {
+  PartGizmos,
+  PartMesh,
+  RiggedParts,
   StudioBackground,
+  StudioGrid,
+  StudioLighting,
+  TransformGizmoHost,
   studioBackgroundColor,
-} from './scene/StudioBackground.js';
-export type { StudioGridSpec } from './scene/StudioGrid.js';
-export { PartGizmos } from './scene/PartGizmos.js';
-export type { GizmoPicking } from './scene/PartGizmos.js';
-export { TransformGizmoHost } from './scene/TransformGizmoHost.js';
+  studioGridSpec,
+} from '@cuboidy/r3f';
+export type {
+  GizmoPicking,
+  GizmoVisibility,
+  StudioGridSpec,
+  TransformSubTarget,
+  VoxelStrokeHandlers,
+} from '@cuboidy/r3f';
 
 export type {
-  GizmoVisibility,
   PreviewTool,
   SelectedKey,
-  TransformSubTarget,
   ViewMode,
   VoxelEdit,
 } from './view-types.js';

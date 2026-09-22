@@ -22,16 +22,13 @@
   },
   "dependencies": {
     "@cuboidy/core": "*",
+    "@cuboidy/r3f": "*",
     "@cuboidy/three": "*",
-    "@react-three/drei": "^10.0.6",
-    "@react-three/fiber": "^9.0.0",
     "lucide-react": "^1.24.0",
-    "react": "^19.0.0",
-    "three": "^0.170.0"
+    "react": "^19.0.0"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
-    "@types/three": "^0.170.0",
     "typescript": "^6.0.3"
   }
 }

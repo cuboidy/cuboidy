@@ -15,6 +15,11 @@ import { Color } from 'three';
 // Read from the token rather than copied into TypeScript. A hex literal here
 // would be a fifth value the moment anyone touched tokens.css, and this file
 // exists because there were already four.
+//
+// `--bg-0` is defined by `@cuboidy/ui`, which this package does not depend
+// on and must not: reading a custom property by name is how a host THEMES
+// the viewport, and a host that defines none gets the fallback rather than
+// an error.
 const TOKEN = '--bg-0';
 // Only if the stylesheet has not loaded — `--bg-0`'s current value, so a
 // miss looks like the intended colour rather than like a bug.
