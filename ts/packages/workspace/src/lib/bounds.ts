@@ -8,7 +8,7 @@ export interface Box {
 
 // The rest bounding box of a whole model, in its OWN space.
 //
-// @cuboidy/ui's computeSceneSpan would nearly do, but it always unions in
+// @cuboidy/three's computeSceneSpan would nearly do, but it always unions in
 // the unit cube at the origin — a camera-framing habit that keeps the view
 // anchored near the grid. As a selection outline that shows: a model built
 // away from its origin gets a box stretched back to meet it, which reads

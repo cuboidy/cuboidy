@@ -10,7 +10,7 @@ import {
   buildPartMaterials,
   makeTranslucentSorter,
   type SortTranslucent,
-} from '@cuboidy/ui';
+} from '@cuboidy/three';
 import {
   Group,
   Mesh,
@@ -184,7 +184,7 @@ function buildModelGroup(
     // `geometry.groups` in `projectObject`, before that hook fires, so a
     // group rebuild there would land a frame late. Here there IS no next
     // frame: one render, so a card would have been permanently wrong. See
-    // @cuboidy/ui's translucent-order.
+    // @cuboidy/three's translucent-order.
     sorters.push(
       makeTranslucentSorter(
         () => obj,

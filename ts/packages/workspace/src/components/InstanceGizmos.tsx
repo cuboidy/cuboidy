@@ -6,7 +6,7 @@ import {
   GIZMO_SOCKET_COLOR as SOCKET_COLOR,
   axisCross,
   noRaycast,
-} from '@cuboidy/ui';
+} from '@cuboidy/three';
 import { BoxGeometry, EdgesGeometry } from 'three';
 import type { LibraryModel } from '../lib/library.js';
 import { modelBounds } from '../lib/bounds.js';

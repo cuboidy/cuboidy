@@ -3,7 +3,7 @@ import {
   GIZMO_FRAME_COLOR as PREVIEW_COLOR,
   GIZMO_SOCKET_ACTIVE_COLOR as SOCKET_ACTIVE,
   noRaycast,
-} from '@cuboidy/ui';
+} from '@cuboidy/three';
 import { BoxGeometry, EdgesGeometry, type LineSegments } from 'three';
 import type { LibraryModel } from '../lib/library.js';
 import { modelBounds } from '../lib/bounds.js';

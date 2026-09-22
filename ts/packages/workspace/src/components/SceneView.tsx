@@ -4,16 +4,18 @@ import { OrbitControls } from '@react-three/drei';
 import { Box, Crosshair, Grid3x3, MousePointer2, Move, Plug, Rotate3d } from 'lucide-react';
 import type { Object3D } from 'three';
 import {
-  ToggleGroup,
-  ToolBar,
-  ToolOverlay,
-  TransformGizmoHost,
-  ViewOverlay,
-  ViewToggle,
-  computeSceneSpan,
   StudioBackground,
   StudioGrid,
   StudioLighting,
+  TransformGizmoHost,
+} from '@cuboidy/r3f';
+import { computeSceneSpan } from '@cuboidy/three';
+import {
+  ToggleGroup,
+  ToolBar,
+  ToolOverlay,
+  ViewOverlay,
+  ViewToggle,
 } from '@cuboidy/ui';
 import type { LibraryModel } from '../lib/library.js';
 import { viewGeometry } from '../lib/model-view.js';

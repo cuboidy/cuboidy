@@ -58,7 +58,8 @@ const PAUSE_FIRST = 'Pause playback before moving things';
 //
 // The editor and this are separate apps on purpose. The editor is closed
 // over ONE model; a workspace holds a scene of several. What they share is
-// @cuboidy/ui — the dock, and the components that draw a rigged model —
+// @cuboidy/ui (the dock and the chrome), @cuboidy/r3f and @cuboidy/three
+// (the components that draw a rigged model, and what they draw it from),
 // and core, which owns every rule either of them applies. Neither shares a
 // panel set with the other, because the panels are what differ.
 

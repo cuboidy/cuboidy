@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { quatFromEulerZXYDeg, type Palette } from '@cuboidy/core';
-import { RiggedParts, buildRigTree } from '@cuboidy/ui';
+import { RiggedParts } from '@cuboidy/r3f';
+import { buildRigTree } from '@cuboidy/three';
 import type { Object3D } from 'three';
 import { viewGeometry } from '../../lib/model-view.js';
 import type { SceneNode } from '../../lib/scene-tree.js';
