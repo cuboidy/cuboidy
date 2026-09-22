@@ -1,9 +1,8 @@
 import { useCallback, useMemo } from 'react';
 import { quatFromEulerZXYDeg, type Palette } from '@cuboidy/core';
 import { RiggedParts } from '@cuboidy/r3f';
-import { buildRigTree } from '@cuboidy/three';
+import { buildRigTreeOf } from '@cuboidy/three';
 import type { Object3D } from 'three';
-import { viewGeometry } from '../../lib/model-view.js';
 import type { SceneNode } from '../../lib/scene-tree.js';
 import type { SceneGizmos } from '../../lib/view.js';
 import { InstanceGizmos } from '../InstanceGizmos.js';
@@ -37,14 +36,21 @@ export function InstanceMesh({
 }) {
   const placed = node.placed;
   const view = useMemo(() => {
-    const geometry = viewGeometry(placed.model);
-    if (geometry === null) return null;
+    const parts = [...placed.model.parts.values()];
+    if (parts.length === 0) return null;
     const partPalettes = new Map<string, Palette>();
     for (const [name, r] of placed.model.parts) partPalettes.set(name, r.palette);
     return {
-      geometry,
+      // Fallback only — RiggedParts reaches for this when a part is
+      // absent from partPalettes, which never happens here (the loop
+      // above covers every part in placed.model.parts). Kept because the
+      // prop is required; first part's palette is as good a guess as any.
+      palette: parts[0]?.palette ?? [],
       partPalettes,
-      roots: buildRigTree(geometry, placed.model.manifest),
+      roots: buildRigTreeOf(
+        parts.map((r) => r.part),
+        placed.model.manifest,
+      ),
     };
   }, [placed.model]);
   const id = placed.instance.id;
@@ -102,12 +108,13 @@ export function InstanceMesh({
           <>
             <RiggedParts
               roots={view.roots}
-              palette={view.geometry.palette}
+              palette={view.palette}
               partPalettes={view.partPalettes}
               poses={placed.poses}
               hiddenParts={EMPTY}
               selectedPart={null}
-              gizmos={NO_PART_GIZMOS}
+              // gizmos omitted: a scene selects models, not their parts,
+              // and the model-level overlays below are InstanceGizmos' job.
               onSelectPart={() => onSelect(id)}
             />
             {id === selected && (
@@ -140,6 +147,3 @@ function placementQuat(
 }
 
 const EMPTY: ReadonlySet<string> = new Set();
-// Per-PART gizmos stay off: a scene selects models, not their parts, and
-// the model-level overlays are InstanceGizmos' job.
-const NO_PART_GIZMOS = { pivot: false, sockets: false, frame: false } as const;

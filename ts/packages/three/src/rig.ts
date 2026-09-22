@@ -139,17 +139,14 @@ export interface RigNode {
 // root — guaranteeing a finite tree the renderer can recurse safely
 // (SPEC declares cycles an error; parseManifest doesn't yet reject
 // them, so the viewer must not hang on malformed input).
-export function buildRigTree(
-  geometry: Geometry,
-  manifest: Manifest | undefined,
-): RigNode[] {
-  return buildRigTreeOf(geometry.parts, manifest);
-}
-
-// The same forest from the parts alone. `resolveProject` hands back a
-// `ReadonlyMap<string, ResolvedPart>` and no `Geometry`, so a caller
-// holding one used to synthesize a throwaway `Geometry` — with a file-level
-// palette that was a lie — purely to get through the door.
+//
+// Takes the parts alone, not a `Geometry` — the forest only ever reads
+// `p.name`, and a `Geometry` also carries a `palette` this function has no
+// use for. `resolveProject` hands back a `ReadonlyMap<string,
+// ResolvedPart>` and no `Geometry`; a caller holding one used to
+// synthesize a throwaway `Geometry` — with a file-level palette that was a
+// lie — purely to get through an older `(geometry, manifest)` signature
+// this was the shape of `buildModelObject`'s call all along (R3-h).
 export function buildRigTreeOf(
   parts: readonly Part[],
   manifest: Manifest | undefined,

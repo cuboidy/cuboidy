@@ -73,11 +73,24 @@ what-to-check list in the running app for anything behavioral).
 > (props of the components that read them), `PreviewTool` / `VoxelEdit` /
 > `SelectedKey` / `ViewMode` kept in ui. `PartGizmos` did NOT go back to the
 > editor — the workspace draws its own model-level gizmos out of the same
-> primitives, so it is shared code after all. **Still open in R3-h:** the rig
-> entry points still take `(geometry, manifest)`; `buildRigTreeOf(parts,
-> manifest)` is the parts-shaped form and `buildModelObject` uses it, but the
-> workspace still synthesizes a throwaway `Geometry` for `RiggedParts`. And
-> `RiggedParts`' `gizmos` prop is still required.
+> primitives, so it is shared code after all.
+>
+> **Done, same day, closing the rest of R3-h:** `buildRigTree(geometry,
+> manifest)` is deleted from `ts/packages/three/src/rig.ts` —
+> `buildRigTreeOf(parts, manifest)` is now the only public entry three's
+> index exports, and every caller moved: `AnimationViewport.tsx` and
+> `VoxelScene.tsx` (editor) now pass `geometry.parts` straight through, and
+> `InstanceMesh.tsx` (workspace) stopped calling `model-view.ts`'s
+> `viewGeometry()` for this — it only ever used the throwaway `Geometry`'s
+> `.parts` (for the old signature) and `.palette` (an unreachable fallback,
+> since its own `partPalettes` map already covers every part); it now builds
+> the parts array and that fallback directly from `placed.model.parts`.
+> `viewGeometry()` itself survives — `SceneView.tsx` still needs a real
+> `Geometry` for `computeSceneSpan`, which is untouched by this row.
+> `RiggedParts`' `gizmos` prop (`ts/packages/r3f/src/RiggedParts.tsx`) is
+> now optional, defaulting to all-false, and `InstanceMesh.tsx`'s
+> `NO_PART_GIZMOS` all-false constant is gone. No alias was kept — every
+> caller moved cleanly. **Treat R3-h as fully closed.**
 >
 > **Also done:** R2-h in part — there is now one imperative scene builder
 > (`buildModelObject`) and one statement of SPEC §7.7 (`partPlacement`) that
@@ -87,8 +100,8 @@ what-to-check list in the running app for anything behavioral).
 > **Still open:** R2-d (`source-ops.ts`, now 1067 lines / 36 exports), R3-b,
 > R3-d, R3-f (the §7.4 FACE table and hide rule still exist in both
 > `mesh.ts` and `render/scene.ts` — guarded by `mesh-scene-parity.test.ts`,
-> but still two edits), R3-h, R3-i, R3-j, part of R1-g, and the tree
-> component extraction.
+> but still two edits), R3-i, R3-j, part of R1-g, and the tree
+> component extraction. (R3-h closed 2026-09-22.)
 
 Phases: **R0** deletions & mechanical fixes → **R1** small shared
 extractions → **R2** big-file splits inside each app → **R3** core

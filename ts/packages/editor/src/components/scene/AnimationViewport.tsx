@@ -10,7 +10,7 @@ import {
   type GizmoVisibility,
 } from '@cuboidy/r3f';
 import {
-  buildRigTree,
+  buildRigTreeOf,
   computeSceneBounds,
   computeSceneCenter,
   computeSceneSpan,
@@ -70,7 +70,10 @@ export function AnimationViewport({
     scrub,
   } = session;
 
-  const roots = useMemo(() => buildRigTree(geometry, manifest), [geometry, manifest]);
+  const roots = useMemo(
+    () => buildRigTreeOf(geometry.parts, manifest),
+    [geometry, manifest],
+  );
   // Framing recomputes on load only (framingKey), never on edits — see
   // VoxelScene for the rationale.
   /* eslint-disable react-hooks/exhaustive-deps */

@@ -373,30 +373,40 @@ from each barrel's exports.
 
 | Package | API surface | Tests | Docs | Breaking-change risk | Publish-ready |
 |---|---|---|---|---|---|
-| `@cuboidy/core` | 161 exports (102 values, 59 types) + 8 CLI binaries, 12,743 lines | 872 vitest, plus 409 C# tests against its output | README 98 lines; `docs/csharp-implementation.md` is effectively its design record | **Low.** The surface has been stable through two audits; the risk is its size — 161 names is a lot of promise, and R3-j (does the scene domain belong here?) is undecided | **Published at 0.9.0.** 129 files, 162 kB packed, no `src`, no maps |
-| `@cuboidy/three` | 37 exports (27 values, 10 types), 1,194 lines | 23 vitest — thin, but its arithmetic is checked through core's parity and both E2E suites | README 145 lines, including the CDN route | **Medium.** `buildRigTree(geometry, manifest)` still takes a `Geometry` a caller may not have (R3-h); fixing it after publish is a breaking change | **Published at 0.9.0.** 31 files, 727 kB packed (the two browser maps are most of it, deliberately) |
-| `@cuboidy/r3f` | 12 exports, 1,184 lines | **0** | README 58 lines | **High.** `RiggedParts`' `gizmos` prop is required and the workspace satisfies it with an all-false constant (`InstanceMesh.tsx:110,145`); the props interface is 11 fields wide and has never had to survive an outside caller | **No.** Zero tests on a component surface is not a thing to put a version number on |
+| `@cuboidy/core` | 161 exports (102 values, 59 types) + 8 CLI binaries, 12,743 lines | 872 vitest, plus 409 C# tests against its output | README 98 lines; `docs/csharp-implementation.md` is effectively its design record | **Low.** The surface has been stable through two audits; the risk is its size — 161 names is a lot of promise, and R3-j (does the scene domain belong here?) is undecided | **Publishable (not yet published), as of 2026-09-22.** `npm view @cuboidy/core` is 404 — this row previously said "Published at 0.9.0," which was wrong. 129 files, 162 kB packed, no `src`, no maps |
+| `@cuboidy/three` | 36 exports (26 values, 10 types), 1,194 lines | 23 vitest — thin, but its arithmetic is checked through core's parity and both E2E suites | README 145 lines, including the CDN route | **None.** R3-h closed: the public entry is `buildRigTreeOf(parts, manifest)` only, every caller moved, no `Geometry`-taking alias survives — so there is no longer a semver-major waiting behind a publish | **Publishable (not yet published), as of 2026-09-22.** `npm view @cuboidy/three` is 404 — this row previously said "Published at 0.9.0," which was wrong. 31 files, 727 kB packed (the two browser maps are most of it, deliberately) |
+| `@cuboidy/r3f` | 12 exports, 1,184 lines | **0** | README 58 lines | **Medium.** `RiggedParts`' `gizmos` prop is now optional (default all-false), so R3-h's half of this row is closed; the props interface is still 11 fields wide and has never had to survive an outside caller | **No.** Zero tests on a component surface is not a thing to put a version number on |
 | `@cuboidy/ui` | 62 exports, 2,120 lines | **0** | README 34 lines | **High.** Editor chrome shaped by exactly two consumers, both in this repository. Open question R1-f (where does shared non-React browser code live) would move part of it | **No.** Same reason, plus it has no reason to be public yet |
 | `@cuboidy/editor` | App, no barrel, 12,038 lines | 167 vitest + 12 Playwright | README 88 lines | n/a — a site, not a dependency | n/a. It is the only reader of §13 |
 | `@cuboidy/workspace` | App, no barrel, 4,608 lines | 90 vitest + 93 Playwright | **None** | n/a — a site, not a dependency | n/a. Its E2E suite is the largest in the repository and flakes cold; rerun once before believing a red |
 
 Two notes the table cannot hold.
 
-**The two published packages are the two that earned it.** Core is the only
-package with a second implementation checking it, and three is the only one
-with a browser artifact anybody outside this repository can use. The other four
-are either untested (r3f, ui) or not libraries (editor, workspace). Publishing
-exactly these two is the right cut and would still be the right cut if the
-spec stayed 0.x.
+**The two publish-ready packages are the two that earned it.** Core is the
+only package with a second implementation checking it, and three is the only
+one with a browser artifact anybody outside this repository can use. The
+other four are either untested (r3f, ui) or not libraries (editor,
+workspace). Publishing exactly these two is the right cut and would still
+be the right cut if the spec stayed 0.x. **Neither is actually published
+yet** — `npm view @cuboidy/core` / `@cuboidy/three` both 404 as of
+2026-09-22. This section previously said "Published at 0.9.0" for both; that
+was wrong, and the owner ruling on board card Q-cub2 is to fix the API debt
+below before publishing at all, not after.
 
-**The one piece of API debt inside the published set is R3-h.**
-`buildRigTree(geometry, manifest)` and the required `gizmos` prop were flagged
-in `docs/working/refactor-backlog.md:437-446` before publication and are still
-live: `ts/packages/three/src/rig.ts:142-147`, `ts/packages/r3f/src/RiggedParts.tsx:10-38`,
-and `ts/packages/workspace/src/lib/model-view.ts:7-14`, which synthesizes a
-throwaway `Geometry` with a borrowed file-level palette purely to satisfy the
-signature. `buildRigTreeOf(parts, manifest)` is the shape that wants to be the
-only one. Changing `buildRigTree` is now a semver-major on a package that has
-been published once. The cheap move is to land it before anyone depends on
-0.9.0 — the window is open for about as long as the spec's own S1-S6 work
-takes.
+**The API debt inside the publish-ready set was R3-h — now closed.**
+`buildRigTree(geometry, manifest)` and the required `gizmos` prop were
+flagged in `docs/working/refactor-backlog.md` before this doc was first
+written and were still live as of this doc's original text:
+`ts/packages/three/src/rig.ts:142-147`,
+`ts/packages/r3f/src/RiggedParts.tsx:10-38`, and
+`ts/packages/workspace/src/lib/model-view.ts:7-14`, which synthesized a
+throwaway `Geometry` with a borrowed file-level palette purely to satisfy
+`buildRigTree`'s signature. As of 2026-09-22: `buildRigTree` is deleted,
+`buildRigTreeOf(parts, manifest)` is the only public entry three's index
+exports, every caller (`AnimationViewport.tsx`, `VoxelScene.tsx`,
+`InstanceMesh.tsx`) moved to it, and no alias survives. `RiggedParts`'
+`gizmos` prop is now optional (default all-false), so
+`InstanceMesh.tsx`'s all-false constant is gone too. The
+"semver-major after publish" risk this row warned about no longer applies —
+there was never a publish to be major against, and the shape a publish
+would freeze is now the one the package wants.

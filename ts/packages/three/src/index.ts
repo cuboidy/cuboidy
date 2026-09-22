@@ -15,7 +15,6 @@ export type { ModelObject, ModelSource } from './model-object.js';
 
 // ─── The rig: hierarchy, framing, SPEC §7.7 placement ───────────────────
 export {
-  buildRigTree,
   buildRigTreeOf,
   computeSceneBounds,
   computeSceneCenter,

@@ -21,7 +21,11 @@ interface Props {
   // Selection gizmos: the selected part draws pivot / socket / frame
   // overlays per the visibility flags. Null = no part selected.
   selectedPart: string | null;
-  gizmos: GizmoVisibility;
+  // Absent = every flag off (a caller that never selects a part, such as
+  // the workspace's per-instance RiggedParts, has nothing to toggle these
+  // for and previously had to pass an all-false constant just to satisfy
+  // this prop).
+  gizmos?: GizmoVisibility | undefined;
   // Click-to-select: fired with the clicked part's name. The caller
   // owns deselection (Canvas onPointerMissed).
   onSelectPart: (name: string) => void;
@@ -58,6 +62,14 @@ export interface VoxelStrokeHandlers {
 // Ghost cubes / hit proxies never take raycasts.
 const noRaycast = () => null;
 
+// Default for the `gizmos` prop: nothing selectable draws an overlay,
+// which is correct for a caller with no selection concept at all.
+const ALL_GIZMOS_OFF: GizmoVisibility = {
+  pivot: false,
+  sockets: false,
+  frame: false,
+};
+
 // Renders the rig forest as nested three.js groups so a parent's animated
 // transform carries its whole subtree (SPEC §6.2 rigid hierarchy). Each
 // part-group's transform reproduces the SPEC §7.7 formula
@@ -73,7 +85,7 @@ export function RiggedParts({
   hiddenParts,
   partPalettes,
   selectedPart,
-  gizmos,
+  gizmos = ALL_GIZMOS_OFF,
   onSelectPart,
   registerObject,
   picking,

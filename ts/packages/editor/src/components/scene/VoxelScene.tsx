@@ -18,7 +18,7 @@ import {
   type VoxelStrokeHandlers,
 } from '@cuboidy/r3f';
 import {
-  buildRigTree,
+  buildRigTreeOf,
   computeSceneBounds,
   computeSceneCenter,
   computeSceneSpan,
@@ -452,7 +452,7 @@ export function VoxelScene({
       : gizmos;
 
   const roots = useMemo(
-    () => buildRigTree(displayGeometry, manifest),
+    () => buildRigTreeOf(displayGeometry.parts, manifest),
     [displayGeometry, manifest],
   );
 
