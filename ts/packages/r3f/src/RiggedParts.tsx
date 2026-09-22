@@ -1,14 +1,8 @@
 import { useMemo } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
-import {
-  composePartRotation,
-  composeScale,
-  type Palette,
-  type Part,
-  type Pose,
-} from '@cuboidy/core';
+import type { Palette, Part, Pose } from '@cuboidy/core';
 import type { Object3D } from 'three';
-import type { RigNode } from '@cuboidy/three';
+import { REST_POSE, partPlacement, type RigNode } from '@cuboidy/three';
 import type { GizmoVisibility } from './view-types.js';
 import { PartGizmos, type GizmoPicking } from './PartGizmos.js';
 import { PartMesh } from './PartMesh.js';
@@ -107,13 +101,6 @@ export function RiggedParts({
   );
 }
 
-const REST_POSE: Pose = {
-  rot: [0, 0, 0],
-  pos: [0, 0, 0],
-  scale: [1, 1, 1],
-  visible: true,
-};
-
 interface NodeProps {
   node: RigNode;
   palette: Palette;
@@ -143,55 +130,20 @@ function RigNodeView({
 }: NodeProps) {
   const part = node.part;
   const pose = poses?.get(part.name) ?? REST_POSE;
-  const basePos = node.manifestPart?.position;
-  const restRot = node.manifestPart?.rotation;
-  const restScale = node.manifestPart?.scale;
-  const piv = part.pivot.pos;
-  const pivotRot = part.pivot.rot;
 
-  // The `?? [0, 0, 0]` default lives INSIDE the memo: as a dependency it
-  // would be a fresh array on every render for any unpositioned part,
-  // defeating the memo entirely.
-  const groupPos = useMemo<[number, number, number]>(() => {
-    const base = basePos ?? [0, 0, 0];
-    return [
-      base[0] + pose.pos[0],
-      base[1] + pose.pos[1],
-      base[2] + pose.pos[2],
-    ];
-  }, [basePos, pose.pos]);
-
-  // q_total = q_rotation · q_pivot · q_anim (SPEC §7.7): the animation
-  // rotation applies first in the rest-local frame, then the geometry-side
-  // pivot.rot, then the manifest part's parent-space `rotation`. All three
-  // are Euler degrees, ZXY intrinsic (§4); three.js is right-handed like
-  // the native frame, so no handedness flip (that's Unity-only, §4).
-  const quaternion = useMemo<[number, number, number, number]>(() => {
-    const q = composePartRotation(
-      restRot,
-      pivotRot === undefined
-        ? undefined
-        : [pivotRot.x, pivotRot.y, pivotRot.z],
-      pose.rot,
-    );
-    return [q[0], q[1], q[2], q[3]];
-  }, [restRot, pivotRot, pose.rot]);
-
-  // S_total = scale ⊙ anim.scale (SPEC §6.2). Both act per axis about the
-  // same pivot and neither reaches the children, so they commute into one
-  // product and the order they compose in is unobservable.
+  // SPEC §7.7, from @cuboidy/three: the group's parent-relative position,
+  // q_rotation · q_pivot · q_anim, S_total = rest scale ⊙ animated scale,
+  // and the −pivot offset the mesh sits at inside the scaled group.
   //
-  // The rest half used to be missing here, which made this viewport blind to
-  // a whole field: a model whose only difference from another was its parts'
-  // rest `scale` drew identically, and rest scale is exactly what an author
-  // reaches for to lift a buried surface off the one covering it. Two models
-  // differing by five `scale` keys looked like the same model.
-  const totalScale = useMemo<[number, number, number]>(() => {
-    const s = composeScale(restScale, pose.scale) ?? [1, 1, 1];
-    return [s[0], s[1], s[2]];
-  }, [restScale, pose.scale]);
+  // The same call the imperative builder makes. It used to be spelled out
+  // here, and the rest half of S_total was missing from that spelling —
+  // which made this viewport blind to a whole field: a model whose only
+  // difference from another was its parts' rest `scale` drew identically,
+  // and rest scale is exactly what an author reaches for to lift a buried
+  // surface off the one covering it.
+  const placement = useMemo(() => partPlacement(node, pose), [node, pose]);
 
-  const meshVisible = pose.visible && !hiddenParts.has(part.name);
+  const meshVisible = placement.visible && !hiddenParts.has(part.name);
 
   return (
     // Outer group carries position + rotation only: child PART groups are
@@ -201,17 +153,17 @@ function RigNodeView({
     // S_total to the part's own (v_local − pivot.pos), and §6.2 places
     // children at the pivot in parent space).
     <group
-      position={groupPos}
-      quaternion={quaternion}
+      position={placement.position}
+      quaternion={placement.quaternion}
       ref={(obj: Object3D | null) => registerObject?.(part.name, obj)}
     >
       {/* Scale group: applies S_total, the manifest's rest scale times the
           animated one. The −pivot offset lives INSIDE it so the scale is
           centered on pivot.pos (scaling (v_local − pivot.pos), not
           (v_local) − pivot). At [1,1,1] this is a no-op. */}
-      <group scale={totalScale}>
+      <group scale={placement.scale}>
         <group
-          position={[-piv.x, -piv.y, -piv.z]}
+          position={placement.pivotOffset}
           visible={meshVisible}
           {...(part.name === selectedPart &&
             voxelStroke != null && {
