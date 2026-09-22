@@ -1,17 +1,28 @@
 # @cuboidy/three
 
-three.js for [Cuboidy](../../../README.md) models. Voxels to a
+three.js for [Cuboidy](https://github.com/cuboidy/cuboidy) models. Voxels to a
 `BufferGeometry`, SPEC §7.4 palette materials to `MeshStandardMaterial`,
 back-to-front ordering for translucent faces, the rig that places the parts,
 the lighting a voxel model is meant to be seen under — and one call that
 turns a whole package into a `THREE.Object3D`.
 
-No React. The dependencies are `@cuboidy/core` and `three`, and nothing
-else; `three` is a peer, so a host brings its own.
+No React. The dependencies are
+[`@cuboidy/core`](https://www.npmjs.com/package/@cuboidy/core) and `three`,
+and nothing else; `three` is a peer, so a host brings its own.
+
+Tracks [SPEC.md](https://github.com/cuboidy/cuboidy/blob/main/SPEC.md) v0.9 —
+the package version tracks the spec version it implements.
+
+## Install
+
+```bash
+npm install @cuboidy/three three
+```
 
 The React components that draw the same things inside a
-[react-three-fiber](https://r3f.docs.pmnd.rs/) scene are
-[`@cuboidy/r3f`](../r3f/README.md), which sits on top of this.
+[react-three-fiber](https://r3f.docs.pmnd.rs/) scene are `@cuboidy/r3f`
+([source](https://github.com/cuboidy/cuboidy/tree/main/ts/packages/r3f)),
+which sits on top of this and is not published yet.
 
 ## A whole package, as one object
 
@@ -59,19 +70,30 @@ geometry and material it built.
 
 ## In a browser, with no build step
 
-`npm run build` also emits two browser bundles under `dist/browser/`.
-`three` is never bundled into either: two copies of three.js in one page is
-a correctness problem, not a size one — `instanceof` fails across them, and
-the second copy's `Object3D` cannot be added to the first copy's scene.
+The package ships two browser bundles under `dist/browser/`, so a page can
+show a model with no bundler and no install. `three` is never bundled into
+either: two copies of three.js in one page is a correctness problem, not a
+size one — `instanceof` fails across them, and the second copy's `Object3D`
+cannot be added to the first copy's scene.
+
+Both bundles carry `@cuboidy/core` out with them, so the page gets
+`parseManifest` and `resolveProject` in the same file. A page that loads a
+model from JSON needs them; leaving core out would ship a renderer with
+nothing it could render.
 
 **As a classic script.** `three`'s UMD build installs a global `THREE`, and
 this bundle reads it and installs `CuboidyThree`:
 
 ```html
-<script src="https://unpkg.com/three@0.170.0/build/three.min.js"></script>
-<script src="cuboidy-three.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@cuboidy/three@0.9.0/dist/browser/cuboidy-three.global.js"></script>
 <script>
-  const model = CuboidyThree.buildModelObject({ manifest, parts });
+  const manifest = CuboidyThree.parseManifest(JSON.parse(text));
+  const project = CuboidyThree.resolveProject(manifest.value, files);
+  const model = CuboidyThree.buildModelObject({
+    manifest: manifest.value,
+    parts: project.parts,
+  });
   scene.add(model.object);
 </script>
 ```
@@ -81,15 +103,20 @@ page one copy of three:
 
 ```html
 <script type="importmap">
-  { "imports": { "three": "https://unpkg.com/three@0.170.0/build/three.module.js" } }
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"
+    }
+  }
 </script>
 <script type="module">
-  import { buildModelObject } from './cuboidy-three.esm.js';
+  import { buildModelObject } from 'https://cdn.jsdelivr.net/npm/@cuboidy/three@0.9.0/dist/browser/cuboidy-three.esm.js';
 </script>
 ```
 
-Both need `@cuboidy/core` to have produced the `manifest` and `parts` — a
-page that loads a model from JSON wants core in it too.
+Pin the version in the URL. `@cuboidy/three@0.9` and a bare
+`@cuboidy/three` both resolve on jsdelivr, and both move under a page that
+is not watching.
 
 ## The rest of the surface
 
@@ -112,3 +139,7 @@ npm run bundle     # the browser bundles alone
 npm run typecheck
 npm test
 ```
+
+## License
+
+[MIT](LICENSE).

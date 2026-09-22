@@ -1,33 +1,57 @@
 {
   "name": "@cuboidy/three",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.9.0",
   "description": "three.js for Cuboidy models: voxel geometry, SPEC §7.4 materials, back-to-front ordering, the rig that places the parts, the studio lighting, and one Object3D for a whole package",
   "license": "MIT",
+  "keywords": [
+    "cuboidy",
+    "voxel",
+    "three",
+    "threejs",
+    "rig",
+    "animation",
+    "webgl"
+  ],
+  "homepage": "https://github.com/cuboidy/cuboidy/tree/main/ts/packages/three#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cuboidy/cuboidy.git",
+    "directory": "ts/packages/three"
+  },
+  "bugs": {
+    "url": "https://github.com/cuboidy/cuboidy/issues"
+  },
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
-    "src",
+    "!dist/**/*.map",
+    "dist/browser/*.map",
     "README.md",
-    "tsconfig.json",
-    "tsconfig.typecheck.json"
+    "LICENSE"
   ],
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "build": "npm run clean && tsc -p tsconfig.json && npm run bundle",
     "bundle": "node scripts/bundle.mjs",
+    "prepare": "node scripts/prepare.mjs",
+    "prepublishOnly": "npm run build",
     "typecheck": "tsc -p tsconfig.typecheck.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "verify": "npm run typecheck && npm run test"
   },
   "dependencies": {
-    "@cuboidy/core": "*"
+    "@cuboidy/core": "^0.9.0"
   },
   "peerDependencies": {
     "three": ">=0.160.0 <1.0.0"

@@ -222,6 +222,15 @@ Shipped alongside it:
       components, and `@cuboidy/ui` is the editor chrome the two apps share
       and holds no three.js at all. `npm run build -w @cuboidy/three` also
       emits a browser bundle, so a page can show a model with no build step.
+      `@cuboidy/core` and `@cuboidy/three` are packaged for npm at **0.9.0**,
+      MIT — the package version tracks the spec version it implements. The
+      other four stay private. On the registry the browser bundle comes
+      straight off a CDN with no install:
+      `https://cdn.jsdelivr.net/npm/@cuboidy/three@0.9.0/dist/browser/cuboidy-three.global.js`.
+      Both published packages resolve through `dist`, which is gitignored, so
+      a fresh clone runs `npm install` first — each `prepare` builds its own
+      `dist` — because `npm run build --workspaces` goes alphabetically and
+      reaches `editor` before `three`.
 - [~] **Web-based editor** (`ts/packages/editor/`) — loads a model folder, a
       single `cuboidy.json` or a `.cuboidy` ZIP; Geometry / Rig / Anim views;
       part, palette and keyframe editing with undo/redo; direct manipulation

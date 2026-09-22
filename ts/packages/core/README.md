@@ -1,13 +1,39 @@
 # @cuboidy/core
 
-Reference implementation of the [Cuboidy](../../../README.md) voxel model
-format: parser, canonical serializer, manifest validation, project loader, lint
-and inspection CLIs. Tracks [SPEC.md](../../../SPEC.md) v0.9.
+Reference implementation of the
+[Cuboidy](https://github.com/cuboidy/cuboidy) voxel model format: parser,
+canonical serializer, manifest validation, project loader, lint and inspection
+CLIs. Tracks
+[SPEC.md](https://github.com/cuboidy/cuboidy/blob/main/SPEC.md) v0.9 — the
+package version tracks the spec version it implements.
+
+Cuboidy describes voxel characters as a hierarchy of rigid parts, with named
+attachment sockets and shareable keyframe animations, entirely in JSON. This
+package is the layer every other one reads a package through: it has no DOM
+and no renderer in it. To draw a model, add
+[`@cuboidy/three`](https://www.npmjs.com/package/@cuboidy/three).
 
 ## Install
 
 ```bash
 npm install @cuboidy/core
+```
+
+The eight CLIs come with it, so `npx cuboidy-lint <dir>` works without a
+project install.
+
+## From a CDN
+
+There is no standalone browser build of this package. `@cuboidy/three`'s
+browser bundles carry core out with them — a page with no build step gets the
+parser and the renderer in one file:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@cuboidy/three@0.9.0/dist/browser/cuboidy-three.global.js"></script>
+<script>
+  const manifest = CuboidyThree.parseManifest(JSON.parse(text));
+</script>
 ```
 
 ## Library
@@ -47,7 +73,10 @@ round-trips every shipped model — so it is safe to use as a formatter.
 | `cuboidy-view <dir>` | Orthographic ASCII projections, for a token-cheap read |
 | `cuboidy-query <dir> --at=x,y,z` | Exact voxel lookup at world coordinates |
 | `cuboidy-snap <dir>` | Multi-angle PNG renders — contact sheet plus one per angle. No browser, no native bindings |
+| `cuboidy-gif <dir>` | Animated GIF of a clip, or `--orbit` for a turntable |
 | `cuboidy-part` | `duplicate` and `mirror` part operations, the way symmetric limbs are made |
+| `cuboidy-overlap <dir>` | Voxels two parts both occupy, per pair, in the rest pose |
+| `cuboidy-clash <dir>` | The same over a clip — a part that passes *through* another while moving |
 
 ## Development
 
@@ -66,4 +95,4 @@ passes parity when every fixture yields the code its directory is named after.
 
 ## License
 
-MIT
+[MIT](LICENSE).
