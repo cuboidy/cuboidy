@@ -45,11 +45,16 @@ const teardownLighting = addStudioLighting(scene, renderer);
 (§6.12). Its parts are nested exactly as SPEC §6.2 says — a child rides its
 parent's position and rotation, and is not scaled by it.
 
-Three things it can then do:
+Four things it can then do:
 
 ```ts
 // Play a clip. `poses` is core's sampled pose map; null is the rest pose.
 model.setPose(sampleAnimation(clip, t));
+
+// Choose what this instance draws: a package holding three hairs draws all
+// three until told otherwise (§6.5 has no rest visibility). Only the named
+// parts' own voxels go; their children and guests stay. Replaces the mask.
+model.setHiddenParts(['hair_b', 'hair_c']);
 
 // Hang another model on a published socket (§6.12). Returns the detach,
 // or null when the host does not publish that name.

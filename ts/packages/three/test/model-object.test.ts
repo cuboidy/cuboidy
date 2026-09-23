@@ -7,7 +7,7 @@ import {
   type Pose,
   type ResolvedPart,
 } from '@cuboidy/core';
-import { Group, Vector3 } from 'three';
+import { Group, Vector3, type Object3D } from 'three';
 import { buildModelObject, type ModelSource } from '../src/model-object.js';
 
 // A two-part rig: an arm parented to a body, the arm carrying a published
@@ -129,6 +129,45 @@ describe('buildModelObject', () => {
     expect(arm.children[0]!.children[0]!.visible).toBe(false);
     built.setPose(null);
     expect(arm.children[0]!.children[0]!.visible).toBe(true);
+    built.dispose();
+  });
+});
+
+describe('setHiddenParts', () => {
+  // pivot → scaled → mesh; the mask is on `scaled`, the clip's flag on mesh.
+  const drawn = (built: { partObjects: ReadonlyMap<string, Group> }, name: string): boolean => {
+    const scaled = built.partObjects.get(name)!.children[0]!;
+    return scaled.visible && scaled.children[0]!.visible;
+  };
+
+  it("hides a part's own voxels and leaves its children and guests drawn", () => {
+    const built = buildModelObject(model());
+    const guest = new Group();
+    built.attach('weapon', guest);
+    built.setHiddenParts(['body']);
+    expect(drawn(built, 'body')).toBe(false);
+    expect(drawn(built, 'arm')).toBe(true);
+    built.setHiddenParts(['arm']);
+    expect(drawn(built, 'body')).toBe(true);
+    expect(drawn(built, 'arm')).toBe(false);
+    // The guest hangs off the arm's pivot, beside its voxels, not under them.
+    let shown = true;
+    for (let o: Object3D | null = guest; o !== null; o = o.parent) shown &&= o.visible;
+    expect(shown).toBe(true);
+    built.dispose();
+  });
+
+  it('survives a pose, and a clip cannot show what the mask hides', () => {
+    const built = buildModelObject(model());
+    built.setHiddenParts(['arm']);
+    const shown: Pose = { rot: [0, 0, 0], pos: [0, 0, 0], scale: [1, 1, 1], visible: true };
+    built.setPose(new Map([['arm', shown]]));
+    expect(drawn(built, 'arm')).toBe(false);
+    built.setHiddenParts([]);
+    expect(drawn(built, 'arm')).toBe(true);
+    // And the other way round: an empty mask does not show what the clip hides.
+    built.setPose(new Map([['arm', { ...shown, visible: false }]]));
+    expect(drawn(built, 'arm')).toBe(false);
     built.dispose();
   });
 });

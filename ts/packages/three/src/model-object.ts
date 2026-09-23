@@ -44,6 +44,16 @@ export interface ModelObject {
   // part absent from the map falls back to rest. Anything attached to a
   // socket moves with it.
   setPose(poses: ReadonlyMap<string, Pose> | null): void;
+  // Parts this OBJECT does not draw, whatever the pose says — the
+  // consumer's own mask over §6.5 `visible`, which only ever takes away.
+  // The format has no rest-pose visibility, so a package holding three hairs
+  // draws all three until a consumer chooses; a clip's `visible` key cannot
+  // undo that choice, because the two are written on different nodes. Only
+  // the part's OWN voxels go: its child parts and anything attached to its
+  // sockets are left as they were, so hiding a torso does not take the arms
+  // with it. Each call replaces the previous mask; an empty one shows every
+  // part again. The same contract as the Godot addon's `SetHiddenParts`.
+  setHiddenParts(names: Iterable<string>): void;
   // Hang `guest` on one of the PUBLISHED sockets (§6.12 — the only names a
   // consumer is meant to use). Returns the detach, or null when the model
   // does not publish that name, or what it publishes does not resolve:
@@ -153,6 +163,14 @@ export function buildModelObject(model: ModelSource): ModelObject {
     for (const attachment of attachments) placeAttachment(attachment);
   };
 
+  // On the SCALED group rather than the mesh group, which `placeOne` writes
+  // the clip's `visible` to on every pose: two flags on two nodes, so neither
+  // can overwrite the other and a part is drawn only while both allow it.
+  const setHiddenParts = (names: Iterable<string>): void => {
+    const hidden = new Set(names);
+    for (const [name, entry] of entries) entry.scaled.visible = !hidden.has(name);
+  };
+
   const attach = (
     publishedName: string,
     guest: Object3D,
@@ -200,6 +218,7 @@ export function buildModelObject(model: ModelSource): ModelObject {
       Array.from(entries, ([name, entry]) => [name, entry.pivot] as const),
     ),
     setPose,
+    setHiddenParts,
     attach,
     sortTranslucent: (camera: Camera) => {
       for (const sort of sorters) sort(camera);
