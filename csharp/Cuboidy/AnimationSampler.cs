@@ -41,9 +41,9 @@ public static class Sampler
     // The curves of the segment LEAVING a key, one per interpolating
     // attribute, resolved to concrete names (absent map entries → linear). No
     // carryover.
-    private readonly record struct ResolvedEase(EasingName Rot, EasingName Pos, EasingName Scale);
+    internal readonly record struct ResolvedEase(EasingName Rot, EasingName Pos, EasingName Scale);
 
-    private readonly record struct ResolvedKey(double T, Pose Pose, ResolvedEase Ease);
+    internal readonly record struct ResolvedKey(double T, Pose Pose, ResolvedEase Ease);
 
     // SPEC §6.5 carryover + §6.6 ordering: parse the time keys to numbers, drop
     // non-numeric keys defensively, sort ascending, then fill each keyframe's
@@ -51,7 +51,7 @@ public static class Sampler
     // the §6.5 defaults). `ease` is exempt from carryover: each key's outgoing
     // curves come only from its own map. The result is a dense, time-sorted
     // pose list.
-    private static List<ResolvedKey> ResolveTrack(AnimationTrack track)
+    internal static List<ResolvedKey> ResolveTrack(AnimationTrack track)
     {
         var timed = new List<(double T, Keyframe Frame)>();
         foreach (KeyValuePair<string, Keyframe> entry in track.Keys)
@@ -229,9 +229,14 @@ public static class Sampler
     //   loop:    time wraps modulo duration; the tail interval (last key →
     //            duration) interpolates toward the "0.0" keyframe (§6.7)
     //   no loop: time clamps to [0, duration]; values hold past the last key
-    public static Pose SamplePart(AnimationTrack track, double time, double duration, bool loop)
+    public static Pose SamplePart(AnimationTrack track, double time, double duration, bool loop) =>
+        SampleKeys(ResolveTrack(track), time, duration, loop);
+
+    // `SamplePart` over a track already resolved, for a caller that resolved it
+    // once and keeps it (`ResolvedClip`): the keys a track resolves to are a
+    // fact about the file, the same on every sample.
+    internal static Pose SampleKeys(List<ResolvedKey> keys, double time, double duration, bool loop)
     {
-        List<ResolvedKey> keys = ResolveTrack(track);
         if (keys.Count == 0) return Pose.Default;
 
         ResolvedKey first = keys[0];
@@ -305,5 +310,46 @@ public static class Sampler
         }
 
         return OrderedMap<Pose>.From(poses);
+    }
+}
+
+// One clip with every track's keys resolved once (§6.5 carryover, §6.6
+// order) — what `SampleAnimation` re-derives on every call — so sampling it is
+// the arithmetic alone, written into a map the caller keeps.
+//
+// NEW SURFACE, not a port: the reference resolves a track per sample, and
+// `SampleAnimation` still does. The resolution is the same function and so is
+// the sampling (`Sampler.SampleKeys`), so the poses are the same numbers.
+internal sealed class ResolvedClip
+{
+    private readonly string[] _parts;
+    private readonly List<Sampler.ResolvedKey>[] _tracks;
+    private readonly double _duration;
+    private readonly bool _loop;
+
+    public ResolvedClip(InlineAnimation animation)
+    {
+        _parts = new string[animation.Parts.Count];
+        _tracks = new List<Sampler.ResolvedKey>[animation.Parts.Count];
+        for (int i = 0; i < animation.Parts.Count; i++)
+        {
+            KeyValuePair<string, AnimationTrack> entry = animation.Parts[i];
+            _parts[i] = entry.Key;
+            _tracks[i] = Sampler.ResolveTrack(entry.Value);
+        }
+
+        _duration = animation.Duration;
+        _loop = animation.Loop;
+    }
+
+    // Every animated part's pose at `time`, into `into` after clearing it.
+    // Parts the clip does not animate are absent, as in `SampleAnimation`.
+    public void SampleInto(double time, IDictionary<string, Pose> into)
+    {
+        into.Clear();
+        for (int i = 0; i < _parts.Length; i++)
+        {
+            into[_parts[i]] = Sampler.SampleKeys(_tracks[i], time, _duration, _loop);
+        }
     }
 }

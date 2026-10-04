@@ -63,6 +63,15 @@ public static class SocketFrame
 
         if (socket is null) return null;
 
+        return FrameOf(socket, part, world, scale);
+    }
+
+    // The arithmetic half of `SocketFrameOn`, for a caller that found the
+    // socket once and keeps it (`CuboidyModel.Placements(poses, into,
+    // sockets)`): the lookup by name walks the part's socket list, which is
+    // the same answer on every pose.
+    internal static Frame FrameOf(Socket socket, Part part, Frame world, Vec3? scale)
+    {
         Vec3 pos = RigTransform.LocalPointToWorld(socket.Pos, part.Pivot.Pos, scale, world);
         Vec3 rot = socket.Rot ?? new Vec3(0, 0, 0);
         return new Frame(pos, RigTransform.QuatMultiply(world.Quat, RigTransform.QuatFromEulerZxyDeg(rot)));

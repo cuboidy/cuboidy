@@ -47,6 +47,19 @@ foreach (Placement p in model.Placements(poses))
 Frame? hand = model.PublishedSocketFrame("weapon", poses);   // §6.12
 ```
 
+A renderer posing the same model every frame can keep the storage and hand it
+in. Same numbers, one walk down the rig for the parts and the sockets, and
+nothing allocated once the storage has grown to the model:
+
+```csharp
+var poses = new Dictionary<string, Pose>();             // kept, per instance
+var placements = new List<Placement>();
+var sockets = new List<KeyValuePair<string, Frame>>();
+
+model.TryPose("walk", seconds, poses);
+model.Placements(poses, placements, sockets);            // both, from one walk
+```
+
 Two things the API exists to stop a caller from getting wrong: `BuildMesh`
 takes the part's OWN palette (merging is a CLI concern), and the mesh is
 part-local, so scale is applied per part rather than folded into the transform.

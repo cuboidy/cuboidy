@@ -33,6 +33,118 @@ public readonly record struct Frame(Vec3 Pos, Quat Quat);
 
 public readonly record struct Bounds(Vec3 Min, Vec3 Max);
 
+// The §7.7 composition order of one rig, resolved once: every part after its
+// effective parent, each with what composing it reads that no pose changes —
+// its manifest part, its geometry-side `pivot.rot`, and where its parent sits
+// in this same order.
+//
+// NEW SURFACE, not a port. The reference resolves all of this inside
+// `computeWorldTransforms` on every call, and `ComputeWorldTransforms` still
+// does — through here. What it adds is that a rig's hierarchy and pivots are
+// facts about the package, so a caller posing one model every frame can
+// resolve them once and keep them, and `Compose` is then arithmetic into
+// storage the caller supplies, with nothing allocated.
+internal sealed class RigChain
+{
+    private readonly string[] _names;
+    private readonly ManifestPart[] _parts;
+    private readonly Vec3?[] _pivotRots;
+    // Index of the effective parent in this order; -1 for a root.
+    private readonly int[] _parents;
+
+    private RigChain(string[] names, ManifestPart[] parts, Vec3?[] pivotRots, int[] parents)
+    {
+        _names = names;
+        _parts = parts;
+        _pivotRots = pivotRots;
+        _parents = parents;
+    }
+
+    public int Count => _names.Length;
+
+    public string NameAt(int index) => _names[index];
+
+    public static RigChain Of(
+        IReadOnlyList<ManifestPart> parts,
+        IReadOnlyDictionary<string, Vec3> pivotRots)
+    {
+        // First part of a name wins, matching every other by-name lookup.
+        var byName = new Dictionary<string, ManifestPart>(StringComparer.Ordinal);
+        foreach (ManifestPart p in parts)
+        {
+            if (!byName.ContainsKey(p.Name)) byName[p.Name] = p;
+        }
+
+        // The shared lenient policy (`Forest`): a parent that is absent, names
+        // this part, names no part, or would close a cycle makes the part a
+        // root. `Order` puts every part after its effective parent, so one pass
+        // down the list composes the whole rig, and there is no way to compose
+        // a part into itself.
+        Hierarchy hierarchy = Forest.ResolveHierarchy(parts, p => p.Name, p => p.Parent);
+
+        int n = hierarchy.Order.Count;
+        var names = new string[n];
+        var manifestParts = new ManifestPart[n];
+        var rots = new Vec3?[n];
+        var parents = new int[n];
+        var at = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (int i = 0; i < n; i++)
+        {
+            string name = hierarchy.Order[i];
+            names[i] = name;
+            manifestParts[i] = byName[name];
+            rots[i] = pivotRots.TryGetValue(name, out Vec3 pr) ? pr : (Vec3?)null;
+
+            // A parent is always earlier in `Order`, so it is already in `at`.
+            // An effective parent missing from it cannot happen; if it did, the
+            // part would be composed as a root, which is what a parent with no
+            // frame yet always meant here.
+            hierarchy.ParentOf.TryGetValue(name, out string? parentName);
+            parents[i] = parentName is not null && at.TryGetValue(parentName, out int p) ? p : -1;
+            at[name] = i;
+        }
+
+        return new RigChain(names, manifestParts, rots, parents);
+    }
+
+    // Composes the §7.7 transform down every parent chain into `world`, one
+    // frame per part in this chain's order (`NameAt`):
+    //   W.pos  = parent.pos + rotate(parent.quat, part.position + anim.pos)
+    //   W.quat = parent.quat ⊗ (q_rotation ⊗ q_pivot ⊗ q_anim)
+    public void Compose(IReadOnlyDictionary<string, Pose>? poses, Span<Frame> world)
+    {
+        for (int i = 0; i < _names.Length; i++)
+        {
+            ManifestPart mp = _parts[i];
+            Vec3 baseline = mp.Position ?? new Vec3(0, 0, 0);
+            Pose p = default;
+            bool posed = poses is not null && poses.TryGetValue(_names[i], out p);
+
+            // §6.5: keyframe `pos` is a DELTA on `position`, so it lives in the
+            // same (parent) frame and rides the ancestors' rotations with it.
+            Vec3 local = posed
+                ? new Vec3(baseline.X + p.Pos.X, baseline.Y + p.Pos.Y, baseline.Z + p.Pos.Z)
+                : baseline;
+
+            Quat localQ = RigTransform.ComposePartRotation(
+                mp.Rotation, _pivotRots[i], posed ? p.Rot : (Vec3?)null);
+
+            int parentAt = _parents[i];
+            if (parentAt < 0)
+            {
+                world[i] = new Frame(local, localQ);
+                continue;
+            }
+
+            Frame parent = world[parentAt];
+            Vec3 off = RigTransform.QuatRotateVec3(parent.Quat, local);
+            world[i] = new Frame(
+                new Vec3(parent.Pos.X + off.X, parent.Pos.Y + off.Y, parent.Pos.Z + off.Z),
+                RigTransform.QuatMultiply(parent.Quat, localQ));
+        }
+    }
+}
+
 public static class RigTransform
 {
     // Euler degrees (ZXY intrinsic, §4) → quaternion. The expansion is the
@@ -115,52 +227,18 @@ public static class RigTransform
         IReadOnlyDictionary<string, Vec3> pivotRots,
         IReadOnlyDictionary<string, Pose>? poses = null)
     {
-        var byName = new Dictionary<string, ManifestPart>(StringComparer.Ordinal);
-        foreach (ManifestPart p in parts)
+        // The order and the parents are resolved here and thrown away; a
+        // caller posing one model every frame keeps the chain instead
+        // (`CuboidyModel.Placements(poses, into, sockets)`). Either way the
+        // arithmetic is `RigChain.Compose`, the one statement of it.
+        RigChain chain = RigChain.Of(parts, pivotRots);
+        var world = new Frame[chain.Count];
+        chain.Compose(poses, world);
+
+        var ordered = new List<KeyValuePair<string, Frame>>(chain.Count);
+        for (int i = 0; i < chain.Count; i++)
         {
-            if (!byName.ContainsKey(p.Name)) byName[p.Name] = p;
-        }
-
-        // The shared lenient policy (`Forest`): a parent that is absent, names
-        // this part, names no part, or would close a cycle makes the part a
-        // root. `Order` puts every part after its effective parent, so one pass
-        // down the list composes the whole rig, and there is no way to compose
-        // a part into itself.
-        Hierarchy hierarchy = Forest.ResolveHierarchy(parts, p => p.Name, p => p.Parent);
-
-        var built = new Dictionary<string, Frame>(StringComparer.Ordinal);
-        var ordered = new List<KeyValuePair<string, Frame>>();
-        foreach (string name in hierarchy.Order)
-        {
-            ManifestPart mp = byName[name];
-            Vec3 baseline = mp.Position ?? new Vec3(0, 0, 0);
-            Pose p = default;
-            bool posed = poses is not null && poses.TryGetValue(name, out p);
-
-            // §6.5: keyframe `pos` is a DELTA on `position`, so it lives in the
-            // same (parent) frame and rides the ancestors' rotations with it.
-            Vec3 local = posed
-                ? new Vec3(baseline.X + p.Pos.X, baseline.Y + p.Pos.Y, baseline.Z + p.Pos.Z)
-                : baseline;
-
-            Vec3? pivotRot = pivotRots.TryGetValue(name, out Vec3 pr) ? pr : (Vec3?)null;
-            Quat localQ = ComposePartRotation(mp.Rotation, pivotRot, posed ? p.Rot : (Vec3?)null);
-
-            hierarchy.ParentOf.TryGetValue(name, out string? parentName);
-            if (parentName is null || !built.TryGetValue(parentName, out Frame parent))
-            {
-                var root = new Frame(local, localQ);
-                built[name] = root;
-                ordered.Add(new KeyValuePair<string, Frame>(name, root));
-                continue;
-            }
-
-            Vec3 off = QuatRotateVec3(parent.Quat, local);
-            var frame = new Frame(
-                new Vec3(parent.Pos.X + off.X, parent.Pos.Y + off.Y, parent.Pos.Z + off.Z),
-                QuatMultiply(parent.Quat, localQ));
-            built[name] = frame;
-            ordered.Add(new KeyValuePair<string, Frame>(name, frame));
+            ordered.Add(new KeyValuePair<string, Frame>(chain.NameAt(i), world[i]));
         }
 
         return OrderedMap<Frame>.From(ordered);
