@@ -1,6 +1,7 @@
 {
   "name": "knight",
-  "version": "0.9",
+  "version": "0.10",
+  "description": "A knight in grey steel plate, with a red tabard trimmed in gold and a closed helm.",
   "geometry": ["body.json", "arms.json", "legs.json"],
   "parts": [
     { "name": "hips",       "position": [0, 19, 0] },

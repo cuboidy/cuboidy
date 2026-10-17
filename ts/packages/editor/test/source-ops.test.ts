@@ -235,6 +235,28 @@ describe('renameFileInSource', () => {
     expect(next!.removedFiles?.has('limbs.json')).toBe(true);
   });
 
+  // §6.15: a tool that rewrites a manifest carries the description through
+  // as written. The rename rewrites cuboidy.json from the AST, so this is the
+  // writer every structural edit goes through.
+  it('carries the description through a rewrite of the manifest unchanged', () => {
+    const description = 'A wooden crate, its lid  ajar \u{1F98A}';
+    const src = pkg({
+      [MANIFEST]: manifestJson({
+        name: 'm',
+        description,
+        geometry: ['body.json', 'limbs.json'],
+        parts: [{ name: 'body' }, { name: 'arm' }],
+      }),
+      'body.json': GEO([{ name: 'body', voxels: '0' }], 'palette.json'),
+      'limbs.json': GEO([{ name: 'arm', voxels: '1' }], 'palette.json'),
+      'palette.json': PALETTE,
+    }, 'body.json');
+    const next = renameFileInSource(src, 'limbs.json', 'arms.json');
+    expect(next).not.toBeNull();
+    expect(next!.manifest?.description).toBe(description);
+    expect((JSON.parse(manifestText(next!)!) as { description?: string }).description).toBe(description);
+  });
+
   it('follows a palette rename into every geometry pointing at it', () => {
     const next = renameFileInSource(full(), 'palette.json', 'skin.json');
     expect(next).not.toBeNull();

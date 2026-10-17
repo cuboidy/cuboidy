@@ -461,4 +461,118 @@ public class ManifestReaderTests
             Runtime.RigTransform.LocalPointToWorld(new Vec3(6, 2, 6), pivot, null, world),
             Is.EqualTo(new Vec3(13, 2, 3)));
     }
+
+    // ----- §6.15 description -----------------------------------------------
+
+    // `value` is JSON text, so a case can spell an escape the way a document
+    // would — including the half-surrogate ones no C# string can carry
+    // through a serializer.
+    private static string Describing(string value) =>
+        "{\"name\":\"m\",\"description\":" + value + ",\"parts\":[{\"name\":\"body\"}]}";
+
+    private static string Quoted(string text) => System.Text.Json.JsonSerializer.Serialize(text);
+
+    // One code point, two UTF-16 units.
+    private const string Fox = "\U0001F98A";
+
+    [Test]
+    public void AnAbsentDescriptionIsNull()
+    {
+        Assert.That(Ok(Base("")).Description, Is.Null);
+    }
+
+    [TestCase("A knight in grey steel plate, with a red tabard trimmed in gold and a closed helm.")]
+    [TestCase("\u9ce5\u306e\u5f62\u306e\u98a8\u898b")]   // Japanese, "a bird-shaped weathervane"
+    [TestCase("A fox " + Fox + " with a white-tipped tail")]
+    [TestCase("cafe\u0301 or caf\u00e9")]                  // not normalized: both spellings survive
+    [TestCase("  spaces at either end are the author's  ")]
+    public void ADescriptionReadsBackExactlyAsWritten(string text)
+    {
+        Assert.That(Ok(Describing(Quoted(text))).Description, Is.EqualTo(text));
+    }
+
+    [Test]
+    public void TwoHundredCodePointsIsTheBoundCountedInCodePointsNotUnits()
+    {
+        Assert.That(ManifestReader.DescriptionMaxCodePoints, Is.EqualTo(200));
+        Ok(Describing(Quoted(new string('a', 200))));
+        Ok(Describing(Quoted(string.Concat(Enumerable.Repeat(Fox, 200)))));   // 400 units
+        Fails(Describing(Quoted(new string('a', 201))), CuboidyErrorCode.WrongArity);
+        Fails(Describing(Quoted(string.Concat(Enumerable.Repeat(Fox, 201)))), CuboidyErrorCode.WrongArity);
+    }
+
+    [Test]
+    public void ACombiningMarkIsACodePointOfItsOwn()
+    {
+        // `e` + U+0301 is one character to a reader that composes (NFC) or
+        // counts text elements (StringInfo), and two code points to this one.
+        Ok(Describing(Quoted(new string('a', 198) + "e\u0301")));
+        Fails(Describing(Quoted(new string('a', 199) + "e\u0301")), CuboidyErrorCode.WrongArity);
+    }
+
+    [Test]
+    public void ATooLongDescriptionSaysHowLongItIs()
+    {
+        Result<Manifest> r = Parse(Describing(Quoted(new string('a', 250))));
+        Assert.That(r.Ok, Is.False);
+        Assert.That(
+            r.Message,
+            Is.EqualTo("line 1: description: a description is at most 200 code points, and this one is 250"));
+    }
+
+    [Test]
+    public void AnEmptyDescriptionIsWrongArity() =>
+        Fails(Describing("\"\""), CuboidyErrorCode.WrongArity);
+
+    [TestCase("\\n")]
+    [TestCase("\\r")]
+    [TestCase("\\t")]
+    [TestCase("\\u0000")]
+    [TestCase("\\u001f")]
+    [TestCase("\\u007f")]
+    [TestCase("\\u0085")]
+    [TestCase("\\u009f")]
+    [TestCase("\\u2028")]
+    [TestCase("\\u2029")]
+    public void ALineBreakOrAControlCharacterIsInvalidValue(string escape) =>
+        Fails(Describing("\"A crate" + escape + "with a lid\""), CuboidyErrorCode.InvalidValue);
+
+    [Test]
+    public void TheMessageNamesTheCharacterThatBreaksTheLine()
+    {
+        Result<Manifest> r = Parse(Describing("\"A crate.\\nIt is empty.\""));
+        Assert.That(r.Ok, Is.False);
+        Assert.That(
+            r.Message,
+            Is.EqualTo("line 1: description: a description is one line, and U+000A is a line break or a control character"));
+    }
+
+    [TestCase(" ")]
+    [TestCase("~")]
+    [TestCase("\\u00a0")]
+    [TestCase("\\u2027")]
+    [TestCase("\\u202a")]
+    public void TheCharactersEitherSideOfEachExcludedRangeAreFine(string escape) =>
+        Ok(Describing("\"A crate" + escape + "with a lid\""));
+
+    [TestCase("\"\\ud800\"")]
+    [TestCase("\"a\\udc00b\"")]
+    [TestCase("\"a fox \\ud83d\"")]
+    [TestCase("\"\\ude00\\ud83d\"")]
+    public void HalfOfASurrogatePairIsInvalidValueRatherThanAnException(string value) =>
+        Fails(Describing(value), CuboidyErrorCode.InvalidValue);
+
+    [TestCase("3")]
+    [TestCase("null")]
+    [TestCase("true")]
+    [TestCase("[\"a\"]")]
+    [TestCase("{\"text\":\"a\"}")]
+    public void ADescriptionIsAString(string value) =>
+        Fails(Describing(value), CuboidyErrorCode.InvalidValue);
+
+    [Test]
+    public void APartCarriesNoDescription() =>
+        Fails(
+            "{\"name\":\"m\",\"parts\":[{\"name\":\"body\",\"description\":\"A box.\"}]}",
+            CuboidyErrorCode.Unknown);
 }

@@ -166,6 +166,58 @@ describe('cuboidy.schema.json — parity corpus (runtime-invalid inputs)', () =>
   });
 });
 
+describe('cuboidy.schema.json — §6.15 description', () => {
+  // `maxLength` counts code points, which is the §6.15 count, so the bound is
+  // the schema's own and not an approximation of it. An emoji is two UTF-16
+  // units and one code point.
+  const fox = '\u{1F98A}';
+  const describing = (description: unknown) => ({
+    name: 'm',
+    parts: [{ name: 'body' }],
+    description,
+  });
+
+  it('accepts what parseManifest accepts', () => {
+    for (const description of [
+      'A wooden crate with a rope handle.',
+      'a'.repeat(200),
+      fox.repeat(200),
+      '\u9ce5\u306e\u5f62\u306e\u98a8\u898b',
+      'cafe\u0301',
+      ' ',
+    ]) {
+      const m = describing(description);
+      expect(parseManifest(m).ok, `zod: ${description}`).toBe(true);
+      expect(validate(m), `ajv: ${description}`).toBe(true);
+    }
+  });
+
+  it('rejects what parseManifest rejects', () => {
+    for (const description of [
+      '',
+      'a'.repeat(201),
+      fox.repeat(201),
+      'a\nb',
+      'a\rb',
+      'a\tb',
+      '\u0000',
+      '\u001F',
+      '\u007F',
+      'a\u0085b',
+      '\u009F',
+      'a\u2028b',
+      'a\u2029b',
+      3,
+      null,
+    ]) {
+      const m = describing(description);
+      const label = JSON.stringify(description);
+      expect(parseManifest(m).ok, `zod: ${label}`).toBe(false);
+      expect(validate(m), `ajv: ${label}`).toBe(false);
+    }
+  });
+});
+
 describe('cuboidy.schema.json — documented runtime-only rules', () => {
   // These SPEC §11.5 rules are Zod superRefines that JSON Schema cannot
   // express; the schema description names them. This test pins the gap
@@ -195,6 +247,19 @@ describe('cuboidy.schema.json — documented runtime-only rules', () => {
         { name: 'b', parent: 'a' },
       ],
     });
+  });
+
+  it('a §6.15 description holding half of a surrogate pair', () => {
+    // Left out of the schema's pattern on purpose: a validator that matches by
+    // UTF-16 unit would read the exclusion as both halves of every pair, and
+    // reject an emoji that parseManifest accepts.
+    for (const description of ['\uD800', 'a fox \uD83D']) {
+      expectSchemaOnlyAccepts(`description ${JSON.stringify(description)}`, {
+        name: 'm',
+        parts: [{ name: 'body' }],
+        description,
+      });
+    }
   });
 
   it('animation semantic rules', () => {

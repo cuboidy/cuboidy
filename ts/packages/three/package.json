@@ -1,6 +1,6 @@
 {
   "name": "@cuboidy/three",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "three.js for Cuboidy models: voxel geometry, SPEC §7.4 materials, back-to-front ordering, the rig that places the parts, the studio lighting, and one Object3D for a whole package",
   "license": "MIT",
   "keywords": [
@@ -51,7 +51,7 @@
     "verify": "npm run typecheck && npm run test"
   },
   "dependencies": {
-    "@cuboidy/core": "^0.9.0"
+    "@cuboidy/core": "^0.10.0"
   },
   "peerDependencies": {
     "three": ">=0.160.0 <1.0.0"

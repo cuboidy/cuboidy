@@ -10,7 +10,7 @@ No React. The dependencies are
 [`@cuboidy/core`](https://www.npmjs.com/package/@cuboidy/core) and `three`,
 and nothing else; `three` is a peer, so a host brings its own.
 
-Tracks [SPEC.md](https://github.com/cuboidy/cuboidy/blob/main/SPEC.md) v0.9 —
+Tracks [SPEC.md](https://github.com/cuboidy/cuboidy/blob/main/SPEC.md) v0.10 —
 the package version tracks the spec version it implements.
 
 ## Install
@@ -91,7 +91,7 @@ this bundle reads it and installs `CuboidyThree`:
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@cuboidy/three@0.9.0/dist/browser/cuboidy-three.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@cuboidy/three@0.10.0/dist/browser/cuboidy-three.global.js"></script>
 <script>
   const manifest = CuboidyThree.parseManifest(JSON.parse(text));
   const project = CuboidyThree.resolveProject(manifest.value, files);
@@ -115,11 +115,11 @@ page one copy of three:
   }
 </script>
 <script type="module">
-  import { buildModelObject } from 'https://cdn.jsdelivr.net/npm/@cuboidy/three@0.9.0/dist/browser/cuboidy-three.esm.js';
+  import { buildModelObject } from 'https://cdn.jsdelivr.net/npm/@cuboidy/three@0.10.0/dist/browser/cuboidy-three.esm.js';
 </script>
 ```
 
-Pin the version in the URL. `@cuboidy/three@0.9` and a bare
+Pin the version in the URL. `@cuboidy/three@0.10` and a bare
 `@cuboidy/three` both resolve on jsdelivr, and both move under a page that
 is not watching.
 

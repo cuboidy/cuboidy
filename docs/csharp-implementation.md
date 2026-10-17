@@ -332,6 +332,7 @@ port started, which is the wrong home for the only record of why
 | T2 | `roughness`'s §7.4 default is **1**, and `default(double)` is 0 | `models/submersible/palette.json` has entries that set `emissive` and omit `roughness`. A DTO with a non-nullable `double Roughness` reads them as a mirror instead of a diffuse surface — and moves the entry in §7.4's normative material order. The three material fields are nullable in the DTO and defaulted after reading. `metallic` and `emissive` default to 0 and hide the bug. |
 | T3 | netstandard2.1 polyfills | `IsExternalInit` for `record` / `init`, and `RequiredMemberAttribute` + `CompilerFeatureRequiredAttribute` + `SetsRequiredMembersAttribute` if `required` members are used — which `geometry/types.ts` argues for on the material fields. |
 | T4 | structural typing has no C# counterpart | Core has been cleaned of the cases that mattered — one `Pose`, one `Vec3Tuple`, one `Frame` under two names, `Part` instead of a structural subset. Do not reintroduce them by "simplifying" a signature during translation. |
+| T5 | `JsonElement.GetString()` throws on an escape that spells half of a surrogate pair | `JSON.parse` hands back a string holding the lone half; `System.Text.Json` throws `InvalidOperationException` instead (measured, net8.0). §6.15's `description` catches it and reports `invalid-value`, which is what the reference reports. Every other string slot still lets the exception out of `ParseManifestText` — measured on `name`, a `geometry` entry and `version` — where the reference answers `invalid-value` for the identifier and accepts the other two. |
 
 **Absence**
 
@@ -343,7 +344,7 @@ port started, which is the wrong home for the only record of why
 
 Every file under `fixtures/` yields the diagnostic code its directory is named
 after: `fixtures/geometry/wrong-arity/row-width.json` reports `wrong-arity`,
-`fixtures/manifest/missing/name.json` reports `missing`, and so on — 52
+`fixtures/manifest/missing/name.json` reports `missing`, and so on — 56
 documents today across `geometry/`, `manifest/` and `palette/`, plus 2
 packages under `project/`. That corpus is the cross-implementation contract;
 passing it is what "a second implementation exists" means here.

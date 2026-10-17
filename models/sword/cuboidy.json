@@ -1,6 +1,6 @@
 {
   "name": "sword",
-  "version": "0.9",
+  "version": "0.10",
   "parts": [
     { "name": "grip" },
     { "name": "pommel", "parent": "grip", "position": [0, -3, 0] },

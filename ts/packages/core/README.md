@@ -4,7 +4,7 @@ Reference implementation of the
 [Cuboidy](https://github.com/cuboidy/cuboidy) voxel model format: parser,
 canonical serializer, manifest validation, project loader, lint and inspection
 CLIs. Tracks
-[SPEC.md](https://github.com/cuboidy/cuboidy/blob/main/SPEC.md) v0.9 — the
+[SPEC.md](https://github.com/cuboidy/cuboidy/blob/main/SPEC.md) v0.10 — the
 package version tracks the spec version it implements.
 
 Cuboidy describes voxel characters as a hierarchy of rigid parts, with named
@@ -30,7 +30,7 @@ parser and the renderer in one file:
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@cuboidy/three@0.9.0/dist/browser/cuboidy-three.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@cuboidy/three@0.10.0/dist/browser/cuboidy-three.global.js"></script>
 <script>
   const manifest = CuboidyThree.parseManifest(JSON.parse(text));
 </script>

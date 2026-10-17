@@ -89,7 +89,18 @@ public sealed record Manifest(
     // Absent → the model publishes none, which is the empty map rather than
     // null so no caller needs the branch.
     OrderedMap<PublishedSocket> Sockets,
-    OrderedMap<Animation> Animations);
+    OrderedMap<Animation> Animations)
+{
+    // SPEC §6.15: one line saying what the model is and looks like, for
+    // whoever is shown the model or handed it in place of a picture — at most
+    // 200 code points, no line break, in whatever language its author wrote
+    // it. Nothing drawn reads it. Absent → null, and the model says nothing
+    // about itself.
+    //
+    // A property rather than a ninth positional parameter, so a caller that
+    // constructs or deconstructs a Manifest keeps compiling.
+    public string? Description { get; init; }
+}
 
 public static class ManifestReader
 {
@@ -149,13 +160,17 @@ public static class ManifestReader
     {
         DocPath at = DocPath.Root;
         ObjectFields fields = JsonRead.Fields(
-            root, at, "name", "version", "geometry", "palette", "openBoundaries", "parts",
-            "sockets", "animations");
+            root, at, "name", "version", "description", "geometry", "palette", "openBoundaries",
+            "parts", "sockets", "animations");
 
         string name = JsonRead.IdentifierValue(fields.Required("name"), at.Add("name"));
 
         string? version = fields.TryGet("version", out JsonElement versionEl)
             ? JsonRead.String(versionEl, at.Add("version"))
+            : null;
+
+        string? description = fields.TryGet("description", out JsonElement descriptionEl)
+            ? ReadDescription(descriptionEl, at.Add("description"))
             : null;
 
         IReadOnlyList<string>? geometry = fields.TryGet("geometry", out JsonElement geometryEl)
@@ -182,8 +197,92 @@ public static class ManifestReader
             : OrderedMap<Animation>.Empty;
 
         return new Manifest(
-            name, version, geometry, palette, openBoundaries, parts, sockets, animations);
+            name, version, geometry, palette, openBoundaries, parts, sockets, animations)
+        {
+            Description = description,
+        };
     }
+
+    // SPEC §6.15. Enforced by the reader rather than linted, because a consumer
+    // can rely on the bound only if every reader does: a game handing the text
+    // to an agent, or a list showing it in a row, must never have to decide
+    // where to cut it.
+    internal const int DescriptionMaxCodePoints = 200;
+
+    // One walk, in the order the reference reports in: nothing to walk, then a
+    // character that cannot be in a line, then the count. Counted in CODE
+    // POINTS as written — `string.Length` counts UTF-16 units and would give a
+    // sentence with an emoji in it less room than one without.
+    private static string ReadDescription(JsonElement e, DocPath at)
+    {
+        string text;
+        try
+        {
+            text = JsonRead.String(e, at);
+        }
+        catch (InvalidOperationException)
+        {
+            // JSON lets an escape spell half of a surrogate pair ("\uD800"), and
+            // System.Text.Json refuses to hand one back as a string — which is
+            // why the walk below never meets one, where the reference's does.
+            // It is not a character, so the document is malformed rather than
+            // unreadable.
+            throw JsonRead.Fail(
+                CuboidyErrorCode.InvalidValue,
+                "a description is text, and it holds half of a surrogate pair",
+                at);
+        }
+
+        if (text.Length == 0)
+        {
+            throw JsonRead.Fail(
+                CuboidyErrorCode.WrongArity,
+                "a description says something; leave the field out to say nothing",
+                at);
+        }
+
+        int codePoints = 0;
+        for (int i = 0; i < text.Length; i++)
+        {
+            char unit = text[i];
+            if (char.IsHighSurrogate(unit) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]))
+            {
+                i++;
+                codePoints++;
+                continue;
+            }
+
+            if (BreaksTheLine(unit))
+            {
+                throw JsonRead.Fail(
+                    CuboidyErrorCode.InvalidValue,
+                    $"a description is one line, and {Hex(unit)} is a line break or a control character",
+                    at);
+            }
+
+            codePoints++;
+        }
+
+        // §11.2 counts characters as an arity where a voxel row's width is one;
+        // the empty case above is the same count, at zero.
+        if (codePoints > DescriptionMaxCodePoints)
+        {
+            throw JsonRead.Fail(
+                CuboidyErrorCode.WrongArity,
+                $"a description is at most {DescriptionMaxCodePoints} code points, and this one is {codePoints}",
+                at);
+        }
+
+        return text;
+    }
+
+    // Unicode category Cc, which is exactly U+0000-U+001F and U+007F-U+009F
+    // (tab, LF, CR and NEL among them), and the two line breaks outside it.
+    private static bool BreaksTheLine(char unit) =>
+        unit <= '\u001F' || (unit >= '\u007F' && unit <= '\u009F') || unit == '\u2028' || unit == '\u2029';
+
+    private static string Hex(char unit) =>
+        "U+" + ((int)unit).ToString("X4", System.Globalization.CultureInfo.InvariantCulture);
 
     private static IReadOnlyList<string> ReadGeometryList(JsonElement e, DocPath at)
     {

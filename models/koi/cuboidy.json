@@ -1,6 +1,6 @@
 {
   "name": "koi",
-  "version": "0.9",
+  "version": "0.10",
   "geometry": ["voxels.json", "fins.json"],
   "parts": [
     { "name": "head", "position": [0, 0, 0] },

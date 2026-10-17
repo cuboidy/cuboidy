@@ -78,7 +78,7 @@ of them pass every test written under `en-US`.
 
 ## How it is checked
 
-- **`fixtures/`** — the negative corpus. 47 documents, each reporting the
+- **`fixtures/`** — the negative corpus. 56 documents, each reporting the
   §11.2 code its directory is named after, plus two packages that must not
   resolve (§11.6).
 - **`models/`** — the positive half. All nine load clean and fully resolved.

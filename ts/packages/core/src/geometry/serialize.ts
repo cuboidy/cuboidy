@@ -12,7 +12,7 @@ import type { GeometryDoc } from './schema.js';
 // `pivot` when it is the §7.7 default, no `sockets` when there are none, no
 // `rot` when absent.
 
-export const SPEC_VERSION = '0.9';
+export const SPEC_VERSION = '0.10';
 
 export function toGeometryDoc(geometry: Geometry): GeometryDoc {
   const doc: GeometryDoc = { version: SPEC_VERSION, parts: geometry.parts.map(toPart) };

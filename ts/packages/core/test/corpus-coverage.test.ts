@@ -117,6 +117,17 @@ describe('models/ — corpus coverage', () => {
     expect(found.length, 'no model uses §6.13 inline geometry').toBeGreaterThan(0);
   });
 
+  // §6.15. A reader that rejected the field — the strict-object habit every
+  // other manifest key relies on — would load every other model clean.
+  it('some model says what it looks like (§6.15)', async () => {
+    const found: string[] = [];
+    for (const name of await modelDirs()) {
+      const r = await loadAndAssemble(join(MODELS, name));
+      if (r.ok && r.assembly.manifest.description !== undefined) found.push(name);
+    }
+    expect(found, 'no shipped model carries a description').not.toHaveLength(0);
+  });
+
   it('some model declares a manifest-level palette (§6.1)', async () => {
     const found: string[] = [];
     for (const name of await modelDirs()) {

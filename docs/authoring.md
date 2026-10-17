@@ -321,6 +321,28 @@ left opens as soon as it moves. `cuboidy-lint` says so (H05) rather than
 refusing — a lid that only ever swings away from the seam is a legitimate
 thing to author — but check it in the engine before you keep it.
 
+## Saying what the model looks like
+
+A model can carry one line that says what it is and what it looks like (SPEC
+§6.15), for whoever is shown it in a list or handed it instead of a picture. An
+agent choosing a body or an outfit reads this line and never sees the voxels:
+
+```json
+{ "name": "knight", "description": "A knight in grey steel plate, with a red tabard trimmed in gold and a closed helm.", "parts": [ … ] }
+```
+
+- **Write it last, from the snap.** It describes what a viewer sees, and a
+  model changes while it is built: a plume cut in the third pass is still in a
+  description written in the first, and nothing checks the two against each
+  other.
+- **Lead with what it is, then the few things that tell it apart**: colours,
+  shape, what it wears or holds. Leave out what nobody looking at it can see
+  (part names, voxel counts, how it was made) and what the consumer already has
+  (the model's `name`).
+- **One line, at most 200 code points, in the language the brief asks for.** A
+  line break, a tab or any other control character is an error rather than
+  formatting, and so is an empty string: to say nothing, leave the field out.
+
 ## Joints
 
 A joint has to hold shut through every pose without its two parts fighting for
@@ -917,3 +939,4 @@ leaves any of them out gets thirty models that do not belong in the same world:
 | **Skeleton per subject** | Which shape above each subject uses, and what to do with the ones that fit none |
 | **Where packages go, and how they are named** | The consumer's lookup rule, not the format's |
 | **Finished or placeholder** | Sets which stopping rule applies |
+| **Whether models say what they look like, and in which language** | `description` (§6.15) records the text and not its language; the consumer that shows it or hands it on is the one that knows which it needs |

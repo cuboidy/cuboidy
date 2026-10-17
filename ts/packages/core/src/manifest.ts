@@ -33,6 +33,99 @@ const OpenBoundaries = z
   // into the generated JSON Schema, the same way `geometry` does.
   .meta({ uniqueItems: true });
 
+// SPEC §6.15: one line of plain text in which a model says what it is and
+// what it looks like. The bound is enforced by the reader rather than linted,
+// because a consumer can rely on it only if every reader does: a game handing
+// the text to an agent, or a list showing it in a row, must never have to
+// decide where to cut it.
+//
+// Counted in CODE POINTS as written, without normalization. Not `.length`,
+// which counts UTF-16 units here and in C# alike, and would give a sentence
+// with an emoji in it less room than one without; that is also why this is a
+// walk and not Zod's `.max()`, which counts units.
+export const DESCRIPTION_MAX = 200;
+
+// The characters that are not one line of text: Unicode category Cc, which is
+// exactly U+0000-U+001F and U+007F-U+009F (tab, LF, CR and NEL among them),
+// and the two line breaks outside it, U+2028 and U+2029.
+function breaksTheLine(unit: number): boolean {
+  return (
+    unit <= 0x1f ||
+    (unit >= 0x7f && unit <= 0x9f) ||
+    unit === 0x2028 ||
+    unit === 0x2029
+  );
+}
+
+// The same set for the generated JSON Schema. The half-surrogate rule is NOT
+// in it: a schema validator that matches by UTF-16 unit (.NET's Regex, or any
+// engine without Unicode mode) would read `[^\uD800-\uDFFF]` as excluding both
+// halves of every valid pair and reject an emoji. The schema stays looser
+// than the reader on that one input rather than stricter on valid ones.
+const DESCRIPTION_PATTERN = '^[^\\u0000-\\u001F\\u007F-\\u009F\\u2028\\u2029]*$';
+
+const hex = (unit: number): string =>
+  `U+${unit.toString(16).toUpperCase().padStart(4, '0')}`;
+
+const Description = z
+  .string()
+  // One walk, in the order both readers report in: nothing to walk, then a
+  // character that cannot be in a line, then the count.
+  .superRefine((text, ctx) => {
+    if (text.length === 0) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'a description says something; leave the field out to say nothing',
+        params: { cuboidyCode: 'wrong-arity' },
+      });
+      return;
+    }
+    let codePoints = 0;
+    for (let i = 0; i < text.length; i++) {
+      const unit = text.charCodeAt(i);
+      if (unit >= 0xd800 && unit <= 0xdbff && i + 1 < text.length) {
+        const next = text.charCodeAt(i + 1);
+        if (next >= 0xdc00 && next <= 0xdfff) {
+          i++;
+          codePoints++;
+          continue;
+        }
+      }
+      // JSON lets an escape spell half of a pair ("\uD800"). It is not a
+      // character: it has no UTF-8 form to be written out in, and
+      // System.Text.Json will not hand one back as a string at all.
+      if (unit >= 0xd800 && unit <= 0xdfff) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `a description is text, and ${hex(unit)} is half of a surrogate pair`,
+          params: { cuboidyCode: 'invalid-value' },
+        });
+        return;
+      }
+      if (breaksTheLine(unit)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `a description is one line, and ${hex(unit)} is a line break or a control character`,
+          params: { cuboidyCode: 'invalid-value' },
+        });
+        return;
+      }
+      codePoints++;
+    }
+    // §11.2 counts characters as an arity where a voxel row's width is one;
+    // the empty case above is the same count, at zero.
+    if (codePoints > DESCRIPTION_MAX) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `a description is at most ${DESCRIPTION_MAX} code points, and this one is ${codePoints}`,
+        params: { cuboidyCode: 'wrong-arity' },
+      });
+    }
+  })
+  // The walk is runtime-only. JSON Schema's `minLength` / `maxLength` count
+  // code points too, so the bound travels into the generated schema as is.
+  .meta({ minLength: 1, maxLength: DESCRIPTION_MAX, pattern: DESCRIPTION_PATTERN });
+
 // SPEC §6.13: where a part's shape comes from. Two forms in one object,
 // told apart by whether `path` is present:
 //
@@ -151,6 +244,10 @@ export const ManifestSchema = z
   .object({
     name: Identifier,
     version: z.string().optional(),
+    // SPEC §6.15: one line saying what the model is and looks like, for
+    // whoever is shown the model or handed it in place of a picture. Nothing
+    // drawn reads it. Absent → the model says nothing about itself.
+    description: Description.optional(),
     // SPEC §6.9: the model's geometry files. Absent → the default
     // ["voxels.json"] (use manifestGeometry() to read with the default
     // applied). Part names are unique across ALL listed files.

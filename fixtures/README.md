@@ -74,16 +74,30 @@ fixtures/
 │   │   ├── scale-negative.json        a §6.2 `scale` factor below 0, which
 │   │   │                              mirrors the part and so reverses its
 │   │   │                              face winding
-│   │   └── open-boundary-duplicate.json
-│   │                                  §6.14 the same plane twice, which says
-│   │                                  nothing the single entry does not
+│   │   ├── open-boundary-duplicate.json
+│   │   │                              §6.14 the same plane twice, which says
+│   │   │                              nothing the single entry does not
+│   │   ├── description-line-break.json
+│   │   │                              §6.15 a description that is two lines
+│   │   └── description-half-surrogate.json
+│   │                                  §6.15 a description ending in `\ud83d`,
+│   │                                  half of a surrogate pair — not a
+│   │                                  character, and a reader over
+│   │                                  System.Text.Json cannot even read it
+│   │                                  as a string
 │   └── wrong-arity/
 │       ├── position-arity.json        `position` is not a triple
 │       ├── scale-arity.json           `scale` is not a triple — its own
 │       │                              reader bounds each factor, and the
 │       │                              bound must not swallow the arity
 │       ├── palette-empty.json         inline palette with no colors
-│       └── inline-row-width.json      §6.13 row length does not match W
+│       ├── inline-row-width.json      §6.13 row length does not match W
+│       ├── description-empty.json     §6.15 a description of no characters
+│       └── description-too-long.json  §6.15 201 code points, one of them a
+│                                      combining acute written `\u0301` —
+│                                      200 characters to a reader that
+│                                      composes them (NFC) or counts
+│                                      graphemes, which §6.15 does not
 └── palette/                           SPEC §6.10 — an external palette file
     ├── missing/
     │   ├── colors.json                no `colors` key

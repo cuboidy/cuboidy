@@ -3,7 +3,55 @@
 Revision history for [SPEC.md](SPEC.md). Newest first. Section numbers refer to
 the spec as it stands now.
 
-## v0.9 (draft — current)
+## v0.10 (draft — current)
+
+### A model says what it looks like — `description`, §6.15
+
+The manifest gains an optional `description`: one line of plain text in which
+the model says what it is and what it looks like.
+
+```json
+{ "name": "knight", "description": "A knight in grey steel plate, with a red tabard trimmed in gold and a closed helm.", "parts": [ … ] }
+```
+
+The case is a consumer that has to say what a model is without showing it: an
+agent that wears a body and picks its clothes can read a sentence but cannot
+look at voxels, and a list of models wants a line under each name. Nothing in
+the format could carry that sentence. §6.1 permits no field it does not name,
+so the only place for it was outside the package, where it drifts away from the
+model it describes.
+
+- **1 to 200 code points, counted as written.** Code points rather than UTF-16
+  units or bytes, so a sentence with an emoji in it, or a Japanese one, gets the
+  room an English one does; and without normalization, so two readers count
+  the same thing. Empty, or longer, is `wrong-arity`.
+- **One line.** No character of category Cc, and neither U+2028 nor U+2029:
+  `invalid-value`. A line break is the one character the places a description
+  goes (a list row, a tooltip, a sentence handed to an agent) do not agree on.
+- **Text.** An escape spelling half of a surrogate pair is `invalid-value`;
+  .NET's reader cannot even hold one as a string.
+- **Any language**, and the format does not record which. No markup; a tool
+  that rewrites a manifest carries the text through as written.
+- **Nothing drawn reads it**, as nothing drawn reads a material's shading.
+
+The reader enforces all of it rather than lint, because a consumer can rely on
+a bound only if every reader keeps it. A description a reader cannot use
+refuses the document, as any other malformed value does, instead of each
+consumer cutting or dropping it in a way of its own.
+
+**The version moves to 0.10.** `"version": "0.9"` absorbed eight additions
+before this one, each a document that a reader written earlier rejects, and
+this is the same kind: a 0.9 reader reports `description` as `unknown`. So a
+document that uses it is a 0.10 document. The canonical writer now writes
+`"0.10"`, and the shipped models say `"0.10"` so that they stay canonical. A
+model written for 0.9 reads under 0.10 exactly as it did. No reader compares
+the field yet; what one does with a version it does not know is still the open
+question it was.
+
+Absent on every model written before it, and absent means the model says
+nothing about itself, so every existing model reads and renders as it did.
+
+## v0.9 (draft)
 
 ### Open boundaries — `openBoundaries`, §6.14, H05
 

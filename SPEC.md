@@ -1,11 +1,12 @@
 # Cuboidy Format Specification
 
-**Version:** 0.9 (draft)
+**Version:** 0.10 (draft)
 **Status:** Early draft. Subject to change before v1.0.
 
-**Revision history:** [CHANGELOG.md](CHANGELOG.md). v0.9 changed the geometry
-container to JSON, moved palette ownership into the geometry file, and added a
-per-part rest rotation; read it before porting a pre-v0.9 model.
+**Revision history:** [CHANGELOG.md](CHANGELOG.md). v0.10 added a model's
+`description` (§6.15). v0.9 changed the geometry container to JSON, moved
+palette ownership into the geometry file, and added a per-part rest rotation;
+read it before porting a pre-v0.9 model.
 
 ---
 
@@ -150,7 +151,8 @@ The manifest is a standard JSON document (no comments, no trailing commas).
 ```json
 {
   "name": "<identifier>",
-  "version": "0.9",
+  "version": "0.10",
+  "description": "<one line of text>",
   "geometry": ["body.json", "gear/hat.json"],
   "palette": "palette.json",
   "openBoundaries": ["+z"],
@@ -163,7 +165,8 @@ The manifest is a standard JSON document (no comments, no trailing commas).
 | Field | Required | Type | Notes |
 |---|---|---|---|
 | `name` | **yes** | string (identifier) | Model identifier |
-| `version` | no | string | Spec version this model targets. Absent → the current spec version (`"0.9"` in this draft) |
+| `version` | no | string | Spec version this model targets. Absent → the current spec version (`"0.10"` in this draft) |
+| `description` | no | string | One line saying what the model is and what it looks like (§6.15): 1–200 code points, no line break. Absent → the model says nothing about itself |
 | `geometry` | no | array of reference paths | The model's geometry **files** (§6.9), for parts that do not carry their own geometry. Absent → `["voxels.json"]` |
 | `palette` | no | array of colors, or a reference path | The palette **inline part geometry** uses when it declares none of its own (§6.13). It never applies to a part whose geometry lives in a file — see the scoping rule in §6.13 |
 | `openBoundaries` | no | array of `+x`/`-x`/`+y`/`-y`/`+z`/`-z` | Planes of the **package's** bounds that a neighbouring package is placed against; the faces lying on them are not baked (§6.14). Non-empty, no repeats. Absent → the package is closed |
@@ -540,6 +543,61 @@ Two implementations must omit the same faces (§7.4's set comparison is taken
 over what is left). Nothing else about the mesh changes: the surviving faces
 keep their corners, normals, colors, alphas and materials.
 
+### 6.15 Description
+
+```json
+"description": "A knight in grey steel plate, with a red tabard trimmed in gold and a closed helm."
+```
+
+One line of plain text in which the model says what it is and what it looks
+like: for a person choosing it from a list, or for an agent that is handed the
+model in place of a picture of it. The field is optional, and absent means the
+model says nothing about itself, which is what every model written before it
+does.
+
+- **1 to 200 code points, counted as written.** Unicode code points, without
+  normalization. Not UTF-16 units, which is what a string's length is in
+  ECMAScript and in .NET, and which would give a sentence with an emoji in it
+  less room than one without; not bytes, which would give a Japanese sentence a
+  third of the room of an English one; and not characters as a reader composes
+  or segments them, because two readers that disagree about `e` followed by
+  U+0301 would disagree about which documents are valid. Empty, or longer than
+  200, is `wrong-arity`: §11.2 already counts the characters of a voxel row as
+  an arity, and this is the same count.
+- **One line.** No character of Unicode category Cc, which is exactly
+  U+0000–U+001F and U+007F–U+009F (tab, line feed, carriage return and NEL among
+  them), and neither U+2028 nor U+2029. Any of them is `invalid-value`. A
+  description is put where one line goes (a row in a list, a tooltip, a
+  sentence handed to an agent) and a line break is the one character those
+  places do not agree on: one draws it, one collapses it, and an agent can read
+  whatever follows it as something other than the description.
+- **Text.** An escape that spells half of a surrogate pair (`"\uD800"`) is not a
+  character, and is `invalid-value`. It has no UTF-8 form (§9) to be written
+  out in, and a reader over .NET's `System.Text.Json` cannot read it as a
+  string at all.
+- **In any language, and the format does not record which.** No markup is
+  interpreted; what is written is what is shown. A reader does not trim,
+  translate or re-wrap it, and a tool that rewrites a manifest carries it
+  through as written.
+- **Nothing drawn reads it.** Like a material (§7.4), it MUST NOT change a
+  face, a transform or a pose: two models that differ only in their
+  description are the same model to a renderer, which has no use for the field
+  and ignores it.
+- **The model's, not a part's.** It is one field of the manifest. A part, a
+  geometry file and a palette file permit no such field (`unknown`).
+
+The rules are the reader's rather than lint's, because a consumer can rely on
+a bound only if every reader enforces it. Something that shows the text, or hands it to an agent, must never have to
+decide where to cut it, and where to cut a sentence written without spaces is
+a decision this format would otherwise leave to every consumer separately. A
+description a reader cannot use is therefore not repaired, shortened or
+skipped; the document is refused, as it is for any other malformed value.
+
+200 is a bound, not a target. It is two plain English sentences, or several in
+a language that says more per code point. A text that needs more is
+documentation, and belongs in a file beside the package (§13.3 carries such a
+file through an archive untouched), not in this field.
+
 ---
 
 ## 7. `voxels.json` — voxel definition
@@ -558,7 +616,7 @@ at `schema/cuboidy-geometry.schema.json` plus the cross-field rules below.
 
 ```json
 {
-  "version": "0.9",
+  "version": "0.10",
   "palette": ["#RRGGBB", …],          // or "palette.json"
   "parts": [ { "name": …, "size": [W, H, D], "pivot": …, "sockets": …, "voxels": … } ]
 }
@@ -791,7 +849,7 @@ The k-th row in layer `i` represents voxel cells at coordinates `(x, i, k)` for 
 
 ```json
 {
-  "version": "0.9",
+  "version": "0.10",
   "palette": ["#FFD700"],
   "parts": [
     {
@@ -813,7 +871,7 @@ Layer 0 is a solid base; layer 1 keeps only the four corner pillars, so `.` carv
 
 ```json
 {
-  "version": "0.9",
+  "version": "0.10",
   "palette": ["#6B6258", "#C5BFB5", "#1A1612"],
   "parts": [
     {
@@ -853,7 +911,7 @@ reference resolves (§11.6):
 
 ```json
 {
-  "version": "0.9",
+  "version": "0.10",
   "palette": "palette.json",
   "parts": [
     {
@@ -934,7 +992,8 @@ Reference cycles (a → b → a) are an error.
 | `cuboidy.json` | part `openBoundaries` | absent → the part is closed (§6.14) |
 | `cuboidy.json` | `sockets` | absent → no published sockets (§6.12) |
 | `cuboidy.json` | `animations` | absent → no animations |
-| `cuboidy.json` | `version` | absent → current spec version (`"0.9"` in this draft) |
+| `cuboidy.json` | `version` | absent → current spec version (`"0.10"` in this draft) |
+| `cuboidy.json` | `description` | absent → none; nothing stands in for it (§6.15) |
 | Keyframe (first) | `rot` | `[0, 0, 0]` |
 | Keyframe (first) | `pos` | `[0, 0, 0]` |
 | Keyframe (first) | `scale` | `[1, 1, 1]` |
@@ -1010,9 +1069,9 @@ Manifest errors use the same five structural codes (§11.2). The TS reference im
 |---|---|
 | `missing` | Top-level `name` is absent; top-level `parts` is absent or empty; **`cuboidy.json` itself is absent** (§3); an inline part `geometry` without `size` or `voxels` (§6.13); palette file's `colors` is absent (§6.10) |
 | `duplicate` | Duplicate part name; duplicate animation name (planned) |
-| `unknown` | A field other than `name` / `version` / `geometry` / `palette` / `openBoundaries` / `parts` / `sockets` / `animations` is present at the top level; a field other than `name` / `parent` / `position` / `rotation` / `scale` / `openBoundaries` / `geometry` is present inside a part; an `openBoundaries` entry naming no plane (§6.14) — a name outside a closed set, as an ease preset is; a field other than `part` / `socket` inside a published socket (§6.12); in a part's `geometry` (§6.13), a field other than `path` / `part` in the reference form, or `name` / anything outside §7.5 + `palette` in the inline form — including `path` mixed with inline fields; a field other than `colors` in a palette file |
-| `invalid-value` | Wrong type for a field (e.g. `name` is a number); identifier failing the §5 regex; a `geometry` / `palette` / animation reference path violating §8 (wrong extension, backslash, absolute, URL/URI, empty segment) — including a part's `geometry.path` (§6.13); duplicate or empty `geometry` list; duplicate or empty `openBoundaries` (§6.14), and an entry of it that is not a string; malformed color string in a palette file; `parent` references a non-existent part; a published socket's `part` references a non-existent part (§6.12); parent chain contains a cycle; animation `duration` non-positive, non-finite, or less than the largest time key; time keys not decimal-number strings, not strictly increasing, or not starting at `"0.0"` |
-| `wrong-arity` | Palette file's `colors` is empty or exceeds 64 entries (§6.10) |
+| `unknown` | A field other than `name` / `version` / `description` / `geometry` / `palette` / `openBoundaries` / `parts` / `sockets` / `animations` is present at the top level; a field other than `name` / `parent` / `position` / `rotation` / `scale` / `openBoundaries` / `geometry` is present inside a part; an `openBoundaries` entry naming no plane (§6.14) — a name outside a closed set, as an ease preset is; a field other than `part` / `socket` inside a published socket (§6.12); in a part's `geometry` (§6.13), a field other than `path` / `part` in the reference form, or `name` / anything outside §7.5 + `palette` in the inline form — including `path` mixed with inline fields; a field other than `colors` in a palette file |
+| `invalid-value` | Wrong type for a field (e.g. `name` is a number); identifier failing the §5 regex; a `geometry` / `palette` / animation reference path violating §8 (wrong extension, backslash, absolute, URL/URI, empty segment) — including a part's `geometry.path` (§6.13); duplicate or empty `geometry` list; duplicate or empty `openBoundaries` (§6.14), and an entry of it that is not a string; malformed color string in a palette file; `parent` references a non-existent part; a published socket's `part` references a non-existent part (§6.12); parent chain contains a cycle; animation `duration` non-positive, non-finite, or less than the largest time key; time keys not decimal-number strings, not strictly increasing, or not starting at `"0.0"`; a `description` holding a line break, a control character or half of a surrogate pair (§6.15) |
+| `wrong-arity` | Palette file's `colors` is empty or exceeds 64 entries (§6.10); a `description` that is empty or longer than 200 code points (§6.15) |
 
 Items marked "planned" are not yet implemented in the TS reference; the catch-all `invalid-value` may surface generic Zod messages for those cases until then. External animation files (§6.3 string refs) are validated with the same inline-animation rules when the project is resolved (lint, inspection CLIs, editor); a missing or invalid referenced file is an error there.
 
@@ -1077,11 +1136,13 @@ what gets reported — this is what parity testing compares.
      empty, which means the same thing
    - **`wrong-arity`** — a fixed-length array of the wrong length (`size` or a
      coordinate that is not a triple); a palette with more than 64 colors, or
-     an inline palette with none
+     an inline palette with none; a `description` of no code points or of more
+     than 200 (§6.15)
    - **`invalid-value`** — right shape, wrong content: a malformed color, a
      `size` dimension outside `[1..1024]` or non-integer, a voxel row
      containing a character outside `[.0-9a-zA-Z$%]`, an identifier failing §5,
-     a reference path violating §8
+     a reference path violating §8, a `description` that is not one line of
+     text (§6.15)
 3. **Cross-field rules**, which need more than one field at a time and are
    therefore only reachable once the document is structurally sound. Parts are
    examined in document order; within a part:
@@ -1120,7 +1181,7 @@ check did not run.
 
 The reference repository includes:
 
-- `models/knight/` — multi-part rigged humanoid over three geometry files sharing one palette, with a walk clip and two published sockets (§6.12): `weapon` → `hand-r:grip`, `crest` → `head:crest`
+- `models/knight/` — multi-part rigged humanoid over three geometry files sharing one palette, with a walk clip, two published sockets (§6.12): `weapon` → `hand-r:grip`, `crest` → `head:crest`, and a `description` (§6.15)
 - `models/sword/` — single-part static accessory, authored around its origin so it seats in `knight`'s published `weapon` socket
 - `models/owl/`, `models/koi/`, `models/fox/` — non-humanoid rigs (segmented wings, a body chain, a quadruped gait)
 - `models/windmill/` — a `geometry` list plus a shared palette file, and two constant-rate rotations in one clip
@@ -1203,7 +1264,7 @@ someone.
 
 ---
 
-## 14. Future extensions (out of scope for v0.9)
+## 14. Future extensions (out of scope for v0.10)
 
 - **Named palette colors / metadata**: the palette file's object form (§6.10) reserves the room
 - **Multi-character palette encoding**: 2-character indices for palettes larger than 64.

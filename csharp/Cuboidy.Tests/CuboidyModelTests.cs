@@ -41,6 +41,17 @@ public class CuboidyModelTests
         }
     }
 
+    // §6.15, through the entry point a consumer uses: `knight` says what it
+    // looks like and `sword` does not.
+    [Test]
+    public void AModelsDescriptionIsOnItsManifest()
+    {
+        Assert.That(
+            Load("knight").Manifest.Description,
+            Is.EqualTo("A knight in grey steel plate, with a red tabard trimmed in gold and a closed helm."));
+        Assert.That(Load("sword").Manifest.Description, Is.Null);
+    }
+
     [Test]
     public void AnAbsentPackageFailsWithMissing()
     {
