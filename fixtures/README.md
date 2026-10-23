@@ -20,26 +20,39 @@ fixtures/
 │   │   ├── parts-empty.json           `parts` present but empty
 │   │   ├── size.json                  part has voxels but no `size`
 │   │   ├── voxels.json                part has size but no `voxels`
-│   │   └── palette-entry-color.json   a §7.4 object entry omits `color`
+│   │   ├── palette-entry-color.json   a §7.4 object entry omits `color`
+│   │   └── regions-cells.json         a §7.13 region grid with keys and no
+│   │                                  `cells`
 │   ├── duplicate/
 │   │   ├── part-name.json             two parts share a name
 │   │   └── socket-name.json           two sockets in one part share a name
 │   ├── unknown/
 │   │   ├── unknown-field.json         unrecognised top-level key
 │   │   ├── unknown-part-field.json    unrecognised key on a part
-│   │   └── palette-entry-key.json     unrecognised key on a §7.4 entry
+│   │   ├── palette-entry-key.json     unrecognised key on a §7.4 entry
+│   │   └── regions-grid-field.json    a §7.13 region grid with a field other
+│   │                                  than `keys` and `cells`
 │   ├── invalid-value/
 │   │   ├── bad-voxel-char.json        voxel cell outside [.0-9a-zA-Z$%]
 │   │   ├── bad-color.json             palette entry is not #RGB/#RGBA/#RRGGBB/#RRGGBBAA
 │   │   ├── bad-part-name.json         part name fails the §5 identifier rule
 │   │   ├── palette-index.json         cell indexes past the declared palette
 │   │   ├── size-zero.json             size dimension 0 is below the minimum
-│   │   └── material-out-of-range.json a §7.4 material field outside 0..1
+│   │   ├── material-out-of-range.json a §7.4 material field outside 0..1
+│   │   ├── regions-name.json          a §7.13 region name that fails §5
+│   │   ├── regions-key.json           a §7.13 key of two characters — a key
+│   │   │                              is one character of a voxel row
+│   │   └── regions-undeclared-key.json
+│   │                                  a §7.13 grid cell holding a character
+│   │                                  its keys do not declare (phase 3)
 │   └── wrong-arity/
 │       ├── row-width.json             row length does not match W
 │       ├── row-count.json             rows in a layer do not match D
 │       ├── layer-count.json           layer count does not match H
-│       └── size-arity.json            `size` is not a triple
+│       ├── size-arity.json            `size` is not a triple
+│       ├── regions-keys-empty.json    a §7.13 region grid declaring no key
+│       └── regions-row-width.json     a §7.13 grid row whose length is not W:
+│                                      the grid has the shape of `voxels`
 ├── manifest/                          SPEC §6 — cuboidy.json
 │   ├── missing/
 │   │   ├── name.json                  missing top-level `name`
@@ -57,8 +70,11 @@ fixtures/
 │   │   │                              which names a part inside a REFERENCED
 │   │   │                              file and has no meaning without `path`
 │   │   ├── ease-preset.json           §6.5 ease naming no preset
-│   │   └── open-boundary-face.json    §6.14 `openBoundaries` naming no plane
-│   │                                  (a name outside a closed set, §11.2)
+│   │   ├── open-boundary-face.json    §6.14 `openBoundaries` naming no plane
+│   │   │                              (a name outside a closed set, §11.2)
+│   │   └── reference-regions.json     §7.13 `regions` on a §6.13 reference:
+│   │                                  regions belong to the shape, and a
+│   │                                  reference holds only where it is
 │   ├── invalid-value/
 │   │   ├── bad-model-name.json        model name fails the §5 identifier rule
 │   │   ├── dangling-parent.json       `parent` names no part (§11.5)
@@ -92,6 +108,9 @@ fixtures/
 │       │                              bound must not swallow the arity
 │       ├── palette-empty.json         inline palette with no colors
 │       ├── inline-row-width.json      §6.13 row length does not match W
+│       ├── inline-regions-layer-count.json
+│       │                              §7.13 an inline part's region grid with
+│       │                              fewer layers than H
 │       ├── description-empty.json     §6.15 a description of no characters
 │       └── description-too-long.json  §6.15 201 code points, one of them a
 │                                      combining acute written `\u0301` —

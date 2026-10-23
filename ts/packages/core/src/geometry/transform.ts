@@ -3,10 +3,12 @@ import type {
   Palette,
   Part,
   Pivot,
+  Regions,
   Size,
   Socket,
   Vec3,
 } from './types.js';
+import { AIR } from './voxel-row.js';
 
 // Pure part-geometry transforms: mirror, duplicate and cross-file palette
 // remap. These produce CONCRETE parts (no `from` reference) — the building
@@ -74,19 +76,39 @@ function mirrorVoxels(
   return out;
 }
 
-// The geometry half of a mirror (size / pivot / sockets / voxels), reflected
-// across `axis`. Shared by `mirrorPart` (concrete result) and the reuse
-// resolver's mirror branch (which re-attaches a `from`).
+// SPEC §7.13: a region grid is reflected cell for cell with the voxels it
+// marks. A region name covers whatever the part's cells are, mirrored or not.
+function mirrorRegions(regions: Regions, size: Size, axis: Axis): Regions {
+  if (typeof regions === 'string') return regions;
+  const cells: string[][] = [];
+  for (let y = 0; y < size.h; y++) {
+    const sy = axis === 'y' ? size.h - 1 - y : y;
+    const layer: string[] = [];
+    for (let z = 0; z < size.d; z++) {
+      const sz = axis === 'z' ? size.d - 1 - z : z;
+      const row = regions.cells[sy]![sz]!;
+      layer.push(axis === 'x' ? [...row].reverse().join('') : row);
+    }
+    cells.push(layer);
+  }
+  return { keys: regions.keys, cells };
+}
+
+// The geometry half of a mirror (size / pivot / sockets / voxels / regions),
+// reflected across `axis`. Shared by `mirrorPart` (concrete result) and the
+// reuse resolver's mirror branch (which re-attaches a `from`).
 export function mirrorGeometry(
   part: Part,
   axis: Axis,
-): Pick<Part, 'size' | 'pivot' | 'sockets' | 'voxels'> {
-  return {
+): Pick<Part, 'size' | 'pivot' | 'sockets' | 'voxels' | 'regions'> {
+  const out: Pick<Part, 'size' | 'pivot' | 'sockets' | 'voxels' | 'regions'> = {
     size: part.size,
     pivot: mirrorPivot(part.pivot, part.size, axis),
     sockets: part.sockets.map((s) => mirrorSocket(s, part.size, axis)),
     voxels: mirrorVoxels(part.voxels, part.size, axis),
   };
+  if (part.regions !== undefined) out.regions = mirrorRegions(part.regions, part.size, axis);
+  return out;
 }
 
 // Concrete mirror: a fresh, self-contained part (no `from`) that is `part`
@@ -99,13 +121,45 @@ export function mirrorPart(part: Part, axis: Axis, name: string): Part {
 // `from`). Voxel/pivot/socket data is treated as immutable, so the copy
 // shares those references — callers never mutate them in place.
 export function duplicatePart(part: Part, name: string): Part {
-  return {
+  const out: Part = {
     name,
     size: part.size,
     pivot: part.pivot,
     sockets: part.sockets,
     voxels: part.voxels,
   };
+  if (part.regions !== undefined) out.regions = part.regions;
+  return out;
+}
+
+// SPEC §7.13: a part's regions after its voxels were rewritten — `voxels` is
+// the new grid, and `shift` how far the old grid's cells moved in it (a cell
+// at `old` is now at `old + shift`; zero for an edit in place). Each cell of
+// the new grid keeps the mark it had, a cell the old grid did not have takes
+// none, and a cell that is now AIR loses its mark, since a mark on air means
+// nothing (W12). A region name covers whatever cells the part has, so it is
+// returned as it is; absent stays absent.
+//
+// What a tool that reshapes a part's grid calls, so that a grid it carried
+// still has the part's shape when it is written back — a stale one is a
+// document the reader refuses (`wrong-arity`).
+export function refitRegions(
+  regions: Regions | undefined,
+  voxels: Part['voxels'],
+  shift: Vec3 = { x: 0, y: 0, z: 0 },
+): Regions | undefined {
+  if (regions === undefined || typeof regions === 'string') return regions;
+  const cells = voxels.map((layer, y) =>
+    layer.map((row, z) => {
+      let text = '';
+      for (const [x, v] of row.entries()) {
+        const was = regions.cells[y - shift.y]?.[z - shift.z]?.[x - shift.x];
+        text += v === AIR || was === undefined ? '.' : was;
+      }
+      return text;
+    }),
+  );
+  return { keys: regions.keys, cells };
 }
 
 // Entries share a slot only when they agree on everything a slot carries,

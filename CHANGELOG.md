@@ -3,7 +3,55 @@
 Revision history for [SPEC.md](SPEC.md). Newest first. Section numbers refer to
 the spec as it stands now.
 
-## v0.10 (draft — current)
+## v0.11 (draft — current)
+
+### A part says which of its cells are what — `regions`, §7.13, W12
+
+A part gains an optional `regions`: which of its cells belong to which named
+region. One field, two forms, as a palette is — a region name for the whole
+part, or a grid the shape of its voxels whose characters are `.` (no region)
+or keys that `keys` maps to names:
+
+```json
+"regions": "skin"
+"regions": { "keys": { "c": "cloth", "s": "skin" }, "cells": [["ss", "ss"], ["c.", "cc"]] }
+```
+
+The case is a consumer that repaints part of a model in a colour somebody
+chose — a person's skin, a team's shirt — and has to know which cells that is.
+Nothing in the format could say so. A palette entry cannot, without giving the
+colour a second meaning: an author could not paint with it without joining the
+region, nor paint a detail in the region's colour and keep it out. A file
+beside the package can, and the first consumer did that, but a model of one
+file (§6.13) has nothing beside it, and a grid kept where no editor sees it
+falls out of step with the shape the first time a voxel moves.
+
+- **Names are free.** §5 identifiers, with no list here: what `skin` means is
+  the consumer's. One name on two parts is one region.
+- **A key is not a colour**, and a cell is in at most one region.
+- **The grid has the part's shape.** Layers, rows and widths that do not match
+  `size` are `wrong-arity`, and a character that is not one of the grid's keys
+  is `invalid-value` — the reader refuses a grid a resize left behind rather
+  than put a region on the wrong cells. A key on a cell with no voxel is
+  **W12**, a warning: it changes nothing, but it is the sign of a voxel erased
+  or moved and its mark left behind.
+- **Nothing drawn reads it.** Two models that differ only in their regions mesh
+  to the same faces.
+- **Inline geometry carries it**, being a §7.5 part without its name; a
+  reference cannot (`unknown`).
+- **Tools keep it.** The canonical writer writes it after `voxels`, one layer a
+  line, keys in the order of the §7.4 alphabet; mirror and duplicate carry it;
+  a tool that reshapes a part's grid moves each mark with its cell, gives a new
+  cell no region and drops the mark of a cell that became air.
+
+**The version moves to 0.11.** A 0.10 reader reports `regions` as `unknown`, so
+a document that uses it is a 0.11 document. The canonical writer writes
+`"0.11"`, and the shipped models say `"0.11"` so that they stay canonical; a
+model written for 0.10 reads under 0.11 exactly as it did. Absent on every
+model written before it, and absent means no cell of the part is in any
+region.
+
+## v0.10 (draft)
 
 ### A model says what it looks like — `description`, §6.15
 

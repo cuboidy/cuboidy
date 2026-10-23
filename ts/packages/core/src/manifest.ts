@@ -157,7 +157,7 @@ export const PartGeometrySchema = GeometryPartSchema
   .strict()
   .superRefine((g, ctx) => {
     if (g.path !== undefined) {
-      for (const key of ['size', 'pivot', 'sockets', 'voxels', 'palette'] as const) {
+      for (const key of ['size', 'pivot', 'sockets', 'voxels', 'palette', 'regions'] as const) {
         if (g[key] === undefined) continue;
         ctx.addIssue({
           code: 'custom',
@@ -314,7 +314,7 @@ export const ManifestSchema = z
       const g = p.geometry;
       if (g !== undefined && g.size !== undefined && g.voxels !== undefined) {
         checkPartFields(
-          { size: g.size, voxels: g.voxels, sockets: g.sockets },
+          { size: g.size, voxels: g.voxels, sockets: g.sockets, regions: g.regions },
           ['parts', i, 'geometry'],
           Array.isArray(g.palette) ? g.palette.length : null,
           ctx,

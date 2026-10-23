@@ -55,7 +55,9 @@ internal sealed record GeometryDocPart(
     Size Size,
     Pivot? Pivot,
     IReadOnlyList<Socket> Sockets,
-    IReadOnlyList<IReadOnlyList<string>> Voxels);
+    IReadOnlyList<IReadOnlyList<string>> Voxels,
+    // SPEC §7.13. Its grid's shape and keys are phase 3, like `Voxels`' rows.
+    Regions? Regions);
 
 internal sealed record GeometryDoc(
     string? Version,
@@ -71,6 +73,10 @@ internal static class GeometrySchema
     // rejects a row of `"0\n"`, which `$` would accept.
     private static readonly Regex VoxelRowRegex =
         new Regex(@"^[.0-9a-zA-Z$%]*\z", RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+    // SPEC §7.13: what a region key may be — one character of the voxel
+    // alphabet, `.` excepted, since `.` is what a cell with no region holds.
+    private const string RegionKeyAlphabet = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ$%";
 
     // ----- phase 2: each field considered on its own ---------------------
 
@@ -113,7 +119,7 @@ internal static class GeometrySchema
 
     public static GeometryDocPart ReadPart(JsonElement e, DocPath at)
     {
-        ObjectFields fields = JsonRead.Fields(e, at, "name", "size", "pivot", "sockets", "voxels");
+        ObjectFields fields = JsonRead.Fields(e, at, "name", "size", "pivot", "sockets", "voxels", "regions");
         return ReadPartBody(fields, at, JsonRead.IdentifierValue(fields.Required("name"), at.Add("name")));
     }
 
@@ -138,7 +144,89 @@ internal static class GeometrySchema
         IReadOnlyList<IReadOnlyList<string>> voxels =
             ReadVoxels(fields.Required("voxels"), at.Add("voxels"));
 
-        return new GeometryDocPart(name, size, pivot, sockets, voxels);
+        Regions? regions = fields.TryGet("regions", out JsonElement regionsEl)
+            ? ReadRegions(regionsEl, at.Add("regions"))
+            : null;
+
+        return new GeometryDocPart(name, size, pivot, sockets, voxels, regions);
+    }
+
+    // SPEC §7.13: a region NAME for the whole part, or a GRID — `keys` naming
+    // what each character of `cells` stands for, and `cells` the part's voxel
+    // grid again. Each field judged on its own here; whether `cells` has the
+    // part's shape and holds only declared keys is phase 3, because it needs
+    // `size` and `keys` together.
+    public static Regions ReadRegions(JsonElement e, DocPath at)
+    {
+        if (e.ValueKind == JsonValueKind.String)
+        {
+            return new Regions(JsonRead.IdentifierValue(e, at), null, null);
+        }
+
+        if (e.ValueKind != JsonValueKind.Object)
+        {
+            throw JsonRead.Fail(
+                CuboidyErrorCode.InvalidValue,
+                "expected a region name, or an object of `keys` and `cells`",
+                at);
+        }
+
+        ObjectFields fields = JsonRead.Fields(e, at, "keys", "cells");
+        DocPath keysAt = at.Add("keys");
+        JsonElement keysEl = JsonRead.ObjectValue(fields.Required("keys"), keysAt);
+        DocPath cellsAt = at.Add("cells");
+        JsonElement cellsEl = fields.Required("cells");
+
+        var keys = new Dictionary<char, string>();
+        foreach (JsonProperty key in keysEl.EnumerateObject())
+        {
+            DocPath keyAt = keysAt.Add(key.Name);
+            if (key.Name.Length != 1 || RegionKeyAlphabet.IndexOf(key.Name[0]) < 0)
+            {
+                throw JsonRead.Fail(
+                    CuboidyErrorCode.InvalidValue,
+                    "a region key is one character of [0-9a-zA-Z$%]",
+                    keyAt);
+            }
+
+            keys[key.Name[0]] = JsonRead.IdentifierValue(key.Value, keyAt);
+        }
+
+        if (keys.Count == 0)
+        {
+            throw JsonRead.Fail(CuboidyErrorCode.WrongArity, "a region grid declares at least one key", keysAt);
+        }
+
+        // The same walk as `voxels`, whose shape a grid repeats: an array of
+        // layers, each an array of rows in the voxel alphabet.
+        JsonRead.ArrayValue(cellsEl, cellsAt);
+        var cells = new List<IReadOnlyList<string>>();
+        int y = 0;
+        foreach (JsonElement layerEl in cellsEl.EnumerateArray())
+        {
+            DocPath layerAt = cellsAt.Add(y);
+            JsonRead.ArrayValue(layerEl, layerAt);
+            var rows = new List<string>();
+            int z = 0;
+            foreach (JsonElement rowEl in layerEl.EnumerateArray())
+            {
+                DocPath rowAt = layerAt.Add(z);
+                string row = JsonRead.String(rowEl, rowAt);
+                if (!VoxelRowRegex.IsMatch(row))
+                {
+                    throw JsonRead.Fail(
+                        CuboidyErrorCode.InvalidValue, "region cells use only [.0-9a-zA-Z$%]", rowAt);
+                }
+
+                rows.Add(row);
+                z++;
+            }
+
+            cells.Add(rows);
+            y++;
+        }
+
+        return new Regions(null, keys, cells);
     }
 
     public static Size ReadSize(JsonElement e, DocPath at)
@@ -384,6 +472,58 @@ internal static class GeometrySchema
                     CuboidyErrorCode.Duplicate,
                     $"duplicate socket \"{name}\"",
                     at.Add("sockets", s, "name"));
+            }
+        }
+
+        CheckRegions(part, at);
+    }
+
+    // SPEC §7.13: a region grid is the part's voxel grid again, held to the
+    // same arity level by level, and a character in it is `.` or one of ITS
+    // keys. A region name covers the whole part and has no shape to disagree
+    // with.
+    private static void CheckRegions(GeometryDocPart part, DocPath at)
+    {
+        if (part.Regions is not { Keys: { } keys, Cells: { } cells }) return;
+        DocPath cellsAt = at.Add("regions", "cells");
+        if (cells.Count != part.Size.H)
+        {
+            throw JsonRead.Fail(
+                CuboidyErrorCode.WrongArity,
+                $"{cells.Count} layers, expected H={part.Size.H} (a region grid has the shape of `voxels`)",
+                cellsAt);
+        }
+
+        for (int y = 0; y < cells.Count; y++)
+        {
+            IReadOnlyList<string> layer = cells[y];
+            if (layer.Count != part.Size.D)
+            {
+                throw JsonRead.Fail(
+                    CuboidyErrorCode.WrongArity,
+                    $"{layer.Count} rows, expected D={part.Size.D} (a region grid has the shape of `voxels`)",
+                    cellsAt.Add(y));
+            }
+
+            for (int z = 0; z < layer.Count; z++)
+            {
+                string row = layer[z];
+                if (row.Length != part.Size.W)
+                {
+                    throw JsonRead.Fail(
+                        CuboidyErrorCode.WrongArity,
+                        $"row length {row.Length}, expected W={part.Size.W} (a region grid has the shape of `voxels`)",
+                        cellsAt.Add(y, z));
+                }
+
+                foreach (char ch in row)
+                {
+                    if (ch == '.' || keys.ContainsKey(ch)) continue;
+                    throw JsonRead.Fail(
+                        CuboidyErrorCode.InvalidValue,
+                        $"'{ch}' is not one of this grid's keys",
+                        cellsAt.Add(y, z));
+                }
             }
         }
     }

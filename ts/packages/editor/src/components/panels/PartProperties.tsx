@@ -2,6 +2,7 @@ import { useState, type ChangeEvent } from 'react';
 import { Copy, FlipHorizontal2, Plus, X } from 'lucide-react';
 import { AIR, isIdentifier, type Geometry, type Manifest, type ManifestPart, type Part, type Size } from '@cuboidy/core';
 import { findManifestPart } from '../../lib/part-tree.js';
+import { withRegions } from '../../lib/regions.js';
 import { NumberInput } from '@cuboidy/ui';
 import { TextInput } from '@cuboidy/ui';
 
@@ -456,7 +457,7 @@ function GeometryFields({
       const n = Math.max(1, Math.floor(value));
       if (n === p.size[dim]) return p;
       const size = { ...p.size, [dim]: n };
-      return { ...p, size, voxels: resizeVoxels(p.voxels, size) };
+      return withRegions(p, { ...p, size, voxels: resizeVoxels(p.voxels, size) });
     });
   };
 

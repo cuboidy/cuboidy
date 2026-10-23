@@ -2,6 +2,7 @@ import type { Diagnostic } from '../diagnostic.js';
 import { isInlineAnimation, type InlineAnimation } from '../animation.js';
 import { checkFlipbooks } from './flipbook.js';
 import { checkOpenBoundaries } from './open-boundary.js';
+import { checkRegionMarks } from './voxel-rules.js';
 import type { Geometry, Part } from '../geometry/types.js';
 import { AIR, maxPaletteIndex } from '../geometry/voxel-row.js';
 import type { Manifest } from '../manifest.js';
@@ -229,6 +230,13 @@ export function validateProject(input: ProjectInput): Diagnostic[] {
         message: `inline part '${name}' references palette index ${maxIdx}, but its palette has ${r.palette.length} color(s)`,
       });
     }
+  }
+
+  // W12 for a part written INLINE (§6.13): the per-file pass reaches only the
+  // parts of geometry files, and a model of one file — the shape a model
+  // somebody imports is most often in — has nothing else.
+  for (const [, r] of resolved ?? []) {
+    if (r.source === null) checkRegionMarks(r.part, diags);
   }
 
   // W08 — a manifest palette (§6.1) that no inline part falls back to. Its

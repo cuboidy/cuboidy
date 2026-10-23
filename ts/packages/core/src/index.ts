@@ -64,7 +64,7 @@ export {
   toInlineGeometry,
   SPEC_VERSION,
 } from './geometry/serialize.js';
-export { GeometrySchema, GeometryPartSchema } from './geometry/schema.js';
+export { GeometrySchema, GeometryPartSchema, RegionsSchema } from './geometry/schema.js';
 export type { GeometryDoc, GeometryDocPart } from './geometry/schema.js';
 
 export {
@@ -80,6 +80,7 @@ export {
   duplicatePart,
   mirrorGeometry,
   mirrorPart,
+  refitRegions,
   remapPartPalette,
   type Axis,
 } from './geometry/transform.js';
@@ -93,6 +94,8 @@ export type {
   PaletteEntry,
   Part,
   Pivot,
+  RegionGrid,
+  Regions,
   Size,
   Socket,
   Vec3,

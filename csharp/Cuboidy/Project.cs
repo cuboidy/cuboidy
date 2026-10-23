@@ -470,7 +470,8 @@ public static class Project
                 bound.Add(new KeyValuePair<string, ResolvedPart>(mp.Name, new ResolvedPart(
                     GeometryReader.InlinePartToAst(
                         new GeometryDocPart(
-                            mp.Name, size, g.Pivot, g.Sockets ?? System.Array.Empty<Socket>(), voxels),
+                            mp.Name, size, g.Pivot, g.Sockets ?? System.Array.Empty<Socket>(), voxels,
+                            g.Regions),
                         mp.Name),
                     palette,
                     null)));

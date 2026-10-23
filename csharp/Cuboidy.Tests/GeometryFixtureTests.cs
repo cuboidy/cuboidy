@@ -46,7 +46,7 @@ public class GeometryFixtureTests
     }
 
     [Test]
-    public void TheGeometryCorpusHasTheTwentyDocumentsTheContractCounts()
+    public void TheGeometryCorpusHasTheTwentySevenDocumentsTheContractCounts()
     {
         // Named as a digit on purpose: the plan document and `fixtures/README.md`
         // both quote a count, and both were stale within a day of being
@@ -56,6 +56,6 @@ public class GeometryFixtureTests
             .GetFiles(Path.Combine(TestPaths.FixturesDir, "geometry"), "*.json", SearchOption.AllDirectories)
             .Length;
 
-        Assert.That(count, Is.EqualTo(20));
+        Assert.That(count, Is.EqualTo(27));
     }
 }

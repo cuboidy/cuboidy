@@ -2,7 +2,7 @@
 
 An open JSON file format for voxel character models, rigs, and animations.
 
-**Status: v0.10 draft. See [SPEC.md](SPEC.md) for the formal specification.**
+**Status: v0.11 draft. See [SPEC.md](SPEC.md) for the formal specification.**
 
 | | | | |
 |:--:|:--:|:--:|:--:|
@@ -44,7 +44,7 @@ A complete Cuboidy model — one `cuboidy.json`, one `crown` part, 3×2×3 voxel
 ```json
 {
   "name": "crown",
-  "version": "0.10",
+  "version": "0.11",
   "palette": ["#FFD700"],
   "parts": [
     {
@@ -194,7 +194,7 @@ generates better models. Harness and raw votes are in git history, `b139ef4`.)*
 
 ## Roadmap
 
-Done — the v0.10 spec and a complete TypeScript implementation of it
+Done — the v0.11 spec and a complete TypeScript implementation of it
 (`ts/packages/core/`, 536 tests):
 
 - [x] Reference parser, canonical serializer (a verified byte-level fixed point
@@ -205,7 +205,8 @@ Done — the v0.10 spec and a complete TypeScript implementation of it
       `validateProject` (part matching, duplicate names, palette resolution and
       range, animation targets, published-socket resolution, W06 l/r symmetry,
       W07 unreferenced file, W09–W11 + H04 flipbook exclusivity,
-      H05 an animated part on an open boundary)
+      H05 an animated part on an open boundary, W12 a region mark left on a
+      cell with no voxel)
 - [x] JSON Schemas for both file kinds, generated from the same Zod schemas the
       runtime uses, plus shared `fixtures/` as the cross-implementation contract
 - [x] Inspection CLIs — `cuboidy-view` (ASCII), `cuboidy-query` (coordinates),
@@ -222,11 +223,11 @@ Shipped alongside it:
       components, and `@cuboidy/ui` is the editor chrome the two apps share
       and holds no three.js at all. `npm run build -w @cuboidy/three` also
       emits a browser bundle, so a page can show a model with no build step.
-      `@cuboidy/core` and `@cuboidy/three` are packaged for npm at **0.10.0**,
+      `@cuboidy/core` and `@cuboidy/three` are packaged for npm at **0.11.0**,
       MIT — the package version tracks the spec version it implements. The
       other four stay private. On the registry the browser bundle comes
       straight off a CDN with no install:
-      `https://cdn.jsdelivr.net/npm/@cuboidy/three@0.10.0/dist/browser/cuboidy-three.global.js`.
+      `https://cdn.jsdelivr.net/npm/@cuboidy/three@0.11.0/dist/browser/cuboidy-three.global.js`.
       Both published packages resolve through `dist`, which is gitignored, so
       a fresh clone runs `npm install` first — each `prepare` builds its own
       `dist` — because `npm run build --workspaces` goes alphabetically and

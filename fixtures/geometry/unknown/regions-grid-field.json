@@ -1,0 +1,10 @@
+{
+  "version": "0.11",
+  "palette": ["#FF0000"],
+  "parts": [
+    {
+      "name": "body", "size": [2, 1, 1], "voxels": [["00"]],
+      "regions": { "keys": { "s": "skin" }, "cells": [["s."]], "names": ["skin"] }
+    }
+  ]
+}

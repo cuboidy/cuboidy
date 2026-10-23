@@ -343,6 +343,34 @@ agent choosing a body or an outfit reads this line and never sees the voxels:
   line break, a tab or any other control character is an error rather than
   formatting, and so is an empty string: to say nothing, leave the field out.
 
+## Marking regions
+
+A part can say which of its cells belong to which named region (SPEC §7.13),
+for a consumer that treats them together — most often one that repaints them
+in a colour a person chose, so it has to know which cells are the skin and
+which the shirt. The names are the consumer's to define; ask the brief which
+ones it reads.
+
+```json
+"regions": "skin"
+"regions": { "keys": { "c": "cloth", "s": "skin" }, "cells": [["ss", "ss"], ["c.", "cc"]] }
+```
+
+- **A name when the whole part is one region** — a bare hand, a sleeve, a lock
+  of hair. It says nothing about cells, so nothing you do to the part later can
+  make it wrong, and a voxel you add is in the region too.
+- **A grid when the part mixes** — a forearm that is cloth to the elbow and skin
+  below. Copy the `voxels` grid and replace each character: a key for a cell in
+  a region, `.` for a cell in none and for air. The grid must keep the part's
+  shape exactly; a stale one is refused (`wrong-arity`).
+- **Mark by what a cell is, not by what it is painted in.** A button painted in
+  the shirt's colour that should keep its colour is `.`; a shaded fold of the
+  shirt in a darker entry is still the shirt.
+- **Re-check the grid whenever you edit the voxels.** `cuboidy-lint` reports a
+  key left on a cell you erased (W12), and a changed size is refused outright.
+  A voxel you ADD to a gridded part is in no region, and nothing can tell that
+  from a detail you left out on purpose: mark it yourself.
+
 ## Joints
 
 A joint has to hold shut through every pose without its two parts fighting for
@@ -940,3 +968,4 @@ leaves any of them out gets thirty models that do not belong in the same world:
 | **Where packages go, and how they are named** | The consumer's lookup rule, not the format's |
 | **Finished or placeholder** | Sets which stopping rule applies |
 | **Whether models say what they look like, and in which language** | `description` (§6.15) records the text and not its language; the consumer that shows it or hands it on is the one that knows which it needs |
+| **Which regions to mark, and their names** | `regions` (§7.13) gives names no meaning; the consumer that repaints or hides a region is the one that reads them |

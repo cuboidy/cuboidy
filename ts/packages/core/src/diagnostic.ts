@@ -3,7 +3,7 @@ import type { CuboidyErrorCode } from './result.js';
 export type Severity = 'error' | 'warning' | 'hint';
 
 // SPEC §11.3 / §11.4 lint rule identifiers. Warnings start with `W`, hints
-// with `H`. Numbering is stable (W01..W11, H01..H04) so external tooling
+// with `H`. Numbering is stable (W01..W12, H01..H05) so external tooling
 // can pin to specific rules. Add new IDs at the end; never renumber.
 export type LintRuleId =
   | 'W01'
@@ -44,7 +44,10 @@ export type LintRuleId =
   // H05: cross-file — a part that lies on an open boundary plane (§6.14) and
   // is animated by some clip. The bake omits its seam faces in the rest pose,
   // so the hole shows the moment the part leaves the plane.
-  | 'H05';
+  | 'H05'
+  // W12: a region grid (§7.13) that marks a cell holding no voxel — most often
+  // a voxel erased, or moved, and its mark left behind.
+  | 'W12';
 
 export interface Diagnostic {
   // Structural category (SPEC §11.2). For lint diagnostics that don't map

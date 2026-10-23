@@ -1,6 +1,6 @@
 {
   "name": "herbalist",
-  "version": "0.10",
+  "version": "0.11",
   "geometry": ["voxels.json", "gear.json"],
   "parts": [
     { "name": "hips", "position": [0, 10, 0] },

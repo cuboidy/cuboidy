@@ -80,7 +80,31 @@ public sealed record Part(
     // treats an absent cell as AIR rather than raising: hazard A1, and the
     // reason it matters is that a caller can hand `BuildMesh` a part this
     // library never validated.
-    IReadOnlyList<IReadOnlyList<IReadOnlyList<int>>> Voxels);
+    IReadOnlyList<IReadOnlyList<IReadOnlyList<int>>> Voxels)
+{
+    // SPEC §7.13: which of the part's cells belong to which named region.
+    // Null → none of them is in any. An init property rather than a sixth
+    // positional field — the TypeScript `regions?` — because a consumer that
+    // builds a `Part` by hand (a test rig, a procedural shape) has nothing to
+    // say about regions, and a positional field would break every one of them
+    // for a field that changes nothing `BuildMesh` draws.
+    public Regions? Regions { get; init; }
+}
+
+// SPEC §7.13: one field, two forms, as §7.4's palette is. A NAME (`Whole`):
+// every solid cell of the part is in that region. Or a GRID: `Cells` has the
+// shape of the part's voxels ([y][z], one character a cell) and each character
+// is `.`, no region, or a key that `Keys` maps to a region name.
+//
+// Kept as the document spells it, keys included: the keys are the author's,
+// and region names mean nothing to this format — what a `skin` is, is the
+// consumer's business. Exactly one of `Whole` and the pair is set.
+public sealed record Regions(
+    string? Whole,
+    // One character of the §7.4 voxel alphabet, `.` excepted → a §5 name. Not
+    // a palette index: `m` here has nothing to do with palette entry 22.
+    IReadOnlyDictionary<char, string>? Keys,
+    IReadOnlyList<IReadOnlyList<string>>? Cells);
 
 public sealed record Geometry(
     // SPEC §7.4: the file's colors. An EMPTY list means the file declared no

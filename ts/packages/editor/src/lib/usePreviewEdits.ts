@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { AIR, composePartRotation, quatRotateVec3, type Manifest, type ManifestPart, type Part } from '@cuboidy/core';
 import { mapGeometryFiles, mergeGeometries, withManifest } from './source-ops.js';
+import { withRegions } from './regions.js';
 import type { LoadedSource } from './types.js';
 import type { VoxelEdit } from '@cuboidy/ui';
 
@@ -230,7 +231,7 @@ export function usePreviewEdits({
           // Every solid cell erased — keep a 1³ empty part (W05 flags
           // it; deleting the part stays an explicit tree operation).
           // Origin unchanged, so pivot/sockets stay put.
-          return { ...p, size: { w: 1, h: 1, d: 1 }, voxels: [[[AIR]]] };
+          return withRegions(p, { ...p, size: { w: 1, h: 1, d: 1 }, voxels: [[[AIR]]] });
         }
         const sx = -minX;
         const sy = -minY;
@@ -245,7 +246,7 @@ export function usePreviewEdits({
               row.map((v, x) => byKey.get(`${x},${y},${z}`) ?? v),
             ),
           );
-          return { ...p, voxels };
+          return withRegions(p, { ...p, voxels });
         }
         const voxels: number[][][] = [];
         for (let y = 0; y < nh; y++) {
@@ -266,7 +267,7 @@ export function usePreviewEdits({
           }
           voxels.push(layer);
         }
-        return {
+        return withRegions(p, {
           ...p,
           size: { w: nw, h: nh, d: nd },
           voxels,
@@ -282,7 +283,7 @@ export function usePreviewEdits({
             ...s,
             pos: { x: s.pos.x + sx, y: s.pos.y + sy, z: s.pos.z + sz },
           })),
-        };
+        }, { x: sx, y: sy, z: sz });
       });
     },
     [mutateGeometryPart],

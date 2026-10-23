@@ -1,6 +1,6 @@
 {
   "name": "windmill",
-  "version": "0.10",
+  "version": "0.11",
   "geometry": ["tower.json", "machinery.json"],
   "parts": [
     { "name": "base" },

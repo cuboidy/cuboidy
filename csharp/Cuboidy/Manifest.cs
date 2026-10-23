@@ -36,7 +36,9 @@ public sealed record PartGeometry(
     Pivot? Pivot,
     IReadOnlyList<Socket>? Sockets,
     IReadOnlyList<IReadOnlyList<string>>? Voxels,
-    PaletteField? Palette);
+    PaletteField? Palette,
+    // SPEC §7.13: part of the shape, so of the inline form only.
+    Regions? Regions);
 
 public sealed record ManifestPart(
     string Name,
@@ -407,7 +409,7 @@ public static class ManifestReader
     private static PartGeometry ReadPartGeometry(JsonElement e, DocPath at)
     {
         ObjectFields fields = JsonRead.Fields(
-            e, at, "size", "pivot", "sockets", "voxels", "palette", "path", "part");
+            e, at, "size", "pivot", "sockets", "voxels", "palette", "regions", "path", "part");
 
         // Every present field is validated on its own FIRST — a malformed
         // `size` outranks the form check below, the way a `.strict()` object
@@ -427,6 +429,9 @@ public static class ManifestReader
         PaletteField? palette = fields.TryGet("palette", out JsonElement paletteEl)
             ? GeometrySchema.ReadPaletteField(paletteEl, at.Add("palette"))
             : null;
+        Regions? regions = fields.TryGet("regions", out JsonElement regionsEl)
+            ? GeometrySchema.ReadRegions(regionsEl, at.Add("regions"))
+            : null;
         string? path = fields.TryGet("path", out JsonElement pathEl)
             ? JsonRead.RefPathValue(pathEl, at.Add("path"), ".json")
             : null;
@@ -441,7 +446,8 @@ public static class ManifestReader
             RejectInlineField(at, "sockets", sockets is not null);
             RejectInlineField(at, "voxels", voxels is not null);
             RejectInlineField(at, "palette", palette is not null);
-            return new PartGeometry(path, part, null, null, null, null, null);
+            RejectInlineField(at, "regions", regions is not null);
+            return new PartGeometry(path, part, null, null, null, null, null, null);
         }
 
         // Inline form. `part` names which part of a REFERENCED file to bind,
@@ -475,7 +481,7 @@ public static class ManifestReader
         // live here: this runs during the document's own structural parse, so
         // a bad row width on one part would be reported ahead of an absent
         // `name` on the next. They run from `CheckCrossFields`.
-        return new PartGeometry(null, null, size, pivot, sockets, voxels, palette);
+        return new PartGeometry(null, null, size, pivot, sockets, voxels, palette, regions);
     }
 
     private static void RejectInlineField(DocPath at, string key, bool present)
@@ -552,7 +558,8 @@ public static class ManifestReader
                         size,
                         geometry.Pivot,
                         geometry.Sockets ?? System.Array.Empty<Socket>(),
-                        voxels),
+                        voxels,
+                        geometry.Regions),
                     DocPath.Root.Add("parts", i, "geometry"),
                     geometry.Palette?.Colors?.Count);
             }

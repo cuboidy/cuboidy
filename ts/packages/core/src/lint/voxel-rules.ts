@@ -2,7 +2,7 @@ import type { Diagnostic } from '../diagnostic.js';
 import type { Geometry, Part, Size, Vec3 } from '../geometry/types.js';
 import { AIR } from '../geometry/voxel-row.js';
 
-// SPEC §11.3 (W01–W05) + §11.4 (H01–H02): semantic lint over a parsed Geometry.
+// SPEC §11.3 (W01–W05, W12) + §11.4 (H01–H02): semantic lint over a parsed Geometry.
 // `lintGeometry` runs AFTER `parseCvox` has accepted the input, so every rule
 // here assumes a well-formed AST (size matches voxels layout, palette
 // indices in range, etc.). Lint never returns errors — only warnings and
@@ -21,9 +21,44 @@ export function lintGeometry(geometry: Geometry): Diagnostic[] {
     checkVoxelEmptiness(part, diags);  // W04 + W05 (W05 suppresses W04)
     checkPartName(part, diags);        // H01
     checkPivotFractional(part, diags); // H02
+    checkRegionMarks(part, diags);     // W12
   }
   checkUnusedPalette(geometry, diags);     // W03
   return diags;
+}
+
+// W12 — a region grid (§7.13) whose mark sits on a cell with no voxel. The
+// mark changes nothing, which is why this is a warning rather than an error:
+// refusing the model over it would make a whole body unreadable for one stale
+// character. But it is always a sign that the grid and the shape went apart —
+// a voxel erased or moved by a tool that did not know about the grid — and the
+// cell the voxel went to, if it went anywhere, is then in no region at all.
+// One report per part, naming how many and the first, so a part erased down
+// to nothing does not print a line per cell.
+//
+// Exported because a part written INLINE in the manifest (§6.13) is not in any
+// geometry file, and the cross-file pass is what reaches it.
+export function checkRegionMarks(part: Part, out: Diagnostic[]): void {
+  const regions = part.regions;
+  if (regions === undefined || typeof regions === 'string') return;
+  let count = 0;
+  let first: [number, number, number] | null = null;
+  for (const [y, layer] of regions.cells.entries()) {
+    for (const [z, row] of layer.entries()) {
+      for (let x = 0; x < row.length; x++) {
+        if (row[x] === '.' || part.voxels[y]?.[z]?.[x] !== AIR) continue;
+        count++;
+        first ??= [x, y, z];
+      }
+    }
+  }
+  if (first === null) return;
+  out.push({
+    code: 'invalid-value',
+    severity: 'warning',
+    ruleId: 'W12',
+    message: `part '${part.name}' has ${count} region mark(s) on cells with no voxel, the first at [${first.join(', ')}]`,
+  });
 }
 
 // W01 — pivot position outside the part's bounding box.

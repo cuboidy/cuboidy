@@ -1,5 +1,5 @@
 {
-  "version": "0.10",
+  "version": "0.11",
   "name": "orrery",
   "geometry": ["parts/frame.json"],
   "palette": ["#3B2F2F", "#8A6E4B", "#C9A227"],

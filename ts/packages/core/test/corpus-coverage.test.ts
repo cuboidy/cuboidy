@@ -128,6 +128,21 @@ describe('models/ — corpus coverage', () => {
     expect(found, 'no shipped model carries a description').not.toHaveLength(0);
   });
 
+  // §7.13, in both of its forms. A reader that refused the field — the
+  // strict-object habit every other part key relies on — would load every
+  // other model clean, and one that read only the name would never see a grid.
+  it('some model marks its regions, by name and by grid (§7.13)', async () => {
+    const forms = new Set<string>();
+    for (const name of await modelDirs()) {
+      const r = await loadAndAssemble(join(MODELS, name));
+      if (!r.ok) continue;
+      for (const rp of r.assembly.resolvedParts) {
+        if (rp.part.regions !== undefined) forms.add(typeof rp.part.regions === 'string' ? 'name' : 'grid');
+      }
+    }
+    expect([...forms].sort(), 'region forms the shipped models use').toEqual(['grid', 'name']);
+  });
+
   it('some model declares a manifest-level palette (§6.1)', async () => {
     const found: string[] = [];
     for (const name of await modelDirs()) {

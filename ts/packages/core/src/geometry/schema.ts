@@ -57,6 +57,40 @@ const Socket = z
   })
   .strict();
 
+// SPEC §7.13: a region grid's key is ONE character of the voxel alphabet,
+// `.` excepted, since `.` is what a cell with no region holds.
+export const REGION_KEY_RE = /^[0-9a-zA-Z$%]$/;
+
+// SPEC §7.13: the grid form of `regions` — `keys` names what each character
+// of `cells` stands for, `cells` is the part's voxel grid again with a key or
+// `.` in each place. Whether `cells` has the part's shape, and whether every
+// character in it is a declared key, need `size` and `keys` together, so they
+// are phase 3 (`checkPartFields`); here each field is judged on its own.
+const RegionGrid = z
+  .object({
+    keys: z
+      .record(z.string().regex(REGION_KEY_RE, 'a region key is one character of [0-9a-zA-Z$%]'), Identifier)
+      .superRefine((keys, ctx) => {
+        if (Object.keys(keys).length > 0) return;
+        ctx.addIssue({
+          code: 'custom',
+          message: 'a region grid declares at least one key',
+          params: { cuboidyCode: 'wrong-arity' },
+        });
+      })
+      // The refine is runtime-only; `.meta()` carries the bound into the
+      // generated JSON Schema.
+      .meta({ minProperties: 1 }),
+    cells: z.array(z.array(
+      z.string().regex(/^[.0-9a-zA-Z$%]*$/, 'region cells use only [.0-9a-zA-Z$%]'),
+    )),
+  })
+  .strict();
+
+// SPEC §7.13: one field, two forms — a region NAME for the whole part, or a
+// grid. Exported because §6.13's inline geometry offers the identical field.
+export const RegionsSchema = z.union([Identifier, RegionGrid]);
+
 export const GeometryPartSchema = z
   .object({
     name: Identifier,
@@ -67,6 +101,8 @@ export const GeometryPartSchema = z
     // [Y][Z] — H layers of D rows, each row W characters. Arity is checked
     // against `size` below.
     voxels: z.array(z.array(VoxelRow)),
+    // SPEC §7.13. Absent → no cell of the part is in any region.
+    regions: RegionsSchema.optional(),
   })
   .strict();
 
@@ -119,6 +155,7 @@ export function checkPartFields(
     size: readonly [number, number, number];
     voxels: readonly (readonly string[])[];
     sockets?: readonly { name: string }[] | undefined;
+    regions?: z.infer<typeof RegionsSchema> | undefined;
   },
   at: ReadonlyArray<string | number>,
   paletteSize: number | null,
@@ -191,6 +228,54 @@ export function checkPartFields(
       });
     }
     socketNames.add(socket.name);
+  }
+
+  // SPEC §7.13: a region grid is the part's voxel grid again, so it is held
+  // to the same arity, level by level, stopping where a level fails — and a
+  // character in it is `.` or one of ITS keys. A name covers the whole part
+  // and has no shape to disagree with.
+  const regions = part.regions;
+  if (regions === undefined || typeof regions === 'string') return;
+  if (regions.cells.length !== h) {
+    ctx.addIssue({
+      code: 'custom',
+      path: [...at, 'regions', 'cells'],
+      message: `${regions.cells.length} layers, expected H=${h} (a region grid has the shape of \`voxels\`)`,
+      params: { cuboidyCode: 'wrong-arity' },
+    });
+    return;
+  }
+  for (const [y, layer] of regions.cells.entries()) {
+    if (layer.length !== d) {
+      ctx.addIssue({
+        code: 'custom',
+        path: [...at, 'regions', 'cells', y],
+        message: `${layer.length} rows, expected D=${d} (a region grid has the shape of \`voxels\`)`,
+        params: { cuboidyCode: 'wrong-arity' },
+      });
+      continue;
+    }
+    for (const [z, row] of layer.entries()) {
+      if (row.length !== w) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'regions', 'cells', y, z],
+          message: `row length ${row.length}, expected W=${w} (a region grid has the shape of \`voxels\`)`,
+          params: { cuboidyCode: 'wrong-arity' },
+        });
+        continue;
+      }
+      for (const ch of row) {
+        if (ch === '.' || Object.hasOwn(regions.keys, ch)) continue;
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'regions', 'cells', y, z],
+          message: `'${ch}' is not one of this grid's keys`,
+          params: { cuboidyCode: 'invalid-value' },
+        });
+        break; // one report per row is enough
+      }
+    }
   }
 }
 

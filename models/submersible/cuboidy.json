@@ -1,6 +1,6 @@
 {
   "name": "submersible",
-  "version": "0.10",
+  "version": "0.11",
   "geometry": ["hull.json", "bow.json", "stern.json"],
   "parts": [
     { "name": "hull", "position": [0, 8, 0] },

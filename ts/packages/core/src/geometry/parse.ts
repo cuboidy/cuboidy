@@ -109,13 +109,16 @@ function toEntry(doc: string | PaletteEntryDoc): PaletteEntry {
 function toPart(part: GeometryDoc['parts'][number]): Part {
   const [w, h, d] = part.size;
   const size = { w, h, d };
-  return {
+  const out: Part = {
     name: part.name,
     size,
     pivot: toPivot(part.pivot, size),
     sockets: (part.sockets ?? []).map(toSocket),
     voxels: part.voxels.map((layer) => layer.map(toRow)),
   };
+  // SPEC §7.13: carried as written. Absent stays absent, so it round-trips.
+  if (part.regions !== undefined) out.regions = part.regions;
+  return out;
 }
 
 // SPEC §7.7: absent pivot means bottom-center of the bounding box. Filling the

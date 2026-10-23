@@ -1,12 +1,13 @@
 # Cuboidy Format Specification
 
-**Version:** 0.10 (draft)
+**Version:** 0.11 (draft)
 **Status:** Early draft. Subject to change before v1.0.
 
-**Revision history:** [CHANGELOG.md](CHANGELOG.md). v0.10 added a model's
-`description` (§6.15). v0.9 changed the geometry container to JSON, moved
-palette ownership into the geometry file, and added a per-part rest rotation;
-read it before porting a pre-v0.9 model.
+**Revision history:** [CHANGELOG.md](CHANGELOG.md). v0.11 added a part's
+`regions` (§7.13). v0.10 added a model's `description` (§6.15). v0.9 changed
+the geometry container to JSON, moved palette ownership into the geometry
+file, and added a per-part rest rotation; read it before porting a pre-v0.9
+model.
 
 ---
 
@@ -46,6 +47,7 @@ Cuboidy is **not** a triangle-mesh format. It does not specify skin weights, UV 
 | **Packed Cuboidy** | `<name>.cuboidy` — the package folder as a single ZIP archive (§13) |
 | **Part** | A rigid voxel sub-object, optionally parented in the hierarchy |
 | **Socket** | A named attachment point on a part, declared in the geometry file (§7.8) |
+| **Region** | A named set of a part's cells, declared on the part (§7.13): all of its solid cells, or the ones a grid marks. What a region is for is the consumer's |
 | **Published socket** | A socket the manifest offers to consumers under a model-level name (§6.12). An unpublished socket is internal |
 | **Keyframe** | A time-indexed pose snapshot for an animated part |
 | **Rest pose** | A part's pose when no animation is active: position = `part.position` (in parent space), rotation = the manifest part's `rotation` composed with the geometry file's `pivot.rot` (`q_rotation · q_pivot`, both around `pivot.pos`; each identity when absent), scale = the manifest part's `scale` (around `pivot.pos`; `[1,1,1]` when absent) |
@@ -151,7 +153,7 @@ The manifest is a standard JSON document (no comments, no trailing commas).
 ```json
 {
   "name": "<identifier>",
-  "version": "0.10",
+  "version": "0.11",
   "description": "<one line of text>",
   "geometry": ["body.json", "gear/hat.json"],
   "palette": "palette.json",
@@ -165,7 +167,7 @@ The manifest is a standard JSON document (no comments, no trailing commas).
 | Field | Required | Type | Notes |
 |---|---|---|---|
 | `name` | **yes** | string (identifier) | Model identifier |
-| `version` | no | string | Spec version this model targets. Absent → the current spec version (`"0.10"` in this draft) |
+| `version` | no | string | Spec version this model targets. Absent → the current spec version (`"0.11"` in this draft) |
 | `description` | no | string | One line saying what the model is and what it looks like (§6.15): 1–200 code points, no line break. Absent → the model says nothing about itself |
 | `geometry` | no | array of reference paths | The model's geometry **files** (§6.9), for parts that do not carry their own geometry. Absent → `["voxels.json"]` |
 | `palette` | no | array of colors, or a reference path | The palette **inline part geometry** uses when it declares none of its own (§6.13). It never applies to a part whose geometry lives in a file — see the scoping rule in §6.13 |
@@ -459,7 +461,7 @@ A part's rig (`parent`, `position`, `rotation`) lives in the manifest. Its shape
 }
 ```
 
-The inline object is **exactly a §7.5 part object with `name` removed**, plus an optional `palette` (§7.4, either form). `size` and `voxels` are required; `pivot` and `sockets` follow §7.7 and §7.8 unchanged. The name is the enclosing part's `name` — carrying a second copy here would be one field that can disagree with another, so it is not permitted (`unknown`).
+The inline object is **exactly a §7.5 part object with `name` removed**, plus an optional `palette` (§7.4, either form). `size` and `voxels` are required; `pivot`, `sockets` and `regions` follow §7.7, §7.8 and §7.13 unchanged. The name is the enclosing part's `name` — carrying a second copy here would be one field that can disagree with another, so it is not permitted (`unknown`).
 
 `part` is likewise a reference-form field and `unknown` here, for the same reason read from the other side: it names which part of the file at `path` to bind, and inline there is no file to name. Written without `path` it is the authoring slip it looks like — the part named, the file forgotten — so it is reported rather than ignored.
 
@@ -616,9 +618,9 @@ at `schema/cuboidy-geometry.schema.json` plus the cross-field rules below.
 
 ```json
 {
-  "version": "0.10",
+  "version": "0.11",
   "palette": ["#RRGGBB", …],          // or "palette.json"
-  "parts": [ { "name": …, "size": [W, H, D], "pivot": …, "sockets": …, "voxels": … } ]
+  "parts": [ { "name": …, "size": [W, H, D], "pivot": …, "sockets": …, "voxels": …, "regions": … } ]
 }
 ```
 
@@ -742,6 +744,7 @@ Two details of that sentence are load-bearing, and both have been got wrong here
 | `pivot` | at most 1 | Omit to accept the default |
 | `sockets` | 0 or more | Omit or `[]` when there are none. Duplicate names → `duplicate` |
 | `voxels` | **exactly 1** | Missing → `missing` |
+| `regions` | at most 1 | Which cells are in which named region (§7.13). Omit when none is |
 
 No other fields are permitted (unknown field → `unknown`). Part names are unique across the whole model (§5), not merely within a file; a name defined in two geometry files is a cross-file `duplicate` error (§11.6).
 
@@ -849,7 +852,7 @@ The k-th row in layer `i` represents voxel cells at coordinates `(x, i, k)` for 
 
 ```json
 {
-  "version": "0.10",
+  "version": "0.11",
   "palette": ["#FFD700"],
   "parts": [
     {
@@ -871,7 +874,7 @@ Layer 0 is a solid base; layer 1 keeps only the four corner pillars, so `.` carv
 
 ```json
 {
-  "version": "0.10",
+  "version": "0.11",
   "palette": ["#6B6258", "#C5BFB5", "#1A1612"],
   "parts": [
     {
@@ -911,7 +914,7 @@ reference resolves (§11.6):
 
 ```json
 {
-  "version": "0.10",
+  "version": "0.11",
   "palette": "palette.json",
   "parts": [
     {
@@ -931,6 +934,126 @@ reference resolves (§11.6):
 `palette` may be omitted entirely only when the file has no colored voxels at
 all — a file that uses indices must either spell its colors out or reference a
 palette file.
+
+**Regions** (§7.13) — a hand whose skin is one region, and a forearm that is
+cloth at the elbow and skin below it, with a cuff button painted as the cloth
+but in no region:
+
+```json
+{
+  "version": "0.11",
+  "palette": ["#F6CA9F", "#424C6E"],
+  "parts": [
+    {
+      "name": "hand",
+      "size": [2, 2, 2],
+      "voxels": [
+        ["00", "00"],
+        ["00", "00"]
+      ],
+      "regions": "skin"
+    },
+    {
+      "name": "forearm",
+      "size": [2, 3, 2],
+      "voxels": [
+        ["00", "00"],
+        ["00", "00"],
+        ["11", "11"]
+      ],
+      "regions": {
+        "keys": { "c": "cloth", "s": "skin" },
+        "cells": [
+          ["ss", "ss"],
+          ["ss", "ss"],
+          ["c.", "cc"]
+        ]
+      }
+    }
+  ]
+}
+```
+
+### 7.13 `regions`
+
+```json
+"regions": "skin"
+"regions": { "keys": { "s": "skin", "c": "cloth" }, "cells": [ ["ss.", "ss."], ["ccc", "c.c"] ] }
+```
+
+Which of a part's cells belong to which **region**: a named set of cells that
+a consumer treats together — repaints in a colour somebody chose, hides,
+outlines — without the part having to be split into more parts to say so. One
+field, two forms, as §7.4's palette is:
+
+- **A name.** Every solid cell of the part is in that region, whatever shape
+  the part takes: a voxel added to it later is in the region too.
+- **A grid.** An object of `keys` and `cells` and nothing else (`unknown`).
+  `cells` has the shape of the part's `voxels` (§7.9) — H layers of D rows of W
+  characters, the character for cell `(x, y, z)` in the place the voxel's is —
+  and each character is `.`, in no region, or a key. `keys` maps each key to a
+  region name.
+
+| Field | Required | Type | Notes |
+|---|---|---|---|
+| `keys` | **yes** | object | A key — one character of `[0-9a-zA-Z$%]`, `.` excepted — → a region name (§5). At least one entry (`wrong-arity`). Two keys may name the same region |
+| `cells` | **yes** | array of layers of row strings | The shape of `voxels`. Each character is `.` or one of this grid's keys |
+
+Rules:
+
+- **Region names are §5 identifiers, and they mean nothing to this format.**
+  There is no list of them here. `skin`, `hair` or `team` mean whatever the
+  consumer reading them says they mean, the way a socket's `grip` says nothing
+  about which sword comes (§6.12). A region of one name on two parts is one
+  region: names are model-wide, as part names are.
+- **A key is not a colour.** The character `m` in `cells` has nothing to do with
+  the character `m` in `voxels`. The grid exists so that which cells are in a
+  region does not depend on what they are painted in: a stud painted in the
+  same entry as the cloth around it can be left out of the cloth, and two
+  shades can be one region. A region decided by palette entry would give every
+  entry a second meaning, so that an author could not use a colour without
+  joining a region, or could join one without meaning to.
+- **A cell is in at most one region.** It holds one character.
+- **Air is in no region.** A name covers the part's solid cells. A key on a cell
+  whose voxel is `.` means nothing, and lints as **W12** (§11.3): it is almost
+  always a voxel erased or moved, and its mark left behind.
+- **The grid has the part's shape, or the document is refused.** A layer count
+  other than H, a layer whose row count is not D, or a row whose width is not
+  W is `wrong-arity`, checked level by level as `voxels` is (§11.8, phase 3); a
+  character that is neither `.` nor one of the grid's keys is `invalid-value`.
+  That is what a grid left behind by a resize looks like, and refusing it is
+  the one answer that does not put a region on the wrong cells.
+- **Regions change nothing drawn.** Like a material's shading (§7.4) and a
+  description (§6.15), they MUST NOT change a face, a vertex, a transform or a
+  pose: two models that differ only in their regions mesh to the same faces,
+  and the set comparison of §7.4 does not look at them. What a consumer does
+  with a region is the consumer's.
+- **Inline geometry carries it.** §6.13's inline object is a §7.5 part without
+  its `name`, so a model of one file says where its regions are as a model of
+  many does. A reference cannot carry it (`unknown`): regions belong to the
+  shape, and a reference says only where the shape is.
+- **A tool that rewrites a part carries its regions.** A writer keeps a name as
+  written and a grid's keys as the author chose them, writing the keys in the
+  order of the §7.4 alphabet (`0`–`9`, `a`–`z`, `A`–`Z`, `$`, `%`). A tool that
+  reshapes a part's grid — a mirror, a resize, a stroke that refits the grid to
+  the part's solid cells — moves each mark with its cell, gives a new cell no
+  region, and drops the mark of a cell that became air. A tool that cannot do
+  that must not write back a grid that no longer has the part's shape.
+
+**Why a name and a grid, and not one of them.** Most parts that carry a region
+are one region all through — a bare hand, a sleeve, a lock of hair — and a
+grid for each would be a second copy of its shape with nothing in it but one
+key. A part that mixes, a forearm that is cloth to the elbow and skin below it,
+needs the grid. The name is also the form that cannot go stale: it says
+nothing about cells, so no reshaping invalidates it.
+
+**What a grid costs.** Unlike §6.14's planes, a grid is bound to the shape, and
+that is the price of saying something about individual cells. Two of the ways
+it can fall behind are caught — a change of size by the reader, a removed
+voxel by W12 — and the third is not: a voxel added to a part that carries a
+grid is in no region, and nothing can tell that from a detail left out on
+purpose. A tool that adds voxels to such a part decides which region the new
+ones are in; the format does not guess.
 
 ---
 
@@ -992,7 +1115,7 @@ Reference cycles (a → b → a) are an error.
 | `cuboidy.json` | part `openBoundaries` | absent → the part is closed (§6.14) |
 | `cuboidy.json` | `sockets` | absent → no published sockets (§6.12) |
 | `cuboidy.json` | `animations` | absent → no animations |
-| `cuboidy.json` | `version` | absent → current spec version (`"0.10"` in this draft) |
+| `cuboidy.json` | `version` | absent → current spec version (`"0.11"` in this draft) |
 | `cuboidy.json` | `description` | absent → none; nothing stands in for it (§6.15) |
 | Keyframe (first) | `rot` | `[0, 0, 0]` |
 | Keyframe (first) | `pos` | `[0, 0, 0]` |
@@ -1001,6 +1124,7 @@ Reference cycles (a → b → a) are an error.
 | Keyframe (subsequent) | any omitted field | inherits from previous keyframe |
 | `voxels.json` | `pivot` | `[W/2, 0, D/2]` (bottom-center) |
 | `voxels.json` | socket rotation | `[0, 0, 0]` |
+| `voxels.json` | part `regions` | absent → no cell of the part is in any region (§7.13) |
 | Palette entry | alpha | absent from the hex → `FF` (opaque) |
 | Palette entry | `metallic` | `0` (dielectric) |
 | Palette entry | `roughness` | `1` (fully diffuse) |
@@ -1038,7 +1162,7 @@ Cuboidy uses **five structural codes** to describe errors. The code names what *
 |---|---|---|
 | `missing` | A required structural element is absent. | No `parts`, or `parts` present but empty; `name`, `size` or `voxels` absent on a part. (An absent `palette` is **not** an error — §7.4; palette availability is validated cross-file, §11.6) |
 | `duplicate` | A unique-constraint violation: an element that should appear at most once appears more than once. | Two parts sharing a `name`; two sockets on one part sharing a `name` |
-| `unknown` | An unrecognized name appears where the spec defines a closed set. | A top-level field other than `version` / `palette` / `parts`; a part field other than `name` / `size` / `pivot` / `sockets` / `voxels`; an unrecognized key on a `pivot` or `socket` object |
+| `unknown` | An unrecognized name appears where the spec defines a closed set. | A top-level field other than `version` / `palette` / `parts`; a part field other than `name` / `size` / `pivot` / `sockets` / `voxels` / `regions`; an unrecognized key on a `pivot` or `socket` object, or on a region grid (§7.13) |
 | `invalid-value` | A value is present but malformed. | Malformed color (`#GG`); a voxel row containing a character outside `[.0-9a-zA-Z$%]`; a voxel cell naming a palette index that does not exist (checked at parse time only when the file spells its colors out — a referenced palette is checked cross-file, §7.4); a `size` dimension outside `[1..1024]` or non-integer; a non-numeric coordinate in `pivot` / `socket`; an identifier failing the §5 rule; a value of the wrong JSON type for its field (e.g. `"size": ["3", 1, 1]`) |
 | `wrong-arity` | An incorrect number of items. | Voxel-row width does not match declared `W`; a layer's row count differs from declared `D`; the layer count differs from declared `H`; an inline palette with 0 colors or more than 64; `size` or a coordinate that is not a triple |
 
@@ -1053,6 +1177,7 @@ Note: v0.1 used per-keyword codes (E01–E19); v0.2 restructured them into the f
 | W03 | Palette index declared but never used |
 | W04 | Layer-section entirely empty (all `.`) |
 | W05 | Part has no solid voxels (all `.`) |
+| W12 | A region grid (§7.13) marks a cell that holds no voxel — reported once per part, with the count and the first such cell |
 
 ### 11.4 `voxels.json` hints
 
@@ -1137,12 +1262,14 @@ what gets reported — this is what parity testing compares.
    - **`wrong-arity`** — a fixed-length array of the wrong length (`size` or a
      coordinate that is not a triple); a palette with more than 64 colors, or
      an inline palette with none; a `description` of no code points or of more
-     than 200 (§6.15)
+     than 200 (§6.15); a region grid with no key (§7.13)
    - **`invalid-value`** — right shape, wrong content: a malformed color, a
      `size` dimension outside `[1..1024]` or non-integer, a voxel row
      containing a character outside `[.0-9a-zA-Z$%]`, an identifier failing §5,
      a reference path violating §8, a `description` that is not one line of
-     text (§6.15)
+     text (§6.15), a region name failing §5, a region key that is not one
+     character of `[0-9a-zA-Z$%]`, a region cell outside `[.0-9a-zA-Z$%]`
+     (§7.13)
 3. **Cross-field rules**, which need more than one field at a time and are
    therefore only reachable once the document is structurally sound. Parts are
    examined in document order; within a part:
@@ -1155,6 +1282,11 @@ what gets reported — this is what parity testing compares.
      does not define, at most one report per row. Skipped entirely when the
      palette is a §7.4 reference or absent — the range is unknown until phase 4
    - **`duplicate`** — two sockets on the part share a name
+   - **`wrong-arity`** — the part's region grid (§7.13) has a layer count other
+     than `H`; then, per layer, a row count other than `D`; then, per row, a
+     width other than `W`, descending as the voxel check does
+   - **`invalid-value`** — a region grid's character is neither `.` nor one of
+     its keys, at most one report per row
 4. **Cross-file validation** (§11.6), once the project resolves: part names
    across geometry files, manifest↔geometry agreement, per-part `geometry`
    references resolving (§6.13), palette resolution and the index ranges
@@ -1185,6 +1317,7 @@ The reference repository includes:
 - `models/sword/` — single-part static accessory, authored around its origin so it seats in `knight`'s published `weapon` socket
 - `models/owl/`, `models/koi/`, `models/fox/` — non-humanoid rigs (segmented wings, a body chain, a quadruped gait)
 - `models/windmill/` — a `geometry` list plus a shared palette file, and two constant-rate rotations in one clip
+- `models/herbalist/` — regions (§7.13) in both forms: its arms are `cloak` by name, and its head and hands mark their `skin` and `cloak` cell by cell
 
 All reference examples pass the current lint rules at error level.
 
@@ -1264,7 +1397,7 @@ someone.
 
 ---
 
-## 14. Future extensions (out of scope for v0.10)
+## 14. Future extensions (out of scope for v0.11)
 
 - **Named palette colors / metadata**: the palette file's object form (§6.10) reserves the room
 - **Multi-character palette encoding**: 2-character indices for palettes larger than 64.

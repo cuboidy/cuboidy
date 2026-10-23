@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://cuboidy.com/schema/cuboidy.schema.json",
   "title": "Cuboidy Manifest",
-  "description": "Schema for cuboidy.json — the manifest file of a Cuboidy v0.10 model package (geometry list, palette binding, rig hierarchy + animation references). Generated from the Zod ManifestSchema in @cuboidy/core. SPEC §8 reference paths, tuple arity and geometry uniqueness are encoded; the remaining runtime-only rules (SPEC §11.5: duplicate part names, parent existence/cycles, animation duration/time-key semantics; SPEC §6.15: a description holding half of a surrogate pair) need parseManifest or an equivalent validator.",
+  "description": "Schema for cuboidy.json — the manifest file of a Cuboidy v0.11 model package (geometry list, palette binding, rig hierarchy + animation references). Generated from the Zod ManifestSchema in @cuboidy/core. SPEC §8 reference paths, tuple arity and geometry uniqueness are encoded; the remaining runtime-only rules (SPEC §11.5: duplicate part names, parent existence/cycles, animation duration/time-key semantics; SPEC §6.15: a description holding half of a surrogate pair; SPEC §7.13: the region grid of an inline part agreeing with its `size` and using only its own keys) need parseManifest or an equivalent validator.",
   "type": "object",
   "properties": {
     "name": {
@@ -341,6 +341,68 @@
                     "pattern": "^[.0-9a-zA-Z$%]*$"
                   }
                 }
+              },
+              "regions": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z_][a-zA-Z0-9_-]*$",
+                    "not": {
+                      "enum": [
+                        "palette",
+                        "part",
+                        "size",
+                        "pivot",
+                        "socket",
+                        "voxels",
+                        "rot"
+                      ]
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "keys": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string",
+                          "pattern": "^[0-9a-zA-Z$%]$"
+                        },
+                        "additionalProperties": {
+                          "type": "string",
+                          "pattern": "^[a-zA-Z_][a-zA-Z0-9_-]*$",
+                          "not": {
+                            "enum": [
+                              "palette",
+                              "part",
+                              "size",
+                              "pivot",
+                              "socket",
+                              "voxels",
+                              "rot"
+                            ]
+                          }
+                        },
+                        "minProperties": 1
+                      },
+                      "cells": {
+                        "type": "array",
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^[.0-9a-zA-Z$%]*$"
+                          }
+                        }
+                      }
+                    },
+                    "required": [
+                      "keys",
+                      "cells"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
               },
               "palette": {
                 "anyOf": [

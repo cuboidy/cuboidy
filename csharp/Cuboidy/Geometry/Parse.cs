@@ -133,7 +133,11 @@ public static class GeometryReader
             voxels.Add(rows);
         }
 
-        return new Part(part.Name, part.Size, ToPivot(part.Pivot, part.Size), part.Sockets, voxels);
+        // SPEC §7.13: carried as written; null stays null.
+        return new Part(part.Name, part.Size, ToPivot(part.Pivot, part.Size), part.Sockets, voxels)
+        {
+            Regions = part.Regions,
+        };
     }
 
     // SPEC §7.7: absent pivot means bottom-center of the bounding box. Filling

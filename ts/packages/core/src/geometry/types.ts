@@ -88,12 +88,35 @@ export interface Socket {
   rot?: Vec3;
 }
 
+// SPEC §7.13: which of a part's cells belong to which named region. One field,
+// two forms, as §7.4's palette is: a NAME, every solid cell of the part is in
+// that region; or a GRID the shape of `voxels`, each character `.` (no region)
+// or a key that `keys` maps to a region name.
+//
+// Kept as the document spells it, keys included, rather than decoded into a
+// per-cell name: the keys are the author's, and a writer that re-chose them
+// would rewrite a file nobody edited. Region names mean nothing to this format
+// — what a `skin` is, is whoever reads it's business.
+export type Regions = string | RegionGrid;
+
+export interface RegionGrid {
+  // One character of the §7.4 voxel alphabet (`.` excepted) → a §5 name. Not
+  // a palette index: `m` here has nothing to do with palette entry 22.
+  keys: Readonly<Record<string, string>>;
+  // [Y][Z] — the shape of `voxels`: H layers of D rows of W characters.
+  cells: readonly (readonly string[])[];
+}
+
 export interface Part {
   name: string;
   size: Size;
   pivot: Pivot;
   sockets: readonly Socket[];
   voxels: readonly (readonly (readonly number[])[])[];
+  // SPEC §7.13. Absent → no cell of the part is in any region. Optional, and
+  // last, because it is the one field a part may carry that changes nothing
+  // a renderer draws.
+  regions?: Regions;
 }
 
 export interface Geometry {
